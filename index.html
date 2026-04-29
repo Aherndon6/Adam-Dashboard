@@ -1,0 +1,918 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Adam's Weekly Operating Dashboard</title>
+<link href="https://fonts.googleapis.com/css2?family=DM+Serif+Display:ital@0;1&family=DM+Mono:wght@400;500&family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;0,9..40,600;1,9..40,300&display=swap" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<style>
+  :root {
+    --bg:#0e0f11;--surface:#16181c;--surface2:#1e2126;--border:#2a2d33;--border2:#363a42;
+    --text:#e8eaed;--text2:#9aa0ad;--text3:#5c6270;
+    --accent:#4ade80;--accent2:#22c55e;--amber:#fbbf24;--red:#f87171;--blue:#60a5fa;--purple:#a78bfa;
+    --radius:10px;--radius-sm:6px;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  html{scroll-behavior:smooth}
+  body{background:var(--bg);color:var(--text);font-family:'DM Sans',sans-serif;font-size:14px;line-height:1.6;min-height:100vh}
+  body::before{content:'';position:fixed;inset:0;background-image:url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)' opacity='0.03'/%3E%3C/svg%3E");pointer-events:none;z-index:0;opacity:.4}
+  .app{position:relative;z-index:1;max-width:1100px;margin:0 auto;padding:2rem 1.5rem 4rem}
+  .header{display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:2.5rem;padding-bottom:1.5rem;border-bottom:1px solid var(--border)}
+  .header-eyebrow{font-family:'DM Mono',monospace;font-size:11px;color:var(--accent);letter-spacing:.12em;text-transform:uppercase;margin-bottom:.4rem}
+  .header-title{font-family:'DM Serif Display',serif;font-size:2rem;color:var(--text);line-height:1.1}
+  .header-title em{font-style:italic;color:var(--text2)}
+  .header-date{font-family:'DM Mono',monospace;font-size:11px;color:var(--text3);margin-top:.5rem}
+  .week-badge{background:var(--surface2);border:1px solid var(--border2);border-radius:20px;padding:.35rem .9rem;font-family:'DM Mono',monospace;font-size:11px;color:var(--text2);white-space:nowrap}
+  .tabs{display:flex;gap:3px;margin-bottom:1.75rem;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:4px;flex-wrap:wrap}
+  .tab{flex:1;min-width:80px;padding:.45rem .5rem;font-size:11px;font-weight:500;color:var(--text3);cursor:pointer;border-radius:var(--radius-sm);transition:all .15s;text-align:center;border:none;background:none;font-family:'DM Sans',sans-serif}
+  .tab:hover{color:var(--text2);background:var(--surface2)}
+  .tab.active{background:var(--surface2);color:var(--text);border:1px solid var(--border2)}
+  .tab-badge{display:inline-flex;align-items:center;justify-content:center;min-width:16px;height:16px;background:var(--accent);color:#000;border-radius:8px;font-size:9px;font-weight:700;padding:0 4px;margin-left:3px;vertical-align:middle}
+  .panel{display:none}
+  .panel.active{display:block;animation:fadeIn .2s ease}
+  @keyframes fadeIn{from{opacity:0;transform:translateY(4px)}to{opacity:1;transform:translateY(0)}}
+  .section-label{font-family:'DM Mono',monospace;font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:.1em;margin-bottom:.65rem}
+  .grid-2{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+  @media(max-width:700px){.grid-2{grid-template-columns:1fr}}
+  .card{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:1rem 1.1rem}
+  .card-title{font-size:12px;font-weight:600;color:var(--text2);margin-bottom:.75rem;display:flex;align-items:center;gap:6px}
+  .card-title .dot{width:6px;height:6px;border-radius:50%;flex-shrink:0}
+  .field{margin-bottom:.85rem}
+  .field:last-child{margin-bottom:0}
+  .field label{display:block;font-size:11px;color:var(--text3);margin-bottom:.3rem;font-weight:500}
+  .field input,.field textarea,.field select{width:100%;background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--text);font-family:'DM Sans',sans-serif;font-size:13px;padding:.5rem .7rem;outline:none;transition:border-color .15s;resize:vertical}
+  .field input:focus,.field textarea:focus,.field select:focus{border-color:var(--border2)}
+  .field textarea{min-height:70px}
+  .field input::placeholder,.field textarea::placeholder{color:var(--text3)}
+  .num-row{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:1rem}
+  .num-block{background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius-sm);padding:.6rem .75rem;text-align:center}
+  .num-block input{background:none;border:none;text-align:center;font-family:'DM Serif Display',serif;font-size:1.6rem;color:var(--text);width:100%;outline:none}
+  .num-block label{font-family:'DM Mono',monospace;font-size:10px;color:var(--text3);display:block;margin-top:2px}
+  .checklist{display:flex;flex-direction:column;gap:6px}
+  .check-item{display:flex;align-items:center;gap:8px;font-size:12px;color:var(--text2);cursor:pointer}
+  .check-item input[type="checkbox"]{appearance:none;width:15px;height:15px;border:1px solid var(--border2);border-radius:4px;background:var(--surface2);cursor:pointer;position:relative;flex-shrink:0;transition:all .1s}
+  .check-item input[type="checkbox"]:checked{background:var(--accent);border-color:var(--accent)}
+  .check-item input[type="checkbox"]:checked::after{content:'✓';position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);font-size:9px;color:#000;font-weight:700}
+  .status{display:inline-flex;align-items:center;gap:4px;padding:2px 8px;border-radius:12px;font-size:10px;font-weight:600;font-family:'DM Mono',monospace}
+  .status.green{background:rgba(74,222,128,.1);color:var(--accent);border:1px solid rgba(74,222,128,.2)}
+  .status.amber{background:rgba(251,191,36,.1);color:var(--amber);border:1px solid rgba(251,191,36,.2)}
+  .status.blue{background:rgba(96,165,250,.1);color:var(--blue);border:1px solid rgba(96,165,250,.2)}
+  .generate-btn{width:100%;padding:.9rem 1.5rem;background:var(--accent);color:#000;border:none;border-radius:var(--radius);font-family:'DM Sans',sans-serif;font-size:14px;font-weight:600;cursor:pointer;transition:all .15s;display:flex;align-items:center;justify-content:center;gap:8px;margin-top:1.5rem}
+  .generate-btn:hover{background:var(--accent2);transform:translateY(-1px)}
+  .generate-btn:disabled{opacity:.5;cursor:not-allowed;transform:none}
+  .output-wrap{margin-top:1.25rem}
+  .output-header{display:flex;align-items:center;justify-content:space-between;margin-bottom:.6rem}
+  .output-label{font-family:'DM Mono',monospace;font-size:10px;color:var(--accent);text-transform:uppercase;letter-spacing:.1em}
+  .output-actions{display:flex;gap:6px}
+  .output-box{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:1.25rem 1.35rem;font-size:13px;line-height:1.8;color:var(--text2);min-height:80px}
+  .output-box h1,.output-box h2,.output-box h3,.history-full h1,.history-full h2,.history-full h3{font-family:'DM Serif Display',serif;color:var(--text);margin:.9rem 0 .35rem;line-height:1.2}
+  .output-box h1,.history-full h1{font-size:1.25rem}
+  .output-box h2,.history-full h2{font-size:1.05rem}
+  .output-box h3,.history-full h3{font-size:.95rem;font-family:'DM Sans',sans-serif;font-weight:600}
+  .output-box strong,.history-full strong{color:var(--text);font-weight:600}
+  .output-box em,.history-full em{color:var(--text2);font-style:italic}
+  .output-box ul,.output-box ol,.history-full ul,.history-full ol{padding-left:1.2rem;margin:.35rem 0}
+  .output-box li,.history-full li{margin:.12rem 0}
+  .output-box hr,.history-full hr{border:none;border-top:1px solid var(--border);margin:.9rem 0}
+  .output-box p,.history-full p{margin:.35rem 0}
+  .output-box code{background:var(--surface2);border:1px solid var(--border);border-radius:3px;padding:1px 5px;font-family:'DM Mono',monospace;font-size:11px;color:var(--accent)}
+  .action-btn{font-size:11px;color:var(--text3);cursor:pointer;background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius-sm);padding:3px 10px;transition:all .1s;font-family:'DM Sans',sans-serif}
+  .action-btn:hover{color:var(--text);border-color:var(--border2)}
+  .context-section{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:1rem 1.1rem;margin-bottom:1rem}
+  .context-section h3{font-size:11px;font-weight:600;color:var(--text2);margin-bottom:.65rem;font-family:'DM Mono',monospace;text-transform:uppercase;letter-spacing:.08em}
+  .context-item{font-size:12px;color:var(--text2);padding:.3rem 0;border-bottom:1px solid var(--border);display:flex;gap:8px;align-items:flex-start}
+  .context-item:last-child{border-bottom:none}
+  .context-item .key{color:var(--text3);min-width:130px;flex-shrink:0;padding-top:2px;font-size:11px}
+  .editable-field{width:100%;background:transparent;border:none;color:var(--text2);font-family:'DM Sans',sans-serif;font-size:12px;resize:none;outline:none;line-height:1.5;overflow:hidden}
+  .editable-field:focus{color:var(--text)}
+  .history-item{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:.85rem 1rem;margin-bottom:8px}
+  .history-meta{display:flex;align-items:center;gap:8px;margin-bottom:.35rem;flex-wrap:wrap}
+  .history-date{font-family:'DM Mono',monospace;font-size:11px;color:var(--text3)}
+  .history-toggle{font-size:11px;color:var(--text3);cursor:pointer;margin-left:auto;background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius-sm);padding:2px 8px;font-family:'DM Sans',sans-serif;transition:all .1s}
+  .history-toggle:hover{color:var(--text);border-color:var(--border2)}
+  .history-preview{font-size:12px;color:var(--text3);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .history-full{display:none;margin-top:.75rem;padding-top:.75rem;border-top:1px solid var(--border);font-size:13px;line-height:1.8;color:var(--text2)}
+  .history-full.open{display:block}
+  .cash-row{display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-bottom:1rem}
+  .cash-block{background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius-sm);padding:.65rem .8rem}
+  .cash-label{font-family:'DM Mono',monospace;font-size:10px;color:var(--text3);margin-bottom:4px}
+  .cash-value{font-family:'DM Mono',monospace;font-size:16px;font-weight:500}
+  .cash-value.green{color:var(--accent)}.cash-value.amber{color:var(--amber)}.cash-value.red{color:var(--red)}
+  .modal-overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,.75);z-index:100;align-items:center;justify-content:center}
+  .modal-overlay.open{display:flex}
+  .modal{background:var(--surface);border:1px solid var(--border2);border-radius:var(--radius);padding:1.5rem;width:90%;max-width:520px;max-height:85vh;overflow-y:auto}
+  .modal-title{font-size:14px;font-weight:600;color:var(--text);margin-bottom:1rem}
+  .modal-actions{display:flex;gap:8px;justify-content:flex-end;margin-top:1rem}
+  .btn-primary{padding:.5rem 1.1rem;background:var(--accent);color:#000;border:none;border-radius:var(--radius-sm);font-family:'DM Sans',sans-serif;font-size:13px;font-weight:600;cursor:pointer}
+  .btn-primary:hover{background:var(--accent2)}
+  .btn-secondary{padding:.5rem 1.1rem;background:var(--surface2);color:var(--text2);border:1px solid var(--border);border-radius:var(--radius-sm);font-family:'DM Sans',sans-serif;font-size:13px;cursor:pointer}
+  .btn-secondary:hover{border-color:var(--border2);color:var(--text)}
+  .save-indicator{position:fixed;bottom:1.5rem;right:1.5rem;background:var(--surface2);border:1px solid var(--border2);border-radius:20px;padding:.35rem .9rem;font-family:'DM Mono',monospace;font-size:11px;color:var(--accent);opacity:0;transition:opacity .3s;z-index:50;pointer-events:none}
+  .save-indicator.show{opacity:1}
+</style>
+</head>
+<body>
+<!-- LOGIN SCREEN -->
+<div id="loginScreen" style="display:none;position:fixed;inset:0;background:var(--bg);z-index:200;align-items:center;justify-content:center;flex-direction:column;gap:1.5rem">
+  <div style="text-align:center;max-width:380px;padding:2rem">
+    <div style="font-family:'DM Mono',monospace;font-size:11px;color:var(--accent);letter-spacing:.12em;text-transform:uppercase;margin-bottom:.5rem">Personal Operating System</div>
+    <div style="font-family:'DM Serif Display',serif;font-size:2.5rem;color:var(--text);line-height:1.1;margin-bottom:.5rem">Adam's Weekly <em style="font-style:italic;color:var(--text2)">Dashboard</em></div>
+    <div style="font-size:13px;color:var(--text3);margin-bottom:2rem">Sign in to access your dashboard across all devices</div>
+    <button onclick="signInWithGoogle()" style="width:100%;padding:.9rem 1.5rem;background:var(--surface);border:1px solid var(--border2);border-radius:var(--radius);font-family:'DM Sans',sans-serif;font-size:14px;font-weight:500;color:var(--text);cursor:pointer;display:flex;align-items:center;justify-content:center;gap:10px;transition:all .15s" onmouseover="this.style.background='var(--surface2)'" onmouseout="this.style.background='var(--surface)'">
+      <svg width="18" height="18" viewBox="0 0 18 18"><path fill="#4285F4" d="M16.51 8H8.98v3h4.3c-.18 1-.74 1.48-1.6 2.04v2.01h2.6a7.8 7.8 0 0 0 2.38-5.88c0-.57-.05-.66-.15-1.18z"/><path fill="#34A853" d="M8.98 17c2.16 0 3.97-.72 5.3-1.94l-2.6-2a4.8 4.8 0 0 1-7.18-2.54H1.83v2.07A8 8 0 0 0 8.98 17z"/><path fill="#FBBC05" d="M4.5 10.52a4.8 4.8 0 0 1 0-3.04V5.41H1.83a8 8 0 0 0 0 7.18l2.67-2.07z"/><path fill="#EA4335" d="M8.98 4.18c1.17 0 2.23.4 3.06 1.2l2.3-2.3A8 8 0 0 0 1.83 5.4L4.5 7.49a4.77 4.77 0 0 1 4.48-3.3z"/></svg>
+      Continue with Google
+    </button>
+    <div id="loginError" style="margin-top:1rem;font-size:12px;color:var(--red);display:none"></div>
+  </div>
+</div>
+
+<!-- SYNC STATUS -->
+<div id="syncStatus" style="position:fixed;bottom:1.5rem;right:1.5rem;display:flex;align-items:center;gap:6px;background:var(--surface2);border:1px solid var(--border2);border-radius:20px;padding:.35rem .9rem;font-family:'DM Mono',monospace;font-size:11px;color:var(--text3);opacity:0;transition:opacity .3s;z-index:50;pointer-events:none">
+  <span id="syncDot" style="width:6px;height:6px;border-radius:50%;background:var(--text3);display:inline-block"></span>
+  <span id="syncText">Saved</span>
+</div>
+
+<div class="app">
+
+<div class="header">
+  <div>
+    <div class="header-eyebrow">Personal Operating System</div>
+    <div class="header-title">Adam's Weekly <em>Dashboard</em></div>
+    <div class="header-date" id="currentDate"></div>
+  </div>
+  <div class="week-badge" id="weekBadge"></div>
+  <button onclick="signOut()" id="signOutBtn" style="display:none;background:none;border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--text3);font-family:'DM Mono',monospace;font-size:10px;padding:.3rem .7rem;cursor:pointer;transition:all .15s" onmouseover="this.style.color='var(--text)'" onmouseout="this.style.color='var(--text3)'">Sign out</button>
+</div>
+
+<div class="tabs">
+  <button class="tab active" onclick="showPanel('monday')">📋 Monday Plan</button>
+  <button class="tab" onclick="showPanel('sunday')">📊 Sunday Review</button>
+  <button class="tab" onclick="showPanel('cashflow')">💰 Cash Flow</button>
+  <button class="tab" onclick="showPanel('context')">👤 My Context</button>
+  <button class="tab" onclick="showPanel('history')">📁 History</button>
+  <button class="tab" id="tab-ideas" onclick="showPanel('ideas')">💡 Ideas</button>
+</div>
+
+<!-- MONDAY -->
+<div id="panel-monday" class="panel active">
+  <div class="section-label">Weekly Plan — Monday Morning Setup</div>
+  <div class="grid-2">
+    <div class="card">
+      <div class="card-title"><div class="dot" style="background:#f87171"></div>Job Search</div>
+      <div class="field"><label>Active opportunities (names + stages)</label><textarea id="m_opps" placeholder="e.g. Acme Corp — final round&#10;TechCo — phone screen"></textarea></div>
+      <div class="field"><label>5 outreach targets this week</label><textarea id="m_outreach" placeholder="e.g. John Smith — 3 weeks since last touch&#10;Sarah Lee — met at event, need to follow up"></textarea></div>
+      <div class="field"><label>One primary job search move this week</label><input type="text" id="m_primary_move" placeholder="e.g. Land a call with Delta hiring manager"></div>
+    </div>
+    <div class="card">
+      <div class="card-title"><div class="dot" style="background:#a78bfa"></div>Jabian Work</div>
+      <div class="field"><label>Client meetings this week</label><textarea id="m_client_meetings" placeholder="e.g. Monday — Ludis kickoff&#10;Wednesday — TAH review"></textarea></div>
+      <div class="field"><label>Deliverables due</label><textarea id="m_deliverables" placeholder="e.g. Ludis SOW — Thursday"></textarea></div>
+      <div class="field"><label>BD conversations to advance</label><textarea id="m_bd" placeholder="e.g. Follow up with Cox AI contact"></textarea></div>
+    </div>
+    <div class="card">
+      <div class="card-title"><div class="dot" style="background:#fbbf24"></div>Personal</div>
+      <div class="field"><label>Finance actions this week</label><input type="text" id="m_finance" placeholder="e.g. Run cash flow calculator, Quicken review with Wendy"></div>
+      <div class="field"><label>Family / personal priorities</label><textarea id="m_personal" placeholder="e.g. Preston game Saturday&#10;Alaska trip research"></textarea></div>
+      <div class="field"><label>Fitness / schedule conflicts</label><input type="text" id="m_fitness" placeholder="e.g. Travel Wed–Thu, plan around that"></div>
+    </div>
+    <div class="card">
+      <div class="card-title"><div class="dot" style="background:#60a5fa"></div>Build + Focus</div>
+      <div class="field"><label>This week's build session target</label><input type="text" id="m_build" placeholder="e.g. Outreach generator prompt"></div>
+      <div class="field"><label>How will I use it this week?</label><input type="text" id="m_build_use" placeholder="e.g. Send 3 outreach messages with it"></div>
+      <div class="field"><label>Google Keep items to time-block</label><textarea id="m_keep" placeholder="e.g. Ludis SOW — 2hrs Thursday&#10;Dan resume review — 30min Tuesday"></textarea></div>
+      <div class="field"><label>What does a good week look like?</label><input type="text" id="m_good_week" placeholder="e.g. 5 outreach sent, Ludis SOW delivered"></div>
+    </div>
+  </div>
+  <button class="generate-btn" id="mondayBtn" onclick="generateMonday()"><span>✦</span> Generate My Weekly Plan</button>
+  <div id="mondayOutput" class="output-wrap" style="display:none">
+    <div class="output-header">
+      <span class="output-label">Your Weekly Plan</span>
+      <div class="output-actions">
+        <button class="action-btn" onclick="copyRaw('mondayRaw')">Copy text</button>
+        <button class="action-btn" onclick="exportOutput('monday')">Export</button>
+      </div>
+    </div>
+    <div class="output-box" id="mondayResult"></div>
+    <textarea id="mondayRaw" style="display:none"></textarea>
+  </div>
+</div>
+
+<!-- SUNDAY -->
+<div id="panel-sunday" class="panel">
+  <div class="section-label">Week-End Review — Sunday Evening</div>
+  <div class="num-row">
+    <div class="num-block"><input type="number" id="s_outreach_done" value="0" min="0" max="10"><label>Outreach sent</label></div>
+    <div class="num-block"><input type="number" id="s_calls_done" value="0" min="0" max="20"><label>Calls / meetings</label></div>
+    <div class="num-block"><input type="number" id="s_next_touch" value="0" min="0" max="20"><label>Next touches set</label></div>
+  </div>
+  <div class="grid-2">
+    <div class="card">
+      <div class="card-title"><div class="dot" style="background:#f87171"></div>Job Search Review</div>
+      <div class="field"><label>Pipeline movement this week</label><textarea id="s_pipeline" placeholder="e.g. Acme moved to final round"></textarea></div>
+      <div class="field"><label>What worked in networking?</label><textarea id="s_net_worked" placeholder="e.g. Cold LinkedIn message got a response"></textarea></div>
+      <div class="field"><label>Next touch dates set after calls?</label>
+        <select id="s_touch_set"><option value="">Select...</option><option value="all">Yes — all of them</option><option value="most">Most but not all</option><option value="none">No — this slipped</option></select>
+      </div>
+    </div>
+    <div class="card">
+      <div class="card-title"><div class="dot" style="background:#a78bfa"></div>Jabian Review</div>
+      <div class="field"><label>Deliverables completed</label><textarea id="s_delivered" placeholder="e.g. Ludis SOW — done"></textarea></div>
+      <div class="field"><label>Anything at risk next week?</label><textarea id="s_at_risk" placeholder="e.g. TAH client may push back on scope"></textarea></div>
+    </div>
+    <div class="card">
+      <div class="card-title"><div class="dot" style="background:#fbbf24"></div>Personal Review</div>
+      <div class="field"><label>Cash flow calculator updated?</label>
+        <select id="s_cash_done"><option value="">Select...</option><option value="yes">Yes — done</option><option value="no">No — need to do it now</option></select>
+      </div>
+      <div class="field"><label>Finance handover progress</label><input type="text" id="s_finance_progress" placeholder="e.g. Reviewed Quicken with Wendy"></div>
+      <div class="field"><label>Workouts this week</label><input type="text" id="s_workouts" placeholder="e.g. 4 out of 4 — on track"></div>
+    </div>
+    <div class="card">
+      <div class="card-title"><div class="dot" style="background:#60a5fa"></div>Reflection + Build</div>
+      <div class="field"><label>What worked this week?</label><textarea id="s_worked" placeholder="e.g. Time blocking on Monday made the week cleaner"></textarea></div>
+      <div class="field"><label>What didn't work and why?</label><textarea id="s_didnt" placeholder="e.g. Outreach slipped — no dedicated time blocked"></textarea></div>
+      <div class="field"><label>Build session — what was built?</label><input type="text" id="s_build_done" placeholder="e.g. Built outreach generator — used it twice"></div>
+      <div class="field"><label>One adjustment for next week</label><input type="text" id="s_adjustment" placeholder="e.g. Block 30 min Tuesday for outreach"></div>
+    </div>
+  </div>
+  <button class="generate-btn" id="sundayBtn" onclick="generateSunday()"><span>✦</span> Generate My Week-End Review + Next Week Setup</button>
+  <div id="sundayOutput" class="output-wrap" style="display:none">
+    <div class="output-header">
+      <span class="output-label">Your Week-End Review</span>
+      <div class="output-actions">
+        <button class="action-btn" onclick="copyRaw('sundayRaw')">Copy text</button>
+        <button class="action-btn" onclick="exportOutput('sunday')">Export</button>
+      </div>
+    </div>
+    <div class="output-box" id="sundayResult"></div>
+    <textarea id="sundayRaw" style="display:none"></textarea>
+  </div>
+</div>
+
+<!-- CASH FLOW -->
+<div id="panel-cashflow" class="panel">
+  <div class="section-label">Cash Flow — Phase 1 Weekly Check</div>
+  <div class="cash-row">
+    <div class="cash-block"><div class="cash-label">Checking Balance</div><div class="cash-value" id="cf_checking_display">—</div></div>
+    <div class="cash-block"><div class="cash-label">Allocated Cash</div><div class="cash-value amber" id="cf_allocated_display">—</div></div>
+    <div class="cash-block"><div class="cash-label">True Available</div><div class="cash-value" id="cf_available_display">—</div></div>
+  </div>
+  <div class="grid-2">
+    <div class="card">
+      <div class="card-title">Weekly Inputs</div>
+      <div class="field"><label>Current checking balance ($)</label><input type="number" id="cf_checking" placeholder="47563" oninput="calcCashFlow()"></div>
+      <div class="field"><label>Allocated cash — from Extra Money 2026 ($)</label><input type="number" id="cf_allocated" placeholder="39579" oninput="calcCashFlow()"></div>
+      <div class="field"><label>Upcoming outflows — next 10 days ($)</label><input type="number" id="cf_outflows" placeholder="0" oninput="calcCashFlow()"></div>
+      <div class="field"><label>Upcoming inflows — next 10 days ($)</label><input type="number" id="cf_inflows" placeholder="0" oninput="calcCashFlow()"></div>
+      <div class="field"><label>Large payment >$10K in next 21 days?</label><select id="cf_large" onchange="calcCashFlow()"><option value="no">No</option><option value="yes">Yes</option></select></div>
+      <div class="field"><label>Notes for this week</label><textarea id="cf_notes" placeholder="e.g. AMEX payment May 27 — protect liquidity"></textarea></div>
+    </div>
+    <div class="card">
+      <div class="card-title">Calculated Output</div>
+      <div style="display:flex;flex-direction:column;gap:10px">
+        <div class="cash-block"><div class="cash-label">Available Cash</div><div class="cash-value" id="cf_avail">—</div></div>
+        <div class="cash-block"><div class="cash-label">Projected 10-Day Ending Cash</div><div class="cash-value" id="cf_proj">—</div></div>
+        <div class="cash-block"><div class="cash-label">Cash Above / (Below) $12K Floor</div><div class="cash-value" id="cf_above">—</div></div>
+        <div class="cash-block" style="border:1px solid var(--border2)"><div class="cash-label">Decision</div><div id="cf_decision" style="font-size:13px;font-weight:500;margin-top:4px;line-height:1.4;color:var(--text3)">Enter values above</div></div>
+      </div>
+    </div>
+  </div>
+  <div class="card" style="margin-top:10px">
+    <div class="card-title">Sunday 3-Question Check</div>
+    <div class="checklist">
+      <label class="check-item"><input type="checkbox" id="cf_q1"> What's my projected 10-day ending cash? (see above)</label>
+      <label class="check-item"><input type="checkbox" id="cf_q2"> Any payments > $10K coming in next 21 days?</label>
+      <label class="check-item"><input type="checkbox" id="cf_q3"> If no income comes in, am I still above $12K?</label>
+    </div>
+    <div style="margin-top:.75rem;font-size:12px;color:var(--text3)">👉 If ANY answer is risky — do nothing. Default = no movement.</div>
+  </div>
+</div>
+
+<!-- CONTEXT -->
+<div id="panel-context" class="panel">
+  <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:1rem;flex-wrap:wrap;gap:8px">
+    <div class="section-label" style="margin-bottom:0">Your Permanent Context</div>
+    <span style="font-size:11px;color:var(--text3);font-family:'DM Mono',monospace">All fields editable — saves automatically</span>
+  </div>
+  <div class="context-section">
+    <h3>Who you are</h3>
+    <div class="context-item"><span class="key">Current role</span><textarea class="editable-field" id="ctx_role" rows="1" oninput="autoResize(this);saveContext()">Senior leader at Jabian — strategy, operations, transformation consulting</textarea></div>
+    <div class="context-item"><span class="key">Targeting</span><textarea class="editable-field" id="ctx_targeting" rows="1" oninput="autoResize(this);saveContext()">VP/SVP roles in AI transformation, professional services, business transformation</textarea></div>
+    <div class="context-item"><span class="key">Location</span><textarea class="editable-field" id="ctx_location" rows="1" oninput="autoResize(this);saveContext()">Atlanta, GA</textarea></div>
+    <div class="context-item"><span class="key">Life stage</span><textarea class="editable-field" id="ctx_life" rows="1" oninput="autoResize(this);saveContext()">3 kids (Bailey, Bryce, Preston), married to Wendy, active job search underway</textarea></div>
+  </div>
+  <div class="context-section">
+    <h3>Three active tracks</h3>
+    <div class="context-item"><span class="key">Job search</span><textarea class="editable-field" id="ctx_jobsearch" rows="2" oninput="autoResize(this);saveContext()">Active — top priority. 60+ exec relationships tracked. Arc Fit Coach GPT built. Bottleneck: top-of-funnel conversations.</textarea></div>
+    <div class="context-item"><span class="key">Jabian work</span><textarea class="editable-field" id="ctx_jabian" rows="2" oninput="autoResize(this);saveContext()">4+ active clients. Delivery + BD running simultaneously. Dedicated Jabian ChatGPT instance active.</textarea></div>
+    <div class="context-item"><span class="key">Personal</span><textarea class="editable-field" id="ctx_personal" rows="2" oninput="autoResize(this);saveContext()">Taking over family finances from Wendy. Cash flow Phase 1 live. 2026 savings plan built ($61K retirement, $6K 529s, $9.5K trips). Alaska cruise this summer.</textarea></div>
+  </div>
+  <div class="context-section">
+    <h3>AI tools + roles</h3>
+    <div class="context-item"><span class="key">ChatGPT</span><textarea class="editable-field" id="ctx_chatgpt" rows="1" oninput="autoResize(this);saveContext()">Primary thinking engine — strategy, positioning, outreach, retirement modeling</textarea></div>
+    <div class="context-item"><span class="key">Claude</span><textarea class="editable-field" id="ctx_claude" rows="1" oninput="autoResize(this);saveContext()">Output engine — call briefs, interview prep, structured deliverables</textarea></div>
+    <div class="context-item"><span class="key">NotebookLM</span><textarea class="editable-field" id="ctx_nblm" rows="1" oninput="autoResize(this);saveContext()">TAH Knowledge Base — project history, resume + interview prep</textarea></div>
+    <div class="context-item"><span class="key">Excel tracker</span><textarea class="editable-field" id="ctx_excel" rows="1" oninput="autoResize(this);saveContext()">60+ relationships — system of record for job search + Jabian BD</textarea></div>
+    <div class="context-item"><span class="key">OneNote</span><textarea class="editable-field" id="ctx_onenote" rows="1" oninput="autoResize(this);saveContext()">Relationship depth — meeting notes per contact</textarea></div>
+  </div>
+  <div class="context-section">
+    <h3>How you operate</h3>
+    <div class="context-item"><span class="key">Daily system</span><textarea class="editable-field" id="ctx_daily" rows="1" oninput="autoResize(this);saveContext()">Google Keep → time blocking → calendar. Process Keep AM + PM.</textarea></div>
+    <div class="context-item"><span class="key">Weekly targets</span><textarea class="editable-field" id="ctx_weekly" rows="1" oninput="autoResize(this);saveContext()">5 outreach messages/week · 1 build session/week · Sunday cash flow review</textarea></div>
+    <div class="context-item"><span class="key">Hard rules</span><textarea class="editable-field" id="ctx_rules" rows="2" oninput="autoResize(this);saveContext()">Post-call: next touch date always set. Cash: default = no movement. Build: use it same week.</textarea></div>
+    <div class="context-item"><span class="key">Cash flow phase</span><textarea class="editable-field" id="ctx_cash" rows="2" oninput="autoResize(this);saveContext()">Phase 1 (April 21–June 7). AMEX ~$35K on May 27. Floor = $12K. No transfers May 10–27.</textarea></div>
+  </div>
+  <div class="context-section">
+    <h3>Additional / custom context</h3>
+    <textarea class="editable-field" id="ctx_custom" rows="3" oninput="autoResize(this);saveContext()" placeholder="Add anything that should inform your AI outputs — current interviews, active deals, important dates, recent wins..." style="width:100%;padding:.4rem 0"></textarea>
+  </div>
+</div>
+
+<!-- HISTORY -->
+<div id="panel-history" class="panel">
+  <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:1rem">
+    <div class="section-label" style="margin-bottom:0">Saved Weeks</div>
+    <button class="action-btn" onclick="exportAllHistory()">Export all history</button>
+  </div>
+  <div id="historyList"><div style="color:var(--text3);font-size:13px;text-align:center;padding:2rem">No saved weeks yet. Generate your first plan and it will appear here.</div></div>
+</div>
+
+<!-- IDEAS LOG -->
+<div id="panel-ideas" class="panel">
+  <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:1rem;flex-wrap:wrap;gap:8px">
+    <div class="section-label" style="margin-bottom:0">Dashboard Upgrade Ideas</div>
+    <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">
+      <select id="ideas_filter" onchange="renderIdeas()" style="background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--text2);font-size:11px;padding:3px 8px;font-family:'DM Sans',sans-serif;outline:none">
+        <option value="all">All ideas</option><option value="backlog">Backlog</option><option value="next">Up next</option><option value="in-progress">In progress</option><option value="done">Done</option>
+      </select>
+      <button class="action-btn" onclick="exportIdeas()">Export ideas</button>
+    </div>
+  </div>
+  <div class="card" style="margin-bottom:1rem">
+    <div class="card-title">+ Log a new idea</div>
+    <div class="grid-2" style="gap:8px;margin-bottom:8px">
+      <div class="field" style="margin-bottom:0"><label>Idea</label><input type="text" id="idea_text" placeholder="e.g. Add LinkedIn outreach tracker" onkeydown="if(event.key==='Enter')addIdea()"></div>
+      <div class="field" style="margin-bottom:0"><label>Notes (optional)</label><input type="text" id="idea_notes" placeholder="e.g. Would replace manual Excel tracking"></div>
+    </div>
+    <div style="display:flex;gap:8px;align-items:flex-end;flex-wrap:wrap">
+      <div class="field" style="margin-bottom:0;flex:1;min-width:110px"><label>Priority</label>
+        <select id="idea_priority" style="width:100%;background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--text);font-family:'DM Sans',sans-serif;font-size:13px;padding:.5rem .7rem;outline:none">
+          <option value="high">🔴 High</option><option value="medium" selected>🟡 Medium</option><option value="low">⚪ Low</option>
+        </select>
+      </div>
+      <div class="field" style="margin-bottom:0;flex:1;min-width:110px"><label>Area</label>
+        <select id="idea_area" style="width:100%;background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--text);font-family:'DM Sans',sans-serif;font-size:13px;padding:.5rem .7rem;outline:none">
+          <option value="job-search">Job Search</option><option value="jabian">Jabian</option><option value="personal">Personal</option><option value="cash-flow">Cash Flow</option><option value="ux">UX / Design</option><option value="ai">AI / Prompts</option><option value="other">Other</option>
+        </select>
+      </div>
+      <div class="field" style="margin-bottom:0;flex:1;min-width:110px"><label>Target date</label>
+        <input type="date" id="idea_target" style="width:100%;background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--text);font-family:'DM Sans',sans-serif;font-size:13px;padding:.5rem .7rem;outline:none;color-scheme:dark">
+      </div>
+      <div><button onclick="addIdea()" style="padding:.52rem 1.25rem;background:var(--accent);color:#000;border:none;border-radius:var(--radius-sm);font-family:'DM Sans',sans-serif;font-size:13px;font-weight:600;cursor:pointer;white-space:nowrap" onmouseover="this.style.background='var(--accent2)'" onmouseout="this.style.background='var(--accent)'">Add idea</button></div>
+    </div>
+  </div>
+  <div id="ideas_stats" style="display:grid;grid-template-columns:repeat(5,1fr);gap:8px;margin-bottom:1rem"></div>
+  <div id="ideasList"><div style="color:var(--text3);font-size:13px;text-align:center;padding:2rem">No ideas logged yet.</div></div>
+</div>
+
+</div>
+
+<!-- EDIT MODAL -->
+<div class="modal-overlay" id="editModal" onclick="if(event.target===this)closeEditModal()">
+  <div class="modal">
+    <div class="modal-title">Edit idea</div>
+    <input type="hidden" id="edit_id">
+    <div class="field"><label>Idea</label><input type="text" id="edit_text"></div>
+    <div class="field"><label>Notes</label><textarea id="edit_notes" style="min-height:60px"></textarea></div>
+    <div class="grid-2" style="gap:8px">
+      <div class="field"><label>Priority</label>
+        <select id="edit_priority" style="width:100%;background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--text);font-family:'DM Sans',sans-serif;font-size:13px;padding:.5rem .7rem;outline:none">
+          <option value="high">🔴 High</option><option value="medium">🟡 Medium</option><option value="low">⚪ Low</option>
+        </select>
+      </div>
+      <div class="field"><label>Area</label>
+        <select id="edit_area" style="width:100%;background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--text);font-family:'DM Sans',sans-serif;font-size:13px;padding:.5rem .7rem;outline:none">
+          <option value="job-search">Job Search</option><option value="jabian">Jabian</option><option value="personal">Personal</option><option value="cash-flow">Cash Flow</option><option value="ux">UX / Design</option><option value="ai">AI / Prompts</option><option value="other">Other</option>
+        </select>
+      </div>
+    </div>
+    <div class="field"><label>Target date</label><input type="date" id="edit_target" style="width:100%;background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--text);font-family:'DM Sans',sans-serif;font-size:13px;padding:.5rem .7rem;outline:none;color-scheme:dark"></div>
+    <div class="modal-actions">
+      <button class="btn-secondary" onclick="closeEditModal()">Cancel</button>
+      <button class="btn-primary" onclick="saveEditIdea()">Save changes</button>
+    </div>
+  </div>
+</div>
+
+<div class="save-indicator" id="saveIndicator">✓ Saved</div>
+
+<script>
+// ══ SUPABASE SETUP ════════════════════════════
+const SUPABASE_URL = 'https://usayoldrawwmjsmretin.supabase.co';
+const SUPABASE_KEY = 'sb_publishable_cAG55YikfpgFzBYEyDthZQ_1rQB6x9W';
+const sb = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+let currentUser = null;
+let syncTimer = null;
+
+// ══ AUTH ══════════════════════════════════════
+async function signInWithGoogle() {
+  const { error } = await sb.auth.signInWithOAuth({
+    provider: 'google',
+    options: { redirectTo: window.location.origin + window.location.pathname }
+  });
+  if (error) {
+    const el = document.getElementById('loginError');
+    el.textContent = error.message;
+    el.style.display = 'block';
+  }
+}
+
+async function signOut() {
+  await sb.auth.signOut();
+  currentUser = null;
+  showLogin();
+}
+
+function showLogin() {
+  const ls = document.getElementById('loginScreen');
+  ls.style.display = 'flex';
+  document.getElementById('signOutBtn').style.display = 'none';
+}
+
+async function showApp(user) {
+  currentUser = user;
+  document.getElementById('loginScreen').style.display = 'none';
+  document.getElementById('signOutBtn').style.display = 'block';
+  await initApp();
+}
+
+// ══ CLOUD SYNC ════════════════════════════════
+function flashSync(state = 'saved') {
+  const el = document.getElementById('syncStatus');
+  const dot = document.getElementById('syncDot');
+  const txt = document.getElementById('syncText');
+  if (!el) return;
+  if (state === 'saving') { dot.style.background = 'var(--amber)'; txt.textContent = 'Saving...'; }
+  else if (state === 'saved') { dot.style.background = 'var(--accent)'; txt.textContent = 'Saved'; }
+  else { dot.style.background = 'var(--red)'; txt.textContent = 'Error'; }
+  el.style.opacity = '1';
+  clearTimeout(window._syncTimer);
+  window._syncTimer = setTimeout(() => el.style.opacity = '0', 2000);
+}
+
+async function cloudSave(key, value) {
+  if (!currentUser) return;
+  try {
+    const { error } = await sb.from('dashboard_data').upsert({
+      user_id: currentUser.id,
+      data_key: key,
+      data_value: JSON.stringify(value),
+      updated_at: new Date().toISOString()
+    }, { onConflict: 'user_id,data_key' });
+    if (error) throw error;
+    flashSync('saved');
+  } catch (e) { console.error('Save error:', e); flashSync('error'); }
+}
+
+async function cloudLoadAll() {
+  if (!currentUser) return {};
+  try {
+    const { data, error } = await sb.from('dashboard_data')
+      .select('data_key, data_value')
+      .eq('user_id', currentUser.id);
+    if (error || !data) return {};
+    const result = {};
+    data.forEach(row => {
+      try { result[row.data_key] = JSON.parse(row.data_value); }
+      catch { result[row.data_key] = row.data_value; }
+    });
+    return result;
+  } catch { return {}; }
+}
+
+// ══ PERSISTENCE ═══════════════════════════════
+const PERSIST_IDS = ['m_opps','m_outreach','m_primary_move','m_client_meetings','m_deliverables','m_bd','m_finance','m_personal','m_fitness','m_build','m_build_use','m_keep','m_good_week','s_outreach_done','s_calls_done','s_next_touch','s_pipeline','s_net_worked','s_touch_set','s_delivered','s_at_risk','s_cash_done','s_finance_progress','s_workouts','s_worked','s_didnt','s_build_done','s_adjustment','cf_checking','cf_allocated','cf_outflows','cf_inflows','cf_large','cf_notes','cf_q1','cf_q2','cf_q3'];
+
+function saveField(id) {
+  const el = document.getElementById(id); if (!el) return;
+  const val = el.type === 'checkbox' ? el.checked : el.value;
+  flashSync('saving');
+  clearTimeout(syncTimer);
+  syncTimer = setTimeout(() => cloudSave('field_' + id, val), 800);
+}
+
+function loadFields(allData) {
+  PERSIST_IDS.forEach(id => {
+    const val = allData['field_' + id];
+    if (val === undefined) return;
+    const el = document.getElementById(id); if (!el) return;
+    if (el.type === 'checkbox') el.checked = val; else el.value = val;
+  });
+  calcCashFlow();
+}
+
+function wireAutoSave() {
+  PERSIST_IDS.forEach(id => {
+    const el = document.getElementById(id); if (!el) return;
+    el.addEventListener(el.type === 'checkbox' ? 'change' : 'input', () => saveField(id));
+  });
+}
+
+function saveContext() {
+  const ctx = {};
+  document.querySelectorAll('[id^="ctx_"]').forEach(el => ctx[el.id] = el.value);
+  clearTimeout(syncTimer);
+  syncTimer = setTimeout(() => cloudSave('context', ctx), 800);
+}
+
+function loadContext(allData) {
+  const ctx = allData['context'];
+  if (!ctx) return;
+  Object.entries(ctx).forEach(([id, v]) => {
+    const el = document.getElementById(id);
+    if (el) { el.value = v; autoResize(el); }
+  });
+}
+
+function saveOutput(key, raw) { cloudSave('output_' + key, raw); }
+
+function loadOutputs(allData) {
+  ['monday', 'sunday'].forEach(key => {
+    const raw = allData['output_' + key];
+    if (!raw) return;
+    const r = document.getElementById(key + 'Result');
+    const rw = document.getElementById(key + 'Raw');
+    const od = document.getElementById(key + 'Output');
+    if (r && rw && od) { rw.value = raw; r.innerHTML = renderMarkdown(raw); od.style.display = 'block'; }
+  });
+}
+
+function autoResize(el) { el.style.height = 'auto'; el.style.height = el.scrollHeight + 'px'; }
+
+// ══ HISTORY ═══════════════════════════════════
+async function saveToHistory(type, output) {
+  const allData = await cloudLoadAll();
+  const history = allData['weeklyHistory'] || [];
+  history.unshift({ type, date: new Date().toISOString(), output });
+  const trimmed = history.slice(0, 30);
+  await cloudSave('weeklyHistory', trimmed);
+  window._historyCache = trimmed;
+  renderHistory(trimmed);
+}
+
+function renderHistory(history) {
+  history = history || window._historyCache || [];
+  const el = document.getElementById('historyList'); if (!el) return;
+  if (!history.length) { el.innerHTML = '<div style="color:var(--text3);font-size:13px;text-align:center;padding:2rem">No saved weeks yet.</div>'; return; }
+  el.innerHTML = history.map((item, i) => {
+    const d = new Date(item.date).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' });
+    const lbl = item.type === 'monday' ? 'Monday Plan' : 'Sunday Review';
+    const cls = item.type === 'monday' ? 'blue' : 'green';
+    return `<div class="history-item">
+      <div class="history-meta">
+        <span class="status ${cls}">${lbl}</span>
+        <span class="history-date">${d}</span>
+        <button class="history-toggle" onclick="toggleHist(${i},this)">View ▾</button>
+        <button class="action-btn" onclick="copyHist(${i})" style="margin-left:2px">Copy</button>
+      </div>
+      <div class="history-preview" id="hp-${i}">${item.output.replace(/[#*\`]/g,'').slice(0,140)}...</div>
+      <div class="history-full" id="hf-${i}">${renderMarkdown(item.output)}</div>
+    </div>`;
+  }).join('');
+}
+
+function toggleHist(i, btn) {
+  const full = document.getElementById('hf-' + i), prev = document.getElementById('hp-' + i);
+  const open = full.classList.toggle('open');
+  prev.style.display = open ? 'none' : 'block';
+  btn.textContent = open ? 'Collapse ▴' : 'View ▾';
+}
+
+function copyHist(i) {
+  const h = window._historyCache || [];
+  if (h[i]) navigator.clipboard.writeText(h[i].output).then(() => flashSync('saved'));
+}
+
+async function exportAllHistory() {
+  const allData = await cloudLoadAll();
+  const history = allData['weeklyHistory'] || [];
+  if (!history.length) { alert('No history to export yet.'); return; }
+  const text = history.map(item => {
+    const d = new Date(item.date).toLocaleDateString();
+    return `${'═'.repeat(40)}\n${item.type === 'monday' ? 'MONDAY PLAN' : 'SUNDAY REVIEW'} — ${d}\n${'═'.repeat(40)}\n\n${item.output}`;
+  }).join('\n\n');
+  dl(text, `adam-history-${new Date().toISOString().slice(0,10)}.txt`);
+}
+
+// ══ IDEAS — cloud backed ═══════════════════════
+function getIdeas() { return window._ideasCache || []; }
+
+async function setIdeas(ideas) {
+  window._ideasCache = ideas;
+  await cloudSave('dashboardIdeas', ideas);
+  updateBadge();
+}
+
+// ══ COPY + EXPORT ══════════════════════════════
+function copyRaw(id) {
+  const t = document.getElementById(id)?.value || '';
+  navigator.clipboard.writeText(t).then(() => {
+    document.querySelectorAll('.action-btn').forEach(b => {
+      if (b.textContent === 'Copy text') { b.textContent = 'Copied!'; setTimeout(() => b.textContent = 'Copy text', 1500); }
+    });
+  });
+}
+
+function exportOutput(type) {
+  const raw = document.getElementById(type + 'Raw')?.value || '';
+  if (!raw) { alert('Generate a plan first.'); return; }
+  dl(raw, `adam-${type === 'monday' ? 'monday-plan' : 'sunday-review'}-${new Date().toISOString().slice(0,10)}.txt`);
+}
+
+function dl(text, filename) {
+  const a = Object.assign(document.createElement('a'), { href: URL.createObjectURL(new Blob([text], { type: 'text/plain' })), download: filename });
+  a.click(); URL.revokeObjectURL(a.href);
+}
+
+// ══ INIT APP ══════════════════════════════════
+async function initApp() {
+  const now = new Date();
+  const months = ['January','February','March','April','May','June','July','August','September','October','November','December'];
+  const days = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
+  const dateEl = document.getElementById('currentDate');
+  const badgeEl = document.getElementById('weekBadge');
+  if (dateEl) dateEl.textContent = `${days[now.getDay()]}, ${months[now.getMonth()]} ${now.getDate()}, ${now.getFullYear()}`;
+  const soy = new Date(now.getFullYear(), 0, 1);
+  if (badgeEl) badgeEl.textContent = `Week ${Math.ceil(((now - soy) / 86400000 + soy.getDay() + 1) / 7)} of ${now.getFullYear()}`;
+
+  const allData = await cloudLoadAll();
+  wireAutoSave();
+  loadFields(allData);
+  loadContext(allData);
+  loadOutputs(allData);
+  const history = allData['weeklyHistory'] || [];
+  window._historyCache = history;
+  renderHistory(history);
+  window._ideasCache = allData['dashboardIdeas'] || [];
+  renderIdeas();
+  setTimeout(() => document.querySelectorAll('.editable-field').forEach(autoResize), 50);
+}
+
+// ══ AUTH BOOTSTRAP ════════════════════════════
+const TABS = ['monday','sunday','cashflow','context','history','ideas'];
+function showPanel(id) {
+  document.querySelectorAll('.panel').forEach(p => p.classList.remove('active'));
+  document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+  document.getElementById('panel-' + id).classList.add('active');
+  document.querySelectorAll('.tab')[TABS.indexOf(id)].classList.add('active');
+}
+
+(async () => {
+  const { data: { session } } = await sb.auth.getSession();
+  if (session?.user) {
+    await showApp(session.user);
+  } else {
+    showLogin();
+  }
+  sb.auth.onAuthStateChange(async (event, session) => {
+    if (event === 'SIGNED_IN' && session?.user) await showApp(session.user);
+    else if (event === 'SIGNED_OUT') showLogin();
+  });
+})();
+
+// ══ MARKDOWN ══════════════════════════════════
+function renderMarkdown(text) {
+  if(!text) return '';
+  let h = text.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')
+    .replace(/^### (.+)$/gm,'<h3>$1</h3>')
+    .replace(/^## (.+)$/gm,'<h2>$1</h2>')
+    .replace(/^# (.+)$/gm,'<h1>$1</h1>')
+    .replace(/\*\*(.+?)\*\*/g,'<strong>$1</strong>')
+    .replace(/\*(.+?)\*/g,'<em>$1</em>')
+    .replace(/^---$/gm,'<hr>')
+    .replace(/^\d+\.\s+(.+)$/gm,'<li>$1</li>')
+    .replace(/^[-•]\s+(.+)$/gm,'<li>$1</li>')
+    .replace(/`(.+?)`/g,'<code>$1</code>');
+  h = h.replace(/(<li>.*?<\/li>\n?)+/gs, m=>'<ul>'+m+'</ul>');
+  h = h.split('\n').map(line=>{ const t=line.trim(); if(!t) return ''; if(t.startsWith('<')) return t; return '<p>'+t+'</p>'; }).join('\n');
+  return h;
+}
+
+// ══ CONTEXT BUILDER ═══════════════════════════
+function buildCtx() {
+  const g=id=>document.getElementById(id)?.value||'';
+  return `You are Adam's personal AI operating system.
+
+WHO HE IS: ${g('ctx_role')} | Targeting: ${g('ctx_targeting')} | ${g('ctx_location')} | ${g('ctx_life')}
+
+TRACKS:
+1. JOB SEARCH: ${g('ctx_jobsearch')}
+2. JABIAN: ${g('ctx_jabian')}
+3. PERSONAL: ${g('ctx_personal')}
+
+AI TOOLS: ChatGPT=${g('ctx_chatgpt')} | Claude=${g('ctx_claude')} | NotebookLM=${g('ctx_nblm')} | Excel=${g('ctx_excel')} | OneNote=${g('ctx_onenote')}
+
+OPERATIONS: Daily: ${g('ctx_daily')} | Weekly targets: ${g('ctx_weekly')} | Rules: ${g('ctx_rules')} | Cash: ${g('ctx_cash')}
+
+${g('ctx_custom')?'ADDITIONAL: '+g('ctx_custom'):''}
+
+Be direct, structured, practical. No fluff. Prioritize job search outcomes.`;
+}
+
+// ══ GENERATORS ════════════════════════════════
+async function generateMonday() {
+  const btn=document.getElementById('mondayBtn'), od=document.getElementById('mondayOutput');
+  const re=document.getElementById('mondayResult'), rw=document.getElementById('mondayRaw');
+  const g=id=>document.getElementById(id)?.value||'';
+  const now=new Date();
+  const months=['January','February','March','April','May','June','July','August','September','October','November','December'];
+  const prompt=`Generate Adam's weekly plan for ${months[now.getMonth()]} ${now.getDate()}, ${now.getFullYear()}.
+
+JOB SEARCH: Opportunities: ${g('m_opps')||'none'} | Outreach targets: ${g('m_outreach')||'none'} | Primary move: ${g('m_primary_move')||'none'}
+JABIAN: Meetings: ${g('m_client_meetings')||'none'} | Deliverables: ${g('m_deliverables')||'none'} | BD: ${g('m_bd')||'none'}
+PERSONAL: Finance: ${g('m_finance')||'none'} | Family: ${g('m_personal')||'none'} | Fitness: ${g('m_fitness')||'none'}
+BUILD: Target: ${g('m_build')||'none'} | How I'll use it: ${g('m_build_use')||'none'} | Keep items: ${g('m_keep')||'none'}
+GOOD WEEK: ${g('m_good_week')||'not specified'}
+
+Produce:
+1. **WEEKLY FOCUS** — 1 sentence north star
+2. **TOP 5 PRIORITIES** — ranked, labeled Job/Jabian/Personal
+3. **DAILY SCAFFOLD** — Mon–Fri key blocks
+4. **OUTREACH PLAN** — each of the 5 targets with a specific opening angle
+5. **RISKS THIS WEEK** — what could derail this
+6. **ONE THING** — if you do nothing else, do this
+
+Be direct. Use structure. No fluff.`;
+  btn.disabled=true; btn.textContent='Generating...'; od.style.display='block';
+  re.innerHTML='<span style="color:var(--text3);font-style:italic">Generating your weekly plan...</span>';
+  try {
+    const r=await fetch('https://api.anthropic.com/v1/messages',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({model:'claude-sonnet-4-20250514',max_tokens:1000,system:buildCtx(),messages:[{role:'user',content:prompt}]})});
+    const d=await r.json(); const raw=d.content?.[0]?.text||'No response.';
+    rw.value=raw; re.innerHTML=renderMarkdown(raw); saveOutput('monday',raw); saveToHistory('monday',raw);
+  } catch(e){ re.innerHTML='<span style="color:var(--red)">Error. Check connection and try again.</span>'; }
+  btn.disabled=false; btn.innerHTML='<span>✦</span> Generate My Weekly Plan';
+}
+
+async function generateSunday() {
+  const btn=document.getElementById('sundayBtn'), od=document.getElementById('sundayOutput');
+  const re=document.getElementById('sundayResult'), rw=document.getElementById('sundayRaw');
+  const g=id=>document.getElementById(id)?.value||''; const n=id=>document.getElementById(id)?.value||'0';
+  const now=new Date();
+  const months=['January','February','March','April','May','June','July','August','September','October','November','December'];
+  const prompt=`Generate Adam's week-end review for week ending ${months[now.getMonth()]} ${now.getDate()}, ${now.getFullYear()}.
+
+METRICS: Outreach ${n('s_outreach_done')}/5 | Calls: ${n('s_calls_done')} | Next touches: ${n('s_next_touch')} — ${g('s_touch_set')||'not specified'}
+JOB SEARCH: Pipeline: ${g('s_pipeline')||'none'} | What worked: ${g('s_net_worked')||'none'}
+JABIAN: Delivered: ${g('s_delivered')||'none'} | At risk: ${g('s_at_risk')||'nothing'}
+PERSONAL: Cash flow done: ${g('s_cash_done')||'?'} | Finance: ${g('s_finance_progress')||'none'} | Workouts: ${g('s_workouts')||'?'}
+REFLECTION: Worked: ${g('s_worked')||'?'} | Didn't: ${g('s_didnt')||'?'} | Build: ${g('s_build_done')||'?'} | Adjustment: ${g('s_adjustment')||'?'}
+
+Produce:
+1. **WEEK SCORECARD** — honest 1-line: did this week move the needle?
+2. **KEY WINS** — what actually happened that matters
+3. **GAPS + DIAGNOSIS** — what slipped and the real reason — don't be soft
+4. **PATTERNS** — anything repeating (skip if first review)
+5. **NEXT WEEK SETUP** — top 3 priorities, one hard rule, outreach targets to carry
+6. **MOMENTUM CHECK** — job search accelerating, holding, or slowing?
+
+Be direct. Name what's not working.`;
+  btn.disabled=true; btn.textContent='Generating...'; od.style.display='block';
+  re.innerHTML='<span style="color:var(--text3);font-style:italic">Generating your week-end review...</span>';
+  try {
+    const r=await fetch('https://api.anthropic.com/v1/messages',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({model:'claude-sonnet-4-20250514',max_tokens:1000,system:buildCtx(),messages:[{role:'user',content:prompt}]})});
+    const d=await r.json(); const raw=d.content?.[0]?.text||'No response.';
+    rw.value=raw; re.innerHTML=renderMarkdown(raw); saveOutput('sunday',raw); saveToHistory('sunday',raw);
+  } catch(e){ re.innerHTML='<span style="color:var(--red)">Error. Check connection and try again.</span>'; }
+  btn.disabled=false; btn.innerHTML='<span>✦</span> Generate My Week-End Review + Next Week Setup';
+}
+
+// ══ CASH FLOW ═════════════════════════════════
+function calcCashFlow() {
+  const checking=parseFloat(document.getElementById('cf_checking')?.value)||0;
+  const allocated=parseFloat(document.getElementById('cf_allocated')?.value)||0;
+  const outflows=parseFloat(document.getElementById('cf_outflows')?.value)||0;
+  const inflows=parseFloat(document.getElementById('cf_inflows')?.value)||0;
+  const large=document.getElementById('cf_large')?.value;
+  const avail=checking-allocated, proj=checking-outflows+inflows, above=proj-12000;
+  const fmt=v=>v<0?`-$${Math.abs(Math.round(v)).toLocaleString()}`:`$${Math.round(v).toLocaleString()}`;
+  const set=(id,v,cls)=>{ const el=document.getElementById(id); if(!el) return; el.textContent=checking?fmt(v):'—'; if(cls) el.className='cash-value '+cls; };
+  set('cf_checking_display',checking); set('cf_allocated_display',allocated,'amber');
+  const ad=document.getElementById('cf_available_display'); if(ad){ ad.textContent=checking?fmt(avail):'—'; ad.className='cash-value '+(avail>5000?'green':avail>0?'amber':'red'); }
+  set('cf_avail',avail); set('cf_proj',proj);
+  const ae=document.getElementById('cf_above'); if(ae){ ae.textContent=checking?fmt(above):'—'; ae.className='cash-value '+(above>4000?'green':above>0?'amber':'red'); }
+  const de=document.getElementById('cf_decision'); if(!de) return;
+  if(!checking){ de.textContent='Enter values above'; de.style.color='var(--text3)'; return; }
+  if(proj<12000){ de.innerHTML='🔴 PULL FROM AMEX — below $12K floor'; de.style.color='var(--red)'; }
+  else if(proj<14000||large==='yes'){ de.innerHTML='🟡 HOLD — do not move money this week'; de.style.color='var(--amber)'; }
+  else if(proj>=16000&&large==='no'){ de.innerHTML='🟢 POTENTIALLY SAFE TO MOVE — run full safety check'; de.style.color='var(--accent)'; }
+  else{ de.innerHTML='🟡 HOLD — stay conservative'; de.style.color='var(--amber)'; }
+}
+
+// ══ IDEAS ══════════════════════════════════════
+const PC={high:{l:'🔴 High',c:'var(--red)'},medium:{l:'🟡 Medium',c:'var(--amber)'},low:{l:'⚪ Low',c:'var(--text3)'}};
+const AC={'job-search':{l:'Job Search',c:'var(--red)'},'jabian':{l:'Jabian',c:'var(--purple)'},'personal':{l:'Personal',c:'var(--amber)'},'cash-flow':{l:'Cash Flow',c:'#34d399'},'ux':{l:'UX/Design',c:'var(--blue)'},'ai':{l:'AI/Prompts',c:'#f0abfc'},'other':{l:'Other',c:'var(--text3)'}};
+const SC={backlog:{l:'Backlog',c:'var(--text3)'},next:{l:'Up next',c:'var(--blue)'},'in-progress':{l:'In progress',c:'var(--amber)'},done:{l:'Done',c:'var(--accent)'}};
+
+function addIdea() {
+  const t=document.getElementById('idea_text').value.trim(); if(!t){ document.getElementById('idea_text').focus(); return; }
+  const ideas=getIdeas();
+  ideas.unshift({id:Date.now(),text:t,notes:document.getElementById('idea_notes').value.trim(),priority:document.getElementById('idea_priority').value,area:document.getElementById('idea_area').value,target:document.getElementById('idea_target').value,status:'backlog',created:new Date().toISOString()});
+  setIdeas(ideas);
+  document.getElementById('idea_text').value=''; document.getElementById('idea_notes').value=''; document.getElementById('idea_target').value='';
+  renderIdeas(); flashSync('saved');
+}
+function updateIdeaStatus(id,s){ setIdeas(getIdeas().map(i=>i.id===id?{...i,status:s}:i)); renderIdeas(); }
+function updateIdeaPriority(id,p){ setIdeas(getIdeas().map(i=>i.id===id?{...i,priority:p}:i)); renderIdeas(); }
+function updateIdeaPriority(id,p){ setIdeas(getIdeas().map(i=>i.id===id?{...i,priority:p}:i)); renderIdeas(); }
+function deleteIdea(id){ if(!confirm('Delete this idea?')) return; setIdeas(getIdeas().filter(i=>i.id!==id)); renderIdeas(); }
+
+function openEditModal(id) {
+  const idea=getIdeas().find(i=>i.id===id); if(!idea) return;
+  document.getElementById('edit_id').value=id;
+  document.getElementById('edit_text').value=idea.text;
+  document.getElementById('edit_notes').value=idea.notes||'';
+  document.getElementById('edit_priority').value=idea.priority;
+  document.getElementById('edit_area').value=idea.area;
+  document.getElementById('edit_target').value=idea.target||'';
+  document.getElementById('editModal').classList.add('open');
+}
+function closeEditModal(){ document.getElementById('editModal').classList.remove('open'); }
+function saveEditIdea() {
+  const id=parseInt(document.getElementById('edit_id').value);
+  setIdeas(getIdeas().map(i=>i.id===id?{...i,text:document.getElementById('edit_text').value.trim()||i.text,notes:document.getElementById('edit_notes').value.trim(),priority:document.getElementById('edit_priority').value,area:document.getElementById('edit_area').value,target:document.getElementById('edit_target').value}:i));
+  renderIdeas(); closeEditModal(); flashSync('saved');
+}
+
+function updateBadge() {
+  const active=getIdeas().filter(i=>i.status!=='done').length;
+  const tab=document.getElementById('tab-ideas'); if(!tab) return;
+  const ex=tab.querySelector('.tab-badge'); if(ex) ex.remove();
+  if(active>0) tab.insertAdjacentHTML('beforeend',`<span class="tab-badge">${active}</span>`);
+}
+
+function exportIdeas() {
+  const ideas=getIdeas(); if(!ideas.length){ alert('No ideas to export.'); return; }
+  const lines=['DASHBOARD UPGRADE IDEAS','═'.repeat(40),''];
+  const byS={};
+  Object.keys(SC).forEach(k=>byS[k]=[]);
+  ideas.forEach(i=>(byS[i.status]||=[]).push(i));
+  Object.entries(SC).forEach(([s,cfg])=>{
+    const g=byS[s]; if(!g.length) return;
+    lines.push(`\n${cfg.l.toUpperCase()}`,'─'.repeat(20));
+    g.forEach(idea=>{
+      lines.push(`• [${PC[idea.priority]?.l||''}] [${AC[idea.area]?.l||''}]${idea.target?' | Target: '+idea.target:''}`);
+      lines.push(`  ${idea.text}`);
+      if(idea.notes) lines.push(`  Notes: ${idea.notes}`);
+      lines.push('');
+    });
+  });
+  dl(lines.join('\n'),`adam-ideas-${new Date().toISOString().slice(0,10)}.txt`);
+}
+
+function renderIdeas() {
+  const all=getIdeas();
+  const filter=document.getElementById('ideas_filter')?.value||'all';
+  const ideas=filter==='all'?all:all.filter(i=>i.status===filter);
+  const counts={backlog:0,next:0,'in-progress':0,done:0};
+  all.forEach(i=>counts[i.status]=(counts[i.status]||0)+1);
+  const se=document.getElementById('ideas_stats');
+  if(se) se.innerHTML=[{l:'Total',v:all.length,c:'var(--text2)'},{l:'Backlog',v:counts.backlog,c:'var(--text3)'},{l:'Up next',v:counts.next,c:'var(--blue)'},{l:'In progress',v:counts['in-progress'],c:'var(--amber)'},{l:'Done',v:counts.done,c:'var(--accent)'}].map(s=>`<div style="background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-sm);padding:.5rem .75rem;text-align:center"><div style="font-family:'DM Serif Display',serif;font-size:1.4rem;color:${s.c}">${s.v}</div><div style="font-family:'DM Mono',monospace;font-size:10px;color:var(--text3);margin-top:1px">${s.l}</div></div>`).join('');
+  const el=document.getElementById('ideasList'); if(!el) return;
+  if(!ideas.length){ el.innerHTML=`<div style="color:var(--text3);font-size:13px;text-align:center;padding:2rem">${filter==='all'?'No ideas logged yet.':'No ideas with this status.'}</div>`; return; }
+  const sorted=[...ideas].sort((a,b)=>{ const p={high:0,medium:1,low:2}; return p[a.priority]!==p[b.priority]?p[a.priority]-p[b.priority]:new Date(b.created)-new Date(a.created); });
+  el.innerHTML=sorted.map(idea=>{
+    const p=PC[idea.priority]||PC.medium, a=AC[idea.area]||AC.other, s=SC[idea.status]||SC.backlog;
+    const date=new Date(idea.created).toLocaleDateString('en-US',{month:'short',day:'numeric'});
+    const tgt=idea.target?`<span style="font-family:'DM Mono',monospace;font-size:10px;color:var(--amber)">📅 ${idea.target}</span>`:'';
+    const done=idea.status==='done';
+    return `<div style="background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:.85rem 1rem;margin-bottom:8px;border-left:3px solid ${p.c};${done?'opacity:.5':''}">
+      <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:12px">
+        <div style="flex:1">
+          <div style="font-size:13px;font-weight:500;color:var(--text);line-height:1.4;${done?'text-decoration:line-through;color:var(--text3)':''};margin-bottom:${idea.notes?'3px':'0'}">${idea.text}</div>
+          ${idea.notes?`<div style="font-size:11px;color:var(--text3);margin-bottom:4px;line-height:1.4">${idea.notes}</div>`:''}
+          <div style="display:flex;flex-wrap:wrap;gap:5px;margin-top:5px;align-items:center">
+            <span style="font-size:10px;padding:1px 7px;border-radius:10px;background:rgba(255,255,255,.04);border:1px solid var(--border);color:${a.c};font-family:'DM Mono',monospace">${a.l}</span>
+            <span style="font-family:'DM Mono',monospace;font-size:10px;color:var(--text3)">${date}</span>${tgt}
+          </div>
+        </div>
+        <div style="display:flex;flex-direction:column;gap:5px;align-items:flex-end;flex-shrink:0">
+          <select onchange="updateIdeaStatus(${idea.id},this.value)" style="background:var(--surface2);border:1px solid var(--border2);border-radius:var(--radius-sm);color:${s.c};font-size:11px;padding:2px 6px;font-family:'DM Mono',monospace;outline:none;cursor:pointer">
+            ${Object.entries(SC).map(([k,v])=>`<option value="${k}"${idea.status===k?' selected':''}>${v.l}</option>`).join('')}
+          </select>
+          <select onchange="updateIdeaPriority(${idea.id},this.value)" style="background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius-sm);color:${p.c};font-size:11px;padding:2px 6px;font-family:'DM Mono',monospace;outline:none;cursor:pointer">
+            ${Object.entries(PC).map(([k,v])=>`<option value="${k}"${idea.priority===k?' selected':''}>${v.l}</option>`).join('')}
+          </select>
+          <div style="display:flex;gap:4px">
+            <button onclick="openEditModal(${idea.id})" style="font-size:10px;color:var(--text3);background:none;border:1px solid var(--border);border-radius:var(--radius-sm);cursor:pointer;padding:2px 7px;font-family:'DM Sans',sans-serif" onmouseover="this.style.color='var(--blue)'" onmouseout="this.style.color='var(--text3)'">edit</button>
+            <button onclick="deleteIdea(${idea.id})" style="font-size:10px;color:var(--text3);background:none;border:none;cursor:pointer;padding:2px 4px;font-family:'DM Sans',sans-serif" onmouseover="this.style.color='var(--red)'" onmouseout="this.style.color='var(--text3)'">✕</button>
+          </div>
+        </div>
+      </div>
+    </div>`;
+  }).join('');
+  updateBadge();
+}
+</script>
+</body>
+</html>
