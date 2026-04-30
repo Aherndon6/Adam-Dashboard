@@ -442,15 +442,22 @@
   <!-- Add idea form -->
   <div class="card" style="margin-bottom:1.25rem">
     <div class="card-title">+ New idea</div>
-    <div class="field" style="margin-bottom:8px"><input type="text" id="idea_text" placeholder="e.g. Add LinkedIn outreach tracker" onkeydown="if(event.key==='Enter')addIdea()"></div>
+    <div class="field" style="margin-bottom:8px"><input type="text" id="idea_text" placeholder="e.g. Build outreach generator prompt" onkeydown="if(event.key==='Enter')addIdea()"></div>
     <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:flex-end">
+      <div class="field" style="margin-bottom:0;flex:1;min-width:100px"><label>Status</label>
+        <select id="idea_status">
+          <option value="not-started" selected>Not Started</option>
+          <option value="in-progress">In Progress</option>
+          <option value="completed">Completed</option>
+        </select>
+      </div>
       <div class="field" style="margin-bottom:0;flex:1;min-width:100px"><label>Priority</label>
         <select id="idea_priority"><option value="high">🔴 High</option><option value="medium" selected>🟡 Medium</option><option value="low">⚪ Low</option></select>
       </div>
       <div class="field" style="margin-bottom:0;flex:2;min-width:120px"><label>Area</label>
         <select id="idea_area"><option value="job-search">Job Search</option><option value="jabian">Jabian</option><option value="personal">Personal</option><option value="cash-flow">Cash Flow</option><option value="ux">UX/Design</option><option value="ai">AI/Prompts</option><option value="other">Other</option></select>
       </div>
-      <button onclick="addIdea()" style="padding:.52rem 1.25rem;background:var(--accent);color:#000;border:none;border-radius:var(--radius-sm);font-family:'DM Sans',sans-serif;font-size:13px;font-weight:600;cursor:pointer;white-space:nowrap">Add</button>
+      <button onclick="addIdea()" style="padding:.52rem 1.25rem;background:var(--accent);color:#000;border:none;border-radius:var(--radius-sm);font-family:'DM Sans',sans-serif;font-size:13px;font-weight:600;cursor:pointer;white-space:nowrap;touch-action:manipulation">Add</button>
     </div>
   </div>
 
@@ -499,11 +506,19 @@
     <div class="field"><label>Idea</label><input type="text" id="edit_text"></div>
     <div class="field"><label>Notes</label><textarea id="edit_notes" style="min-height:60px"></textarea></div>
     <div class="grid-2" style="gap:8px">
+      <div class="field"><label>Status</label>
+        <select id="edit_status" style="width:100%;background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--text);font-family:'DM Sans',sans-serif;font-size:13px;padding:.5rem .7rem;outline:none">
+          <option value="not-started">Not Started</option>
+          <option value="in-progress">In Progress</option>
+          <option value="completed">Completed</option>
+        </select>
+      </div>
       <div class="field"><label>Priority</label>
         <select id="edit_priority" style="width:100%;background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--text);font-family:'DM Sans',sans-serif;font-size:13px;padding:.5rem .7rem;outline:none">
           <option value="high">🔴 High</option><option value="medium">🟡 Medium</option><option value="low">⚪ Low</option>
         </select>
       </div>
+    </div>
       <div class="field"><label>Area</label>
         <select id="edit_area" style="width:100%;background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--text);font-family:'DM Sans',sans-serif;font-size:13px;padding:.5rem .7rem;outline:none">
           <option value="job-search">Job Search</option><option value="jabian">Jabian</option><option value="personal">Personal</option><option value="cash-flow">Cash Flow</option><option value="ux">UX / Design</option><option value="ai">AI / Prompts</option><option value="other">Other</option>
@@ -767,8 +782,23 @@ async function initApp() {
   const history = allData['weeklyHistory'] || [];
   window._historyCache = history;
   renderHistory(history);
-  window._ideasCache = allData['dashboardIdeas'] || [];
+  // Load ideas and migrate any with old/invalid status values
+  let ideas = allData['dashboardIdeas'] || [];
+  const archive = allData['dashboardArchive'] || [];
+  const validStatuses = ['not-started', 'in-progress', 'completed'];
+  let needsMigration = false;
+  ideas = ideas.map(idea => {
+    if (!idea.status || !validStatuses.includes(idea.status)) {
+      needsMigration = true;
+      return { ...idea, status: 'not-started' };
+    }
+    return idea;
+  });
+  window._ideasCache = ideas;
+  window._archiveCache = archive;
+  if (needsMigration) await cloudSave('dashboardIdeas', ideas);
   renderIdeas();
+  updateBadge();
   setTimeout(() => document.querySelectorAll('.editable-field').forEach(autoResize), 50);
 }
 
@@ -976,20 +1006,40 @@ function addIdea() {
   const t = document.getElementById('idea_text').value.trim();
   if (!t) { document.getElementById('idea_text').focus(); return; }
   const ideas = getIdeas();
+  const status = document.getElementById('idea_status')?.value || 'not-started';
   ideas.unshift({
     id: Date.now(),
     text: t,
     priority: document.getElementById('idea_priority').value,
     area: document.getElementById('idea_area').value,
-    status: 'not-started',
+    status: status,
     created: new Date().toISOString(),
     order: 0
   });
   ideas.forEach((idea, i) => idea.order = i);
   setIdeas(ideas);
   document.getElementById('idea_text').value = '';
+  document.getElementById('idea_status').value = 'not-started';
   renderIdeas();
   flashSync('saved');
+}
+
+// Migrate any ideas with old/missing status values to 'not-started'
+function migrateIdeas(ideas) {
+  const validStatuses = ['not-started', 'in-progress', 'completed'];
+  let changed = false;
+  const migrated = ideas.map(idea => {
+    // Old status values: 'backlog', 'next', 'done', undefined, null, etc.
+    if (!idea.status || !validStatuses.includes(idea.status)) {
+      changed = true;
+      return { ...idea, status: 'not-started' };
+    }
+    return idea;
+  });
+  if (changed) {
+    setIdeas(migrated);
+  }
+  return migrated;
 }
 
 function renderIdeas() {
@@ -1071,6 +1121,7 @@ function editCard(id) {
   document.getElementById('edit_notes').value = idea.notes || '';
   document.getElementById('edit_priority').value = idea.priority;
   document.getElementById('edit_area').value = idea.area;
+  document.getElementById('edit_status').value = idea.status || 'not-started';
   document.getElementById('editModal').style.display = 'flex';
 }
 
@@ -1081,7 +1132,8 @@ function saveEditIdea() {
     text: document.getElementById('edit_text').value,
     notes: document.getElementById('edit_notes').value,
     priority: document.getElementById('edit_priority').value,
-    area: document.getElementById('edit_area').value
+    area: document.getElementById('edit_area').value,
+    status: document.getElementById('edit_status').value
   } : i);
   setIdeas(ideas);
   renderIdeas();
