@@ -86,15 +86,16 @@
   .output-box code{background:var(--surface2);border:1px solid var(--border);border-radius:3px;padding:1px 5px;font-family:'DM Mono',monospace;font-size:11px;color:var(--accent)}
   .action-btn{font-size:11px;color:var(--text3);cursor:pointer;background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius-sm);padding:3px 10px;transition:all .1s;font-family:'DM Sans',sans-serif}
   .action-btn:hover{color:var(--text);border-color:var(--border2)}
-  .context-section{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:1rem 1.1rem;margin-bottom:1rem}
-  .context-section h3{font-size:11px;font-weight:600;color:var(--accent);margin-bottom:.65rem;font-family:'DM Mono',monospace;text-transform:uppercase;letter-spacing:.08em}
-  .context-item{font-size:12px;color:var(--text2);padding:.4rem 0;border-bottom:1px solid var(--border);display:flex;flex-direction:column;gap:3px}
-  .context-item:last-child{border-bottom:none}
-  .context-item .key{color:var(--text3);font-size:10px;font-family:'DM Mono',monospace;text-transform:uppercase;letter-spacing:.05em}
-  .editable-field{width:100%;background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--text);font-family:'DM Sans',sans-serif;font-size:16px;resize:vertical;outline:none;line-height:1.55;padding:.6rem .75rem;min-height:44px;-webkit-appearance:none;appearance:none;cursor:text;touch-action:manipulation;-webkit-user-select:text;user-select:text;display:block}
+  .context-section{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:1.2rem 1.25rem;margin-bottom:1.25rem}
+  .context-section h3{font-size:11px;font-weight:600;color:var(--accent);margin-bottom:1rem;font-family:'DM Mono',monospace;text-transform:uppercase;letter-spacing:.08em}
+  .context-item{padding:.75rem 0;border-bottom:1px solid var(--border);display:flex;flex-direction:column;gap:6px}
+  .context-item:last-child{border-bottom:none;padding-bottom:0}
+  .context-item:first-of-type{padding-top:0}
+  .context-item .key{color:var(--accent);font-size:10px;font-family:'DM Mono',monospace;text-transform:uppercase;letter-spacing:.06em}
+  .editable-field{width:100%;background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--text);font-family:'DM Sans',sans-serif;font-size:16px;resize:vertical;outline:none;line-height:1.6;padding:.65rem .8rem;min-height:48px;-webkit-appearance:none;appearance:none;cursor:text;touch-action:manipulation;-webkit-user-select:text;user-select:text;display:block;margin-top:2px}
   .editable-field:focus{border-color:var(--accent);color:var(--text);background:var(--surface)}
-  .editable-field::placeholder{color:var(--text3)}
-  .ctx-hint{font-size:11px;color:var(--text3);font-family:'DM Mono',monospace;margin-bottom:.75rem;padding:.5rem .65rem;background:var(--surface2);border-radius:var(--radius-sm);border:1px solid var(--border)}
+  .editable-field::placeholder{color:var(--text3);font-style:italic}
+  .ctx-hint{font-size:11px;color:var(--text3);font-family:'DM Mono',monospace;margin-bottom:1rem;padding:.65rem .8rem;background:var(--surface2);border-radius:var(--radius-sm);border:1px solid var(--border);line-height:1.5}
   .history-item{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:.85rem 1rem;margin-bottom:8px}
   .history-meta{display:flex;align-items:center;gap:8px;margin-bottom:.35rem;flex-wrap:wrap}
   .history-date{font-family:'DM Mono',monospace;font-size:11px;color:var(--text3)}
@@ -117,10 +118,41 @@
   .btn-primary:hover{background:var(--accent2)}
   .btn-secondary{padding:.5rem 1.1rem;background:var(--surface2);color:var(--text2);border:1px solid var(--border);border-radius:var(--radius-sm);font-family:'DM Sans',sans-serif;font-size:13px;cursor:pointer}
   .btn-secondary:hover{border-color:var(--border2);color:var(--text)}
+  /* KANBAN */
+  .kanban-board{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;align-items:start}
+  .kanban-col{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:.85rem;min-height:200px}
+  .kanban-col.drag-over{border-color:var(--accent);background:var(--surface2)}
+  .kanban-col-header{display:flex;align-items:center;justify-content:space-between;margin-bottom:.85rem;padding-bottom:.6rem;border-bottom:1px solid var(--border)}
+  .kanban-col-title{font-family:'DM Mono',monospace;font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.08em;color:var(--text2)}
+  .kanban-col-count{background:var(--surface2);border:1px solid var(--border);border-radius:20px;padding:1px 7px;font-size:10px;color:var(--text3);font-family:'DM Mono',monospace}
+  .kanban-cards{display:flex;flex-direction:column;gap:7px;min-height:80px}
+  .kanban-card{background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius-sm);padding:.75rem .85rem;cursor:grab;transition:all .15s;user-select:none}
+  .kanban-card:active{cursor:grabbing}
+  .kanban-card.dragging{opacity:.35;border-style:dashed}
+  .kanban-card.drag-target{border-color:var(--accent);border-style:dashed}
+  .kanban-card-title{font-size:13px;color:var(--text);font-weight:500;line-height:1.4;margin-bottom:.45rem}
+  .kanban-card-meta{display:flex;align-items:center;gap:5px;flex-wrap:wrap;margin-bottom:.45rem}
+  .kanban-card-area{font-size:10px;padding:2px 7px;border-radius:10px;font-family:'DM Mono',monospace;border:1px solid;font-weight:500}
+  .kanban-card-priority{font-size:11px}
+  .kanban-card-actions{display:flex;gap:4px;flex-wrap:wrap}
+  .kanban-card-btn{background:none;border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--text3);font-size:10px;padding:3px 7px;cursor:pointer;font-family:'DM Sans',sans-serif;transition:all .15s;touch-action:manipulation}
+  .kanban-card-btn:hover{color:var(--text);border-color:var(--border2)}
+  .kanban-card-btn.move{color:var(--text2);border-color:var(--border2)}
+  .kanban-card-btn.move:hover{color:var(--text);background:var(--surface)}
+  .kanban-card-btn.move.accent{color:var(--accent);border-color:var(--accent)44}
+  .kanban-card-btn.move.archive{color:var(--amber);border-color:var(--amber)44}
+  .kanban-card-btn.danger:hover{color:var(--red);border-color:var(--red)}
+  .archive-item{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-sm);padding:.6rem .75rem;margin-bottom:6px;opacity:.7}
+  .archive-item-title{font-size:12px;color:var(--text2)}
+  .archive-item-meta{font-size:10px;color:var(--text3);margin-top:3px;font-family:'DM Mono',monospace}
+  @media(max-width:600px){
+    .kanban-board{display:flex;flex-direction:row;overflow-x:auto;gap:8px;-webkit-overflow-scrolling:touch;padding-bottom:.5rem;scrollbar-width:none}
+    .kanban-board::-webkit-scrollbar{display:none}
+    .kanban-col{min-width:260px;flex-shrink:0;min-height:unset}
+  }
+
   .save-indicator{position:fixed;bottom:1.5rem;right:1.5rem;background:var(--surface2);border:1px solid var(--border2);border-radius:20px;padding:.35rem .9rem;font-family:'DM Mono',monospace;font-size:11px;color:var(--accent);opacity:0;transition:opacity .3s;z-index:50;pointer-events:none}
   .save-indicator.show{opacity:1}
-
-  /* MOBILE OVERRIDES */
   @media(max-width:600px){
     .app{padding:1rem .85rem 5rem}
     .header-title{font-size:1.35rem}
@@ -323,26 +355,35 @@
     <div class="section-label" style="margin-bottom:0">My Permanent Context</div>
     <span style="font-size:10px;color:var(--accent);font-family:'DM Mono',monospace">Tap any field to edit · saves automatically</span>
   </div>
-  <div class="ctx-hint">This feeds every AI generation. Fill it in once, update Current State weekly.</div>
+  <div class="ctx-hint">This feeds every AI generation. Update Current State every Monday. Everything else is stable.</div>
+
+  <!-- CURRENT STATE FIRST -->
+  <div class="context-section" style="border-color:var(--amber);border-width:2px">
+    <h3 style="color:var(--amber)">⟳ Current State — Update Every Monday</h3>
+    <div class="context-item"><span class="key">Active opportunities</span><textarea class="editable-field" id="ctx_opps" oninput="saveContext()" placeholder="Roles you're actively pursuing — names and stages..."></textarea></div>
+    <div class="context-item"><span class="key">This week's focus</span><textarea class="editable-field" id="ctx_focus" oninput="saveContext()" placeholder="Top 3 priorities this week..."></textarea></div>
+    <div class="context-item"><span class="key">Cash flow this week</span><textarea class="editable-field" id="ctx_cashweek" oninput="saveContext()" placeholder="Any large payments, income expected, constraints..."></textarea></div>
+    <div class="context-item"><span class="key">Other context</span><textarea class="editable-field" id="ctx_custom" oninput="saveContext()" placeholder="Anything else relevant — interviews, travel, wins, risks..."></textarea></div>
+  </div>
 
   <div class="context-section">
     <h3>Identity &amp; Positioning</h3>
     <div class="context-item"><span class="key">Current role</span><textarea class="editable-field" id="ctx_role" oninput="saveContext()" placeholder="Your current role and company...">Executive leader at Jabian Consulting — strategy, operations, and enterprise transformation. Multi-million dollar portfolio, trusted advisor to senior executives.</textarea></div>
-    <div class="context-item"><span class="key">Targeting</span><textarea class="editable-field" id="ctx_targeting" oninput="saveContext()" placeholder="Target roles and levels...">VP/SVP roles in AI transformation, professional services leadership, or operating model leadership. Bridge between executive strategy and scalable execution — connecting business outcomes, workflows, and technical delivery.</textarea></div>
+    <div class="context-item"><span class="key">Targeting</span><textarea class="editable-field" id="ctx_targeting" oninput="saveContext()" placeholder="Target roles and levels...">VP/SVP roles in AI transformation, professional services leadership, or operating model leadership. Bridge between executive strategy and scalable execution.</textarea></div>
     <div class="context-item"><span class="key">Differentiator</span><textarea class="editable-field" id="ctx_diff" oninput="saveContext()" placeholder="What makes you different...">Not a pure strategist or technologist. The bridge between them. Translates executive strategy into scalable execution.</textarea></div>
     <div class="context-item"><span class="key">Location &amp; life</span><textarea class="editable-field" id="ctx_life" oninput="saveContext()" placeholder="Location, family, personal context...">Atlanta, GA. Married to Wendy, 3 kids (Bailey, Bryce, Preston). Taking over family finances. Alaska cruise this summer.</textarea></div>
   </div>
 
   <div class="context-section">
     <h3>Decision Framework</h3>
-    <div class="context-item"><span class="key">Priority order</span><textarea class="editable-field" id="ctx_decision" oninput="saveContext()" placeholder="How you evaluate decisions and opportunities...">1. Long-term trajectory (VP/SVP scope, AI leadership) 2. Revenue ownership and business impact 3. Speed to credible role 4. Compensation: $275K+ base, 20-30% bonus 5. Lifestyle (family, travel)</textarea></div>
+    <div class="context-item"><span class="key">Priority order</span><textarea class="editable-field" id="ctx_decision" oninput="saveContext()" placeholder="How you evaluate decisions...">1. Long-term trajectory (VP/SVP scope, AI leadership) 2. Revenue ownership and impact 3. Speed to credible role 4. Compensation: $275K+ base, 20-30% bonus 5. Lifestyle (family, travel)</textarea></div>
     <div class="context-item"><span class="key">Role filters</span><textarea class="editable-field" id="ctx_filters" oninput="saveContext()" placeholder="Must have / avoid...">MUST HAVE: VP/SVP scope, enterprise impact, AI/transformation relevance, clear outcome ownership. AVOID: Pure advisory, narrow functional roles, low-visibility internal roles.</textarea></div>
   </div>
 
   <div class="context-section">
     <h3>Job Search System</h3>
-    <div class="context-item"><span class="key">Targets</span><textarea class="editable-field" id="ctx_jobsearch" oninput="saveContext()" placeholder="Weekly targets and pipeline goals...">5 outreach/week · 2+ meaningful conversations/week · 3-5 active interview processes at all times. Bottleneck: top of funnel — not enough interviews.</textarea></div>
-    <div class="context-item"><span class="key">Tools built</span><textarea class="editable-field" id="ctx_jobtools" oninput="saveContext()" placeholder="Job search tools and systems...">Arc Fit Coach GPT (built, active). TAH Knowledge Base in NotebookLM (active). Excel relationship tracker (60+ contacts, system of record).</textarea></div>
+    <div class="context-item"><span class="key">Targets</span><textarea class="editable-field" id="ctx_jobsearch" oninput="saveContext()" placeholder="Weekly targets and pipeline goals...">5 outreach/week · 2+ conversations/week · 3-5 active interview processes. Bottleneck: top of funnel — not enough interviews.</textarea></div>
+    <div class="context-item"><span class="key">Tools built</span><textarea class="editable-field" id="ctx_jobtools" oninput="saveContext()" placeholder="Job search tools and systems...">Arc Fit Coach GPT (built, active). TAH Knowledge Base in NotebookLM (active). Excel relationship tracker (60+ contacts).</textarea></div>
   </div>
 
   <div class="context-section">
@@ -352,9 +393,9 @@
 
   <div class="context-section">
     <h3>Operating Model</h3>
-    <div class="context-item"><span class="key">Daily</span><textarea class="editable-field" id="ctx_daily" oninput="saveContext()" placeholder="Daily workflow...">Google Keep → time blocking → calendar. Process Keep AM + PM. Don't replace — AI plugs into it.</textarea></div>
-    <div class="context-item"><span class="key">Weekly rhythm</span><textarea class="editable-field" id="ctx_weekly" oninput="saveContext()" placeholder="Weekly cadence...">Monday: pipeline + outreach prioritization. Sunday: cash flow review + system reset. Weekly success: 5 outreach, 2+ conversations, 1+ forward-moving opportunity, 1 build session.</textarea></div>
-    <div class="context-item"><span class="key">Hard rules</span><textarea class="editable-field" id="ctx_rules" oninput="saveContext()" placeholder="Non-negotiable rules...">Post-call: next touch date always set before closing OneNote. Cash: default = no movement. Commissions = $0 until received. Build it and use it same week.</textarea></div>
+    <div class="context-item"><span class="key">Daily</span><textarea class="editable-field" id="ctx_daily" oninput="saveContext()">Google Keep → time blocking → calendar. Process Keep AM + PM. AI plugs into this, doesn't replace it.</textarea></div>
+    <div class="context-item"><span class="key">Weekly rhythm</span><textarea class="editable-field" id="ctx_weekly" oninput="saveContext()">Monday: pipeline + outreach prioritization. Sunday: cash flow review + system reset. Success: 5 outreach, 2+ conversations, 1+ forward-moving opportunity, 1 build session.</textarea></div>
+    <div class="context-item"><span class="key">Hard rules</span><textarea class="editable-field" id="ctx_rules" oninput="saveContext()">Post-call: next touch date always set before closing OneNote. Cash: default = no movement. Commissions = $0 until received. Build it and use it same week.</textarea></div>
   </div>
 
   <div class="context-section">
@@ -369,21 +410,13 @@
   <div class="context-section">
     <h3>Personal &amp; Financial</h3>
     <div class="context-item"><span class="key">Cash flow</span><textarea class="editable-field" id="ctx_cash" oninput="saveContext()">Phase 1 through June 7. AMEX ~$35K hits May 27. Floor $12K, warning $10K. No transfers May 10–27. Weekly Sunday review is control mechanism.</textarea></div>
-    <div class="context-item"><span class="key">2026 savings plan</span><textarea class="editable-field" id="ctx_savings" oninput="saveContext()">$61K retirement · $6K 529s · $9.5K travel. Plan is tight but works with execution discipline.</textarea></div>
+    <div class="context-item"><span class="key">2026 savings</span><textarea class="editable-field" id="ctx_savings" oninput="saveContext()">$61K retirement · $6K 529s · $9.5K travel. Tight but works with execution discipline.</textarea></div>
   </div>
 
   <div class="context-section">
     <h3>Output Expectations</h3>
-    <div class="context-item"><span class="key">How to respond</span><textarea class="editable-field" id="ctx_output" oninput="saveContext()">Concise, structured, executive-level. Prioritize high-ROI actions. Push back on weak ideas. Specific actions not general advice. Frameworks and clear prioritization. No generic recommendations. Optimize for speed, clarity, and real-world execution.</textarea></div>
-    <div class="context-item"><span class="key">Known gaps</span><textarea class="editable-field" id="ctx_gaps" oninput="saveContext()">No reusable positioning asset (rebuilding story too often). Inconsistent post-call next-touch discipline. High media consumption not converting to reusable output.</textarea></div>
-  </div>
-
-  <div class="context-section" style="border-color:var(--accent);border-width:1.5px">
-    <h3 style="color:var(--amber)">⟳ Current State — Update Every Monday</h3>
-    <div class="context-item"><span class="key">Active opportunities</span><textarea class="editable-field" id="ctx_opps" oninput="saveContext()" placeholder="Roles you're actively pursuing — names and stages..."></textarea></div>
-    <div class="context-item"><span class="key">This week's focus</span><textarea class="editable-field" id="ctx_focus" oninput="saveContext()" placeholder="Top 3 priorities this week..."></textarea></div>
-    <div class="context-item"><span class="key">Cash flow this week</span><textarea class="editable-field" id="ctx_cashweek" oninput="saveContext()" placeholder="Any large payments, income expected, constraints..."></textarea></div>
-    <div class="context-item"><span class="key">Other context</span><textarea class="editable-field" id="ctx_custom" oninput="saveContext()" placeholder="Anything else relevant this week — interviews, travel, wins, risks..."></textarea></div>
+    <div class="context-item"><span class="key">How to respond</span><textarea class="editable-field" id="ctx_output" oninput="saveContext()">Concise, structured, executive-level. High-ROI actions only. Push back on weak ideas. Specific actions not general advice. Frameworks and clear prioritization. No generic recommendations.</textarea></div>
+    <div class="context-item"><span class="key">Known gaps</span><textarea class="editable-field" id="ctx_gaps" oninput="saveContext()">No reusable positioning asset. Inconsistent post-call next-touch discipline. High media consumption not converting to reusable output.</textarea></div>
   </div>
 </div>
 
@@ -396,42 +429,64 @@
   <div id="historyList"><div style="color:var(--text3);font-size:13px;text-align:center;padding:2rem">No saved weeks yet. Generate your first plan and it will appear here.</div></div>
 </div>
 
-<!-- IDEAS LOG -->
+<!-- IDEAS KANBAN -->
 <div id="panel-ideas" class="panel">
   <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:1rem;flex-wrap:wrap;gap:8px">
-    <div class="section-label" style="margin-bottom:0">Dashboard Upgrade Ideas</div>
-    <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">
-      <select id="ideas_filter" onchange="renderIdeas()" style="background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--text2);font-size:11px;padding:3px 8px;font-family:'DM Sans',sans-serif;outline:none">
-        <option value="all">All ideas</option><option value="backlog">Backlog</option><option value="next">Up next</option><option value="in-progress">In progress</option><option value="done">Done</option>
-      </select>
-      <button class="action-btn" onclick="exportIdeas()">Export ideas</button>
+    <div class="section-label" style="margin-bottom:0">Ideas <span id="ideasBadge" style="display:none;background:var(--accent);color:#000;border-radius:20px;padding:1px 8px;font-size:10px;font-weight:700;margin-left:6px"></span></div>
+    <div style="display:flex;gap:6px;align-items:center">
+      <button class="action-btn" onclick="showArchive()" id="archiveLink">View archived</button>
+      <button class="action-btn" onclick="exportIdeas()">Export</button>
     </div>
   </div>
-  <div class="card" style="margin-bottom:1rem">
-    <div class="card-title">+ Log a new idea</div>
-    <div class="grid-2" style="gap:8px;margin-bottom:8px">
-      <div class="field" style="margin-bottom:0"><label>Idea</label><input type="text" id="idea_text" placeholder="e.g. Add LinkedIn outreach tracker" onkeydown="if(event.key==='Enter')addIdea()"></div>
-      <div class="field" style="margin-bottom:0"><label>Notes (optional)</label><input type="text" id="idea_notes" placeholder="e.g. Would replace manual Excel tracking"></div>
-    </div>
-    <div style="display:flex;gap:8px;align-items:flex-end;flex-wrap:wrap">
-      <div class="field" style="margin-bottom:0;flex:1;min-width:110px"><label>Priority</label>
-        <select id="idea_priority" style="width:100%;background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--text);font-family:'DM Sans',sans-serif;font-size:13px;padding:.5rem .7rem;outline:none">
-          <option value="high">🔴 High</option><option value="medium" selected>🟡 Medium</option><option value="low">⚪ Low</option>
-        </select>
+
+  <!-- Add idea form -->
+  <div class="card" style="margin-bottom:1.25rem">
+    <div class="card-title">+ New idea</div>
+    <div class="field" style="margin-bottom:8px"><input type="text" id="idea_text" placeholder="e.g. Add LinkedIn outreach tracker" onkeydown="if(event.key==='Enter')addIdea()"></div>
+    <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:flex-end">
+      <div class="field" style="margin-bottom:0;flex:1;min-width:100px"><label>Priority</label>
+        <select id="idea_priority"><option value="high">🔴 High</option><option value="medium" selected>🟡 Medium</option><option value="low">⚪ Low</option></select>
       </div>
-      <div class="field" style="margin-bottom:0;flex:1;min-width:110px"><label>Area</label>
-        <select id="idea_area" style="width:100%;background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--text);font-family:'DM Sans',sans-serif;font-size:13px;padding:.5rem .7rem;outline:none">
-          <option value="job-search">Job Search</option><option value="jabian">Jabian</option><option value="personal">Personal</option><option value="cash-flow">Cash Flow</option><option value="ux">UX / Design</option><option value="ai">AI / Prompts</option><option value="other">Other</option>
-        </select>
+      <div class="field" style="margin-bottom:0;flex:2;min-width:120px"><label>Area</label>
+        <select id="idea_area"><option value="job-search">Job Search</option><option value="jabian">Jabian</option><option value="personal">Personal</option><option value="cash-flow">Cash Flow</option><option value="ux">UX/Design</option><option value="ai">AI/Prompts</option><option value="other">Other</option></select>
       </div>
-      <div class="field" style="margin-bottom:0;flex:1;min-width:110px"><label>Target date</label>
-        <input type="date" id="idea_target" style="width:100%;background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--text);font-family:'DM Sans',sans-serif;font-size:13px;padding:.5rem .7rem;outline:none;color-scheme:dark">
-      </div>
-      <div><button onclick="addIdea()" style="padding:.52rem 1.25rem;background:var(--accent);color:#000;border:none;border-radius:var(--radius-sm);font-family:'DM Sans',sans-serif;font-size:13px;font-weight:600;cursor:pointer;white-space:nowrap" onmouseover="this.style.background='var(--accent2)'" onmouseout="this.style.background='var(--accent)'">Add idea</button></div>
+      <button onclick="addIdea()" style="padding:.52rem 1.25rem;background:var(--accent);color:#000;border:none;border-radius:var(--radius-sm);font-family:'DM Sans',sans-serif;font-size:13px;font-weight:600;cursor:pointer;white-space:nowrap">Add</button>
     </div>
   </div>
-  <div id="ideas_stats" style="display:grid;grid-template-columns:repeat(5,1fr);gap:8px;margin-bottom:1rem"></div>
-  <div id="ideasList"><div style="color:var(--text3);font-size:13px;text-align:center;padding:2rem">No ideas logged yet.</div></div>
+
+  <!-- Kanban columns -->
+  <div class="kanban-board">
+    <div class="kanban-col" id="col-not-started" ondragover="onDragOver(event)" ondrop="onDrop(event,'not-started')">
+      <div class="kanban-col-header">
+        <span class="kanban-col-title">Not Started</span>
+        <span class="kanban-col-count" id="count-not-started">0</span>
+      </div>
+      <div class="kanban-cards" id="cards-not-started"></div>
+    </div>
+    <div class="kanban-col" id="col-in-progress" ondragover="onDragOver(event)" ondrop="onDrop(event,'in-progress')">
+      <div class="kanban-col-header">
+        <span class="kanban-col-title" style="color:var(--amber)">In Progress</span>
+        <span class="kanban-col-count" id="count-in-progress">0</span>
+      </div>
+      <div class="kanban-cards" id="cards-in-progress"></div>
+    </div>
+    <div class="kanban-col" id="col-completed" ondragover="onDragOver(event)" ondrop="onDrop(event,'completed')">
+      <div class="kanban-col-header">
+        <span class="kanban-col-title" style="color:var(--accent)">Completed</span>
+        <span class="kanban-col-count" id="count-completed">0</span>
+      </div>
+      <div class="kanban-cards" id="cards-completed"></div>
+    </div>
+  </div>
+
+  <!-- Archive panel (hidden by default) -->
+  <div id="archivePanel" style="display:none;margin-top:1.5rem">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:.75rem">
+      <div class="section-label" style="margin-bottom:0;font-size:11px">Archived Ideas</div>
+      <button class="action-btn" onclick="hideArchive()">Hide archive</button>
+    </div>
+    <div id="archiveList"></div>
+  </div>
 </div>
 
 </div>
@@ -883,21 +938,246 @@ function calcCashFlow() {
   else{ de.innerHTML='🟡 HOLD — stay conservative'; de.style.color='var(--amber)'; }
 }
 
-// ══ IDEAS ══════════════════════════════════════
-const PC={high:{l:'🔴 High',c:'var(--red)'},medium:{l:'🟡 Medium',c:'var(--amber)'},low:{l:'⚪ Low',c:'var(--text3)'}};
-const AC={'job-search':{l:'Job Search',c:'var(--red)'},'jabian':{l:'Jabian',c:'var(--purple)'},'personal':{l:'Personal',c:'var(--amber)'},'cash-flow':{l:'Cash Flow',c:'#34d399'},'ux':{l:'UX/Design',c:'var(--blue)'},'ai':{l:'AI/Prompts',c:'#f0abfc'},'other':{l:'Other',c:'var(--text3)'}};
-const SC={backlog:{l:'Backlog',c:'var(--text3)'},next:{l:'Up next',c:'var(--blue)'},'in-progress':{l:'In progress',c:'var(--amber)'},done:{l:'Done',c:'var(--accent)'}};
+// ══ KANBAN IDEAS ══════════════════════════════
+const AREA_LABELS = {'job-search':'Job Search','jabian':'Jabian','personal':'Personal','cash-flow':'Cash Flow','ux':'UX/Design','ai':'AI/Prompts','other':'Other'};
+const AREA_COLORS = {'job-search':'#f87171','jabian':'#c084fc','personal':'#fbbf24','cash-flow':'#34d399','ux':'#60a5fa','ai':'#f0abfc','other':'#94a3b8'};
+const PRIORITY_LABELS = {high:'🔴',medium:'🟡',low:'⚪'};
+
+let dragSrcId = null;
+let dragSrcCol = null;
+let dragSrcIndex = null;
+
+function getIdeas() { return window._ideasCache || []; }
+function getArchive() { return window._archiveCache || []; }
+
+async function setIdeas(ideas) {
+  window._ideasCache = ideas;
+  await cloudSave('dashboardIdeas', ideas);
+  updateBadge();
+}
+
+async function setArchive(archive) {
+  window._archiveCache = archive;
+  await cloudSave('dashboardArchive', archive);
+}
+
+function updateBadge() {
+  const active = getIdeas().filter(i => i.status !== 'completed').length;
+  const badge = document.getElementById('ideasBadge');
+  if (!badge) return;
+  if (active > 0) { badge.textContent = active; badge.style.display = 'inline'; }
+  else badge.style.display = 'none';
+  // Also update tab badge
+  const tabs = document.querySelectorAll('.tab');
+  tabs.forEach(t => { if (t.textContent.includes('Ideas')) t.dataset.count = active > 0 ? active : ''; });
+}
 
 function addIdea() {
-  const t=document.getElementById('idea_text').value.trim(); if(!t){ document.getElementById('idea_text').focus(); return; }
-  const ideas=getIdeas();
-  ideas.unshift({id:Date.now(),text:t,notes:document.getElementById('idea_notes').value.trim(),priority:document.getElementById('idea_priority').value,area:document.getElementById('idea_area').value,target:document.getElementById('idea_target').value,status:'backlog',created:new Date().toISOString()});
+  const t = document.getElementById('idea_text').value.trim();
+  if (!t) { document.getElementById('idea_text').focus(); return; }
+  const ideas = getIdeas();
+  ideas.unshift({
+    id: Date.now(),
+    text: t,
+    priority: document.getElementById('idea_priority').value,
+    area: document.getElementById('idea_area').value,
+    status: 'not-started',
+    created: new Date().toISOString(),
+    order: 0
+  });
+  ideas.forEach((idea, i) => idea.order = i);
   setIdeas(ideas);
-  document.getElementById('idea_text').value=''; document.getElementById('idea_notes').value=''; document.getElementById('idea_target').value='';
-  renderIdeas(); flashSync('saved');
+  document.getElementById('idea_text').value = '';
+  renderIdeas();
+  flashSync('saved');
 }
-function updateIdeaStatus(id,s){ setIdeas(getIdeas().map(i=>i.id===id?{...i,status:s}:i)); renderIdeas(); }
-function updateIdeaPriority(id,p){ setIdeas(getIdeas().map(i=>i.id===id?{...i,priority:p}:i)); renderIdeas(); }
+
+function renderIdeas() {
+  const ideas = getIdeas();
+  const cols = ['not-started', 'in-progress', 'completed'];
+  const colLabels = {'not-started':'Not Started','in-progress':'In Progress','completed':'Completed'};
+  cols.forEach(status => {
+    const container = document.getElementById('cards-' + status);
+    const count = document.getElementById('count-' + status);
+    if (!container) return;
+    const colIdeas = ideas.filter(i => i.status === status).sort((a,b) => (a.order||0) - (b.order||0));
+    count.textContent = colIdeas.length;
+    if (!colIdeas.length) {
+      container.innerHTML = `<div style="color:var(--text3);font-size:11px;text-align:center;padding:1.25rem .5rem;font-family:'DM Mono',monospace;opacity:.6">Empty</div>`;
+      return;
+    }
+    container.innerHTML = colIdeas.map(idea => {
+      const areaColor = AREA_COLORS[idea.area] || '#94a3b8';
+      const areaLabel = AREA_LABELS[idea.area] || idea.area;
+      const priority = PRIORITY_LABELS[idea.priority] || '⚪';
+      // Move buttons — contextual based on current column
+      const moveBtn = status === 'not-started'
+        ? `<button class="kanban-card-btn move" onclick="moveCard(${idea.id},'in-progress')">→ In Progress</button>`
+        : status === 'in-progress'
+        ? `<button class="kanban-card-btn move" onclick="moveCard(${idea.id},'not-started')">← Not Started</button>
+           <button class="kanban-card-btn move accent" onclick="moveCard(${idea.id},'completed')">→ Complete</button>`
+        : `<button class="kanban-card-btn move" onclick="moveCard(${idea.id},'in-progress')">← In Progress</button>
+           <button class="kanban-card-btn move archive" onclick="archiveCard(${idea.id})">Archive ✓</button>`;
+      return `<div class="kanban-card" id="kcard-${idea.id}" draggable="true"
+          ondragstart="onDragStart(event,${idea.id},'${status}')"
+          ondragend="onDragEnd(event)"
+          ondragover="onCardDragOver(event,${idea.id})"
+          ondrop="onCardDrop(event,${idea.id},'${status}')">
+        <div class="kanban-card-title">${idea.text}</div>
+        <div class="kanban-card-meta">
+          <span class="kanban-card-priority">${priority}</span>
+          <span class="kanban-card-area" style="color:${areaColor};border-color:${areaColor}44;background:${areaColor}11">${areaLabel}</span>
+        </div>
+        <div class="kanban-card-actions">
+          ${moveBtn}
+          <button class="kanban-card-btn" onclick="editCard(${idea.id})">Edit</button>
+          <button class="kanban-card-btn danger" onclick="deleteCard(${idea.id})">✕</button>
+        </div>
+      </div>`;
+    }).join('');
+  });
+  updateBadge();
+}
+
+function moveCard(id, newStatus) {
+  const ideas = getIdeas().map(i => i.id === id ? {...i, status: newStatus} : i);
+  setIdeas(ideas);
+  renderIdeas();
+}
+
+function archiveCard(id) {
+  const ideas = getIdeas();
+  const idea = ideas.find(i => i.id === id);
+  if (!idea) return;
+  const archive = getArchive();
+  archive.unshift({...idea, archivedAt: new Date().toISOString()});
+  setArchive(archive);
+  setIdeas(ideas.filter(i => i.id !== id));
+  renderIdeas();
+  flashSync('saved');
+}
+
+function deleteCard(id) {
+  if (!confirm('Delete this idea?')) return;
+  setIdeas(getIdeas().filter(i => i.id !== id));
+  renderIdeas();
+}
+
+function editCard(id) {
+  const idea = getIdeas().find(i => i.id === id);
+  if (!idea) return;
+  document.getElementById('edit_id').value = id;
+  document.getElementById('edit_text').value = idea.text;
+  document.getElementById('edit_notes').value = idea.notes || '';
+  document.getElementById('edit_priority').value = idea.priority;
+  document.getElementById('edit_area').value = idea.area;
+  document.getElementById('editModal').style.display = 'flex';
+}
+
+function saveEditIdea() {
+  const id = parseInt(document.getElementById('edit_id').value);
+  const ideas = getIdeas().map(i => i.id === id ? {
+    ...i,
+    text: document.getElementById('edit_text').value,
+    notes: document.getElementById('edit_notes').value,
+    priority: document.getElementById('edit_priority').value,
+    area: document.getElementById('edit_area').value
+  } : i);
+  setIdeas(ideas);
+  renderIdeas();
+  closeEditModal();
+  flashSync('saved');
+}
+
+function showArchive() {
+  const panel = document.getElementById('archivePanel');
+  const list = document.getElementById('archiveList');
+  const archive = getArchive();
+  panel.style.display = 'block';
+  if (!archive.length) {
+    list.innerHTML = '<div style="color:var(--text3);font-size:12px;text-align:center;padding:1rem">No archived ideas yet.</div>';
+    return;
+  }
+  list.innerHTML = archive.map((idea, i) => `
+    <div class="archive-item">
+      <div class="archive-item-title">${idea.text}</div>
+      <div class="archive-item-meta">${AREA_LABELS[idea.area]||idea.area} · ${PRIORITY_LABELS[idea.priority]} · Archived ${new Date(idea.archivedAt).toLocaleDateString()}</div>
+    </div>`).join('');
+  document.getElementById('archivePanel').scrollIntoView({behavior:'smooth'});
+}
+
+function hideArchive() {
+  document.getElementById('archivePanel').style.display = 'none';
+}
+
+// ── Drag & Drop ────────────────────────────────
+function onDragStart(e, id, col) {
+  dragSrcId = id;
+  dragSrcCol = col;
+  const ideas = getIdeas().filter(i => i.status === col).sort((a,b)=>(a.order||0)-(b.order||0));
+  dragSrcIndex = ideas.findIndex(i => i.id === id);
+  e.dataTransfer.effectAllowed = 'move';
+  setTimeout(() => { const el = document.getElementById('kcard-' + id); if(el) el.classList.add('dragging'); }, 0);
+}
+
+function onDragEnd(e) {
+  document.querySelectorAll('.kanban-card').forEach(c => c.classList.remove('dragging','drag-target'));
+  document.querySelectorAll('.kanban-col').forEach(c => c.classList.remove('drag-over'));
+}
+
+function onDragOver(e) {
+  e.preventDefault();
+  e.dataTransfer.dropEffect = 'move';
+  e.currentTarget.classList.add('drag-over');
+}
+
+function onCardDragOver(e, targetId) {
+  e.preventDefault();
+  e.stopPropagation();
+  document.querySelectorAll('.kanban-card').forEach(c => c.classList.remove('drag-target'));
+  const el = document.getElementById('kcard-' + targetId);
+  if (el && targetId !== dragSrcId) el.classList.add('drag-target');
+}
+
+function onCardDrop(e, targetId, targetCol) {
+  e.preventDefault();
+  e.stopPropagation();
+  document.querySelectorAll('.kanban-col').forEach(c => c.classList.remove('drag-over'));
+  document.querySelectorAll('.kanban-card').forEach(c => c.classList.remove('drag-target'));
+  if (dragSrcId === null || dragSrcId === targetId) return;
+  let ideas = getIdeas();
+  const srcIdea = ideas.find(i => i.id === dragSrcId);
+  if (!srcIdea) return;
+  srcIdea.status = targetCol;
+  // Reorder within column
+  const colIdeas = ideas.filter(i => i.status === targetCol && i.id !== dragSrcId).sort((a,b)=>(a.order||0)-(b.order||0));
+  const targetIndex = colIdeas.findIndex(i => i.id === targetId);
+  colIdeas.splice(targetIndex >= 0 ? targetIndex : colIdeas.length, 0, srcIdea);
+  colIdeas.forEach((idea, idx) => { const orig = ideas.find(i => i.id === idea.id); if(orig) orig.order = idx; });
+  setIdeas(ideas);
+  renderIdeas();
+}
+
+function onDrop(e, col) {
+  e.preventDefault();
+  document.querySelectorAll('.kanban-col').forEach(c => c.classList.remove('drag-over'));
+  if (dragSrcId === null) return;
+  let ideas = getIdeas();
+  const srcIdea = ideas.find(i => i.id === dragSrcId);
+  if (!srcIdea || srcIdea.status === col) return;
+  srcIdea.status = col;
+  const colIdeas = ideas.filter(i => i.status === col).sort((a,b)=>(a.order||0)-(b.order||0));
+  colIdeas.forEach((idea, idx) => { const orig = ideas.find(i => i.id === idea.id); if(orig) orig.order = idx; });
+  setIdeas(ideas);
+  renderIdeas();
+}
+
+function exportIdeas() {
+  const ideas = getIdeas();
+  if (!ideas.length) { alert('No ideas to export.'); return; }
+  const text = ideas.map(i => `[${i.status.toUpperCase()}] ${i.text}\nArea: ${AREA_LABELS[i.area]} | Priority: ${i.priority}\nAdded: ${new Date(i.created).toLocaleDateString()}`).join('\n\n');
+  dl(text, `adam-ideas-${new Date().toISOString().slice(0,10)}.txt`);
+}
 function updateIdeaPriority(id,p){ setIdeas(getIdeas().map(i=>i.id===id?{...i,priority:p}:i)); renderIdeas(); }
 function deleteIdea(id){ if(!confirm('Delete this idea?')) return; setIdeas(getIdeas().filter(i=>i.id!==id)); renderIdeas(); }
 
