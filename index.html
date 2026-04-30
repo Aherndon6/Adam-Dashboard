@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
 <title>Adam's Weekly Operating Dashboard</title>
 <link href="https://fonts.googleapis.com/css2?family=DM+Serif+Display:ital@0;1&family=DM+Mono:wght@400;500&family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;0,9..40,600;1,9..40,300&display=swap" rel="stylesheet">
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
@@ -47,7 +47,7 @@
   .field{margin-bottom:.85rem}
   .field:last-child{margin-bottom:0}
   .field label{display:block;font-size:11px;color:var(--text3);margin-bottom:.3rem;font-weight:500}
-  .field input,.field textarea,.field select{width:100%;background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--text);font-family:'DM Sans',sans-serif;font-size:13px;padding:.5rem .7rem;outline:none;transition:border-color .15s;resize:vertical}
+  .field input,.field textarea,.field select{width:100%;background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--text);font-family:'DM Sans',sans-serif;font-size:16px;padding:.5rem .7rem;outline:none;transition:border-color .15s;resize:vertical;-webkit-appearance:none;appearance:none;touch-action:manipulation;-webkit-user-select:text;user-select:text}
   .field input:focus,.field textarea:focus,.field select:focus{border-color:var(--border2)}
   .field textarea{min-height:70px}
   .field input::placeholder,.field textarea::placeholder{color:var(--text3)}
@@ -87,12 +87,14 @@
   .action-btn{font-size:11px;color:var(--text3);cursor:pointer;background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius-sm);padding:3px 10px;transition:all .1s;font-family:'DM Sans',sans-serif}
   .action-btn:hover{color:var(--text);border-color:var(--border2)}
   .context-section{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:1rem 1.1rem;margin-bottom:1rem}
-  .context-section h3{font-size:11px;font-weight:600;color:var(--text2);margin-bottom:.65rem;font-family:'DM Mono',monospace;text-transform:uppercase;letter-spacing:.08em}
-  .context-item{font-size:12px;color:var(--text2);padding:.3rem 0;border-bottom:1px solid var(--border);display:flex;gap:8px;align-items:flex-start}
+  .context-section h3{font-size:11px;font-weight:600;color:var(--accent);margin-bottom:.65rem;font-family:'DM Mono',monospace;text-transform:uppercase;letter-spacing:.08em}
+  .context-item{font-size:12px;color:var(--text2);padding:.4rem 0;border-bottom:1px solid var(--border);display:flex;flex-direction:column;gap:3px}
   .context-item:last-child{border-bottom:none}
-  .context-item .key{color:var(--text3);min-width:130px;flex-shrink:0;padding-top:2px;font-size:11px}
-  .editable-field{width:100%;background:transparent;border:none;color:var(--text2);font-family:'DM Sans',sans-serif;font-size:12px;resize:none;outline:none;line-height:1.5;overflow:hidden}
-  .editable-field:focus{color:var(--text)}
+  .context-item .key{color:var(--text3);font-size:10px;font-family:'DM Mono',monospace;text-transform:uppercase;letter-spacing:.05em}
+  .editable-field{width:100%;background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--text);font-family:'DM Sans',sans-serif;font-size:16px;resize:vertical;outline:none;line-height:1.55;padding:.6rem .75rem;min-height:44px;-webkit-appearance:none;appearance:none;cursor:text;touch-action:manipulation;-webkit-user-select:text;user-select:text;display:block}
+  .editable-field:focus{border-color:var(--accent);color:var(--text);background:var(--surface)}
+  .editable-field::placeholder{color:var(--text3)}
+  .ctx-hint{font-size:11px;color:var(--text3);font-family:'DM Mono',monospace;margin-bottom:.75rem;padding:.5rem .65rem;background:var(--surface2);border-radius:var(--radius-sm);border:1px solid var(--border)}
   .history-item{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:.85rem 1rem;margin-bottom:8px}
   .history-meta{display:flex;align-items:center;gap:8px;margin-bottom:.35rem;flex-wrap:wrap}
   .history-date{font-family:'DM Mono',monospace;font-size:11px;color:var(--text3)}
@@ -317,41 +319,71 @@
 
 <!-- CONTEXT -->
 <div id="panel-context" class="panel">
-  <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:1rem;flex-wrap:wrap;gap:8px">
-    <div class="section-label" style="margin-bottom:0">Your Permanent Context</div>
-    <span style="font-size:11px;color:var(--text3);font-family:'DM Mono',monospace">All fields editable — saves automatically</span>
+  <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:.75rem;flex-wrap:wrap;gap:8px">
+    <div class="section-label" style="margin-bottom:0">My Permanent Context</div>
+    <span style="font-size:10px;color:var(--accent);font-family:'DM Mono',monospace">Tap any field to edit · saves automatically</span>
   </div>
+  <div class="ctx-hint">This feeds every AI generation. Fill it in once, update Current State weekly.</div>
+
   <div class="context-section">
-    <h3>Who you are</h3>
-    <div class="context-item"><span class="key">Current role</span><textarea class="editable-field" id="ctx_role" rows="1" oninput="autoResize(this);saveContext()">Senior leader at Jabian — strategy, operations, transformation consulting</textarea></div>
-    <div class="context-item"><span class="key">Targeting</span><textarea class="editable-field" id="ctx_targeting" rows="1" oninput="autoResize(this);saveContext()">VP/SVP roles in AI transformation, professional services, business transformation</textarea></div>
-    <div class="context-item"><span class="key">Location</span><textarea class="editable-field" id="ctx_location" rows="1" oninput="autoResize(this);saveContext()">Atlanta, GA</textarea></div>
-    <div class="context-item"><span class="key">Life stage</span><textarea class="editable-field" id="ctx_life" rows="1" oninput="autoResize(this);saveContext()">3 kids (Bailey, Bryce, Preston), married to Wendy, active job search underway</textarea></div>
+    <h3>Identity &amp; Positioning</h3>
+    <div class="context-item"><span class="key">Current role</span><textarea class="editable-field" id="ctx_role" oninput="saveContext()" placeholder="Your current role and company...">Executive leader at Jabian Consulting — strategy, operations, and enterprise transformation. Multi-million dollar portfolio, trusted advisor to senior executives.</textarea></div>
+    <div class="context-item"><span class="key">Targeting</span><textarea class="editable-field" id="ctx_targeting" oninput="saveContext()" placeholder="Target roles and levels...">VP/SVP roles in AI transformation, professional services leadership, or operating model leadership. Bridge between executive strategy and scalable execution — connecting business outcomes, workflows, and technical delivery.</textarea></div>
+    <div class="context-item"><span class="key">Differentiator</span><textarea class="editable-field" id="ctx_diff" oninput="saveContext()" placeholder="What makes you different...">Not a pure strategist or technologist. The bridge between them. Translates executive strategy into scalable execution.</textarea></div>
+    <div class="context-item"><span class="key">Location &amp; life</span><textarea class="editable-field" id="ctx_life" oninput="saveContext()" placeholder="Location, family, personal context...">Atlanta, GA. Married to Wendy, 3 kids (Bailey, Bryce, Preston). Taking over family finances. Alaska cruise this summer.</textarea></div>
   </div>
+
   <div class="context-section">
-    <h3>Three active tracks</h3>
-    <div class="context-item"><span class="key">Job search</span><textarea class="editable-field" id="ctx_jobsearch" rows="2" oninput="autoResize(this);saveContext()">Active — top priority. 60+ exec relationships tracked. Arc Fit Coach GPT built. Bottleneck: top-of-funnel conversations.</textarea></div>
-    <div class="context-item"><span class="key">Jabian work</span><textarea class="editable-field" id="ctx_jabian" rows="2" oninput="autoResize(this);saveContext()">4+ active clients. Delivery + BD running simultaneously. Dedicated Jabian ChatGPT instance active.</textarea></div>
-    <div class="context-item"><span class="key">Personal</span><textarea class="editable-field" id="ctx_personal" rows="2" oninput="autoResize(this);saveContext()">Taking over family finances from Wendy. Cash flow Phase 1 live. 2026 savings plan built ($61K retirement, $6K 529s, $9.5K trips). Alaska cruise this summer.</textarea></div>
+    <h3>Decision Framework</h3>
+    <div class="context-item"><span class="key">Priority order</span><textarea class="editable-field" id="ctx_decision" oninput="saveContext()" placeholder="How you evaluate decisions and opportunities...">1. Long-term trajectory (VP/SVP scope, AI leadership) 2. Revenue ownership and business impact 3. Speed to credible role 4. Compensation: $275K+ base, 20-30% bonus 5. Lifestyle (family, travel)</textarea></div>
+    <div class="context-item"><span class="key">Role filters</span><textarea class="editable-field" id="ctx_filters" oninput="saveContext()" placeholder="Must have / avoid...">MUST HAVE: VP/SVP scope, enterprise impact, AI/transformation relevance, clear outcome ownership. AVOID: Pure advisory, narrow functional roles, low-visibility internal roles.</textarea></div>
   </div>
+
   <div class="context-section">
-    <h3>AI tools + roles</h3>
-    <div class="context-item"><span class="key">ChatGPT</span><textarea class="editable-field" id="ctx_chatgpt" rows="1" oninput="autoResize(this);saveContext()">Primary thinking engine — strategy, positioning, outreach, retirement modeling</textarea></div>
-    <div class="context-item"><span class="key">Claude</span><textarea class="editable-field" id="ctx_claude" rows="1" oninput="autoResize(this);saveContext()">Output engine — call briefs, interview prep, structured deliverables</textarea></div>
-    <div class="context-item"><span class="key">NotebookLM</span><textarea class="editable-field" id="ctx_nblm" rows="1" oninput="autoResize(this);saveContext()">TAH Knowledge Base — project history, resume + interview prep</textarea></div>
-    <div class="context-item"><span class="key">Excel tracker</span><textarea class="editable-field" id="ctx_excel" rows="1" oninput="autoResize(this);saveContext()">60+ relationships — system of record for job search + Jabian BD</textarea></div>
-    <div class="context-item"><span class="key">OneNote</span><textarea class="editable-field" id="ctx_onenote" rows="1" oninput="autoResize(this);saveContext()">Relationship depth — meeting notes per contact</textarea></div>
+    <h3>Job Search System</h3>
+    <div class="context-item"><span class="key">Targets</span><textarea class="editable-field" id="ctx_jobsearch" oninput="saveContext()" placeholder="Weekly targets and pipeline goals...">5 outreach/week · 2+ meaningful conversations/week · 3-5 active interview processes at all times. Bottleneck: top of funnel — not enough interviews.</textarea></div>
+    <div class="context-item"><span class="key">Tools built</span><textarea class="editable-field" id="ctx_jobtools" oninput="saveContext()" placeholder="Job search tools and systems...">Arc Fit Coach GPT (built, active). TAH Knowledge Base in NotebookLM (active). Excel relationship tracker (60+ contacts, system of record).</textarea></div>
   </div>
+
   <div class="context-section">
-    <h3>How you operate</h3>
-    <div class="context-item"><span class="key">Daily system</span><textarea class="editable-field" id="ctx_daily" rows="1" oninput="autoResize(this);saveContext()">Google Keep → time blocking → calendar. Process Keep AM + PM.</textarea></div>
-    <div class="context-item"><span class="key">Weekly targets</span><textarea class="editable-field" id="ctx_weekly" rows="1" oninput="autoResize(this);saveContext()">5 outreach messages/week · 1 build session/week · Sunday cash flow review</textarea></div>
-    <div class="context-item"><span class="key">Hard rules</span><textarea class="editable-field" id="ctx_rules" rows="2" oninput="autoResize(this);saveContext()">Post-call: next touch date always set. Cash: default = no movement. Build: use it same week.</textarea></div>
-    <div class="context-item"><span class="key">Cash flow phase</span><textarea class="editable-field" id="ctx_cash" rows="2" oninput="autoResize(this);saveContext()">Phase 1 (April 21–June 7). AMEX ~$35K on May 27. Floor = $12K. No transfers May 10–27.</textarea></div>
+    <h3>Jabian Work</h3>
+    <div class="context-item"><span class="key">Current state</span><textarea class="editable-field" id="ctx_jabian" oninput="saveContext()" placeholder="Active clients, BD, current focus...">4+ active client engagements. Delivery + BD running simultaneously. Dedicated Jabian ChatGPT instance active. Jabian Claude instance coming soon.</textarea></div>
   </div>
+
   <div class="context-section">
-    <h3>Additional / custom context</h3>
-    <textarea class="editable-field" id="ctx_custom" rows="3" oninput="autoResize(this);saveContext()" placeholder="Add anything that should inform your AI outputs — current interviews, active deals, important dates, recent wins..." style="width:100%;padding:.4rem 0"></textarea>
+    <h3>Operating Model</h3>
+    <div class="context-item"><span class="key">Daily</span><textarea class="editable-field" id="ctx_daily" oninput="saveContext()" placeholder="Daily workflow...">Google Keep → time blocking → calendar. Process Keep AM + PM. Don't replace — AI plugs into it.</textarea></div>
+    <div class="context-item"><span class="key">Weekly rhythm</span><textarea class="editable-field" id="ctx_weekly" oninput="saveContext()" placeholder="Weekly cadence...">Monday: pipeline + outreach prioritization. Sunday: cash flow review + system reset. Weekly success: 5 outreach, 2+ conversations, 1+ forward-moving opportunity, 1 build session.</textarea></div>
+    <div class="context-item"><span class="key">Hard rules</span><textarea class="editable-field" id="ctx_rules" oninput="saveContext()" placeholder="Non-negotiable rules...">Post-call: next touch date always set before closing OneNote. Cash: default = no movement. Commissions = $0 until received. Build it and use it same week.</textarea></div>
+  </div>
+
+  <div class="context-section">
+    <h3>AI Tools</h3>
+    <div class="context-item"><span class="key">ChatGPT</span><textarea class="editable-field" id="ctx_chatgpt" oninput="saveContext()">Primary thinking — strategy, outreach, retirement modeling, open-ended exploration.</textarea></div>
+    <div class="context-item"><span class="key">Claude</span><textarea class="editable-field" id="ctx_claude" oninput="saveContext()">Output engine — call briefs, interview prep, deliverables. Runs this dashboard.</textarea></div>
+    <div class="context-item"><span class="key">NotebookLM</span><textarea class="editable-field" id="ctx_nblm" oninput="saveContext()">TAH Knowledge Base — project history for resume + interview prep.</textarea></div>
+    <div class="context-item"><span class="key">Excel</span><textarea class="editable-field" id="ctx_excel" oninput="saveContext()">60+ relationship tracker — system of record for job search + Jabian BD.</textarea></div>
+    <div class="context-item"><span class="key">OneNote</span><textarea class="editable-field" id="ctx_onenote" oninput="saveContext()">Contact intel and meeting notes per person.</textarea></div>
+  </div>
+
+  <div class="context-section">
+    <h3>Personal &amp; Financial</h3>
+    <div class="context-item"><span class="key">Cash flow</span><textarea class="editable-field" id="ctx_cash" oninput="saveContext()">Phase 1 through June 7. AMEX ~$35K hits May 27. Floor $12K, warning $10K. No transfers May 10–27. Weekly Sunday review is control mechanism.</textarea></div>
+    <div class="context-item"><span class="key">2026 savings plan</span><textarea class="editable-field" id="ctx_savings" oninput="saveContext()">$61K retirement · $6K 529s · $9.5K travel. Plan is tight but works with execution discipline.</textarea></div>
+  </div>
+
+  <div class="context-section">
+    <h3>Output Expectations</h3>
+    <div class="context-item"><span class="key">How to respond</span><textarea class="editable-field" id="ctx_output" oninput="saveContext()">Concise, structured, executive-level. Prioritize high-ROI actions. Push back on weak ideas. Specific actions not general advice. Frameworks and clear prioritization. No generic recommendations. Optimize for speed, clarity, and real-world execution.</textarea></div>
+    <div class="context-item"><span class="key">Known gaps</span><textarea class="editable-field" id="ctx_gaps" oninput="saveContext()">No reusable positioning asset (rebuilding story too often). Inconsistent post-call next-touch discipline. High media consumption not converting to reusable output.</textarea></div>
+  </div>
+
+  <div class="context-section" style="border-color:var(--accent);border-width:1.5px">
+    <h3 style="color:var(--amber)">⟳ Current State — Update Every Monday</h3>
+    <div class="context-item"><span class="key">Active opportunities</span><textarea class="editable-field" id="ctx_opps" oninput="saveContext()" placeholder="Roles you're actively pursuing — names and stages..."></textarea></div>
+    <div class="context-item"><span class="key">This week's focus</span><textarea class="editable-field" id="ctx_focus" oninput="saveContext()" placeholder="Top 3 priorities this week..."></textarea></div>
+    <div class="context-item"><span class="key">Cash flow this week</span><textarea class="editable-field" id="ctx_cashweek" oninput="saveContext()" placeholder="Any large payments, income expected, constraints..."></textarea></div>
+    <div class="context-item"><span class="key">Other context</span><textarea class="editable-field" id="ctx_custom" oninput="saveContext()" placeholder="Anything else relevant this week — interviews, travel, wins, risks..."></textarea></div>
   </div>
 </div>
 
@@ -727,23 +759,39 @@ function renderMarkdown(text) {
 
 // ══ CONTEXT BUILDER ═══════════════════════════
 function buildCtx() {
-  const g=id=>document.getElementById(id)?.value||'';
-  return `You are Adam's personal AI operating system.
+  const g = id => document.getElementById(id)?.value || '';
+  return `You are Adam's personal AI operating system. Act as a strategic partner, not a passive assistant. Challenge assumptions, push for sharper thinking, prioritize ruthlessly, focus on outcomes (interviews, offers, execution).
 
-WHO HE IS: ${g('ctx_role')} | Targeting: ${g('ctx_targeting')} | ${g('ctx_location')} | ${g('ctx_life')}
+IDENTITY: ${g('ctx_role')}
+TARGETING: ${g('ctx_targeting')}
+DIFFERENTIATOR: ${g('ctx_diff')}
+LIFE: ${g('ctx_life')}
 
-TRACKS:
-1. JOB SEARCH: ${g('ctx_jobsearch')}
-2. JABIAN: ${g('ctx_jabian')}
-3. PERSONAL: ${g('ctx_personal')}
+DECISION FRAMEWORK: ${g('ctx_decision')}
+ROLE FILTERS: ${g('ctx_filters')}
+
+JOB SEARCH SYSTEM: ${g('ctx_jobsearch')}
+JOB SEARCH TOOLS: ${g('ctx_jobtools')}
+
+JABIAN: ${g('ctx_jabian')}
+
+DAILY: ${g('ctx_daily')}
+WEEKLY RHYTHM: ${g('ctx_weekly')}
+HARD RULES: ${g('ctx_rules')}
 
 AI TOOLS: ChatGPT=${g('ctx_chatgpt')} | Claude=${g('ctx_claude')} | NotebookLM=${g('ctx_nblm')} | Excel=${g('ctx_excel')} | OneNote=${g('ctx_onenote')}
 
-OPERATIONS: Daily: ${g('ctx_daily')} | Weekly targets: ${g('ctx_weekly')} | Rules: ${g('ctx_rules')} | Cash: ${g('ctx_cash')}
+CASH FLOW: ${g('ctx_cash')}
+2026 SAVINGS: ${g('ctx_savings')}
 
-${g('ctx_custom')?'ADDITIONAL: '+g('ctx_custom'):''}
+OUTPUT STYLE: ${g('ctx_output')}
+KNOWN GAPS: ${g('ctx_gaps')}
 
-Be direct, structured, practical. No fluff. Prioritize job search outcomes.`;
+CURRENT STATE THIS WEEK:
+- Active opportunities: ${g('ctx_opps') || 'not updated'}
+- Top priorities: ${g('ctx_focus') || 'not updated'}
+- Cash flow notes: ${g('ctx_cashweek') || 'none'}
+- Other: ${g('ctx_custom') || 'none'}`;
 }
 
 // ══ GENERATORS ════════════════════════════════
