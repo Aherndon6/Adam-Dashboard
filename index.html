@@ -2,1323 +2,421 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-<title>Adam's Weekly Operating Dashboard</title>
-<link href="https://fonts.googleapis.com/css2?family=DM+Serif+Display:ital@0;1&family=DM+Mono:wght@400;500&family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;0,9..40,600;1,9..40,300&display=swap" rel="stylesheet">
-<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+<title>Herndon Cash Flow 2026</title>
 <style>
-  :root {
-    --bg:#0e0f11;--surface:#16181c;--surface2:#1e2126;--border:#2a2d33;--border2:#363a42;
-    --text:#e8eaed;--text2:#9aa0ad;--text3:#5c6270;
-    --accent:#4ade80;--accent2:#22c55e;--amber:#fbbf24;--red:#f87171;--blue:#60a5fa;--purple:#a78bfa;
-    --radius:10px;--radius-sm:6px;
-  }
-  *{box-sizing:border-box;margin:0;padding:0}
-  html{scroll-behavior:smooth}
-  body{background:var(--bg);color:var(--text);font-family:'DM Sans',sans-serif;font-size:14px;line-height:1.6;min-height:100vh}
-  body::before{content:'';position:fixed;inset:0;background-image:url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)' opacity='0.03'/%3E%3C/svg%3E");pointer-events:none;z-index:0;opacity:.4}
-  .app{position:relative;z-index:1;max-width:1100px;margin:0 auto;padding:1.25rem 1rem 4rem}
+:root{
+  --bg:#f8f7f4;--surface:#fff;--surface2:#f3f2ef;--border:#e8e5e0;--border2:#d4d0c8;
+  --text:#1c1917;--text2:#6b6560;--text3:#9c9590;
+  --blue:#1e56a0;--blue-lt:#dbeafe;--blue-dk:#1e40af;
+  --green:#166534;--green-lt:#dcfce7;
+  --amber:#92400e;--amber-lt:#fef3c7;--amber-md:#fde68a;
+  --red:#991b1b;--red-lt:#fee2e2;
+  --orange:#d97706;--sh:0 1px 3px rgba(0,0,0,.08);--sh-md:0 4px 6px rgba(0,0,0,.07);
+}
+*{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
+body{background:var(--bg);color:var(--text);font-family:Georgia,'Times New Roman',serif;min-height:100vh}
+.header{background:var(--blue);color:white;padding:20px 24px 18px;border-bottom:3px solid #1a4a8a}
+.header h1{font-size:20px;font-weight:700;letter-spacing:.01em}
+.header p{font-size:12px;opacity:.75;margin-top:3px;font-style:italic}
+.header .mn{font-size:11px;opacity:.6;margin-top:6px;font-style:italic;border-top:1px solid rgba(255,255,255,.2);padding-top:6px}
+.main{max-width:800px;margin:0 auto;padding:20px 16px 40px}
+/* goals */
+.goals{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:12px}
+.gcard{background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:12px 14px;box-shadow:var(--sh)}
+.glabel{font-size:10px;color:var(--text2);margin-bottom:5px;text-transform:uppercase;letter-spacing:.06em}
+.ginput{display:flex;align-items:center;gap:5px}
+.ginput span{font-size:14px;color:var(--text2)}
+.ginput input{flex:1;font-size:16px;font-weight:700;padding:3px 6px;border:1px solid var(--border2);border-radius:6px;background:var(--surface2);color:var(--text);min-width:0;font-family:Georgia,serif}
+.ginput input:focus{outline:2px solid var(--blue);border-color:var(--blue)}
+.goal-note{font-size:10px;color:var(--text3);margin-top:4px;font-style:italic}
+/* reclass */
+.reclass-box{background:#fffbeb;border:1px solid var(--amber-md);border-left:4px solid var(--orange);border-radius:10px;padding:14px 16px;margin-bottom:12px;box-shadow:var(--sh)}
+.reclass-title{font-size:11px;font-weight:700;color:var(--amber);margin-bottom:8px;text-transform:uppercase;letter-spacing:.06em}
+.reclass-body{font-size:12.5px;color:#78350f;line-height:1.65;margin-bottom:12px}
+.milestones{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
+.milestone{background:white;border:1px solid var(--amber-md);border-radius:8px;padding:9px 10px;text-align:center}
+.ms-week{font-size:11px;font-weight:700;color:#c2410c;margin-bottom:3px}
+.ms-label{font-size:11px;color:var(--amber);line-height:1.4}
+/* progress */
+.prog-box{background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:14px 16px;margin-bottom:14px;box-shadow:var(--sh)}
+.prog-row{margin-bottom:12px}
+.prog-row:last-child{margin-bottom:0}
+.prog-hdr{display:flex;justify-content:space-between;margin-bottom:4px;align-items:baseline}
+.prog-name{font-size:12px;font-weight:600;color:var(--text)}
+.prog-val{font-size:11px;color:var(--text2)}
+.prog-track{height:8px;background:var(--surface2);border-radius:4px;overflow:hidden;border:1px solid var(--border)}
+.prog-fill{height:100%;border-radius:4px;transition:width .5s ease}
+.prog-note{font-size:10px;color:var(--amber);margin-top:3px;font-style:italic}
+/* desktop nav - week buttons */
+.nav{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:16px}
+.wbtn{padding:7px 11px;border:1px solid var(--border2);border-radius:8px;background:var(--surface);color:var(--text2);cursor:pointer;font-size:11px;line-height:1.3;text-align:center;min-width:72px;transition:all .12s;font-family:Georgia,serif;box-shadow:var(--sh)}
+.wbtn:hover{background:var(--surface2);border-color:var(--blue);color:var(--blue-dk)}
+.wbtn.active{background:var(--blue);border-color:var(--blue);color:white;font-weight:700;box-shadow:var(--sh-md)}
+.wbtn.trough{border-color:var(--orange)}
+.wbtn.trough.active{background:var(--orange);border-color:var(--orange);color:white}
+.wbtn.managed{border-color:var(--red);border-width:2px}
+.wbtn.managed.active{background:var(--red);border-color:var(--red);color:white}
+.wbtn .wn{font-size:12px;font-weight:700;display:block}
+.wbtn .wd{font-size:9px;display:block;opacity:.7;margin-top:1px}
+/* mobile nav - hidden on desktop */
+.mob-nav{display:none}
+/* week card */
+.card{background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:18px;box-shadow:var(--sh-md)}
+.card.trough-card{border-left:4px solid var(--orange);border-radius:0 12px 12px 0}
+.card.managed-card{border-left:4px solid var(--red);border-radius:0 12px 12px 0}
+.card-hdr{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:14px}
+.card-title{font-size:18px;font-weight:700;color:var(--text)}
+.card-dates{font-size:12px;color:var(--text2);margin-top:2px;font-style:italic}
+.badge{font-size:10px;padding:3px 9px;border-radius:20px;font-weight:600;white-space:nowrap;letter-spacing:.03em}
+.badge-trough{background:var(--amber-lt);color:var(--amber);border:1px solid var(--amber-md)}
+.badge-managed{background:var(--red-lt);color:var(--red);border:1px solid #fca5a5}
+.badge-op{background:var(--blue-lt);color:var(--blue-dk);border:1px solid #bfdbfe}
+.alert-note{border-radius:8px;padding:10px 13px;font-size:12px;margin-bottom:12px;line-height:1.55}
+.alert-trough{background:var(--amber-lt);border:1px solid var(--amber-md);color:var(--amber)}
+.alert-managed{background:var(--red-lt);border:1px solid #fca5a5;color:var(--red)}
+.sect{font-size:10px;font-weight:700;color:var(--text3);text-transform:uppercase;letter-spacing:.07em;margin-bottom:7px;margin-top:14px;border-bottom:1px solid var(--border);padding-bottom:4px}
+.sect:first-of-type{margin-top:0}
+.ev-row{display:flex;justify-content:space-between;padding:5px 0;font-size:12.5px;border-bottom:1px solid var(--border);align-items:flex-start;gap:8px}
+.ev-row:last-child{border-bottom:none}
+.ev-lbl{color:var(--text2);flex:1;line-height:1.4}
+.ev-in{font-weight:700;color:var(--green);min-width:80px;text-align:right;flex-shrink:0}
+.ev-out{font-weight:700;color:var(--red);min-width:80px;text-align:right;flex-shrink:0}
+.xfr-row{display:flex;gap:9px;padding:4px 0;font-size:12px;align-items:flex-start}
+.xi{font-size:14px;flex-shrink:0;margin-top:1px}
+.xtext{flex:1}
+.xlbl{color:var(--text);font-size:12.5px;line-height:1.4}
+.xrsn{color:var(--text3);font-size:10.5px;margin-top:2px;font-style:italic}
+/* desktop: 3-col balance grid */
+.bals{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-top:14px}
+.bal{background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:9px 11px}
+.blbl{font-size:10px;color:var(--text3);margin-bottom:3px;text-transform:uppercase;letter-spacing:.04em}
+.bval{font-size:14px;font-weight:700;color:var(--text);font-family:Georgia,serif}
+.bval.warn{color:var(--orange)}
+.bval.low{color:var(--red)}
+.bval.good{color:var(--green)}
+.liq-row{background:var(--blue-lt);border:1px solid #bfdbfe;border-radius:8px;padding:9px 11px;display:flex;justify-content:space-between;align-items:center;margin-top:8px}
+.liq-label{font-size:11px;color:var(--blue-dk);font-weight:600}
+.liq-val{font-size:14px;font-weight:700;color:var(--blue)}
+.acts{margin-top:14px;padding-top:12px;border-top:1px solid var(--border)}
+.act-hdr{font-size:10px;font-weight:700;color:var(--text3);text-transform:uppercase;letter-spacing:.07em;margin-bottom:7px}
+.act-row{display:flex;gap:9px;align-items:flex-start;padding:4px 0;font-size:12.5px;color:var(--text);line-height:1.4}
+.act-dot{width:6px;height:6px;border-radius:50%;background:var(--blue);flex-shrink:0;margin-top:5px}
+.banner{border-radius:8px;padding:9px 14px;font-size:12px;font-weight:600;text-align:center;margin-top:12px}
+.banner-green{background:var(--green-lt);color:var(--green);border:1px solid #86efac}
+.banner-blue{background:var(--blue-lt);color:var(--blue-dk);border:1px solid #93c5fd}
+.banner-amber{background:var(--amber-lt);color:var(--amber);border:1px solid var(--amber-md)}
+/* desktop prev/next inside card */
+.week-nav{display:flex;justify-content:space-between;align-items:center;margin-top:16px;padding-top:14px;border-top:1px solid var(--border)}
+.wnav-btn{padding:7px 13px;border:1px solid var(--border2);border-radius:8px;background:var(--surface);color:var(--text2);cursor:pointer;font-size:11.5px;font-weight:600;transition:all .12s;font-family:Georgia,serif;box-shadow:var(--sh)}
+.wnav-btn:hover{background:var(--blue);color:white;border-color:var(--blue)}
+.wnav-spacer{width:120px}
+/* mobile bottom bar - hidden on desktop */
+.mob-bar{display:none}
+.footer{text-align:center;color:var(--text3);font-size:11px;margin-top:32px;font-style:italic}
 
-  /* HEADER — compact on mobile */
-  .header{display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:1.5rem;padding-bottom:1.25rem;border-bottom:1px solid var(--border);gap:8px}
-  .header-eyebrow{font-family:'DM Mono',monospace;font-size:10px;color:var(--accent);letter-spacing:.1em;text-transform:uppercase;margin-bottom:.25rem}
-  .header-title{font-family:'DM Serif Display',serif;font-size:1.6rem;color:var(--text);line-height:1.1}
-  .header-title em{font-style:italic;color:var(--text2)}
-  .header-date{font-family:'DM Mono',monospace;font-size:10px;color:var(--text3);margin-top:.35rem}
-  .header-right{display:flex;flex-direction:column;align-items:flex-end;gap:6px;flex-shrink:0}
-  .week-badge{background:var(--surface2);border:1px solid var(--border2);border-radius:20px;padding:.3rem .75rem;font-family:'DM Mono',monospace;font-size:10px;color:var(--text2);white-space:nowrap}
-
-  /* TABS — horizontal scroll on mobile, no wrap */
-  .tabs{display:flex;gap:3px;margin-bottom:1.5rem;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:4px;overflow-x:auto;-webkit-overflow-scrolling:touch;scrollbar-width:none;flex-wrap:nowrap}
-  .tabs::-webkit-scrollbar{display:none}
-  .tab{flex:0 0 auto;padding:.45rem .65rem;font-size:11px;font-weight:500;color:var(--text3);cursor:pointer;border-radius:var(--radius-sm);transition:all .15s;text-align:center;border:none;background:none;font-family:'DM Sans',sans-serif;white-space:nowrap}
-  .tab:hover{color:var(--text2);background:var(--surface2)}
-  .tab.active{background:var(--surface2);color:var(--text);border:1px solid var(--border2)}
-  .tab-badge{display:inline-flex;align-items:center;justify-content:center;min-width:16px;height:16px;background:var(--accent);color:#000;border-radius:8px;font-size:9px;font-weight:700;padding:0 4px;margin-left:3px;vertical-align:middle}
-  .panel{display:none}
-  .panel.active{display:block;animation:fadeIn .2s ease}
-  @keyframes fadeIn{from{opacity:0;transform:translateY(4px)}to{opacity:1;transform:translateY(0)}}
-  .section-label{font-family:'DM Mono',monospace;font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:.1em;margin-bottom:.65rem}
-  .grid-2{display:grid;grid-template-columns:1fr 1fr;gap:10px}
-  @media(max-width:700px){.grid-2{grid-template-columns:1fr}}
-  .card{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:1rem 1.1rem}
-  .card-title{font-size:12px;font-weight:600;color:var(--text2);margin-bottom:.75rem;display:flex;align-items:center;gap:6px}
-  .card-title .dot{width:6px;height:6px;border-radius:50%;flex-shrink:0}
-  .field{margin-bottom:.85rem}
-  .field:last-child{margin-bottom:0}
-  .field label{display:block;font-size:11px;color:var(--text3);margin-bottom:.3rem;font-weight:500}
-  .field input,.field textarea,.field select{width:100%;background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--text);font-family:'DM Sans',sans-serif;font-size:16px;padding:.5rem .7rem;outline:none;transition:border-color .15s;resize:vertical;-webkit-appearance:none;appearance:none;touch-action:manipulation;-webkit-user-select:text;user-select:text}
-  .field input:focus,.field textarea:focus,.field select:focus{border-color:var(--border2)}
-  .field textarea{min-height:70px}
-  .field input::placeholder,.field textarea::placeholder{color:var(--text3)}
-  .num-row{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:1rem}
-  .num-block{background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius-sm);padding:.6rem .75rem;text-align:center}
-  .num-block input{background:none;border:none;text-align:center;font-family:'DM Serif Display',serif;font-size:1.6rem;color:var(--text);width:100%;outline:none}
-  .num-block label{font-family:'DM Mono',monospace;font-size:10px;color:var(--text3);display:block;margin-top:2px}
-  .checklist{display:flex;flex-direction:column;gap:6px}
-  .check-item{display:flex;align-items:center;gap:8px;font-size:12px;color:var(--text2);cursor:pointer}
-  .check-item input[type="checkbox"]{appearance:none;width:15px;height:15px;border:1px solid var(--border2);border-radius:4px;background:var(--surface2);cursor:pointer;position:relative;flex-shrink:0;transition:all .1s}
-  .check-item input[type="checkbox"]:checked{background:var(--accent);border-color:var(--accent)}
-  .check-item input[type="checkbox"]:checked::after{content:'✓';position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);font-size:9px;color:#000;font-weight:700}
-  .status{display:inline-flex;align-items:center;gap:4px;padding:2px 8px;border-radius:12px;font-size:10px;font-weight:600;font-family:'DM Mono',monospace}
-  .status.green{background:rgba(74,222,128,.1);color:var(--accent);border:1px solid rgba(74,222,128,.2)}
-  .status.amber{background:rgba(251,191,36,.1);color:var(--amber);border:1px solid rgba(251,191,36,.2)}
-  .status.blue{background:rgba(96,165,250,.1);color:var(--blue);border:1px solid rgba(96,165,250,.2)}
-  .generate-btn{width:100%;padding:.9rem 1.5rem;background:var(--accent);color:#000;border:none;border-radius:var(--radius);font-family:'DM Sans',sans-serif;font-size:14px;font-weight:600;cursor:pointer;transition:all .15s;display:flex;align-items:center;justify-content:center;gap:8px;margin-top:1.5rem}
-  .generate-btn:hover{background:var(--accent2);transform:translateY(-1px)}
-  .generate-btn:disabled{opacity:.5;cursor:not-allowed;transform:none}
-  .output-wrap{margin-top:1.25rem}
-  .output-header{display:flex;align-items:center;justify-content:space-between;margin-bottom:.6rem}
-  .output-label{font-family:'DM Mono',monospace;font-size:10px;color:var(--accent);text-transform:uppercase;letter-spacing:.1em}
-  .output-actions{display:flex;gap:6px}
-  .output-box{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:1.1rem;font-size:14px;line-height:1.9;color:var(--text2);min-height:80px}
-  /* Mobile markdown — optimized for narrow screens */
-  .output-box h1,.output-box h2,.output-box h3,.history-full h1,.history-full h2,.history-full h3{font-family:'DM Sans',sans-serif;font-weight:600;color:var(--accent);margin:1.1rem 0 .4rem;line-height:1.3;font-size:.85rem;text-transform:uppercase;letter-spacing:.06em}
-  .output-box h1,.history-full h1{font-size:.9rem;border-bottom:1px solid var(--border);padding-bottom:.3rem}
-  .output-box h2,.history-full h2{font-size:.85rem}
-  .output-box h3,.history-full h3{font-size:.8rem;color:var(--text2)}
-  .output-box strong,.history-full strong{color:var(--text);font-weight:600}
-  .output-box em,.history-full em{color:var(--text2);font-style:italic}
-  .output-box ul,.output-box ol,.history-full ul,.history-full ol{padding-left:1.1rem;margin:.35rem 0}
-  .output-box li,.history-full li{margin:.3rem 0;line-height:1.6}
-  .output-box hr,.history-full hr{border:none;border-top:1px solid var(--border);margin:.9rem 0}
-  .output-box p,.history-full p{margin:.4rem 0;line-height:1.75}
-  .output-box code{background:var(--surface2);border:1px solid var(--border);border-radius:3px;padding:1px 5px;font-family:'DM Mono',monospace;font-size:11px;color:var(--accent)}
-  .action-btn{font-size:11px;color:var(--text3);cursor:pointer;background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius-sm);padding:3px 10px;transition:all .1s;font-family:'DM Sans',sans-serif}
-  .action-btn:hover{color:var(--text);border-color:var(--border2)}
-  .context-section{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:1.2rem 1.25rem;margin-bottom:1.25rem}
-  .context-section h3{font-size:11px;font-weight:600;color:var(--accent);margin-bottom:1rem;font-family:'DM Mono',monospace;text-transform:uppercase;letter-spacing:.08em}
-  .context-item{padding:.75rem 0;border-bottom:1px solid var(--border);display:flex;flex-direction:column;gap:6px}
-  .context-item:last-child{border-bottom:none;padding-bottom:0}
-  .context-item:first-of-type{padding-top:0}
-  .context-item .key{color:var(--accent);font-size:10px;font-family:'DM Mono',monospace;text-transform:uppercase;letter-spacing:.06em}
-  .editable-field{width:100%;background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--text);font-family:'DM Sans',sans-serif;font-size:16px;resize:vertical;outline:none;line-height:1.6;padding:.65rem .8rem;min-height:48px;-webkit-appearance:none;appearance:none;cursor:text;touch-action:manipulation;-webkit-user-select:text;user-select:text;display:block;margin-top:2px}
-  .editable-field:focus{border-color:var(--accent);color:var(--text);background:var(--surface)}
-  .editable-field::placeholder{color:var(--text3);font-style:italic}
-  .ctx-hint{font-size:11px;color:var(--text3);font-family:'DM Mono',monospace;margin-bottom:1rem;padding:.65rem .8rem;background:var(--surface2);border-radius:var(--radius-sm);border:1px solid var(--border);line-height:1.5}
-  .history-item{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:.85rem 1rem;margin-bottom:8px}
-  .history-meta{display:flex;align-items:center;gap:8px;margin-bottom:.35rem;flex-wrap:wrap}
-  .history-date{font-family:'DM Mono',monospace;font-size:11px;color:var(--text3)}
-  .history-toggle{font-size:11px;color:var(--text3);cursor:pointer;margin-left:auto;background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius-sm);padding:2px 8px;font-family:'DM Sans',sans-serif;transition:all .1s}
-  .history-toggle:hover{color:var(--text);border-color:var(--border2)}
-  .history-preview{font-size:12px;color:var(--text3);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-  .history-full{display:none;margin-top:.75rem;padding-top:.75rem;border-top:1px solid var(--border);font-size:13px;line-height:1.8;color:var(--text2)}
-  .history-full.open{display:block}
-  .cash-row{display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-bottom:1rem}
-  .cash-block{background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius-sm);padding:.65rem .8rem}
-  .cash-label{font-family:'DM Mono',monospace;font-size:10px;color:var(--text3);margin-bottom:4px}
-  .cash-value{font-family:'DM Mono',monospace;font-size:16px;font-weight:500}
-  .cash-value.green{color:var(--accent)}.cash-value.amber{color:var(--amber)}.cash-value.red{color:var(--red)}
-  .modal-overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,.75);z-index:100;align-items:center;justify-content:center}
-  .modal-overlay.open{display:flex}
-  .modal{background:var(--surface);border:1px solid var(--border2);border-radius:var(--radius);padding:1.5rem;width:90%;max-width:520px;max-height:85vh;overflow-y:auto}
-  .modal-title{font-size:14px;font-weight:600;color:var(--text);margin-bottom:1rem}
-  .modal-actions{display:flex;gap:8px;justify-content:flex-end;margin-top:1rem}
-  .btn-primary{padding:.5rem 1.1rem;background:var(--accent);color:#000;border:none;border-radius:var(--radius-sm);font-family:'DM Sans',sans-serif;font-size:13px;font-weight:600;cursor:pointer}
-  .btn-primary:hover{background:var(--accent2)}
-  .btn-secondary{padding:.5rem 1.1rem;background:var(--surface2);color:var(--text2);border:1px solid var(--border);border-radius:var(--radius-sm);font-family:'DM Sans',sans-serif;font-size:13px;cursor:pointer}
-  .btn-secondary:hover{border-color:var(--border2);color:var(--text)}
-  /* KANBAN */
-  .kanban-board{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;align-items:start}
-  .kanban-col{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:.85rem;min-height:200px}
-  .kanban-col.drag-over{border-color:var(--accent);background:var(--surface2)}
-  .kanban-col-header{display:flex;align-items:center;justify-content:space-between;margin-bottom:.85rem;padding-bottom:.6rem;border-bottom:1px solid var(--border)}
-  .kanban-col-title{font-family:'DM Mono',monospace;font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.08em;color:var(--text2)}
-  .kanban-col-count{background:var(--surface2);border:1px solid var(--border);border-radius:20px;padding:1px 7px;font-size:10px;color:var(--text3);font-family:'DM Mono',monospace}
-  .kanban-cards{display:flex;flex-direction:column;gap:7px;min-height:80px}
-  .kanban-card{background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius-sm);padding:.75rem .85rem;cursor:grab;transition:all .15s;user-select:none}
-  .kanban-card:active{cursor:grabbing}
-  .kanban-card.dragging{opacity:.35;border-style:dashed}
-  .kanban-card.drag-target{border-color:var(--accent);border-style:dashed}
-  .kanban-card-title{font-size:13px;color:var(--text);font-weight:500;line-height:1.4;margin-bottom:.45rem}
-  .kanban-card-meta{display:flex;align-items:center;gap:5px;flex-wrap:wrap;margin-bottom:.45rem}
-  .kanban-card-area{font-size:10px;padding:2px 7px;border-radius:10px;font-family:'DM Mono',monospace;border:1px solid;font-weight:500}
-  .kanban-card-priority{font-size:11px}
-  .kanban-card-actions{display:flex;gap:4px;flex-wrap:wrap}
-  .kanban-card-btn{background:none;border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--text3);font-size:10px;padding:3px 7px;cursor:pointer;font-family:'DM Sans',sans-serif;transition:all .15s;touch-action:manipulation}
-  .kanban-card-btn:hover{color:var(--text);border-color:var(--border2)}
-  .kanban-card-btn.move{color:var(--text2);border-color:var(--border2)}
-  .kanban-card-btn.move:hover{color:var(--text);background:var(--surface)}
-  .kanban-card-btn.move.accent{color:var(--accent);border-color:var(--accent)44}
-  .kanban-card-btn.move.archive{color:var(--amber);border-color:var(--amber)44}
-  .kanban-card-btn.danger:hover{color:var(--red);border-color:var(--red)}
-  .archive-item{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-sm);padding:.6rem .75rem;margin-bottom:6px;opacity:.7}
-  .archive-item-title{font-size:12px;color:var(--text2)}
-  .archive-item-meta{font-size:10px;color:var(--text3);margin-top:3px;font-family:'DM Mono',monospace}
-  @media(max-width:600px){
-    .kanban-board{display:flex;flex-direction:row;overflow-x:auto;gap:8px;-webkit-overflow-scrolling:touch;padding-bottom:.5rem;scrollbar-width:none}
-    .kanban-board::-webkit-scrollbar{display:none}
-    .kanban-col{min-width:260px;flex-shrink:0;min-height:unset}
-  }
-
-  .save-indicator{position:fixed;bottom:1.5rem;right:1.5rem;background:var(--surface2);border:1px solid var(--border2);border-radius:20px;padding:.35rem .9rem;font-family:'DM Mono',monospace;font-size:11px;color:var(--accent);opacity:0;transition:opacity .3s;z-index:50;pointer-events:none}
-  .save-indicator.show{opacity:1}
-  @media(max-width:600px){
-    .app{padding:1rem .85rem 5rem}
-    .header-title{font-size:1.35rem}
-    .grid-2{grid-template-columns:1fr}
-    .card{padding:.85rem}
-    .generate-btn{font-size:13px;padding:.85rem 1rem;border-radius:var(--radius);position:sticky;bottom:1rem;z-index:10;box-shadow:0 4px 20px rgba(0,0,0,.5)}
-    .num-row{grid-template-columns:repeat(3,1fr);gap:6px}
-    .cash-row{grid-template-columns:1fr 1fr;gap:6px}
-    .context-item{flex-direction:column;gap:3px}
-    .context-item .key{min-width:unset;font-size:10px;color:var(--accent)}
-    .output-box{font-size:14px;padding:.9rem;line-height:1.8}
-    .modal{padding:1.1rem}
-    .history-full{font-size:13px}
-    .num-block input{font-size:1.3rem}
-  }
+/* ── MOBILE ≤768px ──────────────────────────────────────────────────── */
+@media(max-width:768px){
+  .header{padding:14px 14px 12px}
+  .header h1{font-size:16px}
+  .header p{font-size:11px}
+  .header .mn{font-size:10px;margin-top:5px;padding-top:5px}
+  .main{padding:10px 10px 90px}
+  /* milestones: vertical stack */
+  .milestones{grid-template-columns:1fr;gap:5px}
+  .milestone{text-align:left;padding:7px 10px;display:flex;align-items:center;gap:10px}
+  .ms-week{min-width:90px;flex-shrink:0;margin-bottom:0}
+  .ms-label{flex:1}
+  /* hide desktop button nav, show mobile dropdown */
+  .nav{display:none}
+  .mob-nav{display:block;margin-bottom:12px}
+  .mob-nav-label{font-size:10px;color:var(--text2);text-transform:uppercase;letter-spacing:.05em;margin-bottom:5px}
+  .mob-select{width:100%;padding:11px 12px;border:1px solid var(--border2);border-radius:8px;background:var(--surface);color:var(--text);font-size:15px;font-family:Georgia,serif;appearance:none;-webkit-appearance:none;background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath d='M1 1l5 5 5-5' stroke='%236b6560' stroke-width='1.5' fill='none' stroke-linecap='round'/%3E%3C/svg%3E");background-repeat:no-repeat;background-position:right 12px center;min-height:44px}
+  /* balance grid: 2-col on mobile */
+  .bals{grid-template-columns:repeat(2,1fr)}
+  /* hide desktop prev/next inside card */
+  .week-nav{display:none}
+  /* show mobile bottom bar */
+  .mob-bar{display:flex;position:fixed;bottom:0;left:0;right:0;background:var(--surface);border-top:1px solid var(--border);padding:10px 14px;padding-bottom:calc(10px + env(safe-area-inset-bottom));z-index:100;align-items:center;gap:8px}
+  .mob-bar-btn{flex:1;padding:11px 8px;border:1px solid var(--border2);border-radius:9px;background:var(--surface2);color:var(--text2);cursor:pointer;font-size:13px;font-weight:600;font-family:Georgia,serif;text-align:center;min-height:44px;transition:background .1s}
+  .mob-bar-btn:active{background:var(--blue);color:white;border-color:var(--blue)}
+  .mob-bar-btn.disabled{opacity:.3;pointer-events:none}
+  .mob-bar-counter{font-size:12px;color:var(--text2);white-space:nowrap;text-align:center;min-width:52px}
+  /* slightly larger touch text */
+  .ev-row{font-size:13px;padding:6px 0}
+  .xlbl{font-size:13px}
+  .act-row{font-size:13px}
+  .bval{font-size:15px}
+  .ginput input{font-size:15px}
+}
 </style>
 </head>
 <body>
-<!-- LOGIN SCREEN -->
-<div id="loginScreen" style="display:none;position:fixed;inset:0;background:var(--bg);z-index:200;align-items:center;justify-content:center;flex-direction:column;gap:1.5rem">
-  <div style="text-align:center;max-width:380px;padding:2rem">
-    <div style="font-family:'DM Mono',monospace;font-size:11px;color:var(--accent);letter-spacing:.12em;text-transform:uppercase;margin-bottom:.5rem">Personal Operating System</div>
-    <div style="font-family:'DM Serif Display',serif;font-size:2.5rem;color:var(--text);line-height:1.1;margin-bottom:.5rem">Adam's Weekly <em style="font-style:italic;color:var(--text2)">Dashboard</em></div>
-    <div style="font-size:13px;color:var(--text3);margin-bottom:2rem">Sign in to access your dashboard across all devices</div>
-    <button onclick="signInWithGoogle()" style="width:100%;padding:.9rem 1.5rem;background:var(--surface);border:1px solid var(--border2);border-radius:var(--radius);font-family:'DM Sans',sans-serif;font-size:14px;font-weight:500;color:var(--text);cursor:pointer;display:flex;align-items:center;justify-content:center;gap:10px;transition:all .15s" onmouseover="this.style.background='var(--surface2)'" onmouseout="this.style.background='var(--surface)'">
-      <svg width="18" height="18" viewBox="0 0 18 18"><path fill="#4285F4" d="M16.51 8H8.98v3h4.3c-.18 1-.74 1.48-1.6 2.04v2.01h2.6a7.8 7.8 0 0 0 2.38-5.88c0-.57-.05-.66-.15-1.18z"/><path fill="#34A853" d="M8.98 17c2.16 0 3.97-.72 5.3-1.94l-2.6-2a4.8 4.8 0 0 1-7.18-2.54H1.83v2.07A8 8 0 0 0 8.98 17z"/><path fill="#FBBC05" d="M4.5 10.52a4.8 4.8 0 0 1 0-3.04V5.41H1.83a8 8 0 0 0 0 7.18l2.67-2.07z"/><path fill="#EA4335" d="M8.98 4.18c1.17 0 2.23.4 3.06 1.2l2.3-2.3A8 8 0 0 0 1.83 5.4L4.5 7.49a4.77 4.77 0 0 1 4.48-3.3z"/></svg>
-      Continue with Google
-    </button>
-    <div id="loginError" style="margin-top:1rem;font-size:12px;color:var(--red);display:none"></div>
-  </div>
-</div>
-
-<!-- SYNC STATUS -->
-<div id="syncStatus" style="position:fixed;bottom:1.5rem;right:1.5rem;display:flex;align-items:center;gap:6px;background:var(--surface2);border:1px solid var(--border2);border-radius:20px;padding:.35rem .9rem;font-family:'DM Mono',monospace;font-size:11px;color:var(--text3);opacity:0;transition:opacity .3s;z-index:50;pointer-events:none">
-  <span id="syncDot" style="width:6px;height:6px;border-radius:50%;background:var(--text3);display:inline-block"></span>
-  <span id="syncText">Saved</span>
-</div>
-
-<div class="app">
-
 <div class="header">
-  <div>
-    <div class="header-eyebrow">Personal Operating System</div>
-    <div class="header-title">Adam's Weekly <em>Dashboard</em></div>
-    <div class="header-date" id="currentDate"></div>
+  <h1>Herndon Family — 2026 Cash Flow Plan</h1>
+  <p>31-week transfer optimization · Jun 8, 2026 – Jan 10, 2027 · Live recalculating model</p>
+  <p class="mn">Weekly cash flow model — balances represent end-of-week state. Intraday sequencing managed operationally.</p>
+</div>
+<div class="main">
+  <div class="goals">
+    <div class="gcard">
+      <div class="glabel">Alaska cruise goal</div>
+      <div class="ginput"><span>$</span><input type="number" id="akGoal" value="7000" min="1000" max="15000" step="100" inputmode="numeric"></div>
+    </div>
+    <div class="gcard">
+      <div class="glabel">Retirement target (AMEX Savings)</div>
+      <div class="ginput"><span>$</span><input type="number" id="rtGoal" value="7690.98" min="1000" max="20000" step="100" inputmode="numeric"></div>
+      <div class="goal-note">$99.75 + $3,772.74 savings + $3,818.49 rebuild</div>
+    </div>
   </div>
-  <div class="header-right">
-    <div class="week-badge" id="weekBadge"></div>
-    <button onclick="signOut()" id="signOutBtn" style="display:none;background:none;border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--text3);font-family:'DM Mono',monospace;font-size:10px;padding:.3rem .7rem;cursor:pointer;transition:all .15s" onmouseover="this.style.color='var(--text)'" onmouseout="this.style.color='var(--text3)'">Sign out</button>
+
+  <div class="reclass-box">
+    <div class="reclass-title">&#9888;&#65039; $3,000 Emergency Fund Reclassification</div>
+    <div class="reclass-body">The May AMEX Platinum payoff ($37,482) left checking too thin to cover July and September rent without going negative. <strong>$3,000 reclassified as permanent operating cash</strong> in Truist Checking. Lending Club restored to <strong>$21,738.88</strong>. Total EF = <strong>$139,832</strong> — $168 below $140K floor, operationally insignificant. December and January rent troughs managed via Truist Savings same-bank backup.</div>
+    <div class="milestones" id="milestones"></div>
   </div>
+
+  <div class="prog-box">
+    <div class="prog-row">
+      <div class="prog-hdr"><span class="prog-name">Emergency fund (Lending Club)</span><span class="prog-val" id="efVal"></span></div>
+      <div class="prog-track"><div class="prog-fill" id="efBar" style="background:#1d9e75"></div></div>
+      <div class="prog-note">Shown vs original $24,738.88 target — $3,000 permanently reclassified. Bar stops at ~88%.</div>
+    </div>
+    <div class="prog-row">
+      <div class="prog-hdr"><span class="prog-name">Alaska cruise fund (Truist Savings)</span><span class="prog-val" id="akVal"></span></div>
+      <div class="prog-track"><div class="prog-fill" id="akBar" style="background:#1e56a0"></div></div>
+    </div>
+    <div class="prog-row">
+      <div class="prog-hdr"><span class="prog-name">Retirement rebuild (AMEX Savings)</span><span class="prog-val" id="rtVal"></span></div>
+      <div class="prog-track"><div class="prog-fill" id="rtBar" style="background:#6d28d9"></div></div>
+    </div>
+  </div>
+
+  <!-- Desktop: button grid -->
+  <div class="nav" id="nav"></div>
+
+  <!-- Mobile: dropdown -->
+  <div class="mob-nav">
+    <div class="mob-nav-label">Jump to week</div>
+    <select class="mob-select" id="mobSelect" onchange="activeW=parseInt(this.value);render()"></select>
+  </div>
+
+  <div id="display"></div>
+
+  <div class="footer">Herndon Family Financial Plan &middot; June 2026 &middot; For Adam &amp; Wendy &middot; Weekly cash flow model</div>
 </div>
 
-<div class="tabs">
-  <button class="tab active" onclick="showPanel('monday')">📋 Monday Plan</button>
-  <button class="tab" onclick="showPanel('sunday')">📊 Sunday Review</button>
-  <button class="tab" onclick="showPanel('cashflow')">💰 Cash Flow</button>
-  <button class="tab" onclick="showPanel('context')">👤 My Context</button>
-  <button class="tab" onclick="showPanel('history')">📁 History</button>
-  <button class="tab" id="tab-ideas" onclick="showPanel('ideas')">💡 Ideas</button>
+<!-- Mobile: fixed bottom bar -->
+<div class="mob-bar" id="mobBar">
+  <button class="mob-bar-btn" id="mobPrev" onclick="goWeek(-1)">&#8592; Prev</button>
+  <span class="mob-bar-counter" id="mobCounter"></span>
+  <button class="mob-bar-btn" id="mobNext" onclick="goWeek(1)">Next &#8594;</button>
 </div>
-
-<!-- MONDAY -->
-<div id="panel-monday" class="panel active">
-  <div class="section-label">Weekly Plan — Monday Morning Setup</div>
-  <div class="grid-2">
-    <div class="card">
-      <div class="card-title"><div class="dot" style="background:#f87171"></div>Job Search</div>
-      <div class="field"><label>Active opportunities (names + stages)</label><textarea id="m_opps" placeholder="e.g. Acme Corp — final round&#10;TechCo — phone screen"></textarea></div>
-      <div class="field"><label>5 outreach targets this week</label><textarea id="m_outreach" placeholder="e.g. John Smith — 3 weeks since last touch&#10;Sarah Lee — met at event, need to follow up"></textarea></div>
-      <div class="field"><label>One primary job search move this week</label><input type="text" id="m_primary_move" placeholder="e.g. Land a call with Delta hiring manager"></div>
-    </div>
-    <div class="card">
-      <div class="card-title"><div class="dot" style="background:#a78bfa"></div>Jabian Work</div>
-      <div class="field"><label>Client meetings this week</label><textarea id="m_client_meetings" placeholder="e.g. Monday — Ludis kickoff&#10;Wednesday — TAH review"></textarea></div>
-      <div class="field"><label>Deliverables due</label><textarea id="m_deliverables" placeholder="e.g. Ludis SOW — Thursday"></textarea></div>
-      <div class="field"><label>BD conversations to advance</label><textarea id="m_bd" placeholder="e.g. Follow up with Cox AI contact"></textarea></div>
-    </div>
-    <div class="card">
-      <div class="card-title"><div class="dot" style="background:#fbbf24"></div>Personal</div>
-      <div class="field"><label>Finance actions this week</label><input type="text" id="m_finance" placeholder="e.g. Run cash flow calculator, Quicken review with Wendy"></div>
-      <div class="field"><label>Family / personal priorities</label><textarea id="m_personal" placeholder="e.g. Preston game Saturday&#10;Alaska trip research"></textarea></div>
-      <div class="field"><label>Fitness / schedule conflicts</label><input type="text" id="m_fitness" placeholder="e.g. Travel Wed–Thu, plan around that"></div>
-    </div>
-    <div class="card">
-      <div class="card-title"><div class="dot" style="background:#60a5fa"></div>Build + Focus</div>
-      <div class="field"><label>This week's build session target</label><input type="text" id="m_build" placeholder="e.g. Outreach generator prompt"></div>
-      <div class="field"><label>How will I use it this week?</label><input type="text" id="m_build_use" placeholder="e.g. Send 3 outreach messages with it"></div>
-      <div class="field"><label>Google Keep items to time-block</label><textarea id="m_keep" placeholder="e.g. Ludis SOW — 2hrs Thursday&#10;Dan resume review — 30min Tuesday"></textarea></div>
-      <div class="field"><label>What does a good week look like?</label><input type="text" id="m_good_week" placeholder="e.g. 5 outreach sent, Ludis SOW delivered"></div>
-    </div>
-  </div>
-  <button class="generate-btn" id="mondayBtn" onclick="generateMonday()"><span>✦</span> Generate My Weekly Plan</button>
-  <div id="mondayOutput" class="output-wrap" style="display:none">
-    <div class="output-header">
-      <span class="output-label">Your Weekly Plan</span>
-      <div class="output-actions">
-        <button class="action-btn" onclick="copyRaw('mondayRaw')">Copy text</button>
-        <button class="action-btn" onclick="exportOutput('monday')">Export</button>
-      </div>
-    </div>
-    <div class="output-box" id="mondayResult"></div>
-    <textarea id="mondayRaw" style="display:none"></textarea>
-  </div>
-</div>
-
-<!-- SUNDAY -->
-<div id="panel-sunday" class="panel">
-  <div class="section-label">Week-End Review — Sunday Evening</div>
-  <div class="num-row">
-    <div class="num-block"><input type="number" id="s_outreach_done" value="0" min="0" max="10"><label>Outreach sent</label></div>
-    <div class="num-block"><input type="number" id="s_calls_done" value="0" min="0" max="20"><label>Calls / meetings</label></div>
-    <div class="num-block"><input type="number" id="s_next_touch" value="0" min="0" max="20"><label>Next touches set</label></div>
-  </div>
-  <div class="grid-2">
-    <div class="card">
-      <div class="card-title"><div class="dot" style="background:#f87171"></div>Job Search Review</div>
-      <div class="field"><label>Pipeline movement this week</label><textarea id="s_pipeline" placeholder="e.g. Acme moved to final round"></textarea></div>
-      <div class="field"><label>What worked in networking?</label><textarea id="s_net_worked" placeholder="e.g. Cold LinkedIn message got a response"></textarea></div>
-      <div class="field"><label>Next touch dates set after calls?</label>
-        <select id="s_touch_set"><option value="">Select...</option><option value="all">Yes — all of them</option><option value="most">Most but not all</option><option value="none">No — this slipped</option></select>
-      </div>
-    </div>
-    <div class="card">
-      <div class="card-title"><div class="dot" style="background:#a78bfa"></div>Jabian Review</div>
-      <div class="field"><label>Deliverables completed</label><textarea id="s_delivered" placeholder="e.g. Ludis SOW — done"></textarea></div>
-      <div class="field"><label>Anything at risk next week?</label><textarea id="s_at_risk" placeholder="e.g. TAH client may push back on scope"></textarea></div>
-    </div>
-    <div class="card">
-      <div class="card-title"><div class="dot" style="background:#fbbf24"></div>Personal Review</div>
-      <div class="field"><label>Cash flow calculator updated?</label>
-        <select id="s_cash_done"><option value="">Select...</option><option value="yes">Yes — done</option><option value="no">No — need to do it now</option></select>
-      </div>
-      <div class="field"><label>Finance handover progress</label><input type="text" id="s_finance_progress" placeholder="e.g. Reviewed Quicken with Wendy"></div>
-      <div class="field"><label>Workouts this week</label><input type="text" id="s_workouts" placeholder="e.g. 4 out of 4 — on track"></div>
-    </div>
-    <div class="card">
-      <div class="card-title"><div class="dot" style="background:#60a5fa"></div>Reflection + Build</div>
-      <div class="field"><label>What worked this week?</label><textarea id="s_worked" placeholder="e.g. Time blocking on Monday made the week cleaner"></textarea></div>
-      <div class="field"><label>What didn't work and why?</label><textarea id="s_didnt" placeholder="e.g. Outreach slipped — no dedicated time blocked"></textarea></div>
-      <div class="field"><label>Build session — what was built?</label><input type="text" id="s_build_done" placeholder="e.g. Built outreach generator — used it twice"></div>
-      <div class="field"><label>One adjustment for next week</label><input type="text" id="s_adjustment" placeholder="e.g. Block 30 min Tuesday for outreach"></div>
-    </div>
-  </div>
-  <button class="generate-btn" id="sundayBtn" onclick="generateSunday()"><span>✦</span> Generate My Week-End Review + Next Week Setup</button>
-  <div id="sundayOutput" class="output-wrap" style="display:none">
-    <div class="output-header">
-      <span class="output-label">Your Week-End Review</span>
-      <div class="output-actions">
-        <button class="action-btn" onclick="copyRaw('sundayRaw')">Copy text</button>
-        <button class="action-btn" onclick="exportOutput('sunday')">Export</button>
-      </div>
-    </div>
-    <div class="output-box" id="sundayResult"></div>
-    <textarea id="sundayRaw" style="display:none"></textarea>
-  </div>
-</div>
-
-<!-- CASH FLOW -->
-<div id="panel-cashflow" class="panel">
-  <div class="section-label">Cash Flow — Phase 1 Weekly Check</div>
-  <div class="cash-row">
-    <div class="cash-block"><div class="cash-label">Checking Balance</div><div class="cash-value" id="cf_checking_display">—</div></div>
-    <div class="cash-block"><div class="cash-label">Allocated Cash</div><div class="cash-value amber" id="cf_allocated_display">—</div></div>
-    <div class="cash-block"><div class="cash-label">True Available</div><div class="cash-value" id="cf_available_display">—</div></div>
-  </div>
-  <div class="grid-2">
-    <div class="card">
-      <div class="card-title">Weekly Inputs</div>
-      <div class="field"><label>Current checking balance ($)</label><input type="number" id="cf_checking" placeholder="47563" oninput="calcCashFlow()"></div>
-      <div class="field"><label>Allocated cash — from Extra Money 2026 ($)</label><input type="number" id="cf_allocated" placeholder="39579" oninput="calcCashFlow()"></div>
-      <div class="field"><label>Upcoming outflows — next 10 days ($)</label><input type="number" id="cf_outflows" placeholder="0" oninput="calcCashFlow()"></div>
-      <div class="field"><label>Upcoming inflows — next 10 days ($)</label><input type="number" id="cf_inflows" placeholder="0" oninput="calcCashFlow()"></div>
-      <div class="field"><label>Large payment >$10K in next 21 days?</label><select id="cf_large" onchange="calcCashFlow()"><option value="no">No</option><option value="yes">Yes</option></select></div>
-      <div class="field"><label>Notes for this week</label><textarea id="cf_notes" placeholder="e.g. AMEX payment May 27 — protect liquidity"></textarea></div>
-    </div>
-    <div class="card">
-      <div class="card-title">Calculated Output</div>
-      <div style="display:flex;flex-direction:column;gap:10px">
-        <div class="cash-block"><div class="cash-label">Available Cash</div><div class="cash-value" id="cf_avail">—</div></div>
-        <div class="cash-block"><div class="cash-label">Projected 10-Day Ending Cash</div><div class="cash-value" id="cf_proj">—</div></div>
-        <div class="cash-block"><div class="cash-label">Cash Above / (Below) $12K Floor</div><div class="cash-value" id="cf_above">—</div></div>
-        <div class="cash-block" style="border:1px solid var(--border2)"><div class="cash-label">Decision</div><div id="cf_decision" style="font-size:13px;font-weight:500;margin-top:4px;line-height:1.4;color:var(--text3)">Enter values above</div></div>
-      </div>
-    </div>
-  </div>
-  <div class="card" style="margin-top:10px">
-    <div class="card-title">Sunday 3-Question Check</div>
-    <div class="checklist">
-      <label class="check-item"><input type="checkbox" id="cf_q1"> What's my projected 10-day ending cash? (see above)</label>
-      <label class="check-item"><input type="checkbox" id="cf_q2"> Any payments > $10K coming in next 21 days?</label>
-      <label class="check-item"><input type="checkbox" id="cf_q3"> If no income comes in, am I still above $12K?</label>
-    </div>
-    <div style="margin-top:.75rem;font-size:12px;color:var(--text3)">👉 If ANY answer is risky — do nothing. Default = no movement.</div>
-  </div>
-</div>
-
-<!-- CONTEXT -->
-<div id="panel-context" class="panel">
-  <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:.75rem;flex-wrap:wrap;gap:8px">
-    <div class="section-label" style="margin-bottom:0">My Permanent Context</div>
-    <span style="font-size:10px;color:var(--accent);font-family:'DM Mono',monospace">Tap any field to edit · saves automatically</span>
-  </div>
-  <div class="ctx-hint">This feeds every AI generation. Update Current State every Monday. Everything else is stable.</div>
-
-  <!-- CURRENT STATE FIRST -->
-  <div class="context-section" style="border-color:var(--amber);border-width:2px">
-    <h3 style="color:var(--amber)">⟳ Current State — Update Every Monday</h3>
-    <div class="context-item"><span class="key">Active opportunities</span><textarea class="editable-field" id="ctx_opps" oninput="saveContext()" placeholder="Roles you're actively pursuing — names and stages..."></textarea></div>
-    <div class="context-item"><span class="key">This week's focus</span><textarea class="editable-field" id="ctx_focus" oninput="saveContext()" placeholder="Top 3 priorities this week..."></textarea></div>
-    <div class="context-item"><span class="key">Cash flow this week</span><textarea class="editable-field" id="ctx_cashweek" oninput="saveContext()" placeholder="Any large payments, income expected, constraints..."></textarea></div>
-    <div class="context-item"><span class="key">Other context</span><textarea class="editable-field" id="ctx_custom" oninput="saveContext()" placeholder="Anything else relevant — interviews, travel, wins, risks..."></textarea></div>
-  </div>
-
-  <div class="context-section">
-    <h3>Identity &amp; Positioning</h3>
-    <div class="context-item"><span class="key">Current role</span><textarea class="editable-field" id="ctx_role" oninput="saveContext()" placeholder="Your current role and company...">Executive leader at Jabian Consulting — strategy, operations, and enterprise transformation. Multi-million dollar portfolio, trusted advisor to senior executives.</textarea></div>
-    <div class="context-item"><span class="key">Targeting</span><textarea class="editable-field" id="ctx_targeting" oninput="saveContext()" placeholder="Target roles and levels...">VP/SVP roles in AI transformation, professional services leadership, or operating model leadership. Bridge between executive strategy and scalable execution.</textarea></div>
-    <div class="context-item"><span class="key">Differentiator</span><textarea class="editable-field" id="ctx_diff" oninput="saveContext()" placeholder="What makes you different...">Not a pure strategist or technologist. The bridge between them. Translates executive strategy into scalable execution.</textarea></div>
-    <div class="context-item"><span class="key">Location &amp; life</span><textarea class="editable-field" id="ctx_life" oninput="saveContext()" placeholder="Location, family, personal context...">Atlanta, GA. Married to Wendy, 3 kids (Bailey, Bryce, Preston). Taking over family finances. Alaska cruise this summer.</textarea></div>
-  </div>
-
-  <div class="context-section">
-    <h3>Decision Framework</h3>
-    <div class="context-item"><span class="key">Priority order</span><textarea class="editable-field" id="ctx_decision" oninput="saveContext()" placeholder="How you evaluate decisions...">1. Long-term trajectory (VP/SVP scope, AI leadership) 2. Revenue ownership and impact 3. Speed to credible role 4. Compensation: $275K+ base, 20-30% bonus 5. Lifestyle (family, travel)</textarea></div>
-    <div class="context-item"><span class="key">Role filters</span><textarea class="editable-field" id="ctx_filters" oninput="saveContext()" placeholder="Must have / avoid...">MUST HAVE: VP/SVP scope, enterprise impact, AI/transformation relevance, clear outcome ownership. AVOID: Pure advisory, narrow functional roles, low-visibility internal roles.</textarea></div>
-  </div>
-
-  <div class="context-section">
-    <h3>Job Search System</h3>
-    <div class="context-item"><span class="key">Targets</span><textarea class="editable-field" id="ctx_jobsearch" oninput="saveContext()" placeholder="Weekly targets and pipeline goals...">5 outreach/week · 2+ conversations/week · 3-5 active interview processes. Bottleneck: top of funnel — not enough interviews.</textarea></div>
-    <div class="context-item"><span class="key">Tools built</span><textarea class="editable-field" id="ctx_jobtools" oninput="saveContext()" placeholder="Job search tools and systems...">Arc Fit Coach GPT (built, active). TAH Knowledge Base in NotebookLM (active). Excel relationship tracker (60+ contacts).</textarea></div>
-  </div>
-
-  <div class="context-section">
-    <h3>Jabian Work</h3>
-    <div class="context-item"><span class="key">Current state</span><textarea class="editable-field" id="ctx_jabian" oninput="saveContext()" placeholder="Active clients, BD, current focus...">4+ active client engagements. Delivery + BD running simultaneously. Dedicated Jabian ChatGPT instance active. Jabian Claude instance coming soon.</textarea></div>
-  </div>
-
-  <div class="context-section">
-    <h3>Operating Model</h3>
-    <div class="context-item"><span class="key">Daily</span><textarea class="editable-field" id="ctx_daily" oninput="saveContext()">Google Keep → time blocking → calendar. Process Keep AM + PM. AI plugs into this, doesn't replace it.</textarea></div>
-    <div class="context-item"><span class="key">Weekly rhythm</span><textarea class="editable-field" id="ctx_weekly" oninput="saveContext()">Monday: pipeline + outreach prioritization. Sunday: cash flow review + system reset. Success: 5 outreach, 2+ conversations, 1+ forward-moving opportunity, 1 build session.</textarea></div>
-    <div class="context-item"><span class="key">Hard rules</span><textarea class="editable-field" id="ctx_rules" oninput="saveContext()">Post-call: next touch date always set before closing OneNote. Cash: default = no movement. Commissions = $0 until received. Build it and use it same week.</textarea></div>
-  </div>
-
-  <div class="context-section">
-    <h3>AI Tools</h3>
-    <div class="context-item"><span class="key">ChatGPT</span><textarea class="editable-field" id="ctx_chatgpt" oninput="saveContext()">Primary thinking — strategy, outreach, retirement modeling, open-ended exploration.</textarea></div>
-    <div class="context-item"><span class="key">Claude</span><textarea class="editable-field" id="ctx_claude" oninput="saveContext()">Output engine — call briefs, interview prep, deliverables. Runs this dashboard.</textarea></div>
-    <div class="context-item"><span class="key">NotebookLM</span><textarea class="editable-field" id="ctx_nblm" oninput="saveContext()">TAH Knowledge Base — project history for resume + interview prep.</textarea></div>
-    <div class="context-item"><span class="key">Excel</span><textarea class="editable-field" id="ctx_excel" oninput="saveContext()">60+ relationship tracker — system of record for job search + Jabian BD.</textarea></div>
-    <div class="context-item"><span class="key">OneNote</span><textarea class="editable-field" id="ctx_onenote" oninput="saveContext()">Contact intel and meeting notes per person.</textarea></div>
-  </div>
-
-  <div class="context-section">
-    <h3>Personal &amp; Financial</h3>
-    <div class="context-item"><span class="key">Cash flow</span><textarea class="editable-field" id="ctx_cash" oninput="saveContext()">Phase 1 through June 7. AMEX ~$35K hits May 27. Floor $12K, warning $10K. No transfers May 10–27. Weekly Sunday review is control mechanism.</textarea></div>
-    <div class="context-item"><span class="key">2026 savings</span><textarea class="editable-field" id="ctx_savings" oninput="saveContext()">$61K retirement · $6K 529s · $9.5K travel. Tight but works with execution discipline.</textarea></div>
-  </div>
-
-  <div class="context-section">
-    <h3>Output Expectations</h3>
-    <div class="context-item"><span class="key">How to respond</span><textarea class="editable-field" id="ctx_output" oninput="saveContext()">Concise, structured, executive-level. High-ROI actions only. Push back on weak ideas. Specific actions not general advice. Frameworks and clear prioritization. No generic recommendations.</textarea></div>
-    <div class="context-item"><span class="key">Known gaps</span><textarea class="editable-field" id="ctx_gaps" oninput="saveContext()">No reusable positioning asset. Inconsistent post-call next-touch discipline. High media consumption not converting to reusable output.</textarea></div>
-  </div>
-</div>
-
-<!-- HISTORY -->
-<div id="panel-history" class="panel">
-  <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:1rem">
-    <div class="section-label" style="margin-bottom:0">Saved Weeks</div>
-    <button class="action-btn" onclick="exportAllHistory()">Export all history</button>
-  </div>
-  <div id="historyList"><div style="color:var(--text3);font-size:13px;text-align:center;padding:2rem">No saved weeks yet. Generate your first plan and it will appear here.</div></div>
-</div>
-
-<!-- IDEAS KANBAN -->
-<div id="panel-ideas" class="panel">
-  <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:1rem;flex-wrap:wrap;gap:8px">
-    <div class="section-label" style="margin-bottom:0">Ideas <span id="ideasBadge" style="display:none;background:var(--accent);color:#000;border-radius:20px;padding:1px 8px;font-size:10px;font-weight:700;margin-left:6px"></span></div>
-    <div style="display:flex;gap:6px;align-items:center">
-      <button class="action-btn" onclick="showArchive()" id="archiveLink">View archived</button>
-      <button class="action-btn" onclick="exportIdeas()">Export</button>
-    </div>
-  </div>
-
-  <!-- Add idea form -->
-  <div class="card" style="margin-bottom:1.25rem">
-    <div class="card-title">+ New idea</div>
-    <div class="field" style="margin-bottom:8px"><input type="text" id="idea_text" placeholder="e.g. Build outreach generator prompt" onkeydown="if(event.key==='Enter')addIdea()"></div>
-    <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:flex-end">
-      <div class="field" style="margin-bottom:0;flex:1;min-width:100px"><label>Status</label>
-        <select id="idea_status">
-          <option value="not-started" selected>Not Started</option>
-          <option value="in-progress">In Progress</option>
-          <option value="completed">Completed</option>
-        </select>
-      </div>
-      <div class="field" style="margin-bottom:0;flex:1;min-width:100px"><label>Priority</label>
-        <select id="idea_priority"><option value="high">🔴 High</option><option value="medium" selected>🟡 Medium</option><option value="low">⚪ Low</option></select>
-      </div>
-      <div class="field" style="margin-bottom:0;flex:2;min-width:120px"><label>Area</label>
-        <select id="idea_area"><option value="job-search">Job Search</option><option value="jabian">Jabian</option><option value="personal">Personal</option><option value="cash-flow">Cash Flow</option><option value="ux">UX/Design</option><option value="ai">AI/Prompts</option><option value="other">Other</option></select>
-      </div>
-      <button onclick="addIdea()" style="padding:.52rem 1.25rem;background:var(--accent);color:#000;border:none;border-radius:var(--radius-sm);font-family:'DM Sans',sans-serif;font-size:13px;font-weight:600;cursor:pointer;white-space:nowrap;touch-action:manipulation">Add</button>
-    </div>
-  </div>
-
-  <!-- Kanban columns -->
-  <div class="kanban-board">
-    <div class="kanban-col" id="col-not-started" ondragover="onDragOver(event)" ondrop="onDrop(event,'not-started')">
-      <div class="kanban-col-header">
-        <span class="kanban-col-title">Not Started</span>
-        <span class="kanban-col-count" id="count-not-started">0</span>
-      </div>
-      <div class="kanban-cards" id="cards-not-started"></div>
-    </div>
-    <div class="kanban-col" id="col-in-progress" ondragover="onDragOver(event)" ondrop="onDrop(event,'in-progress')">
-      <div class="kanban-col-header">
-        <span class="kanban-col-title" style="color:var(--amber)">In Progress</span>
-        <span class="kanban-col-count" id="count-in-progress">0</span>
-      </div>
-      <div class="kanban-cards" id="cards-in-progress"></div>
-    </div>
-    <div class="kanban-col" id="col-completed" ondragover="onDragOver(event)" ondrop="onDrop(event,'completed')">
-      <div class="kanban-col-header">
-        <span class="kanban-col-title" style="color:var(--accent)">Completed</span>
-        <span class="kanban-col-count" id="count-completed">0</span>
-      </div>
-      <div class="kanban-cards" id="cards-completed"></div>
-    </div>
-  </div>
-
-  <!-- Archive panel (hidden by default) -->
-  <div id="archivePanel" style="display:none;margin-top:1.5rem">
-    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:.75rem">
-      <div class="section-label" style="margin-bottom:0;font-size:11px">Archived Ideas</div>
-      <button class="action-btn" onclick="hideArchive()">Hide archive</button>
-    </div>
-    <div id="archiveList"></div>
-  </div>
-</div>
-
-</div>
-
-<!-- EDIT MODAL -->
-<div class="modal-overlay" id="editModal" onclick="if(event.target===this)closeEditModal()">
-  <div class="modal">
-    <div class="modal-title">Edit idea</div>
-    <input type="hidden" id="edit_id">
-    <div class="field"><label>Idea</label><input type="text" id="edit_text"></div>
-    <div class="field"><label>Notes</label><textarea id="edit_notes" style="min-height:60px"></textarea></div>
-    <div class="grid-2" style="gap:8px">
-      <div class="field"><label>Status</label>
-        <select id="edit_status" style="width:100%;background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--text);font-family:'DM Sans',sans-serif;font-size:13px;padding:.5rem .7rem;outline:none">
-          <option value="not-started">Not Started</option>
-          <option value="in-progress">In Progress</option>
-          <option value="completed">Completed</option>
-        </select>
-      </div>
-      <div class="field"><label>Priority</label>
-        <select id="edit_priority" style="width:100%;background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--text);font-family:'DM Sans',sans-serif;font-size:13px;padding:.5rem .7rem;outline:none">
-          <option value="high">🔴 High</option><option value="medium">🟡 Medium</option><option value="low">⚪ Low</option>
-        </select>
-      </div>
-    </div>
-      <div class="field"><label>Area</label>
-        <select id="edit_area" style="width:100%;background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--text);font-family:'DM Sans',sans-serif;font-size:13px;padding:.5rem .7rem;outline:none">
-          <option value="job-search">Job Search</option><option value="jabian">Jabian</option><option value="personal">Personal</option><option value="cash-flow">Cash Flow</option><option value="ux">UX / Design</option><option value="ai">AI / Prompts</option><option value="other">Other</option>
-        </select>
-      </div>
-    </div>
-    <div class="field"><label>Target date</label><input type="date" id="edit_target" style="width:100%;background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--text);font-family:'DM Sans',sans-serif;font-size:13px;padding:.5rem .7rem;outline:none;color-scheme:dark"></div>
-    <div class="modal-actions">
-      <button class="btn-secondary" onclick="closeEditModal()">Cancel</button>
-      <button class="btn-primary" onclick="saveEditIdea()">Save changes</button>
-    </div>
-  </div>
-</div>
-
-<div class="save-indicator" id="saveIndicator">✓ Saved</div>
 
 <script>
-// ══ SUPABASE SETUP ════════════════════════════
-const SUPABASE_URL = 'https://usayoldrawwmjsmretin.supabase.co';
-const SUPABASE_KEY = 'sb_publishable_cAG55YikfpgFzBYEyDthZQ_1rQB6x9W';
-const sb = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
-let currentUser = null;
-let syncTimer = null;
+const EF_ORIG=24738.88,EF_NEW=21738.88;
+const START_CHK=12037.73,START_SAV=6522.77,START_AMX=99.75,START_TAX=0,START_LC=16738.88;
+const EF_SAV_XFR=2750,EF_CHK_XFR=2250,BASE_TAX=521.36,RET_SAV_XFR=3772.74;
+const COMM_TAX=707.18,COMM_AK=1060.76;
+const OP_FL=3000,TR_FL=1500,MIN_XFR=100,AK_START=5;
 
-// ══ AUTH ══════════════════════════════════════
-async function signInWithGoogle() {
-  const { error } = await sb.auth.signInWithOAuth({
-    provider: 'google',
-    options: { redirectTo: window.location.origin + window.location.pathname }
-  });
-  if (error) {
-    const el = document.getElementById('loginError');
-    el.textContent = error.message;
-    el.style.display = 'block';
+const WD=[
+  [1,'Jun 8-14',false,false,3000,[],[791],[{l:'Kia payment (6/7)',t:'ob',a:-791}],0,0],
+  [2,'Jun 15-21',false,false,9477,[2552.5],[],[{l:'Wendy paycheck + extra $400 (6/19)',t:'in',a:2552.5}],0,0],
+  [3,'Jun 22-28',false,false,4648,[5816.5],[5925.13,6368.48],[{l:'Adam paycheck (6/22)',t:'in',a:5816.5},{l:'Disney Visa $5,925.13 due 6/23 (Winshape $2,349 + party $673)',t:'ob',a:-5925.13},{l:'AMEX Platinum $6,368.48 due 6/27 — LAST major Platinum bill',t:'ob',a:-6368.48}],0,0],
+  [4,'Jun 29-Jul 5',true,false,1500,[2152.5],[2000,2000,1300],[{l:'Rent $2,000 — Zelle to Tiffany Dye (7/1)',t:'ob',a:-2000},{l:'Rent $2,000 — Zelle to Tiffany Dye (7/2)',t:'ob',a:-2000},{l:'Wendy paycheck (7/3)',t:'in',a:2152.5},{l:'Rent $1,300 — Zelle to Tiffany Dye (7/3, late day)',t:'ob',a:-1300}],0,0],
+  [5,'Jul 6-12',false,false,4191,[5816.5],[791],[{l:'Adam paycheck (7/7)',t:'in',a:5816.5},{l:'Kia payment (7/7)',t:'ob',a:-791}],0,0],
+  [6,'Jul 13-19',false,false,3000,[1767.94,2152.5],[5500],[{l:'AMEX Gold ~$5,500 due 7/17 (first statement)',t:'ob',a:-5500},{l:'Wendy Deep South commission $1,767.94 (7/15)',t:'in',a:1767.94},{l:'Wendy paycheck (7/17)',t:'in',a:2152.5}],COMM_TAX,COMM_AK],
+  [7,'Jul 20-26',false,false,3148,[5816.5],[3500],[{l:'Adam paycheck (7/22)',t:'in',a:5816.5},{l:'Disney Visa ~$3,500 due ~7/23',t:'ob',a:-3500}],0,0],
+  [8,'Jul 27-Aug 2',true,false,1500,[2552.5],[200,2000,2000],[{l:'AMEX Platinum ~$200 due ~7/27 (stragglers — last Platinum bill)',t:'ob',a:-200},{l:'Wendy paycheck + extra $400 (7/31)',t:'in',a:2552.5},{l:'Rent $2,000 — Zelle to Tiffany Dye (8/1)',t:'ob',a:-2000},{l:'Rent $2,000 — Zelle to Tiffany Dye (8/2)',t:'ob',a:-2000}],0,0],
+  [9,'Aug 3-9',false,false,3779,[5816.5],[1300,791],[{l:'Rent $1,300 — Zelle to Tiffany Dye (8/3)',t:'ob',a:-1300},{l:'Adam paycheck (8/7)',t:'in',a:5816.5},{l:'Kia payment (8/7)',t:'ob',a:-791}],0,0],
+  [10,'Aug 10-16',false,false,5931,[2152.5],[],[{l:'Wendy paycheck (8/14)',t:'in',a:2152.5}],0,0],
+  [11,'Aug 17-23',false,false,4248,[5816.5],[5500,3500],[{l:'AMEX Gold ~$5,500 due 8/17',t:'ob',a:-5500},{l:'Adam paycheck (8/21 — shifted from Sat 8/22)',t:'in',a:5816.5},{l:'Disney Visa ~$3,500 due ~8/23',t:'ob',a:-3500}],0,0],
+  [12,'Aug 24-30',false,false,5300,[2552.5],[],[{l:'Wendy paycheck + extra $400 (8/28)',t:'in',a:2552.5}],0,0],
+  [13,'Aug 31-Sep 6',true,false,1500,[],[2000,2000,1300],[{l:'Rent $2,000 — Zelle to Tiffany Dye (9/1)',t:'ob',a:-2000},{l:'Rent $2,000 — Zelle to Tiffany Dye (9/2)',t:'ob',a:-2000},{l:'Rent $1,300 — Zelle to Tiffany Dye (9/3)',t:'ob',a:-1300}],0,0],
+  [14,'Sep 7-13',false,false,8500,[5816.5,2152.5],[791],[{l:'Adam paycheck (9/7)',t:'in',a:5816.5},{l:'Kia payment (9/7)',t:'ob',a:-791},{l:'Wendy paycheck (9/11)',t:'in',a:2152.5}],0,0],
+  [15,'Sep 14-20',false,false,3000,[],[5500],[{l:'AMEX Gold ~$5,500 due 9/17',t:'ob',a:-5500}],0,0],
+  [16,'Sep 21-27',false,false,6800,[5816.5,2552.5],[3500],[{l:'Adam paycheck (9/22)',t:'in',a:5816.5},{l:'Disney Visa ~$3,500 due ~9/23',t:'ob',a:-3500},{l:'Wendy paycheck + extra $400 (9/25)',t:'in',a:2552.5}],0,0],
+  [17,'Sep 28-Oct 4',true,false,1500,[],[2000,2000,1300],[{l:'Rent $2,000 — Zelle to Tiffany Dye (10/1)',t:'ob',a:-2000},{l:'Rent $2,000 — Zelle to Tiffany Dye (10/2)',t:'ob',a:-2000},{l:'Rent $1,300 — Zelle to Tiffany Dye (10/3)',t:'ob',a:-1300}],0,0],
+  [18,'Oct 5-11',false,false,8500,[5816.5,2152.5],[791],[{l:'Adam paycheck (10/7)',t:'in',a:5816.5},{l:'Kia payment (10/7)',t:'ob',a:-791},{l:'Wendy paycheck (10/9)',t:'in',a:2152.5}],0,0],
+  [19,'Oct 12-18',false,false,3000,[],[5500],[{l:'AMEX Gold ~$5,500 due ~10/16',t:'ob',a:-5500}],0,0],
+  [20,'Oct 19-25',false,false,3500,[5816.5,2552.5],[3500],[{l:'Adam paycheck (10/22)',t:'in',a:5816.5},{l:'Disney Visa ~$3,500 due ~10/23',t:'ob',a:-3500},{l:'Wendy paycheck + extra $400 (10/23)',t:'in',a:2552.5}],0,0],
+  [21,'Oct 26-Nov 1',true,false,1500,[],[2000],[{l:'Rent $2,000 — Zelle to Tiffany Dye (11/1)',t:'ob',a:-2000}],0,0],
+  [22,'Nov 2-8',false,false,3000,[5816.5],[2000,1300,791],[{l:'Rent $2,000 — Zelle to Tiffany Dye (11/2)',t:'ob',a:-2000},{l:'Rent $1,300 — Zelle to Tiffany Dye (11/3)',t:'ob',a:-1300},{l:'Adam paycheck (11/6 — shifted from Sat 11/7)',t:'in',a:5816.5},{l:'Kia payment (11/7)',t:'ob',a:-791}],0,0],
+  [23,'Nov 9-15',false,false,3000,[],[],[],0,0],
+  [24,'Nov 16-22',false,false,6800,[5816.5,2552.5],[5500],[{l:'AMEX Gold ~$5,500 due ~11/17',t:'ob',a:-5500},{l:'Adam paycheck (11/20 — shifted from Sun 11/22)',t:'in',a:5816.5},{l:'Wendy paycheck + extra $400 (11/20 — last Nov paycheck)',t:'in',a:2552.5}],0,0],
+  [25,'Nov 23-29',false,false,6800,[],[3500],[{l:'Disney Visa ~$3,500 due ~11/23',t:'ob',a:-3500}],0,0],
+  [26,'Nov 30-Dec 6',true,true,1500,[],[2000,2000,1300],[{l:'Rent $2,000 — Zelle to Tiffany Dye (12/1)',t:'ob',a:-2000},{l:'Rent $2,000 — Zelle to Tiffany Dye (12/2)',t:'ob',a:-2000},{l:'Rent $1,300 — Zelle to Tiffany Dye (12/3)',t:'ob',a:-1300}],0,0],
+  [27,'Dec 7-13',false,false,3779,[5816.5],[791],[{l:'Adam paycheck (12/7)',t:'in',a:5816.5},{l:'Kia payment (12/7)',t:'ob',a:-791}],0,0],
+  [28,'Dec 14-20',false,true,3000,[2552.5],[5500],[{l:'AMEX Gold ~$5,500 due ~12/17',t:'ob',a:-5500},{l:'Wendy paycheck + extra $400 (12/18 — last Dec paycheck)',t:'in',a:2552.5}],0,0],
+  [29,'Dec 21-27',false,false,3148,[5816.5],[3500],[{l:'Adam paycheck (12/22)',t:'in',a:5816.5},{l:'Disney Visa ~$3,500 due ~12/23',t:'ob',a:-3500}],0,0],
+  [30,'Dec 28-Jan 3',true,true,1500,[2152.5],[2000,2000,1300],[{l:'Wendy paycheck (12/31 — Jan 1 holiday-shifted)',t:'in',a:2152.5},{l:'Rent $2,000 — Zelle to Tiffany Dye (1/1)',t:'ob',a:-2000},{l:'Rent $2,000 — Zelle to Tiffany Dye (1/2)',t:'ob',a:-2000},{l:'Rent $1,300 — Zelle to Tiffany Dye (1/3, late day)',t:'ob',a:-1300}],0,0],
+  [31,'Jan 4-10 2027',false,false,3000,[5816.5],[791],[{l:'Adam paycheck (1/7)',t:'in',a:5816.5},{l:'Kia payment (1/7)',t:'ob',a:-791}],0,0],
+];
+
+function runModel(akGoal,rtGoal){
+  const retChkGoal=Math.max(0,Math.round((rtGoal-START_AMX-RET_SAV_XFR)*100)/100);
+  let chk=START_CHK,sav=START_SAV,amx=START_AMX,tax=START_TAX,lc=START_LC;
+  let efSav=EF_SAV_XFR,efChk=EF_CHK_XFR,taxTodo=BASE_TAX;
+  let alaska=akGoal,retSav=RET_SAV_XFR,retChk=retChkGoal;
+  const weeks=[];
+  function r(n){return Math.round(n*100)/100}
+  function sm(b,a,f){return Math.max(0,Math.min(r(a),r(r(b)-r(f))))}
+  for(const wd of WD){
+    const[num,dates,trough,managed,holdFloor,inflows,obs,evs,ct,ca]=wd;
+    const baseFl=trough?TR_FL:OP_FL;
+    const effFl=Math.max(baseFl,holdFloor);
+    for(const a of inflows)chk=r(chk+a);
+    for(const a of obs)chk=r(chk-a);
+    const tr=[],ac=[];
+    const fn='$'+effFl.toLocaleString()+(effFl>baseFl?' (covers upcoming obligations)':'');
+    function mv(amt,dst){
+      const m=r(sm(chk,amt,effFl));
+      if(m<=0)return 0;
+      if(m<MIN_XFR)return -m;
+      chk=r(chk-m);
+      if(dst==='lc')lc=r(lc+m);else if(dst==='tax')tax=r(tax+m);
+      else if(dst==='sav')sav=r(sav+m);else if(dst==='amx')amx=r(amx+m);
+      return m;
+    }
+    function mvS(amt,dst){const m=r(amt);sav=r(sav-m);if(dst==='lc')lc=r(lc+m);else if(dst==='amx')amx=r(amx+m);return m;}
+    if(ct>0){const m=mv(ct,'tax');if(m>0){tr.push({l:'Commission 40% $'+ct.toFixed(2)+' Checking → Tax HYSA',r:'done',rsn:'Post $'+chk.toFixed(2)+' >= '+fn});ac.push('Transfer $'+ct.toFixed(2)+' from Truist Checking to Tax HYSA (commission 40%)');}else{taxTodo=r(taxTodo+ct);tr.push({l:'Commission 40% $'+ct.toFixed(2)+' deferred → tax pending',r:'defer',rsn:'No surplus above '+fn+' — picks up next eligible week'});}}
+    if(ca>0&&alaska>0&&num>=AK_START){const m=mv(Math.min(ca,alaska),'sav');if(m>0){alaska=r(alaska-m);tr.push({l:'Commission 60% $'+m.toFixed(2)+' Checking → Truist Savings (Alaska)',r:'done',rsn:'Post $'+chk.toFixed(2)+' >= '+fn});ac.push('Transfer $'+m.toFixed(2)+' from Truist Checking to Truist Savings (Alaska)');}else tr.push({l:'Commission 60% $'+ca.toFixed(2)+' deferred',r:'defer',rsn:'No surplus above '+fn});}
+    if(efSav>0){const m=mvS(efSav,'lc');efSav=0;tr.push({l:'EF $'+m.toFixed(2)+' Truist Savings → Lending Club',r:'done',rsn:'Savings move — zero checking impact'});ac.push('Transfer $'+m.toFixed(2)+' from Truist Savings to Lending Club (EF restoration)');}
+    if(efChk>0){const m=mv(efChk,'lc');if(m>0){efChk=r(efChk-m);const rem=efChk>0?' — $'+efChk.toFixed(2)+' carries forward':' — complete';tr.push({l:'EF $'+m.toFixed(2)+' Checking → Lending Club'+rem,r:'done',rsn:'Post $'+chk.toFixed(2)+' >= '+fn});ac.push('Transfer $'+m.toFixed(2)+' from Truist Checking to Lending Club (EF restoration)');}else tr.push({l:'EF $'+efChk.toFixed(2)+' Checking → Lending Club',r:'defer',rsn:'Post-obligations $'+chk.toFixed(2)+' — no surplus above '+fn});}
+    if(taxTodo>0&&ct===0){const m=mv(taxTodo,'tax');if(m>0){taxTodo=r(taxTodo-m);const rem=taxTodo>0?' — $'+taxTodo.toFixed(2)+' carries forward':'';tr.push({l:'Tax $'+m.toFixed(2)+' Checking → Tax HYSA'+rem,r:'done',rsn:'Post $'+chk.toFixed(2)+' >= '+fn});ac.push('Transfer $'+m.toFixed(2)+' from Truist Checking to Tax HYSA');}else tr.push({l:'Tax $'+taxTodo.toFixed(2)+' Checking → Tax HYSA',r:'defer',rsn:'Post-obligations $'+chk.toFixed(2)+' — no surplus above '+fn});}
+    if(alaska>0&&num>=AK_START&&efChk===0&&taxTodo===0&&ca===0){const m=mv(alaska,'sav');if(m>0){alaska=r(alaska-m);const rem=alaska>0?' — $'+alaska.toFixed(2)+' remaining':' — Alaska funded!';tr.push({l:'Alaska $'+m.toFixed(2)+' Checking → Truist Savings'+rem,r:'done',rsn:'Post $'+chk.toFixed(2)+' >= '+fn});ac.push('Transfer $'+m.toFixed(2)+' from Truist Checking to Truist Savings (Alaska fund)');}else{const pot=r(sm(chk,alaska,effFl));if(pot>0&&pot<MIN_XFR)tr.push({l:'Alaska $'+pot.toFixed(2)+' suppressed (<$100) — rolls forward',r:'info',rsn:'Too small; carries to next eligible week'});else tr.push({l:'Alaska surplus deferred',r:'defer',rsn:'Post-obligations $'+chk.toFixed(2)+' — no surplus above '+fn});}}
+    if(retSav>0&&alaska===0){const m=mvS(retSav,'amx');retSav=0;tr.push({l:'Retirement $'+m.toFixed(2)+' Truist Savings → AMEX Savings',r:'done',rsn:'Savings move — zero checking impact'});ac.push('Transfer $'+m.toFixed(2)+' from Truist Savings to AMEX Savings (retirement)');}
+    if(retChk>0&&alaska===0&&efChk===0){const m=mv(retChk,'amx');if(m>0){retChk=r(retChk-m);const rem=retChk>0?' — $'+retChk.toFixed(2)+' remaining':' — retirement funded!';tr.push({l:'Retirement $'+m.toFixed(2)+' Checking → AMEX Savings'+rem,r:'done',rsn:'Post $'+chk.toFixed(2)+' >= '+fn});ac.push('Transfer $'+m.toFixed(2)+' from Truist Checking to AMEX Savings (retirement rebuild)');}else{const pot=r(sm(chk,retChk,effFl));if(pot>0&&pot<MIN_XFR)tr.push({l:'Retirement $'+pot.toFixed(2)+' suppressed (<$100) — rolls forward',r:'info',rsn:'Too small; carries to next eligible week'});else tr.push({l:'Retirement surplus deferred',r:'defer',rsn:'Post-obligations $'+chk.toFixed(2)+' — no surplus above '+fn});}}
+    if(!tr.length){tr.push({l:'No transfers this week',r:'info',rsn:'No surplus above floor after obligations'});ac.push('No transfers this week — monitor balances');}
+    weeks.push({num,dates,trough,managed,evs,tr,ac,chk:r(chk),sav:r(sav),amx:r(amx),tax:r(tax),lc:r(lc),akSaved:r(akGoal-alaska),akRem:r(alaska),retRem:r(retChk),ol:r(chk+sav)});
   }
+  return weeks;
 }
 
-async function signOut() {
-  await sb.auth.signOut();
-  currentUser = null;
-  showLogin();
+function f(n){return '$'+Math.abs(n).toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2})}
+
+function getMilestones(weeks,ak,rt){
+  const efW=weeks.find(w=>w.lc>=EF_NEW-0.01)||weeks[weeks.length-1];
+  const akW=weeks.find(w=>w.akRem<=0.01);
+  const rtW=weeks.find(w=>w.retRem<=0.01);
+  return[
+    {week:'Week '+efW.num+' · '+efW.dates.split('-')[0].trim(),label:'EF restored to $21,738.88'},
+    {week:akW?'Week '+akW.num+' · '+akW.dates.split('-')[0].trim():'Beyond Week 31',label:'Alaska '+f(ak)+' fully funded'},
+    {week:rtW?'Week '+rtW.num+' · '+rtW.dates.split('-')[0].trim():'Dec–Jan 2027',label:'Retirement target '+f(rt)+' reached'},
+  ];
 }
 
-function showLogin() {
-  const ls = document.getElementById('loginScreen');
-  ls.style.display = 'flex';
-  document.getElementById('signOutBtn').style.display = 'none';
+let activeW=1;
+function getGoals(){return{ak:Math.max(1000,parseFloat(document.getElementById('akGoal').value)||7000),rt:Math.max(1000,parseFloat(document.getElementById('rtGoal').value)||7690.98)};}
+function goWeek(dir){
+  const{ak,rt}=getGoals();const weeks=runModel(ak,rt);
+  const idx=weeks.findIndex(w=>w.num===activeW);
+  const nxt=weeks[idx+dir];
+  if(nxt){activeW=nxt.num;render();window.scrollTo({top:document.getElementById('display').offsetTop-10,behavior:'smooth'});}
 }
 
-async function showApp(user) {
-  currentUser = user;
-  document.getElementById('loginScreen').style.display = 'none';
-  document.getElementById('signOutBtn').style.display = 'block';
-  await initApp();
-}
+function render(){
+  const{ak,rt}=getGoals();
+  const weeks=runModel(ak,rt);
+  const w=weeks.find(x=>x.num===activeW)||weeks[0];
+  const retChkGoal=Math.max(0,Math.round((rt-START_AMX-RET_SAV_XFR)*100)/100);
 
-// ══ CLOUD SYNC ════════════════════════════════
-function flashSync(state = 'saved') {
-  const el = document.getElementById('syncStatus');
-  const dot = document.getElementById('syncDot');
-  const txt = document.getElementById('syncText');
-  if (!el) return;
-  if (state === 'saving') { dot.style.background = 'var(--amber)'; txt.textContent = 'Saving...'; }
-  else if (state === 'saved') { dot.style.background = 'var(--accent)'; txt.textContent = 'Saved'; }
-  else { dot.style.background = 'var(--red)'; txt.textContent = 'Error'; }
-  el.style.opacity = '1';
-  clearTimeout(window._syncTimer);
-  window._syncTimer = setTimeout(() => el.style.opacity = '0', 2000);
-}
+  // milestones
+  const ms=getMilestones(weeks,ak,rt);
+  document.getElementById('milestones').innerHTML=ms.map(m=>`<div class="milestone"><div class="ms-week">${m.week}</div><div class="ms-label">${m.label}</div></div>`).join('');
 
-async function cloudSave(key, value) {
-  if (!currentUser) return;
-  try {
-    const { error } = await sb.from('dashboard_data').upsert({
-      user_id: currentUser.id,
-      data_key: key,
-      data_value: JSON.stringify(value),
-      updated_at: new Date().toISOString()
-    }, { onConflict: 'user_id,data_key' });
-    if (error) throw error;
-    flashSync('saved');
-  } catch (e) { console.error('Save error:', e); flashSync('error'); }
-}
+  // progress
+  document.getElementById('efVal').textContent=f(w.lc)+' / '+f(EF_ORIG)+' (gap: $3,000 reclassified)';
+  document.getElementById('efBar').style.width=Math.min(100,+(w.lc/EF_ORIG*100).toFixed(1))+'%';
+  document.getElementById('akVal').textContent=f(w.akSaved)+' / '+f(ak);
+  document.getElementById('akBar').style.width=Math.min(100,+(w.akSaved/ak*100).toFixed(1))+'%';
+  document.getElementById('rtVal').textContent=f(w.amx)+' / '+f(rt);
+  document.getElementById('rtBar').style.width=Math.min(100,+(w.amx/rt*100).toFixed(1))+'%';
 
-async function cloudLoadAll() {
-  if (!currentUser) return {};
-  try {
-    const { data, error } = await sb.from('dashboard_data')
-      .select('data_key, data_value')
-      .eq('user_id', currentUser.id);
-    if (error || !data) return {};
-    const result = {};
-    data.forEach(row => {
-      try { result[row.data_key] = JSON.parse(row.data_value); }
-      catch { result[row.data_key] = row.data_value; }
-    });
-    return result;
-  } catch { return {}; }
-}
-
-// ══ PERSISTENCE ═══════════════════════════════
-const PERSIST_IDS = ['m_opps','m_outreach','m_primary_move','m_client_meetings','m_deliverables','m_bd','m_finance','m_personal','m_fitness','m_build','m_build_use','m_keep','m_good_week','s_outreach_done','s_calls_done','s_next_touch','s_pipeline','s_net_worked','s_touch_set','s_delivered','s_at_risk','s_cash_done','s_finance_progress','s_workouts','s_worked','s_didnt','s_build_done','s_adjustment','cf_checking','cf_allocated','cf_outflows','cf_inflows','cf_large','cf_notes','cf_q1','cf_q2','cf_q3'];
-
-function saveField(id) {
-  const el = document.getElementById(id); if (!el) return;
-  const val = el.type === 'checkbox' ? el.checked : el.value;
-  flashSync('saving');
-  clearTimeout(syncTimer);
-  syncTimer = setTimeout(() => cloudSave('field_' + id, val), 800);
-}
-
-function loadFields(allData) {
-  PERSIST_IDS.forEach(id => {
-    const val = allData['field_' + id];
-    if (val === undefined) return;
-    const el = document.getElementById(id); if (!el) return;
-    if (el.type === 'checkbox') el.checked = val; else el.value = val;
+  // desktop button nav
+  const nav=document.getElementById('nav');
+  nav.innerHTML='';
+  weeks.forEach(wx=>{
+    const b=document.createElement('button');
+    let cls='wbtn';
+    if(wx.managed)cls+=' managed';else if(wx.trough)cls+=' trough';
+    if(wx.num===activeW)cls+=' active';
+    b.className=cls;
+    b.innerHTML='<span class="wn">Week '+wx.num+'</span><span class="wd">'+wx.dates+'</span>';
+    b.onclick=()=>{activeW=wx.num;render();};
+    nav.appendChild(b);
   });
-  calcCashFlow();
-}
 
-function wireAutoSave() {
-  PERSIST_IDS.forEach(id => {
-    const el = document.getElementById(id); if (!el) return;
-    el.addEventListener(el.type === 'checkbox' ? 'change' : 'input', () => saveField(id));
-  });
-}
-
-function saveContext() {
-  const ctx = {};
-  document.querySelectorAll('[id^="ctx_"]').forEach(el => ctx[el.id] = el.value);
-  clearTimeout(syncTimer);
-  syncTimer = setTimeout(() => cloudSave('context', ctx), 800);
-}
-
-function loadContext(allData) {
-  const ctx = allData['context'];
-  if (!ctx) return;
-  Object.entries(ctx).forEach(([id, v]) => {
-    const el = document.getElementById(id);
-    if (el) { el.value = v; autoResize(el); }
-  });
-}
-
-function saveOutput(key, raw) { cloudSave('output_' + key, raw); }
-
-function loadOutputs(allData) {
-  ['monday', 'sunday'].forEach(key => {
-    const raw = allData['output_' + key];
-    if (!raw) return;
-    const r = document.getElementById(key + 'Result');
-    const rw = document.getElementById(key + 'Raw');
-    const od = document.getElementById(key + 'Output');
-    if (r && rw && od) { rw.value = raw; r.innerHTML = renderMarkdown(raw); od.style.display = 'block'; }
-  });
-}
-
-function autoResize(el) { el.style.height = 'auto'; el.style.height = el.scrollHeight + 'px'; }
-
-// ══ HISTORY ═══════════════════════════════════
-async function saveToHistory(type, output) {
-  const allData = await cloudLoadAll();
-  const history = allData['weeklyHistory'] || [];
-  history.unshift({ type, date: new Date().toISOString(), output });
-  const trimmed = history.slice(0, 30);
-  await cloudSave('weeklyHistory', trimmed);
-  window._historyCache = trimmed;
-  renderHistory(trimmed);
-}
-
-function renderHistory(history) {
-  history = history || window._historyCache || [];
-  const el = document.getElementById('historyList'); if (!el) return;
-  if (!history.length) { el.innerHTML = '<div style="color:var(--text3);font-size:13px;text-align:center;padding:2rem">No saved weeks yet.</div>'; return; }
-  el.innerHTML = history.map((item, i) => {
-    const d = new Date(item.date).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' });
-    const lbl = item.type === 'monday' ? 'Monday Plan' : 'Sunday Review';
-    const cls = item.type === 'monday' ? 'blue' : 'green';
-    return `<div class="history-item">
-      <div class="history-meta">
-        <span class="status ${cls}">${lbl}</span>
-        <span class="history-date">${d}</span>
-        <button class="history-toggle" onclick="toggleHist(${i},this)">View ▾</button>
-        <button class="action-btn" onclick="copyHist(${i})" style="margin-left:2px">Copy</button>
-      </div>
-      <div class="history-preview" id="hp-${i}">${item.output.replace(/[#*\`]/g,'').slice(0,140)}...</div>
-      <div class="history-full" id="hf-${i}">${renderMarkdown(item.output)}</div>
-    </div>`;
+  // mobile dropdown
+  const sel=document.getElementById('mobSelect');
+  sel.innerHTML=weeks.map(wx=>{
+    let lbl='Week '+wx.num+' · '+wx.dates;
+    if(wx.managed)lbl+=' ⚠️';else if(wx.trough)lbl+=' 🔶';
+    return`<option value="${wx.num}"${wx.num===activeW?' selected':''}>${lbl}</option>`;
   }).join('');
-}
 
-function toggleHist(i, btn) {
-  const full = document.getElementById('hf-' + i), prev = document.getElementById('hp-' + i);
-  const open = full.classList.toggle('open');
-  prev.style.display = open ? 'none' : 'block';
-  btn.textContent = open ? 'Collapse ▴' : 'View ▾';
-}
+  // mobile bottom bar
+  const idx=weeks.findIndex(x=>x.num===activeW);
+  document.getElementById('mobPrev').classList.toggle('disabled',idx===0);
+  document.getElementById('mobNext').classList.toggle('disabled',idx===weeks.length-1);
+  document.getElementById('mobCounter').textContent='W'+w.num+' / 31';
 
-function copyHist(i) {
-  const h = window._historyCache || [];
-  if (h[i]) navigator.clipboard.writeText(h[i].output).then(() => flashSync('saved'));
-}
+  // card
+  const akFunded=w.akRem<=0.01;
+  const rtFunded=w.retRem<=0.01&&retChkGoal>0;
+  const efFunded=w.lc>=EF_NEW-0.01;
+  let cardCls='card';
+  if(w.managed)cardCls+=' managed-card';else if(w.trough)cardCls+=' trough-card';
+  let badgeCls='badge',badgeTxt='normal week';
+  if(w.managed){badgeCls+=' badge-managed';badgeTxt='managed trough';}
+  else if(w.trough){badgeCls+=' badge-trough';badgeTxt='trough week';}
+  else badgeCls+=' badge-op';
 
-async function exportAllHistory() {
-  const allData = await cloudLoadAll();
-  const history = allData['weeklyHistory'] || [];
-  if (!history.length) { alert('No history to export yet.'); return; }
-  const text = history.map(item => {
-    const d = new Date(item.date).toLocaleDateString();
-    return `${'═'.repeat(40)}\n${item.type === 'monday' ? 'MONDAY PLAN' : 'SUNDAY REVIEW'} — ${d}\n${'═'.repeat(40)}\n\n${item.output}`;
-  }).join('\n\n');
-  dl(text, `adam-history-${new Date().toISOString().slice(0,10)}.txt`);
-}
-
-// ══ IDEAS — cloud backed ═══════════════════════
-function getIdeas() { return window._ideasCache || []; }
-
-async function setIdeas(ideas) {
-  window._ideasCache = ideas;
-  await cloudSave('dashboardIdeas', ideas);
-  updateBadge();
-}
-
-// ══ COPY + EXPORT ══════════════════════════════
-function copyRaw(id) {
-  const t = document.getElementById(id)?.value || '';
-  navigator.clipboard.writeText(t).then(() => {
-    document.querySelectorAll('.action-btn').forEach(b => {
-      if (b.textContent === 'Copy text') { b.textContent = 'Copied!'; setTimeout(() => b.textContent = 'Copy text', 1500); }
-    });
-  });
-}
-
-function exportOutput(type) {
-  const raw = document.getElementById(type + 'Raw')?.value || '';
-  if (!raw) { alert('Generate a plan first.'); return; }
-  dl(raw, `adam-${type === 'monday' ? 'monday-plan' : 'sunday-review'}-${new Date().toISOString().slice(0,10)}.txt`);
-}
-
-function dl(text, filename) {
-  const a = Object.assign(document.createElement('a'), { href: URL.createObjectURL(new Blob([text], { type: 'text/plain' })), download: filename });
-  a.click(); URL.revokeObjectURL(a.href);
-}
-
-// ══ INIT APP ══════════════════════════════════
-async function initApp() {
-  const now = new Date();
-  const months = ['January','February','March','April','May','June','July','August','September','October','November','December'];
-  const days = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
-  const dateEl = document.getElementById('currentDate');
-  const badgeEl = document.getElementById('weekBadge');
-  if (dateEl) dateEl.textContent = `${days[now.getDay()]}, ${months[now.getMonth()]} ${now.getDate()}, ${now.getFullYear()}`;
-  const soy = new Date(now.getFullYear(), 0, 1);
-  if (badgeEl) badgeEl.textContent = `Week ${Math.ceil(((now - soy) / 86400000 + soy.getDay() + 1) / 7)} of ${now.getFullYear()}`;
-
-  const allData = await cloudLoadAll();
-  wireAutoSave();
-  loadFields(allData);
-  loadContext(allData);
-  loadOutputs(allData);
-  const history = allData['weeklyHistory'] || [];
-  window._historyCache = history;
-  renderHistory(history);
-  // Load ideas and migrate any with old/invalid status values
-  let ideas = allData['dashboardIdeas'] || [];
-  const archive = allData['dashboardArchive'] || [];
-  const validStatuses = ['not-started', 'in-progress', 'completed'];
-  let needsMigration = false;
-  ideas = ideas.map(idea => {
-    if (!idea.status || !validStatuses.includes(idea.status)) {
-      needsMigration = true;
-      return { ...idea, status: 'not-started' };
-    }
-    return idea;
-  });
-  window._ideasCache = ideas;
-  window._archiveCache = archive;
-  if (needsMigration) await cloudSave('dashboardIdeas', ideas);
-  renderIdeas();
-  updateBadge();
-  setTimeout(() => document.querySelectorAll('.editable-field').forEach(autoResize), 50);
-}
-
-// ══ AUTH BOOTSTRAP ════════════════════════════
-const TABS = ['monday','sunday','cashflow','context','history','ideas'];
-function showPanel(id) {
-  document.querySelectorAll('.panel').forEach(p => p.classList.remove('active'));
-  document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
-  document.getElementById('panel-' + id).classList.add('active');
-  document.querySelectorAll('.tab')[TABS.indexOf(id)].classList.add('active');
-}
-
-(async () => {
-  const { data: { session } } = await sb.auth.getSession();
-  if (session?.user) {
-    await showApp(session.user);
-  } else {
-    showLogin();
+  let html=`<div class="${cardCls}">`;
+  if(w.managed){
+    html+=`<div class="alert-note alert-managed">⚠️ <strong>Managed trough</strong> — Checking dips $${Math.abs(w.chk).toFixed(2)} below zero from obligations alone. Truist Savings ($${w.sav.toLocaleString('en-US',{minimumFractionDigits:2})}) is same-bank backup — instant transfer if needed. Operational liquidity remains ${f(w.ol)}. Adam’s paycheck restores checking at the start of next week.</div>`;
+  } else if(w.trough&&w.chk<500){
+    html+=`<div class="alert-note alert-trough">⚡ Trough week — checking at monthly low ($${w.chk.toFixed(2)}). Truist Savings ($${w.sav.toLocaleString('en-US',{minimumFractionDigits:2})}) available as same-bank backup. Adam’s paycheck restores checking at the start of next week.</div>`;
   }
-  sb.auth.onAuthStateChange(async (event, session) => {
-    if (event === 'SIGNED_IN' && session?.user) await showApp(session.user);
-    else if (event === 'SIGNED_OUT') showLogin();
-  });
-})();
-
-// ══ MARKDOWN ══════════════════════════════════
-function renderMarkdown(text) {
-  if(!text) return '';
-  let h = text.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')
-    .replace(/^### (.+)$/gm,'<h3>$1</h3>')
-    .replace(/^## (.+)$/gm,'<h2>$1</h2>')
-    .replace(/^# (.+)$/gm,'<h1>$1</h1>')
-    .replace(/\*\*(.+?)\*\*/g,'<strong>$1</strong>')
-    .replace(/\*(.+?)\*/g,'<em>$1</em>')
-    .replace(/^---$/gm,'<hr>')
-    .replace(/^\d+\.\s+(.+)$/gm,'<li>$1</li>')
-    .replace(/^[-•]\s+(.+)$/gm,'<li>$1</li>')
-    .replace(/`(.+?)`/g,'<code>$1</code>');
-  h = h.replace(/(<li>.*?<\/li>\n?)+/gs, m=>'<ul>'+m+'</ul>');
-  h = h.split('\n').map(line=>{ const t=line.trim(); if(!t) return ''; if(t.startsWith('<')) return t; return '<p>'+t+'</p>'; }).join('\n');
-  return h;
-}
-
-// ══ CONTEXT BUILDER ═══════════════════════════
-function buildCtx() {
-  const g = id => document.getElementById(id)?.value || '';
-  return `You are Adam's personal AI operating system. Act as a strategic partner, not a passive assistant. Challenge assumptions, push for sharper thinking, prioritize ruthlessly, focus on outcomes (interviews, offers, execution).
-
-IDENTITY: ${g('ctx_role')}
-TARGETING: ${g('ctx_targeting')}
-DIFFERENTIATOR: ${g('ctx_diff')}
-LIFE: ${g('ctx_life')}
-
-DECISION FRAMEWORK: ${g('ctx_decision')}
-ROLE FILTERS: ${g('ctx_filters')}
-
-JOB SEARCH SYSTEM: ${g('ctx_jobsearch')}
-JOB SEARCH TOOLS: ${g('ctx_jobtools')}
-
-JABIAN: ${g('ctx_jabian')}
-
-DAILY: ${g('ctx_daily')}
-WEEKLY RHYTHM: ${g('ctx_weekly')}
-HARD RULES: ${g('ctx_rules')}
-
-AI TOOLS: ChatGPT=${g('ctx_chatgpt')} | Claude=${g('ctx_claude')} | NotebookLM=${g('ctx_nblm')} | Excel=${g('ctx_excel')} | OneNote=${g('ctx_onenote')}
-
-CASH FLOW: ${g('ctx_cash')}
-2026 SAVINGS: ${g('ctx_savings')}
-
-OUTPUT STYLE: ${g('ctx_output')}
-KNOWN GAPS: ${g('ctx_gaps')}
-
-CURRENT STATE THIS WEEK:
-- Active opportunities: ${g('ctx_opps') || 'not updated'}
-- Top priorities: ${g('ctx_focus') || 'not updated'}
-- Cash flow notes: ${g('ctx_cashweek') || 'none'}
-- Other: ${g('ctx_custom') || 'none'}`;
-}
-
-// ══ GENERATORS ════════════════════════════════
-async function generateMonday() {
-  const btn=document.getElementById('mondayBtn'), od=document.getElementById('mondayOutput');
-  const re=document.getElementById('mondayResult'), rw=document.getElementById('mondayRaw');
-  const g=id=>document.getElementById(id)?.value||'';
-  const now=new Date();
-  const months=['January','February','March','April','May','June','July','August','September','October','November','December'];
-  const prompt=`Generate Adam's weekly plan for ${months[now.getMonth()]} ${now.getDate()}, ${now.getFullYear()}.
-
-JOB SEARCH: Opportunities: ${g('m_opps')||'none'} | Outreach targets: ${g('m_outreach')||'none'} | Primary move: ${g('m_primary_move')||'none'}
-JABIAN: Meetings: ${g('m_client_meetings')||'none'} | Deliverables: ${g('m_deliverables')||'none'} | BD: ${g('m_bd')||'none'}
-PERSONAL: Finance: ${g('m_finance')||'none'} | Family: ${g('m_personal')||'none'} | Fitness: ${g('m_fitness')||'none'}
-BUILD: Target: ${g('m_build')||'none'} | How I'll use it: ${g('m_build_use')||'none'} | Keep items: ${g('m_keep')||'none'}
-GOOD WEEK: ${g('m_good_week')||'not specified'}
-
-Produce:
-1. **WEEKLY FOCUS** — 1 sentence north star
-2. **TOP 5 PRIORITIES** — ranked, labeled Job/Jabian/Personal
-3. **DAILY SCAFFOLD** — Mon–Fri key blocks
-4. **OUTREACH PLAN** — each of the 5 targets with a specific opening angle
-5. **RISKS THIS WEEK** — what could derail this
-6. **ONE THING** — if you do nothing else, do this
-
-Be direct. Use structure. No fluff.`;
-  btn.disabled=true; btn.textContent='Generating...'; od.style.display='block';
-  re.innerHTML='<span style="color:var(--text3);font-style:italic">Generating your weekly plan...</span>';
-  try {
-    const r=await fetch('https://api.anthropic.com/v1/messages',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({model:'claude-sonnet-4-20250514',max_tokens:1000,system:buildCtx(),messages:[{role:'user',content:prompt}]})});
-    const d=await r.json(); const raw=d.content?.[0]?.text||'No response.';
-    rw.value=raw; re.innerHTML=renderMarkdown(raw); saveOutput('monday',raw); saveToHistory('monday',raw);
-  } catch(e){ re.innerHTML='<span style="color:var(--red)">Error. Check connection and try again.</span>'; }
-  btn.disabled=false; btn.innerHTML='<span>✦</span> Generate My Weekly Plan';
-}
-
-async function generateSunday() {
-  const btn=document.getElementById('sundayBtn'), od=document.getElementById('sundayOutput');
-  const re=document.getElementById('sundayResult'), rw=document.getElementById('sundayRaw');
-  const g=id=>document.getElementById(id)?.value||''; const n=id=>document.getElementById(id)?.value||'0';
-  const now=new Date();
-  const months=['January','February','March','April','May','June','July','August','September','October','November','December'];
-  const prompt=`Generate Adam's week-end review for week ending ${months[now.getMonth()]} ${now.getDate()}, ${now.getFullYear()}.
-
-METRICS: Outreach ${n('s_outreach_done')}/5 | Calls: ${n('s_calls_done')} | Next touches: ${n('s_next_touch')} — ${g('s_touch_set')||'not specified'}
-JOB SEARCH: Pipeline: ${g('s_pipeline')||'none'} | What worked: ${g('s_net_worked')||'none'}
-JABIAN: Delivered: ${g('s_delivered')||'none'} | At risk: ${g('s_at_risk')||'nothing'}
-PERSONAL: Cash flow done: ${g('s_cash_done')||'?'} | Finance: ${g('s_finance_progress')||'none'} | Workouts: ${g('s_workouts')||'?'}
-REFLECTION: Worked: ${g('s_worked')||'?'} | Didn't: ${g('s_didnt')||'?'} | Build: ${g('s_build_done')||'?'} | Adjustment: ${g('s_adjustment')||'?'}
-
-Produce:
-1. **WEEK SCORECARD** — honest 1-line: did this week move the needle?
-2. **KEY WINS** — what actually happened that matters
-3. **GAPS + DIAGNOSIS** — what slipped and the real reason — don't be soft
-4. **PATTERNS** — anything repeating (skip if first review)
-5. **NEXT WEEK SETUP** — top 3 priorities, one hard rule, outreach targets to carry
-6. **MOMENTUM CHECK** — job search accelerating, holding, or slowing?
-
-Be direct. Name what's not working.`;
-  btn.disabled=true; btn.textContent='Generating...'; od.style.display='block';
-  re.innerHTML='<span style="color:var(--text3);font-style:italic">Generating your week-end review...</span>';
-  try {
-    const r=await fetch('https://api.anthropic.com/v1/messages',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({model:'claude-sonnet-4-20250514',max_tokens:1000,system:buildCtx(),messages:[{role:'user',content:prompt}]})});
-    const d=await r.json(); const raw=d.content?.[0]?.text||'No response.';
-    rw.value=raw; re.innerHTML=renderMarkdown(raw); saveOutput('sunday',raw); saveToHistory('sunday',raw);
-  } catch(e){ re.innerHTML='<span style="color:var(--red)">Error. Check connection and try again.</span>'; }
-  btn.disabled=false; btn.innerHTML='<span>✦</span> Generate My Week-End Review + Next Week Setup';
-}
-
-// ══ CASH FLOW ═════════════════════════════════
-function calcCashFlow() {
-  const checking=parseFloat(document.getElementById('cf_checking')?.value)||0;
-  const allocated=parseFloat(document.getElementById('cf_allocated')?.value)||0;
-  const outflows=parseFloat(document.getElementById('cf_outflows')?.value)||0;
-  const inflows=parseFloat(document.getElementById('cf_inflows')?.value)||0;
-  const large=document.getElementById('cf_large')?.value;
-  const avail=checking-allocated, proj=checking-outflows+inflows, above=proj-12000;
-  const fmt=v=>v<0?`-$${Math.abs(Math.round(v)).toLocaleString()}`:`$${Math.round(v).toLocaleString()}`;
-  const set=(id,v,cls)=>{ const el=document.getElementById(id); if(!el) return; el.textContent=checking?fmt(v):'—'; if(cls) el.className='cash-value '+cls; };
-  set('cf_checking_display',checking); set('cf_allocated_display',allocated,'amber');
-  const ad=document.getElementById('cf_available_display'); if(ad){ ad.textContent=checking?fmt(avail):'—'; ad.className='cash-value '+(avail>5000?'green':avail>0?'amber':'red'); }
-  set('cf_avail',avail); set('cf_proj',proj);
-  const ae=document.getElementById('cf_above'); if(ae){ ae.textContent=checking?fmt(above):'—'; ae.className='cash-value '+(above>4000?'green':above>0?'amber':'red'); }
-  const de=document.getElementById('cf_decision'); if(!de) return;
-  if(!checking){ de.textContent='Enter values above'; de.style.color='var(--text3)'; return; }
-  if(proj<12000){ de.innerHTML='🔴 PULL FROM AMEX — below $12K floor'; de.style.color='var(--red)'; }
-  else if(proj<14000||large==='yes'){ de.innerHTML='🟡 HOLD — do not move money this week'; de.style.color='var(--amber)'; }
-  else if(proj>=16000&&large==='no'){ de.innerHTML='🟢 POTENTIALLY SAFE TO MOVE — run full safety check'; de.style.color='var(--accent)'; }
-  else{ de.innerHTML='🟡 HOLD — stay conservative'; de.style.color='var(--amber)'; }
-}
-
-// ══ KANBAN IDEAS ══════════════════════════════
-const AREA_LABELS = {'job-search':'Job Search','jabian':'Jabian','personal':'Personal','cash-flow':'Cash Flow','ux':'UX/Design','ai':'AI/Prompts','other':'Other'};
-const AREA_COLORS = {'job-search':'#f87171','jabian':'#c084fc','personal':'#fbbf24','cash-flow':'#34d399','ux':'#60a5fa','ai':'#f0abfc','other':'#94a3b8'};
-const PRIORITY_LABELS = {high:'🔴',medium:'🟡',low:'⚪'};
-
-let dragSrcId = null;
-let dragSrcCol = null;
-let dragSrcIndex = null;
-
-function getIdeas() { return window._ideasCache || []; }
-function getArchive() { return window._archiveCache || []; }
-
-async function setIdeas(ideas) {
-  window._ideasCache = ideas;
-  await cloudSave('dashboardIdeas', ideas);
-  updateBadge();
-}
-
-async function setArchive(archive) {
-  window._archiveCache = archive;
-  await cloudSave('dashboardArchive', archive);
-}
-
-function updateBadge() {
-  const active = getIdeas().filter(i => i.status !== 'completed').length;
-  const badge = document.getElementById('ideasBadge');
-  if (!badge) return;
-  if (active > 0) { badge.textContent = active; badge.style.display = 'inline'; }
-  else badge.style.display = 'none';
-  // Also update tab badge
-  const tabs = document.querySelectorAll('.tab');
-  tabs.forEach(t => { if (t.textContent.includes('Ideas')) t.dataset.count = active > 0 ? active : ''; });
-}
-
-function addIdea() {
-  const t = document.getElementById('idea_text').value.trim();
-  if (!t) { document.getElementById('idea_text').focus(); return; }
-  const ideas = getIdeas();
-  const status = document.getElementById('idea_status')?.value || 'not-started';
-  ideas.unshift({
-    id: Date.now(),
-    text: t,
-    priority: document.getElementById('idea_priority').value,
-    area: document.getElementById('idea_area').value,
-    status: status,
-    created: new Date().toISOString(),
-    order: 0
-  });
-  ideas.forEach((idea, i) => idea.order = i);
-  setIdeas(ideas);
-  document.getElementById('idea_text').value = '';
-  document.getElementById('idea_status').value = 'not-started';
-  renderIdeas();
-  flashSync('saved');
-}
-
-// Migrate any ideas with old/missing status values to 'not-started'
-function migrateIdeas(ideas) {
-  const validStatuses = ['not-started', 'in-progress', 'completed'];
-  let changed = false;
-  const migrated = ideas.map(idea => {
-    // Old status values: 'backlog', 'next', 'done', undefined, null, etc.
-    if (!idea.status || !validStatuses.includes(idea.status)) {
-      changed = true;
-      return { ...idea, status: 'not-started' };
-    }
-    return idea;
-  });
-  if (changed) {
-    setIdeas(migrated);
+  html+=`<div class="card-hdr"><div><div class="card-title">Week ${w.num}</div><div class="card-dates">${w.dates}</div></div><span class="${badgeCls}">${badgeTxt}</span></div>`;
+  if(w.evs&&w.evs.length){
+    html+='<div class="sect">Cash flow this week</div>';
+    w.evs.forEach(e=>{const cls=e.t==='in'?'ev-in':'ev-out';const sign=e.t==='in'?'+':'-';html+=`<div class="ev-row"><span class="ev-lbl">${e.l}</span><span class="${cls}">${sign}${f(Math.abs(e.a))}</span></div>`;});
   }
-  return migrated;
+  html+='<div class="sect">Transfers</div>';
+  w.tr.forEach(x=>{const ic=x.r==='done'?'✅':x.r==='defer'?'🔴':'ℹ️';html+=`<div class="xfr-row"><span class="xi">${ic}</span><div class="xtext"><div class="xlbl">${x.l}</div><div class="xrsn">${x.rsn}</div></div></div>`;});
+  html+='<div class="sect">Account balances — end of week</div><div class="bals">';
+  const chkCls=w.chk<0?'low':w.chk<500?'warn':w.chk>=5000?'good':'';
+  html+=`<div class="bal"><div class="blbl">Truist Checking</div><div class="bval ${chkCls}">${f(w.chk)}</div></div>`;
+  html+=`<div class="bal"><div class="blbl">Truist Savings</div><div class="bval">${f(w.sav)}</div></div>`;
+  html+=`<div class="bal"><div class="blbl">AMEX Savings</div><div class="bval ${rtFunded?'good':''}">${f(w.amx)}</div></div>`;
+  html+=`<div class="bal"><div class="blbl">Tax HYSA</div><div class="bval">${f(w.tax)}</div></div>`;
+  html+=`<div class="bal"><div class="blbl">Lending Club (EF)</div><div class="bval ${efFunded?'good':''}">${f(w.lc)}</div></div>`;
+  html+='</div>';
+  html+=`<div class="liq-row"><span class="liq-label">Operational liquidity (Checking + Savings)</span><span class="liq-val">${f(w.ol)}</span></div>`;
+  const realActs=(w.ac||[]).filter(a=>!a.includes('No transfers'));
+  if(realActs.length){html+='<div class="acts"><div class="act-hdr">Recommended actions this week</div>';realActs.forEach(a=>{html+=`<div class="act-row"><div class="act-dot"></div><div>${a}</div></div>`;});html+='</div>';}
+  if(w.num===1)html+='<div class="banner banner-green">✅ Week 1 actions restore Lending Club EF to $21,738.88 · Tax HYSA funded · $3,000 reclassified as permanent operating cash</div>';
+  else if(akFunded&&w.num===weeks.find(x=>x.akRem<=0.01)?.num)html+='<div class="banner banner-amber">⭐ Big week — Alaska fully funded + retirement savings move + retirement rebuild begins</div>';
+  else if(akFunded&&!rtFunded)html+='<div class="banner banner-blue">✅ Alaska funded — retirement rebuild in progress</div>';
+  else if(efFunded&&!akFunded&&w.akSaved>0)html+='<div class="banner banner-blue">Building Alaska fund — '+f(w.akSaved)+' of '+f(ak)+' saved</div>';
+
+  // desktop prev/next inside card
+  const prevW=weeks.find(x=>x.num===w.num-1),nextW=weeks.find(x=>x.num===w.num+1);
+  html+='<div class="week-nav">';
+  if(prevW)html+=`<button class="wnav-btn" onclick="activeW=${w.num-1};render()">← Week ${w.num-1} · ${prevW.dates}</button>`;
+  else html+='<div class="wnav-spacer"></div>';
+  if(nextW)html+=`<button class="wnav-btn" onclick="activeW=${w.num+1};render()">Week ${w.num+1} · ${nextW.dates} →</button>`;
+  else html+='<div class="wnav-spacer"></div>';
+  html+='</div></div>';
+
+  document.getElementById('display').innerHTML=html;
 }
 
-function renderIdeas() {
-  const ideas = getIdeas();
-  const cols = ['not-started', 'in-progress', 'completed'];
-  const colLabels = {'not-started':'Not Started','in-progress':'In Progress','completed':'Completed'};
-  cols.forEach(status => {
-    const container = document.getElementById('cards-' + status);
-    const count = document.getElementById('count-' + status);
-    if (!container) return;
-    const colIdeas = ideas.filter(i => i.status === status).sort((a,b) => (a.order||0) - (b.order||0));
-    count.textContent = colIdeas.length;
-    if (!colIdeas.length) {
-      container.innerHTML = `<div style="color:var(--text3);font-size:11px;text-align:center;padding:1.25rem .5rem;font-family:'DM Mono',monospace;opacity:.6">Empty</div>`;
-      return;
-    }
-    container.innerHTML = colIdeas.map(idea => {
-      const areaColor = AREA_COLORS[idea.area] || '#94a3b8';
-      const areaLabel = AREA_LABELS[idea.area] || idea.area;
-      const priority = PRIORITY_LABELS[idea.priority] || '⚪';
-      // Move buttons — contextual based on current column
-      const moveBtn = status === 'not-started'
-        ? `<button class="kanban-card-btn move" onclick="moveCard(${idea.id},'in-progress')">→ In Progress</button>`
-        : status === 'in-progress'
-        ? `<button class="kanban-card-btn move" onclick="moveCard(${idea.id},'not-started')">← Not Started</button>
-           <button class="kanban-card-btn move accent" onclick="moveCard(${idea.id},'completed')">→ Complete</button>`
-        : `<button class="kanban-card-btn move" onclick="moveCard(${idea.id},'in-progress')">← In Progress</button>
-           <button class="kanban-card-btn move archive" onclick="archiveCard(${idea.id})">Archive ✓</button>`;
-      return `<div class="kanban-card" id="kcard-${idea.id}" draggable="true"
-          ondragstart="onDragStart(event,${idea.id},'${status}')"
-          ondragend="onDragEnd(event)"
-          ondragover="onCardDragOver(event,${idea.id})"
-          ondrop="onCardDrop(event,${idea.id},'${status}')">
-        <div class="kanban-card-title">${idea.text}</div>
-        <div class="kanban-card-meta">
-          <span class="kanban-card-priority">${priority}</span>
-          <span class="kanban-card-area" style="color:${areaColor};border-color:${areaColor}44;background:${areaColor}11">${areaLabel}</span>
-        </div>
-        <div class="kanban-card-actions">
-          ${moveBtn}
-          <button class="kanban-card-btn" onclick="editCard(${idea.id})">Edit</button>
-          <button class="kanban-card-btn danger" onclick="deleteCard(${idea.id})">✕</button>
-        </div>
-      </div>`;
-    }).join('');
-  });
-  updateBadge();
-}
-
-function moveCard(id, newStatus) {
-  const ideas = getIdeas().map(i => i.id === id ? {...i, status: newStatus} : i);
-  setIdeas(ideas);
-  renderIdeas();
-}
-
-function archiveCard(id) {
-  const ideas = getIdeas();
-  const idea = ideas.find(i => i.id === id);
-  if (!idea) return;
-  const archive = getArchive();
-  archive.unshift({...idea, archivedAt: new Date().toISOString()});
-  setArchive(archive);
-  setIdeas(ideas.filter(i => i.id !== id));
-  renderIdeas();
-  flashSync('saved');
-}
-
-function deleteCard(id) {
-  if (!confirm('Delete this idea?')) return;
-  setIdeas(getIdeas().filter(i => i.id !== id));
-  renderIdeas();
-}
-
-function editCard(id) {
-  const idea = getIdeas().find(i => i.id === id);
-  if (!idea) return;
-  document.getElementById('edit_id').value = id;
-  document.getElementById('edit_text').value = idea.text;
-  document.getElementById('edit_notes').value = idea.notes || '';
-  document.getElementById('edit_priority').value = idea.priority;
-  document.getElementById('edit_area').value = idea.area;
-  document.getElementById('edit_status').value = idea.status || 'not-started';
-  document.getElementById('editModal').style.display = 'flex';
-}
-
-function saveEditIdea() {
-  const id = parseInt(document.getElementById('edit_id').value);
-  const ideas = getIdeas().map(i => i.id === id ? {
-    ...i,
-    text: document.getElementById('edit_text').value,
-    notes: document.getElementById('edit_notes').value,
-    priority: document.getElementById('edit_priority').value,
-    area: document.getElementById('edit_area').value,
-    status: document.getElementById('edit_status').value
-  } : i);
-  setIdeas(ideas);
-  renderIdeas();
-  closeEditModal();
-  flashSync('saved');
-}
-
-function showArchive() {
-  const panel = document.getElementById('archivePanel');
-  const list = document.getElementById('archiveList');
-  const archive = getArchive();
-  panel.style.display = 'block';
-  if (!archive.length) {
-    list.innerHTML = '<div style="color:var(--text3);font-size:12px;text-align:center;padding:1rem">No archived ideas yet.</div>';
-    return;
-  }
-  list.innerHTML = archive.map((idea, i) => `
-    <div class="archive-item">
-      <div class="archive-item-title">${idea.text}</div>
-      <div class="archive-item-meta">${AREA_LABELS[idea.area]||idea.area} · ${PRIORITY_LABELS[idea.priority]} · Archived ${new Date(idea.archivedAt).toLocaleDateString()}</div>
-    </div>`).join('');
-  document.getElementById('archivePanel').scrollIntoView({behavior:'smooth'});
-}
-
-function hideArchive() {
-  document.getElementById('archivePanel').style.display = 'none';
-}
-
-// ── Drag & Drop ────────────────────────────────
-function onDragStart(e, id, col) {
-  dragSrcId = id;
-  dragSrcCol = col;
-  const ideas = getIdeas().filter(i => i.status === col).sort((a,b)=>(a.order||0)-(b.order||0));
-  dragSrcIndex = ideas.findIndex(i => i.id === id);
-  e.dataTransfer.effectAllowed = 'move';
-  setTimeout(() => { const el = document.getElementById('kcard-' + id); if(el) el.classList.add('dragging'); }, 0);
-}
-
-function onDragEnd(e) {
-  document.querySelectorAll('.kanban-card').forEach(c => c.classList.remove('dragging','drag-target'));
-  document.querySelectorAll('.kanban-col').forEach(c => c.classList.remove('drag-over'));
-}
-
-function onDragOver(e) {
-  e.preventDefault();
-  e.dataTransfer.dropEffect = 'move';
-  e.currentTarget.classList.add('drag-over');
-}
-
-function onCardDragOver(e, targetId) {
-  e.preventDefault();
-  e.stopPropagation();
-  document.querySelectorAll('.kanban-card').forEach(c => c.classList.remove('drag-target'));
-  const el = document.getElementById('kcard-' + targetId);
-  if (el && targetId !== dragSrcId) el.classList.add('drag-target');
-}
-
-function onCardDrop(e, targetId, targetCol) {
-  e.preventDefault();
-  e.stopPropagation();
-  document.querySelectorAll('.kanban-col').forEach(c => c.classList.remove('drag-over'));
-  document.querySelectorAll('.kanban-card').forEach(c => c.classList.remove('drag-target'));
-  if (dragSrcId === null || dragSrcId === targetId) return;
-  let ideas = getIdeas();
-  const srcIdea = ideas.find(i => i.id === dragSrcId);
-  if (!srcIdea) return;
-  srcIdea.status = targetCol;
-  // Reorder within column
-  const colIdeas = ideas.filter(i => i.status === targetCol && i.id !== dragSrcId).sort((a,b)=>(a.order||0)-(b.order||0));
-  const targetIndex = colIdeas.findIndex(i => i.id === targetId);
-  colIdeas.splice(targetIndex >= 0 ? targetIndex : colIdeas.length, 0, srcIdea);
-  colIdeas.forEach((idea, idx) => { const orig = ideas.find(i => i.id === idea.id); if(orig) orig.order = idx; });
-  setIdeas(ideas);
-  renderIdeas();
-}
-
-function onDrop(e, col) {
-  e.preventDefault();
-  document.querySelectorAll('.kanban-col').forEach(c => c.classList.remove('drag-over'));
-  if (dragSrcId === null) return;
-  let ideas = getIdeas();
-  const srcIdea = ideas.find(i => i.id === dragSrcId);
-  if (!srcIdea || srcIdea.status === col) return;
-  srcIdea.status = col;
-  const colIdeas = ideas.filter(i => i.status === col).sort((a,b)=>(a.order||0)-(b.order||0));
-  colIdeas.forEach((idea, idx) => { const orig = ideas.find(i => i.id === idea.id); if(orig) orig.order = idx; });
-  setIdeas(ideas);
-  renderIdeas();
-}
-
-function exportIdeas() {
-  const ideas = getIdeas();
-  if (!ideas.length) { alert('No ideas to export.'); return; }
-  const text = ideas.map(i => `[${i.status.toUpperCase()}] ${i.text}\nArea: ${AREA_LABELS[i.area]} | Priority: ${i.priority}\nAdded: ${new Date(i.created).toLocaleDateString()}`).join('\n\n');
-  dl(text, `adam-ideas-${new Date().toISOString().slice(0,10)}.txt`);
-}
-function updateIdeaPriority(id,p){ setIdeas(getIdeas().map(i=>i.id===id?{...i,priority:p}:i)); renderIdeas(); }
-function deleteIdea(id){ if(!confirm('Delete this idea?')) return; setIdeas(getIdeas().filter(i=>i.id!==id)); renderIdeas(); }
-
-function openEditModal(id) {
-  const idea=getIdeas().find(i=>i.id===id); if(!idea) return;
-  document.getElementById('edit_id').value=id;
-  document.getElementById('edit_text').value=idea.text;
-  document.getElementById('edit_notes').value=idea.notes||'';
-  document.getElementById('edit_priority').value=idea.priority;
-  document.getElementById('edit_area').value=idea.area;
-  document.getElementById('edit_target').value=idea.target||'';
-  document.getElementById('editModal').classList.add('open');
-}
-function closeEditModal(){ document.getElementById('editModal').classList.remove('open'); }
-function saveEditIdea() {
-  const id=parseInt(document.getElementById('edit_id').value);
-  setIdeas(getIdeas().map(i=>i.id===id?{...i,text:document.getElementById('edit_text').value.trim()||i.text,notes:document.getElementById('edit_notes').value.trim(),priority:document.getElementById('edit_priority').value,area:document.getElementById('edit_area').value,target:document.getElementById('edit_target').value}:i));
-  renderIdeas(); closeEditModal(); flashSync('saved');
-}
-
-function updateBadge() {
-  const active=getIdeas().filter(i=>i.status!=='done').length;
-  const tab=document.getElementById('tab-ideas'); if(!tab) return;
-  const ex=tab.querySelector('.tab-badge'); if(ex) ex.remove();
-  if(active>0) tab.insertAdjacentHTML('beforeend',`<span class="tab-badge">${active}</span>`);
-}
-
-function exportIdeas() {
-  const ideas=getIdeas(); if(!ideas.length){ alert('No ideas to export.'); return; }
-  const lines=['DASHBOARD UPGRADE IDEAS','═'.repeat(40),''];
-  const byS={};
-  Object.keys(SC).forEach(k=>byS[k]=[]);
-  ideas.forEach(i=>(byS[i.status]||=[]).push(i));
-  Object.entries(SC).forEach(([s,cfg])=>{
-    const g=byS[s]; if(!g.length) return;
-    lines.push(`\n${cfg.l.toUpperCase()}`,'─'.repeat(20));
-    g.forEach(idea=>{
-      lines.push(`• [${PC[idea.priority]?.l||''}] [${AC[idea.area]?.l||''}]${idea.target?' | Target: '+idea.target:''}`);
-      lines.push(`  ${idea.text}`);
-      if(idea.notes) lines.push(`  Notes: ${idea.notes}`);
-      lines.push('');
-    });
-  });
-  dl(lines.join('\n'),`adam-ideas-${new Date().toISOString().slice(0,10)}.txt`);
-}
-
-function renderIdeas() {
-  const all=getIdeas();
-  const filter=document.getElementById('ideas_filter')?.value||'all';
-  const ideas=filter==='all'?all:all.filter(i=>i.status===filter);
-  const counts={backlog:0,next:0,'in-progress':0,done:0};
-  all.forEach(i=>counts[i.status]=(counts[i.status]||0)+1);
-  const se=document.getElementById('ideas_stats');
-  if(se) se.innerHTML=[{l:'Total',v:all.length,c:'var(--text2)'},{l:'Backlog',v:counts.backlog,c:'var(--text3)'},{l:'Up next',v:counts.next,c:'var(--blue)'},{l:'In progress',v:counts['in-progress'],c:'var(--amber)'},{l:'Done',v:counts.done,c:'var(--accent)'}].map(s=>`<div style="background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-sm);padding:.5rem .75rem;text-align:center"><div style="font-family:'DM Serif Display',serif;font-size:1.4rem;color:${s.c}">${s.v}</div><div style="font-family:'DM Mono',monospace;font-size:10px;color:var(--text3);margin-top:1px">${s.l}</div></div>`).join('');
-  const el=document.getElementById('ideasList'); if(!el) return;
-  if(!ideas.length){ el.innerHTML=`<div style="color:var(--text3);font-size:13px;text-align:center;padding:2rem">${filter==='all'?'No ideas logged yet.':'No ideas with this status.'}</div>`; return; }
-  const sorted=[...ideas].sort((a,b)=>{ const p={high:0,medium:1,low:2}; return p[a.priority]!==p[b.priority]?p[a.priority]-p[b.priority]:new Date(b.created)-new Date(a.created); });
-  el.innerHTML=sorted.map(idea=>{
-    const p=PC[idea.priority]||PC.medium, a=AC[idea.area]||AC.other, s=SC[idea.status]||SC.backlog;
-    const date=new Date(idea.created).toLocaleDateString('en-US',{month:'short',day:'numeric'});
-    const tgt=idea.target?`<span style="font-family:'DM Mono',monospace;font-size:10px;color:var(--amber)">📅 ${idea.target}</span>`:'';
-    const done=idea.status==='done';
-    return `<div style="background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:.85rem 1rem;margin-bottom:8px;border-left:3px solid ${p.c};${done?'opacity:.5':''}">
-      <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:12px">
-        <div style="flex:1">
-          <div style="font-size:13px;font-weight:500;color:var(--text);line-height:1.4;${done?'text-decoration:line-through;color:var(--text3)':''};margin-bottom:${idea.notes?'3px':'0'}">${idea.text}</div>
-          ${idea.notes?`<div style="font-size:11px;color:var(--text3);margin-bottom:4px;line-height:1.4">${idea.notes}</div>`:''}
-          <div style="display:flex;flex-wrap:wrap;gap:5px;margin-top:5px;align-items:center">
-            <span style="font-size:10px;padding:1px 7px;border-radius:10px;background:rgba(255,255,255,.04);border:1px solid var(--border);color:${a.c};font-family:'DM Mono',monospace">${a.l}</span>
-            <span style="font-family:'DM Mono',monospace;font-size:10px;color:var(--text3)">${date}</span>${tgt}
-          </div>
-        </div>
-        <div style="display:flex;flex-direction:column;gap:5px;align-items:flex-end;flex-shrink:0">
-          <select onchange="updateIdeaStatus(${idea.id},this.value)" style="background:var(--surface2);border:1px solid var(--border2);border-radius:var(--radius-sm);color:${s.c};font-size:11px;padding:2px 6px;font-family:'DM Mono',monospace;outline:none;cursor:pointer">
-            ${Object.entries(SC).map(([k,v])=>`<option value="${k}"${idea.status===k?' selected':''}>${v.l}</option>`).join('')}
-          </select>
-          <select onchange="updateIdeaPriority(${idea.id},this.value)" style="background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius-sm);color:${p.c};font-size:11px;padding:2px 6px;font-family:'DM Mono',monospace;outline:none;cursor:pointer">
-            ${Object.entries(PC).map(([k,v])=>`<option value="${k}"${idea.priority===k?' selected':''}>${v.l}</option>`).join('')}
-          </select>
-          <div style="display:flex;gap:4px">
-            <button onclick="openEditModal(${idea.id})" style="font-size:10px;color:var(--text3);background:none;border:1px solid var(--border);border-radius:var(--radius-sm);cursor:pointer;padding:2px 7px;font-family:'DM Sans',sans-serif" onmouseover="this.style.color='var(--blue)'" onmouseout="this.style.color='var(--text3)'">edit</button>
-            <button onclick="deleteIdea(${idea.id})" style="font-size:10px;color:var(--text3);background:none;border:none;cursor:pointer;padding:2px 4px;font-family:'DM Sans',sans-serif" onmouseover="this.style.color='var(--red)'" onmouseout="this.style.color='var(--text3)'">✕</button>
-          </div>
-        </div>
-      </div>
-    </div>`;
-  }).join('');
-  updateBadge();
-}
+document.getElementById('akGoal').addEventListener('input',render);
+document.getElementById('rtGoal').addEventListener('input',render);
+render();
 </script>
 </body>
 </html>
