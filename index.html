@@ -307,7 +307,8 @@ function getMilestones(weeks,ak,rt){
   ];
 }
 
-let activeW=1;
+function getCurrentWeek(){const s=new Date(2026,5,8);const t=new Date();t.setHours(0,0,0,0);s.setHours(0,0,0,0);const d=Math.floor((t-s)/864e5);if(d<0)return 1;return Math.min(Math.floor(d/7)+1,31);}
+let activeW=getCurrentWeek();
 function getGoals(){return{ak:Math.max(1000,parseFloat(document.getElementById('akGoal').value)||7000),rt:Math.max(1000,parseFloat(document.getElementById('rtGoal').value)||7690.98)};}
 function goWeek(dir){
   const{ak,rt}=getGoals();const weeks=runModel(ak,rt);
