@@ -415,9 +415,32 @@ function render(){
   document.getElementById('display').innerHTML=html;
 }
 
-document.getElementById('akGoal').addEventListener('input',render);
-document.getElementById('rtGoal').addEventListener('input',render);
-render();
+const SUPA_URL='https://usayoldrawwmjsmretin.supabase.co';
+const SUPA_KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InVzYXlvbGRyYXd3bWpzbXJldGluIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzc0NjI0MzIsImV4cCI6MjA5MzAzODQzMn0.7dpPsXdQy2aIYYsm1yWK7D5WJH0tB32ixERMBf5HRWA';
+const SUPA_H={'apikey':SUPA_KEY,'Authorization':'Bearer '+SUPA_KEY,'Content-Type':'application/json'};
+
+async function loadGoals(){
+  try{
+    const r=await fetch(SUPA_URL+'/rest/v1/goals?select=key,value',{headers:SUPA_H});
+    if(r.ok){const rows=await r.json();rows.forEach(row=>{
+      if(row.key==='ak_goal')document.getElementById('akGoal').value=row.value;
+      if(row.key==='rt_goal')document.getElementById('rtGoal').value=row.value;
+    });}
+  }catch(e){}
+  render();
+}
+
+async function saveGoal(key,value){
+  try{
+    await fetch(SUPA_URL+'/rest/v1/goals',{method:'POST',
+      headers:{...SUPA_H,'Prefer':'resolution=merge-duplicates'},
+      body:JSON.stringify({key,value})});
+  }catch(e){}
+}
+
+document.getElementById('akGoal').addEventListener('input',function(){saveGoal('ak_goal',parseFloat(this.value)||7000);render();});
+document.getElementById('rtGoal').addEventListener('input',function(){saveGoal('rt_goal',parseFloat(this.value)||7690.98);render();});
+loadGoals();
 </script>
 </body>
 </html>
