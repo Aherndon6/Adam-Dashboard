@@ -21,7 +21,6 @@ body{background:var(--bg);color:var(--text);font-family:Georgia,'Times New Roman
 .header p{font-size:12px;opacity:.75;margin-top:3px;font-style:italic}
 .header .mn{font-size:11px;opacity:.6;margin-top:6px;font-style:italic;border-top:1px solid rgba(255,255,255,.2);padding-top:6px}
 .main{max-width:800px;margin:0 auto;padding:20px 16px 40px}
-/* goals */
 .goals{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:12px}
 .gcard{background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:12px 14px;box-shadow:var(--sh)}
 .glabel{font-size:10px;color:var(--text2);margin-bottom:5px;text-transform:uppercase;letter-spacing:.06em}
@@ -30,7 +29,6 @@ body{background:var(--bg);color:var(--text);font-family:Georgia,'Times New Roman
 .ginput input{flex:1;font-size:16px;font-weight:700;padding:3px 6px;border:1px solid var(--border2);border-radius:6px;background:var(--surface2);color:var(--text);min-width:0;font-family:Georgia,serif}
 .ginput input:focus{outline:2px solid var(--blue);border-color:var(--blue)}
 .goal-note{font-size:10px;color:var(--text3);margin-top:4px;font-style:italic}
-/* reclass */
 .reclass-box{background:#fffbeb;border:1px solid var(--amber-md);border-left:4px solid var(--orange);border-radius:10px;padding:14px 16px;margin-bottom:12px;box-shadow:var(--sh)}
 .reclass-title{font-size:11px;font-weight:700;color:var(--amber);margin-bottom:8px;text-transform:uppercase;letter-spacing:.06em}
 .reclass-body{font-size:12.5px;color:#78350f;line-height:1.65;margin-bottom:12px}
@@ -38,7 +36,6 @@ body{background:var(--bg);color:var(--text);font-family:Georgia,'Times New Roman
 .milestone{background:white;border:1px solid var(--amber-md);border-radius:8px;padding:9px 10px;text-align:center}
 .ms-week{font-size:11px;font-weight:700;color:#c2410c;margin-bottom:3px}
 .ms-label{font-size:11px;color:var(--amber);line-height:1.4}
-/* progress */
 .prog-box{background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:14px 16px;margin-bottom:14px;box-shadow:var(--sh)}
 .prog-row{margin-bottom:12px}
 .prog-row:last-child{margin-bottom:0}
@@ -48,7 +45,6 @@ body{background:var(--bg);color:var(--text);font-family:Georgia,'Times New Roman
 .prog-track{height:8px;background:var(--surface2);border-radius:4px;overflow:hidden;border:1px solid var(--border)}
 .prog-fill{height:100%;border-radius:4px;transition:width .5s ease}
 .prog-note{font-size:10px;color:var(--amber);margin-top:3px;font-style:italic}
-/* desktop nav - week buttons */
 .nav{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:16px}
 .wbtn{padding:7px 11px;border:1px solid var(--border2);border-radius:8px;background:var(--surface);color:var(--text2);cursor:pointer;font-size:11px;line-height:1.3;text-align:center;min-width:72px;transition:all .12s;font-family:Georgia,serif;box-shadow:var(--sh)}
 .wbtn:hover{background:var(--surface2);border-color:var(--blue);color:var(--blue-dk)}
@@ -59,9 +55,7 @@ body{background:var(--bg);color:var(--text);font-family:Georgia,'Times New Roman
 .wbtn.managed.active{background:var(--red);border-color:var(--red);color:white}
 .wbtn .wn{font-size:12px;font-weight:700;display:block}
 .wbtn .wd{font-size:9px;display:block;opacity:.7;margin-top:1px}
-/* mobile nav - hidden on desktop */
 .mob-nav{display:none}
-/* week card */
 .card{background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:18px;box-shadow:var(--sh-md)}
 .card.trough-card{border-left:4px solid var(--orange);border-radius:0 12px 12px 0}
 .card.managed-card{border-left:4px solid var(--red);border-radius:0 12px 12px 0}
@@ -87,7 +81,6 @@ body{background:var(--bg);color:var(--text);font-family:Georgia,'Times New Roman
 .xtext{flex:1}
 .xlbl{color:var(--text);font-size:12.5px;line-height:1.4}
 .xrsn{color:var(--text3);font-size:10.5px;margin-top:2px;font-style:italic}
-/* desktop: 3-col balance grid */
 .bals{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-top:14px}
 .bal{background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:9px 11px}
 .blbl{font-size:10px;color:var(--text3);margin-bottom:3px;text-transform:uppercase;letter-spacing:.04em}
@@ -106,43 +99,33 @@ body{background:var(--bg);color:var(--text);font-family:Georgia,'Times New Roman
 .banner-green{background:var(--green-lt);color:var(--green);border:1px solid #86efac}
 .banner-blue{background:var(--blue-lt);color:var(--blue-dk);border:1px solid #93c5fd}
 .banner-amber{background:var(--amber-lt);color:var(--amber);border:1px solid var(--amber-md)}
-/* desktop prev/next inside card */
 .week-nav{display:flex;justify-content:space-between;align-items:center;margin-top:16px;padding-top:14px;border-top:1px solid var(--border)}
 .wnav-btn{padding:7px 13px;border:1px solid var(--border2);border-radius:8px;background:var(--surface);color:var(--text2);cursor:pointer;font-size:11.5px;font-weight:600;transition:all .12s;font-family:Georgia,serif;box-shadow:var(--sh)}
 .wnav-btn:hover{background:var(--blue);color:white;border-color:var(--blue)}
 .wnav-spacer{width:120px}
-/* mobile bottom bar - hidden on desktop */
 .mob-bar{display:none}
 .footer{text-align:center;color:var(--text3);font-size:11px;margin-top:32px;font-style:italic}
-
-/* ── MOBILE ≤768px ──────────────────────────────────────────────────── */
 @media(max-width:768px){
   .header{padding:14px 14px 12px}
   .header h1{font-size:16px}
   .header p{font-size:11px}
   .header .mn{font-size:10px;margin-top:5px;padding-top:5px}
   .main{padding:10px 10px 90px}
-  /* milestones: vertical stack */
   .milestones{grid-template-columns:1fr;gap:5px}
   .milestone{text-align:left;padding:7px 10px;display:flex;align-items:center;gap:10px}
   .ms-week{min-width:90px;flex-shrink:0;margin-bottom:0}
   .ms-label{flex:1}
-  /* hide desktop button nav, show mobile dropdown */
   .nav{display:none}
   .mob-nav{display:block;margin-bottom:12px}
   .mob-nav-label{font-size:10px;color:var(--text2);text-transform:uppercase;letter-spacing:.05em;margin-bottom:5px}
   .mob-select{width:100%;padding:11px 12px;border:1px solid var(--border2);border-radius:8px;background:var(--surface);color:var(--text);font-size:15px;font-family:Georgia,serif;appearance:none;-webkit-appearance:none;background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath d='M1 1l5 5 5-5' stroke='%236b6560' stroke-width='1.5' fill='none' stroke-linecap='round'/%3E%3C/svg%3E");background-repeat:no-repeat;background-position:right 12px center;min-height:44px}
-  /* balance grid: 2-col on mobile */
   .bals{grid-template-columns:repeat(2,1fr)}
-  /* hide desktop prev/next inside card */
   .week-nav{display:none}
-  /* show mobile bottom bar */
   .mob-bar{display:flex;position:fixed;bottom:0;left:0;right:0;background:var(--surface);border-top:1px solid var(--border);padding:10px 14px;padding-bottom:calc(10px + env(safe-area-inset-bottom));z-index:100;align-items:center;gap:8px}
   .mob-bar-btn{flex:1;padding:11px 8px;border:1px solid var(--border2);border-radius:9px;background:var(--surface2);color:var(--text2);cursor:pointer;font-size:13px;font-weight:600;font-family:Georgia,serif;text-align:center;min-height:44px;transition:background .1s}
   .mob-bar-btn:active{background:var(--blue);color:white;border-color:var(--blue)}
   .mob-bar-btn.disabled{opacity:.3;pointer-events:none}
   .mob-bar-counter{font-size:12px;color:var(--text2);white-space:nowrap;text-align:center;min-width:52px}
-  /* slightly larger touch text */
   .ev-row{font-size:13px;padding:6px 0}
   .xlbl{font-size:13px}
   .act-row{font-size:13px}
@@ -169,13 +152,11 @@ body{background:var(--bg);color:var(--text);font-family:Georgia,'Times New Roman
       <div class="goal-note">$99.75 + $3,772.74 savings + $3,818.49 rebuild</div>
     </div>
   </div>
-
   <div class="reclass-box">
     <div class="reclass-title">&#9888;&#65039; $3,000 Emergency Fund Reclassification</div>
     <div class="reclass-body">The May AMEX Platinum payoff ($37,482) left checking too thin to cover July and September rent without going negative. <strong>$3,000 reclassified as permanent operating cash</strong> in Truist Checking. Lending Club restored to <strong>$21,738.88</strong>. Total EF = <strong>$139,832</strong> — $168 below $140K floor, operationally insignificant. December and January rent troughs managed via Truist Savings same-bank backup.</div>
     <div class="milestones" id="milestones"></div>
   </div>
-
   <div class="prog-box">
     <div class="prog-row">
       <div class="prog-hdr"><span class="prog-name">Emergency fund (Lending Club)</span><span class="prog-val" id="efVal"></span></div>
@@ -191,34 +172,26 @@ body{background:var(--bg);color:var(--text);font-family:Georgia,'Times New Roman
       <div class="prog-track"><div class="prog-fill" id="rtBar" style="background:#6d28d9"></div></div>
     </div>
   </div>
-
-  <!-- Desktop: button grid -->
   <div class="nav" id="nav"></div>
-
-  <!-- Mobile: dropdown -->
   <div class="mob-nav">
     <div class="mob-nav-label">Jump to week</div>
     <select class="mob-select" id="mobSelect" onchange="activeW=parseInt(this.value);render()"></select>
   </div>
-
   <div id="display"></div>
-
   <div class="footer">Herndon Family Financial Plan &middot; June 2026 &middot; For Adam &amp; Wendy &middot; Weekly cash flow model</div>
 </div>
-
-<!-- Mobile: fixed bottom bar -->
 <div class="mob-bar" id="mobBar">
   <button class="mob-bar-btn" id="mobPrev" onclick="goWeek(-1)">&#8592; Prev</button>
   <span class="mob-bar-counter" id="mobCounter"></span>
   <button class="mob-bar-btn" id="mobNext" onclick="goWeek(1)">Next &#8594;</button>
 </div>
-
 <script>
 const EF_ORIG=24738.88,EF_NEW=21738.88;
 const START_CHK=12037.73,START_SAV=6522.77,START_AMX=99.75,START_TAX=0,START_LC=16738.88;
 const EF_SAV_XFR=2750,EF_CHK_XFR=2250,BASE_TAX=521.36,RET_SAV_XFR=3772.74;
 const COMM_TAX=707.18,COMM_AK=1060.76;
 const OP_FL=3000,TR_FL=1500,MIN_XFR=100,AK_START=5;
+const LC_LEVELUP=250,LC_LEVELUP_WKS=new Set([5,9,14,18,22,27,31]); // first Adam-paycheck week of each month, Jul-Jan
 
 const WD=[
   [1,'Jun 8-14',false,false,3000,[],[791],[{l:'Kia payment (6/7)',t:'ob',a:-791}],0,0],
@@ -288,6 +261,8 @@ function runModel(akGoal,rtGoal){
     if(alaska>0&&num>=AK_START&&efChk===0&&taxTodo===0&&ca===0){const m=mv(alaska,'sav');if(m>0){alaska=r(alaska-m);const rem=alaska>0?' — $'+alaska.toFixed(2)+' remaining':' — Alaska funded!';tr.push({l:'Alaska $'+m.toFixed(2)+' Checking → Truist Savings'+rem,r:'done',rsn:'Post $'+chk.toFixed(2)+' >= '+fn});ac.push('Transfer $'+m.toFixed(2)+' from Truist Checking to Truist Savings (Alaska fund)');}else{const pot=r(sm(chk,alaska,effFl));if(pot>0&&pot<MIN_XFR)tr.push({l:'Alaska $'+pot.toFixed(2)+' suppressed (<$100) — rolls forward',r:'info',rsn:'Too small; carries to next eligible week'});else tr.push({l:'Alaska surplus deferred',r:'defer',rsn:'Post-obligations $'+chk.toFixed(2)+' — no surplus above '+fn});}}
     if(retSav>0&&alaska===0){const m=mvS(retSav,'amx');retSav=0;tr.push({l:'Retirement $'+m.toFixed(2)+' Truist Savings → AMEX Savings',r:'done',rsn:'Savings move — zero checking impact'});ac.push('Transfer $'+m.toFixed(2)+' from Truist Savings to AMEX Savings (retirement)');}
     if(retChk>0&&alaska===0&&efChk===0){const m=mv(retChk,'amx');if(m>0){retChk=r(retChk-m);const rem=retChk>0?' — $'+retChk.toFixed(2)+' remaining':' — retirement funded!';tr.push({l:'Retirement $'+m.toFixed(2)+' Checking → AMEX Savings'+rem,r:'done',rsn:'Post $'+chk.toFixed(2)+' >= '+fn});ac.push('Transfer $'+m.toFixed(2)+' from Truist Checking to AMEX Savings (retirement rebuild)');}else{const pot=r(sm(chk,retChk,effFl));if(pot>0&&pot<MIN_XFR)tr.push({l:'Retirement $'+pot.toFixed(2)+' suppressed (<$100) — rolls forward',r:'info',rsn:'Too small; carries to next eligible week'});else tr.push({l:'Retirement surplus deferred',r:'defer',rsn:'Post-obligations $'+chk.toFixed(2)+' — no surplus above '+fn});}}
+    // LendingClub LevelUp — $250/month Vio Bank EF → LC rotation (no checking or AMEX impact; rotate back within month)
+    if(LC_LEVELUP_WKS.has(num)){tr.push({l:'LevelUp $250 Vio Bank EF → Lending Club (APY boost)',r:'info',rsn:'Vio EF HYSA → LC rotation — no checking or AMEX impact. Rotate $250 back to Vio after statement closes.'});ac.push('Transfer $250 from Vio Bank EF HYSA to Lending Club (LevelUp qualifying deposit) — then rotate $250 back to Vio Bank within the month');}
     if(!tr.length){tr.push({l:'No transfers this week',r:'info',rsn:'No surplus above floor after obligations'});ac.push('No transfers this week — monitor balances');}
     weeks.push({num,dates,trough,managed,evs,tr,ac,chk:r(chk),sav:r(sav),amx:r(amx),tax:r(tax),lc:r(lc),akSaved:r(akGoal-alaska),akRem:r(alaska),retRem:r(retChk),ol:r(chk+sav)});
   }
@@ -322,20 +297,14 @@ function render(){
   const weeks=runModel(ak,rt);
   const w=weeks.find(x=>x.num===activeW)||weeks[0];
   const retChkGoal=Math.max(0,Math.round((rt-START_AMX-RET_SAV_XFR)*100)/100);
-
-  // milestones
   const ms=getMilestones(weeks,ak,rt);
   document.getElementById('milestones').innerHTML=ms.map(m=>`<div class="milestone"><div class="ms-week">${m.week}</div><div class="ms-label">${m.label}</div></div>`).join('');
-
-  // progress
   document.getElementById('efVal').textContent=f(w.lc)+' / '+f(EF_ORIG)+' (gap: $3,000 reclassified)';
   document.getElementById('efBar').style.width=Math.min(100,+(w.lc/EF_ORIG*100).toFixed(1))+'%';
   document.getElementById('akVal').textContent=f(w.akSaved)+' / '+f(ak);
   document.getElementById('akBar').style.width=Math.min(100,+(w.akSaved/ak*100).toFixed(1))+'%';
   document.getElementById('rtVal').textContent=f(w.amx)+' / '+f(rt);
   document.getElementById('rtBar').style.width=Math.min(100,+(w.amx/rt*100).toFixed(1))+'%';
-
-  // desktop button nav
   const nav=document.getElementById('nav');
   nav.innerHTML='';
   weeks.forEach(wx=>{
@@ -348,22 +317,16 @@ function render(){
     b.onclick=()=>{activeW=wx.num;render();};
     nav.appendChild(b);
   });
-
-  // mobile dropdown
   const sel=document.getElementById('mobSelect');
   sel.innerHTML=weeks.map(wx=>{
     let lbl='Week '+wx.num+' · '+wx.dates;
     if(wx.managed)lbl+=' ⚠️';else if(wx.trough)lbl+=' 🔶';
     return`<option value="${wx.num}"${wx.num===activeW?' selected':''}>${lbl}</option>`;
   }).join('');
-
-  // mobile bottom bar
   const idx=weeks.findIndex(x=>x.num===activeW);
   document.getElementById('mobPrev').classList.toggle('disabled',idx===0);
   document.getElementById('mobNext').classList.toggle('disabled',idx===weeks.length-1);
   document.getElementById('mobCounter').textContent='W'+w.num+' / 31';
-
-  // card
   const akFunded=w.akRem<=0.01;
   const rtFunded=w.retRem<=0.01&&retChkGoal>0;
   const efFunded=w.lc>=EF_NEW-0.01;
@@ -373,18 +336,11 @@ function render(){
   if(w.managed){badgeCls+=' badge-managed';badgeTxt='managed trough';}
   else if(w.trough){badgeCls+=' badge-trough';badgeTxt='trough week';}
   else badgeCls+=' badge-op';
-
   let html=`<div class="${cardCls}">`;
-  if(w.managed){
-    html+=`<div class="alert-note alert-managed">⚠️ <strong>Managed trough</strong> — Checking dips $${Math.abs(w.chk).toFixed(2)} below zero from obligations alone. Truist Savings ($${w.sav.toLocaleString('en-US',{minimumFractionDigits:2})}) is same-bank backup — instant transfer if needed. Operational liquidity remains ${f(w.ol)}. Adam’s paycheck restores checking at the start of next week.</div>`;
-  } else if(w.trough&&w.chk<500){
-    html+=`<div class="alert-note alert-trough">⚡ Trough week — checking at monthly low ($${w.chk.toFixed(2)}). Truist Savings ($${w.sav.toLocaleString('en-US',{minimumFractionDigits:2})}) available as same-bank backup. Adam’s paycheck restores checking at the start of next week.</div>`;
-  }
+  if(w.managed){html+=`<div class="alert-note alert-managed">⚠️ <strong>Managed trough</strong> — Checking dips $${Math.abs(w.chk).toFixed(2)} below zero from obligations alone. Truist Savings ($${w.sav.toLocaleString('en-US',{minimumFractionDigits:2})}) is same-bank backup — instant transfer if needed. Operational liquidity remains ${f(w.ol)}. Adam’s paycheck restores checking at the start of next week.</div>`;}
+  else if(w.trough&&w.chk<500){html+=`<div class="alert-note alert-trough">⚡ Trough week — checking at monthly low ($${w.chk.toFixed(2)}). Truist Savings ($${w.sav.toLocaleString('en-US',{minimumFractionDigits:2})}) available as same-bank backup. Adam’s paycheck restores checking at the start of next week.</div>`;}
   html+=`<div class="card-hdr"><div><div class="card-title">Week ${w.num}</div><div class="card-dates">${w.dates}</div></div><span class="${badgeCls}">${badgeTxt}</span></div>`;
-  if(w.evs&&w.evs.length){
-    html+='<div class="sect">Cash flow this week</div>';
-    w.evs.forEach(e=>{const cls=e.t==='in'?'ev-in':'ev-out';const sign=e.t==='in'?'+':'-';html+=`<div class="ev-row"><span class="ev-lbl">${e.l}</span><span class="${cls}">${sign}${f(Math.abs(e.a))}</span></div>`;});
-  }
+  if(w.evs&&w.evs.length){html+='<div class="sect">Cash flow this week</div>';w.evs.forEach(e=>{const cls=e.t==='in'?'ev-in':'ev-out';const sign=e.t==='in'?'+':'-';html+=`<div class="ev-row"><span class="ev-lbl">${e.l}</span><span class="${cls}">${sign}${f(Math.abs(e.a))}</span></div>`;});}
   html+='<div class="sect">Transfers</div>';
   w.tr.forEach(x=>{const ic=x.r==='done'?'✅':x.r==='defer'?'🔴':'ℹ️';html+=`<div class="xfr-row"><span class="xi">${ic}</span><div class="xtext"><div class="xlbl">${x.l}</div><div class="xrsn">${x.rsn}</div></div></div>`;});
   html+='<div class="sect">Account balances — end of week</div><div class="bals">';
@@ -402,8 +358,6 @@ function render(){
   else if(akFunded&&w.num===weeks.find(x=>x.akRem<=0.01)?.num)html+='<div class="banner banner-amber">⭐ Big week — Alaska fully funded + retirement savings move + retirement rebuild begins</div>';
   else if(akFunded&&!rtFunded)html+='<div class="banner banner-blue">✅ Alaska funded — retirement rebuild in progress</div>';
   else if(efFunded&&!akFunded&&w.akSaved>0)html+='<div class="banner banner-blue">Building Alaska fund — '+f(w.akSaved)+' of '+f(ak)+' saved</div>';
-
-  // desktop prev/next inside card
   const prevW=weeks.find(x=>x.num===w.num-1),nextW=weeks.find(x=>x.num===w.num+1);
   html+='<div class="week-nav">';
   if(prevW)html+=`<button class="wnav-btn" onclick="activeW=${w.num-1};render()">← Week ${w.num-1} · ${prevW.dates}</button>`;
@@ -411,7 +365,6 @@ function render(){
   if(nextW)html+=`<button class="wnav-btn" onclick="activeW=${w.num+1};render()">Week ${w.num+1} · ${nextW.dates} →</button>`;
   else html+='<div class="wnav-spacer"></div>';
   html+='</div></div>';
-
   document.getElementById('display').innerHTML=html;
 }
 
