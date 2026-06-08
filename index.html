@@ -53,6 +53,10 @@ body{background:var(--bg);color:var(--text);font-family:Georgia,'Times New Roman
 .wbtn.trough.active{background:var(--orange);border-color:var(--orange);color:white}
 .wbtn.managed{border-color:var(--red);border-width:2px}
 .wbtn.managed.active{background:var(--red);border-color:var(--red);color:white}
+.wbtn.past{opacity:.48}
+.wbtn.past.active{opacity:1}
+.wbtn.now:not(.active){border-color:#d97706;border-width:2px;color:#78350f}
+.wbtn.now.active{box-shadow:0 0 0 3px #fde68a,var(--sh-md)}
 .wbtn .wn{font-size:12px;font-weight:700;display:block}
 .wbtn .wd{font-size:9px;display:block;opacity:.7;margin-top:1px}
 .mob-nav{display:none}
@@ -62,10 +66,13 @@ body{background:var(--bg);color:var(--text);font-family:Georgia,'Times New Roman
 .card-hdr{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:14px}
 .card-title{font-size:18px;font-weight:700;color:var(--text)}
 .card-dates{font-size:12px;color:var(--text2);margin-top:2px;font-style:italic}
+.badge-row{display:flex;gap:6px;align-items:center;flex-wrap:wrap;justify-content:flex-end}
 .badge{font-size:10px;padding:3px 9px;border-radius:20px;font-weight:600;white-space:nowrap;letter-spacing:.03em}
 .badge-trough{background:var(--amber-lt);color:var(--amber);border:1px solid var(--amber-md)}
 .badge-managed{background:var(--red-lt);color:var(--red);border:1px solid #fca5a5}
 .badge-op{background:var(--blue-lt);color:var(--blue-dk);border:1px solid #bfdbfe}
+.badge-past{background:var(--surface2);color:var(--text3);border:1px solid var(--border2)}
+.badge-now{background:#fef3c7;color:#92400e;border:1px solid #fde68a}
 .alert-note{border-radius:8px;padding:10px 13px;font-size:12px;margin-bottom:12px;line-height:1.55}
 .alert-trough{background:var(--amber-lt);border:1px solid var(--amber-md);color:var(--amber)}
 .alert-managed{background:var(--red-lt);border:1px solid #fca5a5;color:var(--red)}
@@ -88,6 +95,12 @@ body{background:var(--bg);color:var(--text);font-family:Georgia,'Times New Roman
 .bval.warn{color:var(--orange)}
 .bval.low{color:var(--red)}
 .bval.good{color:var(--green)}
+.brow2{display:flex;justify-content:space-between;align-items:center;margin-top:4px;gap:4px}
+.bfrom{font-size:9px;color:var(--text3);font-style:italic;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.bdelta{font-size:10px;font-weight:700;flex-shrink:0}
+.bdelta.pos{color:var(--green)}
+.bdelta.neg{color:var(--red)}
+.bdelta.zer{color:var(--text3)}
 .liq-row{background:var(--blue-lt);border:1px solid #bfdbfe;border-radius:8px;padding:9px 11px;display:flex;justify-content:space-between;align-items:center;margin-top:8px}
 .liq-label{font-size:11px;color:var(--blue-dk);font-weight:600}
 .liq-val{font-size:14px;font-weight:700;color:var(--blue)}
@@ -131,6 +144,8 @@ body{background:var(--bg);color:var(--text);font-family:Georgia,'Times New Roman
   .act-row{font-size:13px}
   .bval{font-size:15px}
   .ginput input{font-size:15px}
+  .badge-row{justify-content:flex-start;margin-top:6px}
+  .card-hdr{flex-direction:column;align-items:flex-start}
 }
 </style>
 </head>
@@ -138,7 +153,7 @@ body{background:var(--bg);color:var(--text);font-family:Georgia,'Times New Roman
 <div class="header">
   <h1>Herndon Family — 2026 Cash Flow Plan</h1>
   <p>31-week transfer optimization · Jun 8, 2026 – Jan 10, 2027 · Live recalculating model</p>
-  <p class="mn">Weekly cash flow model — balances represent end-of-week state. Intraday sequencing managed operationally.</p>
+  <p class="mn">Balances represent end-of-week state. Intraday sequencing managed operationally. · Model updated: Jun 8, 2026</p>
 </div>
 <div class="main">
   <div class="goals">
@@ -191,7 +206,7 @@ const START_CHK=12037.73,START_SAV=6522.77,START_AMX=99.75,START_TAX=0,START_LC=
 const EF_SAV_XFR=2750,EF_CHK_XFR=2250,BASE_TAX=521.36,RET_SAV_XFR=3772.74;
 const COMM_TAX=707.18,COMM_AK=1060.76;
 const OP_FL=3000,TR_FL=1500,MIN_XFR=100,AK_START=5;
-const LC_LEVELUP=250,LC_LEVELUP_WKS=new Set([5,9,14,18,22,27,31]); // first Adam-paycheck week of each month, Jul-Jan
+const LC_LEVELUP=250,LC_LEVELUP_WKS=new Set([5,9,14,18,22,27,31]);
 
 const WD=[
   [1,'Jun 8-14',false,false,3000,[],[791],[{l:'Kia payment (6/7)',t:'ob',a:-791}],0,0],
@@ -201,10 +216,10 @@ const WD=[
   [5,'Jul 6-12',false,false,4191,[5816.5],[791],[{l:'Adam paycheck (7/7)',t:'in',a:5816.5},{l:'Kia payment (7/7)',t:'ob',a:-791}],0,0],
   [6,'Jul 13-19',false,false,3000,[1767.94,2152.5],[5500],[{l:'AMEX Gold ~$5,500 due 7/17 (first statement)',t:'ob',a:-5500},{l:'Wendy Deep South commission $1,767.94 (7/15)',t:'in',a:1767.94},{l:'Wendy paycheck (7/17)',t:'in',a:2152.5}],COMM_TAX,COMM_AK],
   [7,'Jul 20-26',false,false,3148,[5816.5],[3500],[{l:'Adam paycheck (7/22)',t:'in',a:5816.5},{l:'Disney Visa ~$3,500 due ~7/23',t:'ob',a:-3500}],0,0],
-  [8,'Jul 27-Aug 2',true,false,1500,[2552.5],[200,2000,2000],[{l:'AMEX Platinum ~$200 due ~7/27 (stragglers — last Platinum bill)',t:'ob',a:-200},{l:'Wendy paycheck + extra $400 (7/31)',t:'in',a:2552.5},{l:'Rent $2,000 — Zelle to Tiffany Dye (8/1)',t:'ob',a:-2000},{l:'Rent $2,000 — Zelle to Tiffany Dye (8/2)',t:'ob',a:-2000}],0,0],
+  [8,'Jul 27-Aug 2',true,false,1500,[2552.5],[200,2000,2000],[{l:'AMEX Platinum ~$200 due ~7/27 (stragglers)',t:'ob',a:-200},{l:'Wendy paycheck + extra $400 (7/31)',t:'in',a:2552.5},{l:'Rent $2,000 — Zelle to Tiffany Dye (8/1)',t:'ob',a:-2000},{l:'Rent $2,000 — Zelle to Tiffany Dye (8/2)',t:'ob',a:-2000}],0,0],
   [9,'Aug 3-9',false,false,3779,[5816.5],[1300,791],[{l:'Rent $1,300 — Zelle to Tiffany Dye (8/3)',t:'ob',a:-1300},{l:'Adam paycheck (8/7)',t:'in',a:5816.5},{l:'Kia payment (8/7)',t:'ob',a:-791}],0,0],
   [10,'Aug 10-16',false,false,5931,[2152.5],[],[{l:'Wendy paycheck (8/14)',t:'in',a:2152.5}],0,0],
-  [11,'Aug 17-23',false,false,4248,[5816.5],[5500,3500],[{l:'AMEX Gold ~$5,500 due 8/17',t:'ob',a:-5500},{l:'Adam paycheck (8/21 — shifted from Sat 8/22)',t:'in',a:5816.5},{l:'Disney Visa ~$3,500 due ~8/23',t:'ob',a:-3500}],0,0],
+  [11,'Aug 17-23',false,false,4248,[5816.5],[5500,3500],[{l:'AMEX Gold ~$5,500 due 8/17',t:'ob',a:-5500},{l:'Adam paycheck (8/21)',t:'in',a:5816.5},{l:'Disney Visa ~$3,500 due ~8/23',t:'ob',a:-3500}],0,0],
   [12,'Aug 24-30',false,false,5300,[2552.5],[],[{l:'Wendy paycheck + extra $400 (8/28)',t:'in',a:2552.5}],0,0],
   [13,'Aug 31-Sep 6',true,false,1500,[],[2000,2000,1300],[{l:'Rent $2,000 — Zelle to Tiffany Dye (9/1)',t:'ob',a:-2000},{l:'Rent $2,000 — Zelle to Tiffany Dye (9/2)',t:'ob',a:-2000},{l:'Rent $1,300 — Zelle to Tiffany Dye (9/3)',t:'ob',a:-1300}],0,0],
   [14,'Sep 7-13',false,false,8500,[5816.5,2152.5],[791],[{l:'Adam paycheck (9/7)',t:'in',a:5816.5},{l:'Kia payment (9/7)',t:'ob',a:-791},{l:'Wendy paycheck (9/11)',t:'in',a:2152.5}],0,0],
@@ -215,15 +230,15 @@ const WD=[
   [19,'Oct 12-18',false,false,3000,[],[5500],[{l:'AMEX Gold ~$5,500 due ~10/16',t:'ob',a:-5500}],0,0],
   [20,'Oct 19-25',false,false,3500,[5816.5,2552.5],[3500],[{l:'Adam paycheck (10/22)',t:'in',a:5816.5},{l:'Disney Visa ~$3,500 due ~10/23',t:'ob',a:-3500},{l:'Wendy paycheck + extra $400 (10/23)',t:'in',a:2552.5}],0,0],
   [21,'Oct 26-Nov 1',true,false,1500,[],[2000],[{l:'Rent $2,000 — Zelle to Tiffany Dye (11/1)',t:'ob',a:-2000}],0,0],
-  [22,'Nov 2-8',false,false,3000,[5816.5],[2000,1300,791],[{l:'Rent $2,000 — Zelle to Tiffany Dye (11/2)',t:'ob',a:-2000},{l:'Rent $1,300 — Zelle to Tiffany Dye (11/3)',t:'ob',a:-1300},{l:'Adam paycheck (11/6 — shifted from Sat 11/7)',t:'in',a:5816.5},{l:'Kia payment (11/7)',t:'ob',a:-791}],0,0],
+  [22,'Nov 2-8',false,false,3000,[5816.5],[2000,1300,791],[{l:'Rent $2,000 — Zelle to Tiffany Dye (11/2)',t:'ob',a:-2000},{l:'Rent $1,300 — Zelle to Tiffany Dye (11/3)',t:'ob',a:-1300},{l:'Adam paycheck (11/6)',t:'in',a:5816.5},{l:'Kia payment (11/7)',t:'ob',a:-791}],0,0],
   [23,'Nov 9-15',false,false,3000,[],[],[],0,0],
-  [24,'Nov 16-22',false,false,6800,[5816.5,2552.5],[5500],[{l:'AMEX Gold ~$5,500 due ~11/17',t:'ob',a:-5500},{l:'Adam paycheck (11/20 — shifted from Sun 11/22)',t:'in',a:5816.5},{l:'Wendy paycheck + extra $400 (11/20 — last Nov paycheck)',t:'in',a:2552.5}],0,0],
+  [24,'Nov 16-22',false,false,6800,[5816.5,2552.5],[5500],[{l:'AMEX Gold ~$5,500 due ~11/17',t:'ob',a:-5500},{l:'Adam paycheck (11/20)',t:'in',a:5816.5},{l:'Wendy paycheck + extra $400 (11/20)',t:'in',a:2552.5}],0,0],
   [25,'Nov 23-29',false,false,6800,[],[3500],[{l:'Disney Visa ~$3,500 due ~11/23',t:'ob',a:-3500}],0,0],
   [26,'Nov 30-Dec 6',true,true,1500,[],[2000,2000,1300],[{l:'Rent $2,000 — Zelle to Tiffany Dye (12/1)',t:'ob',a:-2000},{l:'Rent $2,000 — Zelle to Tiffany Dye (12/2)',t:'ob',a:-2000},{l:'Rent $1,300 — Zelle to Tiffany Dye (12/3)',t:'ob',a:-1300}],0,0],
   [27,'Dec 7-13',false,false,3779,[5816.5],[791],[{l:'Adam paycheck (12/7)',t:'in',a:5816.5},{l:'Kia payment (12/7)',t:'ob',a:-791}],0,0],
-  [28,'Dec 14-20',false,true,3000,[2552.5],[5500],[{l:'AMEX Gold ~$5,500 due ~12/17',t:'ob',a:-5500},{l:'Wendy paycheck + extra $400 (12/18 — last Dec paycheck)',t:'in',a:2552.5}],0,0],
+  [28,'Dec 14-20',false,true,3000,[2552.5],[5500],[{l:'AMEX Gold ~$5,500 due ~12/17',t:'ob',a:-5500},{l:'Wendy paycheck + extra $400 (12/18)',t:'in',a:2552.5}],0,0],
   [29,'Dec 21-27',false,false,3148,[5816.5],[3500],[{l:'Adam paycheck (12/22)',t:'in',a:5816.5},{l:'Disney Visa ~$3,500 due ~12/23',t:'ob',a:-3500}],0,0],
-  [30,'Dec 28-Jan 3',true,true,1500,[2152.5],[2000,2000,1300],[{l:'Wendy paycheck (12/31 — Jan 1 holiday-shifted)',t:'in',a:2152.5},{l:'Rent $2,000 — Zelle to Tiffany Dye (1/1)',t:'ob',a:-2000},{l:'Rent $2,000 — Zelle to Tiffany Dye (1/2)',t:'ob',a:-2000},{l:'Rent $1,300 — Zelle to Tiffany Dye (1/3, late day)',t:'ob',a:-1300}],0,0],
+  [30,'Dec 28-Jan 3',true,true,1500,[2152.5],[2000,2000,1300],[{l:'Wendy paycheck (12/31)',t:'in',a:2152.5},{l:'Rent $2,000 — Zelle to Tiffany Dye (1/1)',t:'ob',a:-2000},{l:'Rent $2,000 — Zelle to Tiffany Dye (1/2)',t:'ob',a:-2000},{l:'Rent $1,300 — Zelle to Tiffany Dye (1/3)',t:'ob',a:-1300}],0,0],
   [31,'Jan 4-10 2027',false,false,3000,[5816.5],[791],[{l:'Adam paycheck (1/7)',t:'in',a:5816.5},{l:'Kia payment (1/7)',t:'ob',a:-791}],0,0],
 ];
 
@@ -237,12 +252,13 @@ function runModel(akGoal,rtGoal){
   function sm(b,a,f){return Math.max(0,Math.min(r(a),r(r(b)-r(f))))}
   for(const wd of WD){
     const[num,dates,trough,managed,holdFloor,inflows,obs,evs,ct,ca]=wd;
+    const startChk=r(chk),startSav=r(sav),startAmx=r(amx),startTax=r(tax),startLc=r(lc);
     const baseFl=trough?TR_FL:OP_FL;
     const effFl=Math.max(baseFl,holdFloor);
     for(const a of inflows)chk=r(chk+a);
     for(const a of obs)chk=r(chk-a);
     const tr=[],ac=[];
-    const fn='$'+effFl.toLocaleString()+(effFl>baseFl?' (covers upcoming obligations)':'');
+    const fn='$'+effFl.toLocaleString('en-US')+(effFl>baseFl?' (covers upcoming obligations)':'');
     function mv(amt,dst){
       const m=r(sm(chk,amt,effFl));
       if(m<=0)return 0;
@@ -253,37 +269,45 @@ function runModel(akGoal,rtGoal){
       return m;
     }
     function mvS(amt,dst){const m=r(amt);sav=r(sav-m);if(dst==='lc')lc=r(lc+m);else if(dst==='amx')amx=r(amx+m);return m;}
-    if(ct>0){const m=mv(ct,'tax');if(m>0){tr.push({l:'Commission 40% $'+ct.toFixed(2)+' Checking → Tax HYSA',r:'done',rsn:'Post $'+chk.toFixed(2)+' >= '+fn});ac.push('Transfer $'+ct.toFixed(2)+' from Truist Checking to Tax HYSA (commission 40%)');}else{taxTodo=r(taxTodo+ct);tr.push({l:'Commission 40% $'+ct.toFixed(2)+' deferred → tax pending',r:'defer',rsn:'No surplus above '+fn+' — picks up next eligible week'});}}
-    if(ca>0&&alaska>0&&num>=AK_START){const m=mv(Math.min(ca,alaska),'sav');if(m>0){alaska=r(alaska-m);tr.push({l:'Commission 60% $'+m.toFixed(2)+' Checking → Truist Savings (Alaska)',r:'done',rsn:'Post $'+chk.toFixed(2)+' >= '+fn});ac.push('Transfer $'+m.toFixed(2)+' from Truist Checking to Truist Savings (Alaska)');}else tr.push({l:'Commission 60% $'+ca.toFixed(2)+' deferred',r:'defer',rsn:'No surplus above '+fn});}
-    if(efSav>0){const m=mvS(efSav,'lc');efSav=0;tr.push({l:'EF $'+m.toFixed(2)+' Truist Savings → Lending Club',r:'done',rsn:'Savings move — zero checking impact'});ac.push('Transfer $'+m.toFixed(2)+' from Truist Savings to Lending Club (EF restoration)');}
-    if(efChk>0){const m=mv(efChk,'lc');if(m>0){efChk=r(efChk-m);const rem=efChk>0?' — $'+efChk.toFixed(2)+' carries forward':' — complete';tr.push({l:'EF $'+m.toFixed(2)+' Checking → Lending Club'+rem,r:'done',rsn:'Post $'+chk.toFixed(2)+' >= '+fn});ac.push('Transfer $'+m.toFixed(2)+' from Truist Checking to Lending Club (EF restoration)');}else tr.push({l:'EF $'+efChk.toFixed(2)+' Checking → Lending Club',r:'defer',rsn:'Post-obligations $'+chk.toFixed(2)+' — no surplus above '+fn});}
-    if(taxTodo>0&&ct===0){const m=mv(taxTodo,'tax');if(m>0){taxTodo=r(taxTodo-m);const rem=taxTodo>0?' — $'+taxTodo.toFixed(2)+' carries forward':'';tr.push({l:'Tax $'+m.toFixed(2)+' Checking → Tax HYSA'+rem,r:'done',rsn:'Post $'+chk.toFixed(2)+' >= '+fn});ac.push('Transfer $'+m.toFixed(2)+' from Truist Checking to Tax HYSA');}else tr.push({l:'Tax $'+taxTodo.toFixed(2)+' Checking → Tax HYSA',r:'defer',rsn:'Post-obligations $'+chk.toFixed(2)+' — no surplus above '+fn});}
-    if(alaska>0&&num>=AK_START&&efChk===0&&taxTodo===0&&ca===0){const m=mv(alaska,'sav');if(m>0){alaska=r(alaska-m);const rem=alaska>0?' — $'+alaska.toFixed(2)+' remaining':' — Alaska funded!';tr.push({l:'Alaska $'+m.toFixed(2)+' Checking → Truist Savings'+rem,r:'done',rsn:'Post $'+chk.toFixed(2)+' >= '+fn});ac.push('Transfer $'+m.toFixed(2)+' from Truist Checking to Truist Savings (Alaska fund)');}else{const pot=r(sm(chk,alaska,effFl));if(pot>0&&pot<MIN_XFR)tr.push({l:'Alaska $'+pot.toFixed(2)+' suppressed (<$100) — rolls forward',r:'info',rsn:'Too small; carries to next eligible week'});else tr.push({l:'Alaska surplus deferred',r:'defer',rsn:'Post-obligations $'+chk.toFixed(2)+' — no surplus above '+fn});}}
-    if(retSav>0&&alaska===0){const m=mvS(retSav,'amx');retSav=0;tr.push({l:'Retirement $'+m.toFixed(2)+' Truist Savings → AMEX Savings',r:'done',rsn:'Savings move — zero checking impact'});ac.push('Transfer $'+m.toFixed(2)+' from Truist Savings to AMEX Savings (retirement)');}
-    if(retChk>0&&alaska===0&&efChk===0){const m=mv(retChk,'amx');if(m>0){retChk=r(retChk-m);const rem=retChk>0?' — $'+retChk.toFixed(2)+' remaining':' — retirement funded!';tr.push({l:'Retirement $'+m.toFixed(2)+' Checking → AMEX Savings'+rem,r:'done',rsn:'Post $'+chk.toFixed(2)+' >= '+fn});ac.push('Transfer $'+m.toFixed(2)+' from Truist Checking to AMEX Savings (retirement rebuild)');}else{const pot=r(sm(chk,retChk,effFl));if(pot>0&&pot<MIN_XFR)tr.push({l:'Retirement $'+pot.toFixed(2)+' suppressed (<$100) — rolls forward',r:'info',rsn:'Too small; carries to next eligible week'});else tr.push({l:'Retirement surplus deferred',r:'defer',rsn:'Post-obligations $'+chk.toFixed(2)+' — no surplus above '+fn});}}
-    // LendingClub LevelUp — $250/month Vio Bank EF → LC rotation (no checking or AMEX impact; rotate back within month)
+    if(ct>0){const m=mv(ct,'tax');if(m>0){tr.push({l:'Commission 40% $'+fc(ct)+' Checking → Tax HYSA',r:'done',rsn:'Post $'+fc(chk)+' ≥ '+fn});ac.push('Transfer $'+fc(ct)+' from Truist Checking to Tax HYSA (commission 40%)');}else{taxTodo=r(taxTodo+ct);tr.push({l:'Commission 40% $'+fc(ct)+' deferred → tax pending',r:'defer',rsn:'No surplus above '+fn+' — picks up next eligible week'});}}
+    if(ca>0&&alaska>0&&num>=AK_START){const m=mv(Math.min(ca,alaska),'sav');if(m>0){alaska=r(alaska-m);tr.push({l:'Commission 60% $'+fc(m)+' Checking → Truist Savings (Alaska)',r:'done',rsn:'Post $'+fc(chk)+' ≥ '+fn});ac.push('Transfer $'+fc(m)+' from Truist Checking to Truist Savings (Alaska)');}else tr.push({l:'Commission 60% $'+fc(ca)+' deferred',r:'defer',rsn:'No surplus above '+fn});}
+    if(efSav>0){const m=mvS(efSav,'lc');efSav=0;tr.push({l:'EF $'+fc(m)+' Truist Savings → Lending Club',r:'done',rsn:'Savings move — zero checking impact'});ac.push('Transfer $'+fc(m)+' from Truist Savings to Lending Club (EF restoration)');}
+    if(efChk>0){const m=mv(efChk,'lc');if(m>0){efChk=r(efChk-m);const rem=efChk>0?' — $'+fc(efChk)+' carries forward':' — complete';tr.push({l:'EF $'+fc(m)+' Checking → Lending Club'+rem,r:'done',rsn:'Post $'+fc(chk)+' ≥ '+fn});ac.push('Transfer $'+fc(m)+' from Truist Checking to Lending Club (EF restoration)');}else tr.push({l:'EF $'+fc(efChk)+' Checking → Lending Club',r:'defer',rsn:'Post-obligations $'+fc(chk)+' — no surplus above '+fn});}
+    if(taxTodo>0&&ct===0){const m=mv(taxTodo,'tax');if(m>0){taxTodo=r(taxTodo-m);const rem=taxTodo>0?' — $'+fc(taxTodo)+' carries forward':'';tr.push({l:'Tax $'+fc(m)+' Checking → Tax HYSA'+rem,r:'done',rsn:'Post $'+fc(chk)+' ≥ '+fn});ac.push('Transfer $'+fc(m)+' from Truist Checking to Tax HYSA');}else tr.push({l:'Tax $'+fc(taxTodo)+' Checking → Tax HYSA',r:'defer',rsn:'Post-obligations $'+fc(chk)+' — no surplus above '+fn});}
+    if(alaska>0&&num>=AK_START&&efChk===0&&taxTodo===0&&ca===0){const m=mv(alaska,'sav');if(m>0){alaska=r(alaska-m);const rem=alaska>0?' — $'+fc(alaska)+' remaining':' — Alaska funded!';tr.push({l:'Alaska $'+fc(m)+' Checking → Truist Savings'+rem,r:'done',rsn:'Post $'+fc(chk)+' ≥ '+fn});ac.push('Transfer $'+fc(m)+' from Truist Checking to Truist Savings (Alaska fund)');}else{const pot=r(sm(chk,alaska,effFl));if(pot>0&&pot<MIN_XFR)tr.push({l:'Alaska $'+fc(pot)+' suppressed (<$100) — rolls forward',r:'info',rsn:'Too small; carries to next eligible week'});else tr.push({l:'Alaska surplus deferred',r:'defer',rsn:'Post-obligations $'+fc(chk)+' — no surplus above '+fn});}}
+    if(retSav>0&&alaska===0){const m=mvS(retSav,'amx');retSav=0;tr.push({l:'Retirement $'+fc(m)+' Truist Savings → AMEX Savings',r:'done',rsn:'Savings move — zero checking impact'});ac.push('Transfer $'+fc(m)+' from Truist Savings to AMEX Savings (retirement)');}
+    if(retChk>0&&alaska===0&&efChk===0){const m=mv(retChk,'amx');if(m>0){retChk=r(retChk-m);const rem=retChk>0?' — $'+fc(retChk)+' remaining':' — retirement funded!';tr.push({l:'Retirement $'+fc(m)+' Checking → AMEX Savings'+rem,r:'done',rsn:'Post $'+fc(chk)+' ≥ '+fn});ac.push('Transfer $'+fc(m)+' from Truist Checking to AMEX Savings (retirement rebuild)');}else{const pot=r(sm(chk,retChk,effFl));if(pot>0&&pot<MIN_XFR)tr.push({l:'Retirement $'+fc(pot)+' suppressed (<$100) — rolls forward',r:'info',rsn:'Too small; carries to next eligible week'});else tr.push({l:'Retirement surplus deferred',r:'defer',rsn:'Post-obligations $'+fc(chk)+' — no surplus above '+fn});}}
     if(LC_LEVELUP_WKS.has(num)){tr.push({l:'LevelUp $250 Vio Bank EF → Lending Club (APY boost)',r:'info',rsn:'Vio EF HYSA → LC rotation — no checking or AMEX impact. Rotate $250 back to Vio after statement closes.'});ac.push('Transfer $250 from Vio Bank EF HYSA to Lending Club (LevelUp qualifying deposit) — then rotate $250 back to Vio Bank within the month');}
     if(!tr.length){tr.push({l:'No transfers this week',r:'info',rsn:'No surplus above floor after obligations'});ac.push('No transfers this week — monitor balances');}
-    weeks.push({num,dates,trough,managed,evs,tr,ac,chk:r(chk),sav:r(sav),amx:r(amx),tax:r(tax),lc:r(lc),akSaved:r(akGoal-alaska),akRem:r(alaska),retRem:r(retChk),ol:r(chk+sav)});
+    weeks.push({num,dates,trough,managed,evs,tr,ac,chk:r(chk),sav:r(sav),amx:r(amx),tax:r(tax),lc:r(lc),akSaved:r(akGoal-alaska),akRem:r(alaska),retRem:r(retChk),ol:r(chk+sav),startChk,startSav,startAmx,startTax,startLc});
   }
   return weeks;
 }
 
 function f(n){return '$'+Math.abs(n).toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2})}
+function fc(n){return n.toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2})}
+function mkBal(label,start,end,vc){
+  const d=Math.round((end-start)*100)/100;
+  const dCls=d>0.005?'pos':d<-0.005?'neg':'zer';
+  const dStr=d>0.005?'+'+f(d):d<-0.005?'−'+f(Math.abs(d)):'—';
+  return`<div class="bal"><div class="blbl">${label}</div><div class="bval${vc?' '+vc:''}">${f(end)}</div><div class="brow2"><span class="bfrom">from ${f(start)}</span><span class="bdelta ${dCls}">${dStr}</span></div></div>`;
+}
 
 function getMilestones(weeks,ak,rt){
   const efW=weeks.find(w=>w.lc>=EF_NEW-0.01)||weeks[weeks.length-1];
   const akW=weeks.find(w=>w.akRem<=0.01);
   const rtW=weeks.find(w=>w.retRem<=0.01);
   return[
-    {week:'Week '+efW.num+' · '+efW.dates.split('-')[0].trim(),label:'EF restored to $21,738.88'},
-    {week:akW?'Week '+akW.num+' · '+akW.dates.split('-')[0].trim():'Beyond Week 31',label:'Alaska '+f(ak)+' fully funded'},
-    {week:rtW?'Week '+rtW.num+' · '+rtW.dates.split('-')[0].trim():'Dec–Jan 2027',label:'Retirement target '+f(rt)+' reached'},
+    {week:'Week '+efW.num+' \xb7 '+efW.dates.split('-')[0].trim(),label:'EF restored to $21,738.88'},
+    {week:akW?'Week '+akW.num+' \xb7 '+akW.dates.split('-')[0].trim():'Beyond Week 31',label:'Alaska '+f(ak)+' fully funded'},
+    {week:rtW?'Week '+rtW.num+' \xb7 '+rtW.dates.split('-')[0].trim():'Dec–Jan 2027',label:'Retirement target '+f(rt)+' reached'},
   ];
 }
 
 function getCurrentWeek(){const s=new Date(2026,5,8);const t=new Date();t.setHours(0,0,0,0);s.setHours(0,0,0,0);const d=Math.floor((t-s)/864e5);if(d<0)return 1;return Math.min(Math.floor(d/7)+1,31);}
+const currentW=getCurrentWeek();
 let activeW=getCurrentWeek();
+
 function getGoals(){return{ak:Math.max(1000,parseFloat(document.getElementById('akGoal').value)||7000),rt:Math.max(1000,parseFloat(document.getElementById('rtGoal').value)||7690.98)};}
 function goWeek(dir){
   const{ak,rt}=getGoals();const weeks=runModel(ak,rt);
@@ -309,9 +333,13 @@ function render(){
   nav.innerHTML='';
   weeks.forEach(wx=>{
     const b=document.createElement('button');
+    const isPast=wx.num<currentW;
+    const isNow=wx.num===currentW;
     let cls='wbtn';
     if(wx.managed)cls+=' managed';else if(wx.trough)cls+=' trough';
     if(wx.num===activeW)cls+=' active';
+    if(isPast)cls+=' past';
+    if(isNow)cls+=' now';
     b.className=cls;
     b.innerHTML='<span class="wn">Week '+wx.num+'</span><span class="wd">'+wx.dates+'</span>';
     b.onclick=()=>{activeW=wx.num;render();};
@@ -319,9 +347,11 @@ function render(){
   });
   const sel=document.getElementById('mobSelect');
   sel.innerHTML=weeks.map(wx=>{
-    let lbl='Week '+wx.num+' · '+wx.dates;
-    if(wx.managed)lbl+=' ⚠️';else if(wx.trough)lbl+=' 🔶';
-    return`<option value="${wx.num}"${wx.num===activeW?' selected':''}>${lbl}</option>`;
+    const isPast=wx.num<currentW;
+    const isNow=wx.num===currentW;
+    const prefix=isPast?'✓ ':isNow?'▶ ':'';
+    const suffix=isNow?' (Now)':wx.managed?' ⚠️':wx.trough?' 🔶':'';
+    return`<option value="${wx.num}"${wx.num===activeW?' selected':''}>${prefix}Week ${wx.num} \xb7 ${wx.dates}${suffix}</option>`;
   }).join('');
   const idx=weeks.findIndex(x=>x.num===activeW);
   document.getElementById('mobPrev').classList.toggle('disabled',idx===0);
@@ -330,39 +360,44 @@ function render(){
   const akFunded=w.akRem<=0.01;
   const rtFunded=w.retRem<=0.01&&retChkGoal>0;
   const efFunded=w.lc>=EF_NEW-0.01;
+  const isPastWeek=w.num<currentW;
+  const isNowWeek=w.num===currentW;
   let cardCls='card';
   if(w.managed)cardCls+=' managed-card';else if(w.trough)cardCls+=' trough-card';
   let badgeCls='badge',badgeTxt='normal week';
   if(w.managed){badgeCls+=' badge-managed';badgeTxt='managed trough';}
   else if(w.trough){badgeCls+=' badge-trough';badgeTxt='trough week';}
   else badgeCls+=' badge-op';
+  let temporalBadge='';
+  if(isPastWeek)temporalBadge='<span class="badge badge-past">Past week</span>';
+  else if(isNowWeek)temporalBadge='<span class="badge badge-now">● This week</span>';
   let html=`<div class="${cardCls}">`;
-  if(w.managed){html+=`<div class="alert-note alert-managed">⚠️ <strong>Managed trough</strong> — Checking dips $${Math.abs(w.chk).toFixed(2)} below zero from obligations alone. Truist Savings ($${w.sav.toLocaleString('en-US',{minimumFractionDigits:2})}) is same-bank backup — instant transfer if needed. Operational liquidity remains ${f(w.ol)}. Adam’s paycheck restores checking at the start of next week.</div>`;}
-  else if(w.trough&&w.chk<500){html+=`<div class="alert-note alert-trough">⚡ Trough week — checking at monthly low ($${w.chk.toFixed(2)}). Truist Savings ($${w.sav.toLocaleString('en-US',{minimumFractionDigits:2})}) available as same-bank backup. Adam’s paycheck restores checking at the start of next week.</div>`;}
-  html+=`<div class="card-hdr"><div><div class="card-title">Week ${w.num}</div><div class="card-dates">${w.dates}</div></div><span class="${badgeCls}">${badgeTxt}</span></div>`;
-  if(w.evs&&w.evs.length){html+='<div class="sect">Cash flow this week</div>';w.evs.forEach(e=>{const cls=e.t==='in'?'ev-in':'ev-out';const sign=e.t==='in'?'+':'-';html+=`<div class="ev-row"><span class="ev-lbl">${e.l}</span><span class="${cls}">${sign}${f(Math.abs(e.a))}</span></div>`;});}
+  if(w.managed){html+=`<div class="alert-note alert-managed">⚠️ <strong>Managed trough</strong> — Checking dips $${fc(Math.abs(w.chk))} below zero from obligations alone. Truist Savings (${f(w.sav)}) is same-bank backup — instant transfer if needed. Operational liquidity remains ${f(w.ol)}. Adam's paycheck restores checking at the start of next week.</div>`;}
+  else if(w.trough&&w.chk<500){html+=`<div class="alert-note alert-trough">⚡ Trough week — checking at monthly low (${f(w.chk)}). Truist Savings (${f(w.sav)}) available as same-bank backup. Adam's paycheck restores checking at the start of next week.</div>`;}
+  html+=`<div class="card-hdr"><div><div class="card-title">Week ${w.num}</div><div class="card-dates">${w.dates}</div></div><div class="badge-row">${temporalBadge}<span class="${badgeCls}">${badgeTxt}</span></div></div>`;
+  if(w.evs&&w.evs.length){html+='<div class="sect">Cash flow this week</div>';w.evs.forEach(e=>{const cls=e.t==='in'?'ev-in':'ev-out';const sign=e.t==='in'?'+':'−';html+=`<div class="ev-row"><span class="ev-lbl">${e.l}</span><span class="${cls}">${sign}${f(Math.abs(e.a))}</span></div>`;});}
   html+='<div class="sect">Transfers</div>';
   w.tr.forEach(x=>{const ic=x.r==='done'?'✅':x.r==='defer'?'🔴':'ℹ️';html+=`<div class="xfr-row"><span class="xi">${ic}</span><div class="xtext"><div class="xlbl">${x.l}</div><div class="xrsn">${x.rsn}</div></div></div>`;});
-  html+='<div class="sect">Account balances — end of week</div><div class="bals">';
+  html+='<div class="sect">Account balances — start → end of week</div><div class="bals">';
   const chkCls=w.chk<0?'low':w.chk<500?'warn':w.chk>=5000?'good':'';
-  html+=`<div class="bal"><div class="blbl">Truist Checking</div><div class="bval ${chkCls}">${f(w.chk)}</div></div>`;
-  html+=`<div class="bal"><div class="blbl">Truist Savings</div><div class="bval">${f(w.sav)}</div></div>`;
-  html+=`<div class="bal"><div class="blbl">AMEX Savings</div><div class="bval ${rtFunded?'good':''}">${f(w.amx)}</div></div>`;
-  html+=`<div class="bal"><div class="blbl">Tax HYSA</div><div class="bval">${f(w.tax)}</div></div>`;
-  html+=`<div class="bal"><div class="blbl">Lending Club (EF)</div><div class="bval ${efFunded?'good':''}">${f(w.lc)}</div></div>`;
+  html+=mkBal('Truist Checking',w.startChk,w.chk,chkCls);
+  html+=mkBal('Truist Savings',w.startSav,w.sav,'');
+  html+=mkBal('AMEX Savings',w.startAmx,w.amx,rtFunded?'good':'');
+  html+=mkBal('Tax HYSA',w.startTax,w.tax,'');
+  html+=mkBal('Lending Club (EF)',w.startLc,w.lc,efFunded?'good':'');
   html+='</div>';
   html+=`<div class="liq-row"><span class="liq-label">Operational liquidity (Checking + Savings)</span><span class="liq-val">${f(w.ol)}</span></div>`;
   const realActs=(w.ac||[]).filter(a=>!a.includes('No transfers'));
   if(realActs.length){html+='<div class="acts"><div class="act-hdr">Recommended actions this week</div>';realActs.forEach(a=>{html+=`<div class="act-row"><div class="act-dot"></div><div>${a}</div></div>`;});html+='</div>';}
-  if(w.num===1)html+='<div class="banner banner-green">✅ Week 1 actions restore Lending Club EF to $21,738.88 · Tax HYSA funded · $3,000 reclassified as permanent operating cash</div>';
+  if(w.num===1)html+='<div class="banner banner-green">✅ Week 1 actions restore Lending Club EF to $21,738.88 \xb7 Tax HYSA funded \xb7 $3,000 reclassified as permanent operating cash</div>';
   else if(akFunded&&w.num===weeks.find(x=>x.akRem<=0.01)?.num)html+='<div class="banner banner-amber">⭐ Big week — Alaska fully funded + retirement savings move + retirement rebuild begins</div>';
   else if(akFunded&&!rtFunded)html+='<div class="banner banner-blue">✅ Alaska funded — retirement rebuild in progress</div>';
   else if(efFunded&&!akFunded&&w.akSaved>0)html+='<div class="banner banner-blue">Building Alaska fund — '+f(w.akSaved)+' of '+f(ak)+' saved</div>';
   const prevW=weeks.find(x=>x.num===w.num-1),nextW=weeks.find(x=>x.num===w.num+1);
   html+='<div class="week-nav">';
-  if(prevW)html+=`<button class="wnav-btn" onclick="activeW=${w.num-1};render()">← Week ${w.num-1} · ${prevW.dates}</button>`;
+  if(prevW)html+=`<button class="wnav-btn" onclick="activeW=${w.num-1};render()">← Week ${w.num-1} \xb7 ${prevW.dates}</button>`;
   else html+='<div class="wnav-spacer"></div>';
-  if(nextW)html+=`<button class="wnav-btn" onclick="activeW=${w.num+1};render()">Week ${w.num+1} · ${nextW.dates} →</button>`;
+  if(nextW)html+=`<button class="wnav-btn" onclick="activeW=${w.num+1};render()">Week ${w.num+1} \xb7 ${nextW.dates} →</button>`;
   else html+='<div class="wnav-spacer"></div>';
   html+='</div></div>';
   document.getElementById('display').innerHTML=html;
