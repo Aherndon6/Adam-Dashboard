@@ -45,12 +45,12 @@ body{background:var(--bg);color:var(--text);font-family:Georgia,'Times New Roman
 .prog-track{height:8px;background:var(--surface2);border-radius:4px;overflow:hidden;border:1px solid var(--border)}
 .prog-fill{height:100%;border-radius:4px;transition:width .5s ease}
 .prog-note{font-size:10px;color:var(--amber);margin-top:3px;font-style:italic}
-/* ── Tabs ── */
+/* Tabs */
 .tabs{display:flex;gap:0;margin-bottom:16px;border-bottom:2px solid var(--border)}
 .tab-btn{padding:10px 20px;border:none;background:none;color:var(--text2);cursor:pointer;font-size:13px;font-family:Georgia,serif;border-bottom:3px solid transparent;margin-bottom:-2px;font-weight:600;transition:all .12s}
 .tab-btn:hover{color:var(--blue)}
 .tab-btn.active{color:var(--blue);border-bottom-color:var(--blue)}
-/* ── Nav ── */
+/* Nav */
 .nav{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:16px}
 .wbtn{padding:7px 11px;border:1px solid var(--border2);border-radius:8px;background:var(--surface);color:var(--text2);cursor:pointer;font-size:11px;line-height:1.3;text-align:center;min-width:72px;transition:all .12s;font-family:Georgia,serif;box-shadow:var(--sh);position:relative}
 .wbtn:hover{background:var(--surface2);border-color:var(--blue);color:var(--blue-dk)}
@@ -66,8 +66,10 @@ body{background:var(--bg);color:var(--text);font-family:Georgia,'Times New Roman
 .wbtn.open-tasks::after{content:'';position:absolute;top:5px;right:5px;width:7px;height:7px;border-radius:50%;background:#d97706;border:1.5px solid white}
 .wbtn .wn{font-size:12px;font-weight:700;display:block}
 .wbtn .wd{font-size:9px;display:block;opacity:.7;margin-top:1px}
+.add-week-btn{padding:7px 11px;border:2px dashed var(--border2);border-radius:8px;background:transparent;color:var(--text3);cursor:pointer;font-size:11px;min-width:60px;font-family:Georgia,serif;transition:all .12s}
+.add-week-btn:hover{border-color:var(--blue);color:var(--blue);background:var(--blue-lt)}
 .mob-nav{display:none}
-/* ── Card ── */
+/* Card */
 .card{background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:18px;box-shadow:var(--sh-md)}
 .card.trough-card{border-left:4px solid var(--orange);border-radius:0 12px 12px 0}
 .card.managed-card{border-left:4px solid var(--red);border-radius:0 12px 12px 0}
@@ -83,6 +85,8 @@ body{background:var(--bg);color:var(--text);font-family:Georgia,'Times New Roman
 .badge-past{background:var(--surface2);color:var(--text3);border:1px solid var(--border2)}
 .badge-now{background:#fef3c7;color:#92400e;border:1px solid #fde68a}
 .badge-recon{background:var(--green-lt);color:var(--green);border:1px solid #86efac}
+.edit-btn{font-size:11px;padding:4px 10px;border:1px solid var(--border2);border-radius:6px;background:var(--surface2);color:var(--text2);cursor:pointer;font-family:Georgia,serif;transition:all .12s;margin-bottom:6px}
+.edit-btn:hover{background:var(--blue-lt);color:var(--blue-dk);border-color:#93c5fd}
 .alert-note{border-radius:8px;padding:10px 13px;font-size:12px;margin-bottom:12px;line-height:1.55}
 .alert-trough{background:var(--amber-lt);border:1px solid var(--amber-md);color:var(--amber)}
 .alert-managed{background:var(--red-lt);border:1px solid #fca5a5;color:var(--red)}
@@ -98,7 +102,7 @@ body{background:var(--bg);color:var(--text);font-family:Georgia,'Times New Roman
 .xtext{flex:1}
 .xlbl{color:var(--text);font-size:12.5px;line-height:1.4}
 .xrsn{color:var(--text3);font-size:10.5px;margin-top:2px;font-style:italic}
-/* ── Balances ── */
+/* Balances */
 .bals{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-top:14px}
 .bal{background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:9px 11px}
 .blbl{font-size:10px;color:var(--text3);margin-bottom:3px;text-transform:uppercase;letter-spacing:.04em}
@@ -112,7 +116,6 @@ body{background:var(--bg);color:var(--text);font-family:Georgia,'Times New Roman
 .bdelta.pos{color:var(--green)}
 .bdelta.neg{color:var(--red)}
 .bdelta.zer{color:var(--text3)}
-/* Sprint 2: actual vs modeled inline in balance card */
 .bactual{font-size:10px;margin-top:4px;padding-top:4px;border-top:1px dashed var(--border2)}
 .bactual-lbl{color:var(--text3)}
 .bactual-val{font-weight:700;color:var(--text)}
@@ -123,14 +126,14 @@ body{background:var(--bg);color:var(--text);font-family:Georgia,'Times New Roman
 .liq-row{background:var(--blue-lt);border:1px solid #bfdbfe;border-radius:8px;padding:9px 11px;display:flex;justify-content:space-between;align-items:center;margin-top:8px}
 .liq-label{font-size:11px;color:var(--blue-dk);font-weight:600}
 .liq-val{font-size:14px;font-weight:700;color:var(--blue)}
-/* ── Variance alert ── */
+/* Variance alert */
 .variance-alert{background:#fff7ed;border:1px solid #fed7aa;border-left:4px solid #ea580c;border-radius:8px;padding:10px 13px;margin-top:10px}
 .variance-title{font-size:11px;font-weight:700;color:#c2410c;margin-bottom:6px}
 .variance-items{display:flex;flex-wrap:wrap;gap:6px}
 .vitem{padding:3px 10px;border-radius:12px;font-size:11px;font-weight:600}
 .vitem.under{background:var(--red-lt);color:var(--red)}
 .vitem.over{background:var(--green-lt);color:var(--green)}
-/* ── Tasks (Sprint 2) ── */
+/* Tasks */
 .acts{margin-top:14px;padding-top:12px;border-top:1px solid var(--border)}
 .act-hdr{font-size:10px;font-weight:700;color:var(--text3);text-transform:uppercase;letter-spacing:.07em;margin-bottom:7px;display:flex;align-items:center;gap:8px}
 .act-hdr-progress{font-size:10px;font-weight:400;font-style:italic;color:var(--text3)}
@@ -141,13 +144,13 @@ body{background:var(--bg);color:var(--text);font-family:Georgia,'Times New Roman
 .task-check{width:18px;height:18px;flex-shrink:0;cursor:pointer;accent-color:var(--blue);margin-top:2px}
 .task-text{flex:1;font-size:12.5px;color:var(--text);line-height:1.4}
 .task-text.done{text-decoration:line-through;color:var(--text3)}
-/* ── Notes (Sprint 2) ── */
+/* Notes */
 .notes-wrap{margin-top:14px;padding-top:12px;border-top:1px solid var(--border)}
 .notes-hdr{font-size:10px;font-weight:700;color:var(--text3);text-transform:uppercase;letter-spacing:.07em;margin-bottom:6px}
 .notes-area{width:100%;padding:9px 11px;border:1px solid var(--border2);border-radius:8px;font-size:13px;font-family:Georgia,serif;color:var(--text);background:var(--surface);resize:vertical;min-height:64px;line-height:1.5;display:block}
 .notes-area:focus{outline:2px solid var(--blue);border-color:var(--blue)}
 .notes-saved{font-size:10px;color:var(--green);margin-top:4px;height:14px;font-style:italic}
-/* ── Reconcile (Sprint 2) ── */
+/* Reconcile */
 .recon-wrap{margin-top:14px;padding-top:12px;border-top:1px solid var(--border)}
 .recon-done-row{display:flex;align-items:center;gap:8px;background:var(--green-lt);border:1px solid #86efac;border-radius:8px;padding:9px 12px;font-size:12px;color:var(--green)}
 .recon-done-lbl{flex:1;font-weight:600}
@@ -166,7 +169,7 @@ body{background:var(--bg);color:var(--text);font-family:Georgia,'Times New Roman
 .recon-cancel{padding:9px 14px;background:var(--surface);color:var(--text2);border:1px solid var(--border2);border-radius:8px;font-size:13px;font-family:Georgia,serif;cursor:pointer}
 .recon-delete{padding:9px 14px;background:var(--surface);color:var(--red);border:1px solid #fca5a5;border-radius:8px;font-size:13px;font-family:Georgia,serif;cursor:pointer;margin-left:auto}
 .recon-hint{font-size:10px;color:var(--text3);font-style:italic}
-/* ── Banners ── */
+/* Banners */
 .banner{border-radius:8px;padding:9px 14px;font-size:12px;font-weight:600;text-align:center;margin-top:12px}
 .banner-green{background:var(--green-lt);color:var(--green);border:1px solid #86efac}
 .banner-blue{background:var(--blue-lt);color:var(--blue-dk);border:1px solid #93c5fd}
@@ -175,7 +178,7 @@ body{background:var(--bg);color:var(--text);font-family:Georgia,'Times New Roman
 .wnav-btn{padding:7px 13px;border:1px solid var(--border2);border-radius:8px;background:var(--surface);color:var(--text2);cursor:pointer;font-size:11.5px;font-weight:600;transition:all .12s;font-family:Georgia,serif;box-shadow:var(--sh)}
 .wnav-btn:hover{background:var(--blue);color:white;border-color:var(--blue)}
 .wnav-spacer{width:120px}
-/* ── History tab ── */
+/* History tab */
 .history-summary{background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:13px 16px;margin-bottom:14px;font-size:12.5px;color:var(--text2);line-height:1.6}
 .hcard{background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:14px 16px;margin-bottom:10px;box-shadow:var(--sh)}
 .hcard.past-open{border-left:3px solid var(--orange)}
@@ -202,7 +205,39 @@ body{background:var(--bg);color:var(--text);font-family:Georgia,'Times New Roman
 .hcard-tasks.none{color:var(--text3)}
 .hcard-note{font-size:11px;color:var(--text2);font-style:italic;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .hcard-jump{font-size:11px;color:var(--blue);cursor:pointer;background:none;border:none;font-family:Georgia,serif;text-decoration:underline;margin-left:auto;flex-shrink:0}
-/* ── Mobile ── */
+/* Sprint 3: Edit drawer */
+.drawer-backdrop{position:fixed;inset:0;background:rgba(0,0,0,.4);z-index:399;display:none}
+.drawer{position:fixed;top:0;right:0;height:100vh;width:420px;background:var(--surface);box-shadow:-4px 0 24px rgba(0,0,0,.18);z-index:400;overflow:hidden;transform:translateX(100%);transition:transform .22s ease;display:flex;flex-direction:column}
+.drawer.open{transform:translateX(0)}
+.drawer-hdr{display:flex;align-items:flex-start;justify-content:space-between;padding:20px 20px 0;flex-shrink:0}
+.drawer-title-wrap{flex:1}
+.drawer-title{font-size:16px;font-weight:700;color:var(--text)}
+.drawer-sub{font-size:12px;color:var(--text2);margin-top:3px;font-style:italic}
+.drawer-close{width:30px;height:30px;border:1px solid var(--border2);border-radius:6px;background:var(--surface2);color:var(--text2);cursor:pointer;font-size:18px;display:flex;align-items:center;justify-content:center;flex-shrink:0;margin-left:8px;line-height:1}
+.drawer-body{padding:0 20px 4px;flex:1;overflow-y:auto}
+.drawer-sect{font-size:10px;font-weight:700;color:var(--text3);text-transform:uppercase;letter-spacing:.07em;margin-bottom:8px;margin-top:16px;border-bottom:1px solid var(--border);padding-bottom:4px}
+.drawer-sect:first-of-type{margin-top:12px}
+.drawer-error{font-size:12px;color:var(--red);background:var(--red-lt);border:1px solid #fca5a5;border-radius:6px;padding:8px 10px;margin-top:12px;display:none}
+.ev-edit-row{display:grid;grid-template-columns:1fr 80px 88px 30px;gap:6px;align-items:center;margin-bottom:8px}
+.ev-edit-lbl{font-size:12px;padding:6px 8px;border:1px solid var(--border2);border-radius:6px;background:var(--surface2);color:var(--text);font-family:Georgia,serif;width:100%}
+.ev-edit-type{font-size:12px;padding:6px 4px;border:1px solid var(--border2);border-radius:6px;background:var(--surface2);color:var(--text);font-family:Georgia,serif}
+.ev-edit-amt{font-size:12px;padding:6px 8px;border:1px solid var(--border2);border-radius:6px;background:var(--surface2);color:var(--text);font-family:Georgia,serif;width:100%;text-align:right}
+.ev-del-btn{width:28px;height:28px;border:1px solid #fca5a5;border-radius:6px;background:var(--red-lt);color:var(--red);cursor:pointer;font-size:13px;display:flex;align-items:center;justify-content:center;flex-shrink:0}
+.ev-del-btn:hover{background:var(--red);color:white}
+.modal-add-ev{font-size:12px;padding:7px 12px;border:1px dashed var(--border2);border-radius:6px;background:var(--surface2);color:var(--text2);cursor:pointer;font-family:Georgia,serif;margin-bottom:4px;width:100%;text-align:left}
+.modal-add-ev:hover{border-color:var(--blue);color:var(--blue)}
+.comm-hint{font-size:11px;color:#075985;background:#f0f9ff;border:1px solid #bae6fd;border-radius:6px;padding:8px 10px;margin-bottom:10px;line-height:1.55}
+.modal-comm-row{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:4px}
+.modal-field{display:flex;flex-direction:column;gap:4px;margin-bottom:10px}
+.modal-label{font-size:11px;color:var(--text2);font-weight:600}
+.modal-input{font-size:13px;padding:7px 9px;border:1px solid var(--border2);border-radius:6px;background:var(--surface2);color:var(--text);font-family:Georgia,serif;width:100%}
+.modal-input:focus{outline:2px solid var(--blue);border-color:var(--blue)}
+.drawer-footer{padding:14px 20px;border-top:1px solid var(--border);background:var(--surface);flex-shrink:0;display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.modal-save{padding:9px 18px;border:none;border-radius:8px;background:var(--blue);color:white;font-size:13px;font-weight:700;cursor:pointer;font-family:Georgia,serif}
+.modal-save:hover{background:var(--blue-dk)}
+.modal-cancel{padding:9px 14px;border:1px solid var(--border2);border-radius:8px;background:var(--surface2);color:var(--text2);font-size:13px;cursor:pointer;font-family:Georgia,serif}
+.modal-delete{padding:9px 14px;border:1px solid #fca5a5;border-radius:8px;background:var(--red-lt);color:var(--red);font-size:13px;cursor:pointer;font-family:Georgia,serif;margin-left:auto}
+/* Mobile */
 .mob-bar{display:none}
 .footer{text-align:center;color:var(--text3);font-size:11px;margin-top:32px;font-style:italic}
 @media(max-width:768px){
@@ -235,6 +270,9 @@ body{background:var(--bg);color:var(--text);font-family:Georgia,'Times New Roman
   .badge-row{justify-content:flex-start;margin-top:6px}
   .card-hdr{flex-direction:column;align-items:flex-start}
   .tab-btn{padding:8px 14px;font-size:12px}
+  .drawer{width:100vw}
+  .ev-edit-row{grid-template-columns:1fr 78px 78px 30px}
+  .modal-comm-row{grid-template-columns:1fr}
 }
 </style>
 </head>
@@ -276,12 +314,10 @@ body{background:var(--bg);color:var(--text);font-family:Georgia,'Times New Roman
       <div class="prog-track"><div class="prog-fill" id="rtBar" style="background:#6d28d9"></div></div>
     </div>
   </div>
-  <!-- Sprint 2: Tab bar -->
   <div class="tabs">
     <button class="tab-btn active" id="tabPlan" onclick="setTab('plan')">📋 Plan</button>
     <button class="tab-btn" id="tabHistory" onclick="setTab('history')">📊 History</button>
   </div>
-  <!-- Plan view -->
   <div id="planView">
     <div class="nav" id="nav"></div>
     <div class="mob-nav">
@@ -290,7 +326,6 @@ body{background:var(--bg);color:var(--text);font-family:Georgia,'Times New Roman
     </div>
     <div id="display"></div>
   </div>
-  <!-- History view -->
   <div id="historyView" style="display:none">
     <div id="historyContent"></div>
   </div>
@@ -301,17 +336,19 @@ body{background:var(--bg);color:var(--text);font-family:Georgia,'Times New Roman
   <span class="mob-bar-counter" id="mobCounter"></span>
   <button class="mob-bar-btn" id="mobNext" onclick="goWeek(1)">Next &#8594;</button>
 </div>
+<div id="drawer-backdrop" class="drawer-backdrop" onclick="closeEdit()"></div>
+<div id="edit-drawer" class="drawer"></div>
 <script>
-// ── Constants (unchanged from Sprint 1) ───────────────────────────────────────
+// ── Constants ─────────────────────────────────────────────────────────────────
 const EF_ORIG=24738.88,EF_NEW=21738.88;
 const START_CHK=12037.73,START_SAV=6522.77,START_AMX=99.75,START_TAX=0,START_LC=16738.88;
 const EF_SAV_XFR=2750,EF_CHK_XFR=2250,BASE_TAX=521.36,RET_SAV_XFR=3772.74;
 const COMM_TAX=707.18,COMM_AK=1060.76;
 const OP_FL=3000,TR_FL=1500,MIN_XFR=100,AK_START=5;
 const LC_LEVELUP=250,LC_LEVELUP_WKS=new Set([5,9,14,18,22,27,31]);
-const VAR_THRESHOLD=250; // Sprint 2: variance flag threshold
+const VAR_THRESHOLD=250;
 
-// ── Week definitions (exact from live) ───────────────────────────────────────
+// ── Week definitions ──────────────────────────────────────────────────────────
 const WD=[
   [1,'Jun 7-13',false,false,3000,[],[791],[{l:'Kia payment (6/7)',t:'ob',a:-791}],0,0],
   [2,'Jun 14-20',false,false,9477,[2552.5],[],[{l:'Wendy paycheck + extra $400 (6/19)',t:'in',a:2552.5}],0,0],
@@ -346,25 +383,16 @@ const WD=[
   [31,'Jan 3-9 2027',false,false,3000,[5816.5],[791],[{l:'Adam paycheck (1/7)',t:'in',a:5816.5},{l:'Kia payment (1/7)',t:'ob',a:-791}],0,0],
 ];
 
-// ── Sprint 2: localStorage state ──────────────────────────────────────────────
-var reconData={};   // weekNum → {chk,sav,amx,tax,lc,date}
-var taskData={};    // 'N_I' → {completed,completedAt}
-var noteData={};    // weekNum → string
-var reconOpen=null; // weekNum with open form, or null
+// ── Sprint 3: state (Supabase-backed; no localStorage) ────────────────────────
+var reconData={};    // weekNum → {chk,sav,amx,tax,lc,date}
+var taskData={};     // 'N_I' → {completed,completedAt}
+var noteData={};     // weekNum → string
+var overrideData={}; // weekNum → model_week_overrides row
+var reconOpen=null;
+var editOpen=null;   // weekNum being edited, 0 = new custom week, null = closed
 var activeTab='plan';
 
-function lsGet(k){try{return localStorage.getItem(k)}catch(e){return null}}
-function lsSet(k,v){try{localStorage.setItem(k,v)}catch(e){}}
-
-function initData(){
-  for(var i=1;i<=31;i++){
-    var rv=lsGet('hcf2_recon_'+i);if(rv)reconData[i]=JSON.parse(rv);
-    var nv=lsGet('hcf2_note_'+i);if(nv!==null)noteData[i]=nv;
-    for(var j=0;j<12;j++){var tv=lsGet('hcf2_task_'+i+'_'+j);if(tv)taskData[i+'_'+j]=JSON.parse(tv);}
-  }
-}
-
-// ── runModel — Sprint 1 logic + Sprint 2 additions (mChk/mSav, recon anchor) ─
+// ── Sprint 3: runModel with override support ───────────────────────────────────
 function runModel(akGoal,rtGoal){
   const retChkGoal=Math.max(0,Math.round((rtGoal-START_AMX-RET_SAV_XFR)*100)/100);
   let chk=START_CHK,sav=START_SAV,amx=START_AMX,tax=START_TAX,lc=START_LC;
@@ -373,7 +401,24 @@ function runModel(akGoal,rtGoal){
   const weeks=[];
   function r(n){return Math.round(n*100)/100}
   function sm(b,a,f){return Math.max(0,Math.min(r(a),r(r(b)-r(f))))}
-  for(const wd of WD){
+
+  // Build effective week list — apply overrides then append custom weeks
+  const effectiveWD=WD.map(function(wd){
+    const[num,dates,trough,managed,holdFloor,,, evs,ct,ca]=wd;
+    const ov=overrideData[num];
+    if(!ov)return wd;
+    const effEvs=(ov.events_json&&ov.events_json.length)?ov.events_json:evs;
+    const effIn=effEvs.filter(function(e){return e.t==='in';}).map(function(e){return e.a;});
+    const effObs=effEvs.filter(function(e){return e.t==='ob';}).map(function(e){return Math.abs(e.a);});
+    return[num,ov.dates||dates,ov.trough!=null?ov.trough:trough,ov.managed!=null?ov.managed:managed,ov.hold_floor!=null?ov.hold_floor:holdFloor,effIn,effObs,effEvs,ov.ct!=null?ov.ct:ct,ov.ca!=null?ov.ca:ca];
+  });
+  // Append custom weeks (32+) sorted by week_num
+  Object.values(overrideData).filter(function(ov){return ov.is_custom;}).sort(function(a,b){return a.week_num-b.week_num;}).forEach(function(ov){
+    var effEvs=ov.events_json||[];
+    effectiveWD.push([ov.week_num,ov.dates||'Custom week',!!ov.trough,!!ov.managed,ov.hold_floor||3000,effEvs.filter(function(e){return e.t==='in';}).map(function(e){return e.a;}),effEvs.filter(function(e){return e.t==='ob';}).map(function(e){return Math.abs(e.a);}),effEvs,ov.ct||0,ov.ca||0]);
+  });
+
+  for(const wd of effectiveWD){
     const[num,dates,trough,managed,holdFloor,inflows,obs,evs,ct,ca]=wd;
     const startChk=r(chk),startSav=r(sav),startAmx=r(amx),startTax=r(tax),startLc=r(lc);
     const baseFl=trough?TR_FL:OP_FL;
@@ -402,19 +447,14 @@ function runModel(akGoal,rtGoal){
     if(retChk>0&&alaska===0&&efChk===0){const m=mv(retChk,'amx');if(m>0){retChk=r(retChk-m);const rem=retChk>0?' — $'+fc(retChk)+' remaining':' — retirement funded!';tr.push({l:'Retirement $'+fc(m)+' Checking → AMEX Savings'+rem,r:'done',rsn:'Post $'+fc(chk)+' ≥ '+fn});ac.push('Transfer $'+fc(m)+' from Truist Checking to AMEX Savings (retirement rebuild)');}else{const pot=r(sm(chk,retChk,effFl));if(pot>0&&pot<MIN_XFR)tr.push({l:'Retirement $'+fc(pot)+' suppressed (<$100) — rolls forward',r:'info',rsn:'Too small; carries to next eligible week'});else tr.push({l:'Retirement surplus deferred',r:'defer',rsn:'Post-obligations $'+fc(chk)+' — no surplus above '+fn});}}
     if(LC_LEVELUP_WKS.has(num)){tr.push({l:'LevelUp $250 Vio Bank EF → Lending Club (APY boost)',r:'info',rsn:'Vio EF HYSA → LC rotation — no checking or AMEX impact. Rotate $250 back to Vio after statement closes.'});ac.push('Transfer $250 from Vio Bank EF HYSA to Lending Club (LevelUp qualifying deposit) — then rotate $250 back to Vio Bank within the month');}
     if(!tr.length){tr.push({l:'No transfers this week',r:'info',rsn:'No surplus above floor after obligations'});ac.push('No transfers this week — monitor balances');}
-    // Sprint 2: capture modeled end balances before any recon override
     const mChk=r(chk),mSav=r(sav),mAmx=r(amx),mTax=r(tax),mLc=r(lc);
-    // Sprint 2: apply reconciliation anchor (Option C)
     let reconciled=false,variance=null,actualBals=null;
     if(reconData[num]){
       const rec=reconData[num];
-      reconciled=true;
-      actualBals=rec;
+      reconciled=true;actualBals=rec;
       variance={chk:r(mChk-rec.chk),sav:r(mSav-rec.sav),amx:r(mAmx-rec.amx),tax:r(mTax-rec.tax),lc:r(mLc-rec.lc)};
-      // override running state with actuals — all future weeks calculate from here
       chk=rec.chk;sav=rec.sav;amx=rec.amx;tax=rec.tax;lc=rec.lc;
     }
-    // Sprint 2: task completion counts
     const realActs=ac.filter(function(a){return!a.includes('No transfers');});
     const totalTasks=realActs.length;
     let doneTasks=0;
@@ -429,11 +469,9 @@ function runModel(akGoal,rtGoal){
   return weeks;
 }
 
-// ── Helpers (same as Sprint 1) ────────────────────────────────────────────────
+// ── Helpers ───────────────────────────────────────────────────────────────────
 function f(n){return '$'+Math.abs(n).toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2})}
 function fc(n){return n.toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2})}
-
-// Sprint 2: mkBal extended with optional actual+modeled for variance display
 function mkBal(label,start,end,vc,actual,modeled){
   const d=Math.round((end-start)*100)/100;
   const dCls=d>0.005?'pos':d<-0.005?'neg':'zer';
@@ -447,7 +485,6 @@ function mkBal(label,start,end,vc,actual,modeled){
   }
   return'<div class="bal"><div class="blbl">'+label+'</div><div class="bval'+(vc?' '+vc:'')+'">'+f(end)+'</div><div class="brow2"><span class="bfrom">from '+f(start)+'</span><span class="bdelta '+dCls+'">'+dStr+'</span></div>'+actualHtml+'</div>';
 }
-
 function getMilestones(weeks,ak,rt){
   const efW=weeks.find(w=>w.lc>=EF_NEW-0.01)||weeks[weeks.length-1];
   const akW=weeks.find(w=>w.akRem<=0.01);
@@ -458,11 +495,20 @@ function getMilestones(weeks,ak,rt){
     {week:rtW?'Week '+rtW.num+' \xb7 '+rtW.dates.split('-')[0].trim():'Dec–Jan 2027',label:'Retirement target '+f(rt)+' reached'},
   ];
 }
-
 function getCurrentWeek(){const s=new Date(2026,5,7);const t=new Date();t.setHours(0,0,0,0);s.setHours(0,0,0,0);const d=Math.floor((t-s)/864e5);if(d<0)return 1;return Math.min(Math.floor(d/7)+1,31);}
 const currentW=getCurrentWeek();
+// Format a YYYY-MM-DD date string as "Jun 7-13" / "Jun 28-Jul 4" / "Jan 3-9 2027"
+function formatWeekRange(ymd){
+  const d=new Date(ymd+'T12:00:00');
+  const end=new Date(d);end.setDate(end.getDate()+6);
+  const mo=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+  const sm=mo[d.getMonth()],em=mo[end.getMonth()];
+  const sy=d.getFullYear(),ey=end.getFullYear();
+  if(sy!==ey)return sm+' '+d.getDate()+'–'+em+' '+end.getDate()+' '+ey;
+  if(sm===em)return sm+' '+d.getDate()+'-'+end.getDate();
+  return sm+' '+d.getDate()+'-'+em+' '+end.getDate();
+}
 let activeW=getCurrentWeek();
-
 function getGoals(){return{ak:Math.max(1000,parseFloat(document.getElementById('akGoal').value)||7000),rt:Math.max(1000,parseFloat(document.getElementById('rtGoal').value)||7690.98)};}
 function goWeek(dir){
   const{ak,rt}=getGoals();const weeks=runModel(ak,rt);
@@ -471,7 +517,7 @@ function goWeek(dir){
   if(nxt){activeW=nxt.num;render();window.scrollTo({top:document.getElementById('display').offsetTop-10,behavior:'smooth'});}
 }
 
-// ── Sprint 2: tab switching ───────────────────────────────────────────────────
+// ── Tab ───────────────────────────────────────────────────────────────────────
 function setTab(t){
   activeTab=t;
   document.getElementById('tabPlan').className='tab-btn'+(t==='plan'?' active':'');
@@ -481,42 +527,132 @@ function setTab(t){
   if(t==='history')renderHistory();
 }
 
-// ── Sprint 2: reconcile action handlers ──────────────────────────────────────
+// ── Reconcile (Supabase-backed) ───────────────────────────────────────────────
 function openRecon(n){reconOpen=n;render();}
 function cancelRecon(){reconOpen=null;render();}
-function saveRecon(n){
+async function saveRecon(n){
   function gv(id){return parseFloat(document.getElementById(id).value)||0;}
-  const data={
-    chk:gv('ri_chk'),sav:gv('ri_sav'),amx:gv('ri_amx'),tax:gv('ri_tax'),lc:gv('ri_lc'),
-    date:new Date().toLocaleDateString('en-US',{month:'short',day:'numeric'})
-  };
-  reconData[n]=data;
-  lsSet('hcf2_recon_'+n,JSON.stringify(data));
-  reconOpen=null;
-  render();
+  const data={chk:gv('ri_chk'),sav:gv('ri_sav'),amx:gv('ri_amx'),tax:gv('ri_tax'),lc:gv('ri_lc')};
+  const now=new Date();
+  reconData[n]={...data,date:now.toLocaleDateString('en-US',{month:'short',day:'numeric'})};
+  try{
+    await fetch(SUPA_URL+'/rest/v1/weekly_reconciliations',{method:'POST',
+      headers:{...SUPA_H,'Prefer':'resolution=merge-duplicates'},
+      body:JSON.stringify({week_num:n,...data,recorded_at:now.toISOString()})});
+  }catch(e){console.error('saveRecon:',e);}
+  reconOpen=null;render();
 }
-function deleteRecon(n){
+async function deleteRecon(n){
   delete reconData[n];
-  lsSet('hcf2_recon_'+n,'');
-  reconOpen=null;
-  render();
+  try{
+    await fetch(SUPA_URL+'/rest/v1/weekly_reconciliations?week_num=eq.'+n,{method:'DELETE',headers:SUPA_H});
+  }catch(e){console.error('deleteRecon:',e);}
+  reconOpen=null;render();
 }
 
-// ── Sprint 2: task + note handlers ───────────────────────────────────────────
-function toggleTask(weekNum,taskIdx,checked){
+// ── Tasks (Supabase-backed) ───────────────────────────────────────────────────
+async function toggleTask(weekNum,taskIdx,checked){
   const key=weekNum+'_'+taskIdx;
-  taskData[key]={completed:checked,completedAt:checked?new Date().toISOString():null};
-  lsSet('hcf2_task_'+weekNum+'_'+taskIdx,JSON.stringify(taskData[key]));
+  const now=new Date().toISOString();
+  taskData[key]={completed:checked,completedAt:checked?now:null};
+  try{
+    await fetch(SUPA_URL+'/rest/v1/weekly_tasks',{method:'POST',
+      headers:{...SUPA_H,'Prefer':'resolution=merge-duplicates'},
+      body:JSON.stringify({week_num:weekNum,task_idx:taskIdx,completed:checked,completed_at:checked?now:null})});
+  }catch(e){console.error('toggleTask:',e);}
   render();
 }
-function saveNote(weekNum,el){
+
+// ── Notes (Supabase-backed) ───────────────────────────────────────────────────
+async function saveNote(weekNum,el){
   noteData[weekNum]=el.value;
-  lsSet('hcf2_note_'+weekNum,el.value);
   const s=document.getElementById('ns_'+weekNum);
-  if(s){s.textContent='Saved';setTimeout(function(){if(s)s.textContent='';},1800);}
+  if(s)s.textContent='Saving...';
+  try{
+    await fetch(SUPA_URL+'/rest/v1/weekly_notes',{method:'POST',
+      headers:{...SUPA_H,'Prefer':'resolution=merge-duplicates'},
+      body:JSON.stringify({week_num:weekNum,note:el.value,updated_at:new Date().toISOString()})});
+    if(s){s.textContent='Saved';setTimeout(function(){if(s)s.textContent='';},1800);}
+  }catch(e){console.error('saveNote:',e);if(s)s.textContent='Error';}
 }
 
-// ── Sprint 2: header recon label ──────────────────────────────────────────────
+// ── Sprint 3: Edit drawer ─────────────────────────────────────────────────────
+function openEdit(n){editOpen=n;document.body.style.overflow='hidden';render();}
+function closeEdit(){editOpen=null;document.body.style.overflow='';render();}
+
+function addEditEvent(){
+  const list=document.getElementById('ev-edit-list');
+  if(!list)return;
+  const i=list.querySelectorAll('.ev-edit-row').length;
+  const div=document.createElement('div');
+  div.className='ev-edit-row';
+  div.setAttribute('data-idx',i);
+  div.innerHTML='<input class="ev-edit-lbl" type="text" placeholder="Description (e.g. Wendy paycheck)">'+
+    '<select class="ev-edit-type"><option value="in">Inflow</option><option value="ob">Outflow</option></select>'+
+    '<input class="ev-edit-amt" type="number" step="0.01" min="0" value="0">'+
+    '<button class="ev-del-btn" onclick="this.closest(\'.ev-edit-row\').remove()" title="Remove">&#10005;</button>';
+  list.appendChild(div);
+}
+
+function _readEditEvents(){
+  const rows=document.querySelectorAll('#ev-edit-list .ev-edit-row');
+  const events=[];
+  rows.forEach(function(row){
+    const lbl=row.querySelector('.ev-edit-lbl');
+    const typ=row.querySelector('.ev-edit-type');
+    const amt=row.querySelector('.ev-edit-amt');
+    if(!lbl||!typ||!amt)return;
+    const l=lbl.value.trim();
+    if(!l)return;
+    const t=typ.value;
+    const raw=parseFloat(amt.value)||0;
+    const a=t==='ob'?-Math.abs(raw):Math.abs(raw);
+    events.push({l,t,a});
+  });
+  return events;
+}
+
+async function saveWeekEdits(n){
+  const events=_readEditEvents();
+  const ct=parseFloat(document.getElementById('edit-ct')?.value)||0;
+  const ca=parseFloat(document.getElementById('edit-ca')?.value)||0;
+  const isNew=(n===0);
+  let weekNum=n;
+  let dates='';
+  const errEl=document.getElementById('drawer-error');
+  function showErr(msg){if(errEl){errEl.textContent=msg;errEl.style.display='block';}return false;}
+  if(isNew){
+    const startDateVal=(document.getElementById('edit-start-date')?.value||'').trim();
+    if(!startDateVal)return showErr('Please select a week start date.');
+    dates=formatWeekRange(startDateVal);
+    // Duplicate check — compare against existing WD dates and custom override dates
+    const existingDates=[...WD.map(function(wd){return wd[1];}),
+      ...Object.values(overrideData).filter(function(ov){return ov.is_custom;}).map(function(ov){return ov.dates;})];
+    if(existingDates.some(function(d){return d===dates;}))return showErr('A week covering "'+dates+'" already exists.');
+    const customNums=Object.values(overrideData).filter(function(ov){return ov.is_custom;}).map(function(ov){return ov.week_num;});
+    weekNum=customNums.length?Math.max.apply(null,customNums)+1:32;
+  }
+  if(errEl)errEl.style.display='none';
+  const payload={week_num:weekNum,events_json:events,ct,ca,is_custom:isNew||(n>31),updated_at:new Date().toISOString()};
+  if(isNew&&dates)payload.dates=dates;
+  try{
+    await fetch(SUPA_URL+'/rest/v1/model_week_overrides',{method:'POST',
+      headers:{...SUPA_H,'Prefer':'resolution=merge-duplicates'},
+      body:JSON.stringify(payload)});
+    overrideData[weekNum]=payload;
+  }catch(e){console.error('saveWeekEdits:',e);}
+  editOpen=null;document.body.style.overflow='';render();
+}
+
+async function deleteWeekOverride(n){
+  try{
+    await fetch(SUPA_URL+'/rest/v1/model_week_overrides?week_num=eq.'+n,{method:'DELETE',headers:SUPA_H});
+    delete overrideData[n];
+  }catch(e){console.error('deleteWeekOverride:',e);}
+  editOpen=null;render();
+}
+
+// ── Header recon label ─────────────────────────────────────────────────────────
 function updateReconLabel(weeks){
   const keys=Object.keys(reconData).map(Number).filter(function(n){return reconData[n]&&reconData[n].chk!==undefined;});
   const lbl=document.getElementById('lastReconLabel');
@@ -531,6 +667,7 @@ function updateReconLabel(weeks){
 function render(){
   const{ak,rt}=getGoals();
   const weeks=runModel(ak,rt);
+  const totalWeeks=weeks.length;
   const w=weeks.find(x=>x.num===activeW)||weeks[0];
   const retChkGoal=Math.max(0,Math.round((rt-START_AMX-RET_SAV_XFR)*100)/100);
   const ms=getMilestones(weeks,ak,rt);
@@ -542,6 +679,7 @@ function render(){
   document.getElementById('rtVal').textContent=f(w.amx)+' / '+f(rt);
   document.getElementById('rtBar').style.width=Math.min(100,+(w.amx/rt*100).toFixed(1))+'%';
   updateReconLabel(weeks);
+
   // Nav
   const nav=document.getElementById('nav');
   nav.innerHTML='';
@@ -549,7 +687,6 @@ function render(){
     const b=document.createElement('button');
     const isPast=wx.num<currentW;
     const isNow=wx.num===currentW;
-    // Sprint 2: orange dot for past weeks with incomplete tasks
     const hasOpenTasks=isPast&&wx.realActs.some(function(_,i){return!taskData[wx.num+'_'+i]||!taskData[wx.num+'_'+i].completed;});
     let cls='wbtn';
     if(wx.managed)cls+=' managed';else if(wx.trough)cls+=' trough';
@@ -562,25 +699,32 @@ function render(){
     b.onclick=()=>{activeW=wx.num;render();};
     nav.appendChild(b);
   });
+  // + Add week button
+  const addBtn=document.createElement('button');
+  addBtn.className='add-week-btn';
+  addBtn.title='Extend model past Week 31';
+  addBtn.textContent='+ Week';
+  addBtn.onclick=function(){editOpen=0;render();};
+  nav.appendChild(addBtn);
+
   const sel=document.getElementById('mobSelect');
   sel.innerHTML=weeks.map(wx=>{
-    const isPast=wx.num<currentW;
-    const isNow=wx.num===currentW;
+    const isPast=wx.num<currentW;const isNow=wx.num===currentW;
     const hasOpen=isPast&&wx.realActs.some(function(_,i){return!taskData[wx.num+'_'+i]||!taskData[wx.num+'_'+i].completed;});
     const prefix=isPast?(hasOpen&&wx.realActs.length?'⚠ ':'✓ '):isNow?'▶ ':'';
     const suffix=isNow?' (Now)':wx.managed?' ⚠️':wx.trough?' 🔶':'';
-    return`<option value="${wx.num}"${wx.num===activeW?' selected':''}>${prefix}Week ${wx.num} \xb7 ${wx.dates}${suffix}</option>`;
+    return`<option value="${wx.num}"${wx.num===activeW?' selected':''}>${prefix}Week ${wx.num} · ${wx.dates}${suffix}</option>`;
   }).join('');
   const idx=weeks.findIndex(x=>x.num===activeW);
   document.getElementById('mobPrev').classList.toggle('disabled',idx===0);
   document.getElementById('mobNext').classList.toggle('disabled',idx===weeks.length-1);
-  document.getElementById('mobCounter').textContent='W'+w.num+' / 31';
+  document.getElementById('mobCounter').textContent='W'+w.num+' / '+totalWeeks;
+
   const akFunded=w.akRem<=0.01;
   const rtFunded=w.retRem<=0.01&&retChkGoal>0;
   const efFunded=w.lc>=EF_NEW-0.01;
   const isPastWeek=w.num<currentW;
   const isNowWeek=w.num===currentW;
-  // Card class
   let cardCls='card';
   if(w.reconciled)cardCls+=' reconciled-card';
   else if(w.managed)cardCls+=' managed-card';
@@ -592,24 +736,27 @@ function render(){
   let temporalBadge='';
   if(isPastWeek)temporalBadge='<span class="badge badge-past">Past week</span>';
   else if(isNowWeek)temporalBadge='<span class="badge badge-now">● This week</span>';
-  const reconBadge=w.reconciled?'<span class="badge badge-recon">✅ Reconciled \xb7 '+w.actualBals.date+'</span>':'';
+  const reconBadge=w.reconciled?'<span class="badge badge-recon">✅ Reconciled · '+w.actualBals.date+'</span>':'';
+  const hasOverride=!!overrideData[w.num];
+  const editBadge=hasOverride?'<span class="badge" style="background:#ede9fe;color:#5b21b6;border:1px solid #c4b5fd">✏️ Edited</span>':'';
+
   let html='<div class="'+cardCls+'">';
   if(w.managed){html+='<div class="alert-note alert-managed">⚠️ <strong>Managed trough</strong> — Checking dips $'+fc(Math.abs(w.chk))+' below zero from obligations alone. Truist Savings ('+f(w.sav)+') is same-bank backup — instant transfer if needed. Operational liquidity remains '+f(w.ol)+'. Adam\'s paycheck restores checking at the start of next week.</div>';}
   else if(w.trough&&w.chk<500){html+='<div class="alert-note alert-trough">⚡ Trough week — checking at monthly low ('+f(w.chk)+'). Truist Savings ('+f(w.sav)+') available as same-bank backup. Adam\'s paycheck restores checking at the start of next week.</div>';}
-  html+='<div class="card-hdr"><div><div class="card-title">Week '+w.num+'</div><div class="card-dates">'+w.dates+'</div></div><div class="badge-row">'+reconBadge+temporalBadge+'<span class="'+badgeCls+'">'+badgeTxt+'</span></div></div>';
-  // Cash flow
-  if(w.evs&&w.evs.length){
-    html+='<div class="sect">Cash flow this week</div>';
-    w.evs.forEach(e=>{const cls=e.t==='in'?'ev-in':'ev-out';const sign=e.t==='in'?'+':'−';html+='<div class="ev-row"><span class="ev-lbl">'+e.l+'</span><span class="'+cls+'">'+sign+f(Math.abs(e.a))+'</span></div>';});
-  }
-  // Transfers
+
+  // Card header with edit button
+  html+='<div class="card-hdr"><div><div class="card-title">Week '+w.num+'</div><div class="card-dates">'+w.dates+'</div></div>';
+  html+='<div style="display:flex;flex-direction:column;align-items:flex-end;gap:4px">';
+  html+='<button class="edit-btn" onclick="openEdit('+w.num+')">✏️ Edit week</button>';
+  html+='<div class="badge-row">'+editBadge+reconBadge+temporalBadge+'<span class="'+badgeCls+'">'+badgeTxt+'</span></div>';
+  html+='</div></div>';
+
+  if(w.evs&&w.evs.length){html+='<div class="sect">Cash flow this week</div>';w.evs.forEach(e=>{const cls=e.t==='in'?'ev-in':'ev-out';const sign=e.t==='in'?'+':'−';html+='<div class="ev-row"><span class="ev-lbl">'+e.l+'</span><span class="'+cls+'">'+sign+f(Math.abs(e.a))+'</span></div>';});}
   html+='<div class="sect">Transfers</div>';
   w.tr.forEach(x=>{const ic=x.r==='done'?'✅':x.r==='defer'?'🔴':'ℹ️';html+='<div class="xfr-row"><span class="xi">'+ic+'</span><div class="xtext"><div class="xlbl">'+x.l+'</div><div class="xrsn">'+x.rsn+'</div></div></div>';});
-  // Balances
   html+='<div class="sect">Account balances — start → end of week</div><div class="bals">';
   const chkCls=w.chk<0?'low':w.chk<500?'warn':w.chk>=5000?'good':'';
   if(w.reconciled){
-    // Show modeled end with actual+variance below
     html+=mkBal('Truist Checking',w.startChk,w.mChk,chkCls,w.actualBals.chk,w.mChk);
     html+=mkBal('Truist Savings',w.startSav,w.mSav,'',w.actualBals.sav,w.mSav);
     html+=mkBal('AMEX Savings',w.startAmx,w.mAmx,rtFunded?'good':'',w.actualBals.amx,w.mAmx);
@@ -623,10 +770,8 @@ function render(){
     html+=mkBal('Lending Club (EF)',w.startLc,w.lc,efFunded?'good':'');
   }
   html+='</div>';
-  // Sprint 2: variance alert (only show if >$250 below)
   if(w.reconciled&&w.variance){
-    const underItems=[];
-    const over=[];
+    const underItems=[],over=[];
     const names=['chk','sav','amx','tax','lc'];
     const labels=['Checking','Savings','AMEX','Tax HYSA','Lending Club'];
     names.forEach((k,i)=>{
@@ -634,37 +779,34 @@ function render(){
       else if(w.variance[k]>VAR_THRESHOLD)over.push(labels[i]+' +'+f(w.variance[k]));
     });
     if(underItems.length||over.length){
-      html+='<div class="variance-alert"><div class="variance-title">⚠️ Variance from plan (>\$'+VAR_THRESHOLD.toLocaleString()+')</div><div class="variance-items">';
+      html+='<div class="variance-alert"><div class="variance-title">⚠️ Variance from plan (>$'+VAR_THRESHOLD.toLocaleString()+')</div><div class="variance-items">';
       underItems.forEach(s=>html+='<span class="vitem over">'+s+' above plan</span>');
       over.forEach(s=>html+='<span class="vitem under">'+s+' below plan</span>');
       html+='</div></div>';
     }
   }
   html+='<div class="liq-row"><span class="liq-label">Operational liquidity (Checking + Savings)</span><span class="liq-val">'+f(w.ol)+'</span></div>';
-  // Sprint 2: task checkboxes (replaces bullet dots)
   if(w.realActs.length){
     const progCls=w.doneTasks===w.totalTasks?'all-done':'partial';
     const progTxt=w.doneTasks+'/'+w.totalTasks+' done';
     html+='<div class="acts"><div class="act-hdr">Recommended actions this week <span class="act-hdr-progress '+progCls+'">'+progTxt+'</span></div>';
     w.realActs.forEach((a,i)=>{
       const done=taskData[w.num+'_'+i]&&taskData[w.num+'_'+i].completed;
-      html+='<div class="task-row"><input type="checkbox" class="task-check" '+(done?'checked':'')+' onchange="toggleTask('+w.num+','+i+',this.checked)"><div class="task-text'+(done?' done':'')+'">'+ a+'</div></div>';
+      html+='<div class="task-row"><input type="checkbox" class="task-check" '+(done?'checked':'')+' onchange="toggleTask('+w.num+','+i+',this.checked)"><div class="task-text'+(done?' done':'')+'">'+a+'</div></div>';
     });
     html+='</div>';
   }
-  // Sprint 2: notes
   const note=noteData[w.num]||'';
   html+='<div class="notes-wrap"><div class="notes-hdr">Week notes</div><textarea class="notes-area" id="na_'+w.num+'" placeholder="Add notes for this week..." onblur="saveNote('+w.num+',this)">'+note.replace(/</g,'&lt;').replace(/>/g,'&gt;')+'</textarea><div class="notes-saved" id="ns_'+w.num+'"></div></div>';
-  // Sprint 2: reconcile section
   html+='<div class="recon-wrap">';
   if(w.reconciled&&reconOpen!==w.num){
-    html+='<div class="recon-done-row"><span class="recon-done-lbl">✅ Reconciled \xb7 '+w.actualBals.date+'</span><button class="recon-edit-btn" onclick="openRecon('+w.num+')">Edit actuals</button></div>';
+    html+='<div class="recon-done-row"><span class="recon-done-lbl">✅ Reconciled · '+w.actualBals.date+'</span><button class="recon-edit-btn" onclick="openRecon('+w.num+')">Edit actuals</button></div>';
   } else if((isPastWeek||isNowWeek)&&reconOpen!==w.num){
     html+='<button class="recon-open-btn" onclick="openRecon('+w.num+')">Reconcile this week ✏️ — enter actual balances</button>';
   }
   if(reconOpen===w.num){
     const pre=w.actualBals||{chk:w.mChk,sav:w.mSav,amx:w.mAmx,tax:w.mTax,lc:w.mLc};
-    html+='<div class="recon-form"><div class="recon-form-title">Actual end-of-week balances — Week '+w.num+' \xb7 '+w.dates+'</div><div class="recon-inputs">';
+    html+='<div class="recon-form"><div class="recon-form-title">Actual end-of-week balances — Week '+w.num+' · '+w.dates+'</div><div class="recon-inputs">';
     html+='<div class="recon-field"><label>Truist Checking</label><input class="recon-input" id="ri_chk" type="number" step="0.01" value="'+pre.chk+'"></div>';
     html+='<div class="recon-field"><label>Truist Savings</label><input class="recon-input" id="ri_sav" type="number" step="0.01" value="'+pre.sav+'"></div>';
     html+='<div class="recon-field"><label>AMEX Savings</label><input class="recon-input" id="ri_amx" type="number" step="0.01" value="'+pre.amx+'"></div>';
@@ -678,23 +820,79 @@ function render(){
     html+='</div></div>';
   }
   html+='</div>';
-  // Banners (same as Sprint 1)
-  if(w.num===1)html+='<div class="banner banner-green">✅ Week 1 actions restore Lending Club EF to $21,738.88 \xb7 Tax HYSA funded \xb7 $3,000 reclassified as permanent operating cash</div>';
+  if(w.num===1)html+='<div class="banner banner-green">✅ Week 1 actions restore Lending Club EF to $21,738.88 · Tax HYSA funded · $3,000 reclassified as permanent operating cash</div>';
   else if(akFunded&&w.num===weeks.find(x=>x.akRem<=0.01)?.num)html+='<div class="banner banner-amber">⭐ Big week — Alaska fully funded + retirement savings move + retirement rebuild begins</div>';
   else if(akFunded&&!rtFunded)html+='<div class="banner banner-blue">✅ Alaska funded — retirement rebuild in progress</div>';
   else if(efFunded&&!akFunded&&w.akSaved>0)html+='<div class="banner banner-blue">Building Alaska fund — '+f(w.akSaved)+' of '+f(ak)+' saved</div>';
-  // Week nav
   const prevW=weeks.find(x=>x.num===w.num-1),nextW=weeks.find(x=>x.num===w.num+1);
   html+='<div class="week-nav">';
-  if(prevW)html+='<button class="wnav-btn" onclick="activeW='+(w.num-1)+';render()">← Week '+(w.num-1)+' \xb7 '+prevW.dates+'</button>';
+  if(prevW)html+='<button class="wnav-btn" onclick="activeW='+(w.num-1)+';render()">← Week '+(w.num-1)+' · '+prevW.dates+'</button>';
   else html+='<div class="wnav-spacer"></div>';
-  if(nextW)html+='<button class="wnav-btn" onclick="activeW='+(w.num+1)+';render()">Week '+(w.num+1)+' \xb7 '+nextW.dates+' →</button>';
+  if(nextW)html+='<button class="wnav-btn" onclick="activeW='+(w.num+1)+';render()">Week '+(w.num+1)+' · '+nextW.dates+' →</button>';
   else html+='<div class="wnav-spacer"></div>';
   html+='</div></div>';
   document.getElementById('display').innerHTML=html;
+
+  // Edit drawer (slides in from right — no scroll required)
+  const backdrop=document.getElementById('drawer-backdrop');
+  const drawer=document.getElementById('edit-drawer');
+  if(editOpen!==null){
+    backdrop.style.display='block';
+    const isNew=(editOpen===0);
+    const wdEntry=WD.find(function(wd){return wd[0]===editOpen;});
+    const ov=overrideData[editOpen];
+    const drawerEvs=ov&&ov.events_json?ov.events_json:(wdEntry?wdEntry[7]:[]);
+    const drawerCt=ov&&ov.ct!=null?ov.ct:(wdEntry?wdEntry[8]:0);
+    const drawerCa=ov&&ov.ca!=null?ov.ca:(wdEntry?wdEntry[9]:0);
+    let evRows='';
+    drawerEvs.forEach(function(ev,i){
+      const safeL=(ev.l||'').replace(/"/g,'&quot;');
+      evRows+='<div class="ev-edit-row" data-idx="'+i+'">'+
+        '<input class="ev-edit-lbl" type="text" value="'+safeL+'" placeholder="Description">'+
+        '<select class="ev-edit-type"><option value="in"'+(ev.t==='in'?' selected':'')+'>Inflow</option><option value="ob"'+(ev.t==='ob'?' selected':'')+'>Outflow</option></select>'+
+        '<input class="ev-edit-amt" type="number" step="0.01" min="0" value="'+Math.abs(ev.a)+'">'+
+        '<button class="ev-del-btn" onclick="this.closest(\'.ev-edit-row\').remove()" title="Remove">&#10005;</button>'+
+        '</div>';
+    });
+    const drawerTitle=isNew?'Add Custom Week':'Edit Week '+editOpen;
+    const drawerSub=isNew?'Extend model past Week 31 (Jan 9, 2027)':'Modify events for '+(wdEntry?wdEntry[1]:('Week '+editOpen));
+    drawer.innerHTML=
+      '<div class="drawer-hdr">'+
+        '<div class="drawer-title-wrap"><div class="drawer-title">'+drawerTitle+'</div><div class="drawer-sub">'+drawerSub+'</div></div>'+
+        '<button class="drawer-close" onclick="closeEdit()" title="Close">&times;</button>'+
+      '</div>'+
+      '<div class="drawer-body">'+
+        '<div id="drawer-error" class="drawer-error"></div>'+
+        (isNew?
+          '<div class="drawer-sect">Week start date</div>'+
+          '<div class="modal-field">'+
+            '<label class="modal-label">Pick the Sunday this week starts (model covers Sun–Sat)</label>'+
+            '<input class="modal-input" id="edit-start-date" type="date" min="2027-01-10">'+
+          '</div>'
+        :'')+
+        '<div class="drawer-sect">Cash flow events</div>'+
+        '<div id="ev-edit-list">'+evRows+'</div>'+
+        '<button class="modal-add-ev" onclick="addEditEvent()">+ Add event</button>'+
+        '<div class="drawer-sect">Commission / bonus split</div>'+
+        '<div class="comm-hint">Use <em>only</em> when this week has a <strong>Wendy or Adam commission</strong> or <strong>BK bonus</strong> inflow. The model auto-routes: <strong>40% → Tax HYSA</strong> and <strong>60% → current savings goal</strong> on top of normal surplus logic. Enter the dollar split amounts (not the gross). Leave both at 0 for regular weeks.</div>'+
+        '<div class="modal-comm-row">'+
+          '<div class="modal-field"><label class="modal-label">Tax portion (40%)</label><input class="modal-input" id="edit-ct" type="number" step="0.01" min="0" value="'+drawerCt+'"></div>'+
+          '<div class="modal-field"><label class="modal-label">Non-tax portion (60%)</label><input class="modal-input" id="edit-ca" type="number" step="0.01" min="0" value="'+drawerCa+'"></div>'+
+        '</div>'+
+      '</div>'+
+      '<div class="drawer-footer">'+
+        '<button class="modal-save" onclick="saveWeekEdits('+editOpen+')">Save &amp; Recalculate</button>'+
+        '<button class="modal-cancel" onclick="closeEdit()">Cancel</button>'+
+        (!isNew&&ov?'<button class="modal-delete" onclick="deleteWeekOverride('+editOpen+')">Remove edits</button>':'')+
+      '</div>';
+    requestAnimationFrame(function(){drawer.classList.add('open');});
+  } else {
+    backdrop.style.display='none';
+    drawer.classList.remove('open');
+  }
 }
 
-// ── Sprint 2: history tab render ──────────────────────────────────────────────
+// ── History tab ───────────────────────────────────────────────────────────────
 function renderHistory(){
   const{ak,rt}=getGoals();
   const weeks=runModel(ak,rt);
@@ -732,28 +930,49 @@ function renderHistory(){
       html+='<div class="hcard-tasks none">No actions</div>';
     }
     const note=noteData[wx.num];
-    if(note)html+='<div class="hcard-note">“'+note.slice(0,60)+(note.length>60?'…':'')+'”</div>';
+    if(note)html+='<div class="hcard-note">"'+note.slice(0,60)+(note.length>60?'…':'')+'"</div>';
     html+='<button class="hcard-jump" onclick="setTab(\'plan\');activeW='+wx.num+';render()">'+(isNow?'Go to current →':'View →')+'</button>';
     html+='</div></div>';
   });
   document.getElementById('historyContent').innerHTML=html;
 }
 
-// ── Supabase goal persistence (same as Sprint 1, goals only) ─────────────────
+// ── Supabase ──────────────────────────────────────────────────────────────────
 const SUPA_URL='https://usayoldrawwmjsmretin.supabase.co';
 const SUPA_KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InVzYXlvbGRyYXd3bWpzbXJldGluIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzc0NjI0MzIsImV4cCI6MjA5MzAzODQzMn0.7dpPsXdQy2aIYYsm1yWK7D5WJH0tB32ixERMBf5HRWA';
 const SUPA_H={'apikey':SUPA_KEY,'Authorization':'Bearer '+SUPA_KEY,'Content-Type':'application/json'};
 
-async function loadGoals(){
+// ── Sprint 3: loadAll — replaces initData + loadGoals ─────────────────────────
+async function loadAll(){
   try{
-    const r=await fetch(SUPA_URL+'/rest/v1/goals?select=key,value',{headers:SUPA_H});
-    if(r.ok){const rows=await r.json();rows.forEach(row=>{
+    const[reconR,tasksR,notesR,overridesR,goalsR]=await Promise.all([
+      fetch(SUPA_URL+'/rest/v1/weekly_reconciliations?select=*',{headers:SUPA_H}),
+      fetch(SUPA_URL+'/rest/v1/weekly_tasks?select=*',{headers:SUPA_H}),
+      fetch(SUPA_URL+'/rest/v1/weekly_notes?select=*',{headers:SUPA_H}),
+      fetch(SUPA_URL+'/rest/v1/model_week_overrides?select=*',{headers:SUPA_H}),
+      fetch(SUPA_URL+'/rest/v1/goals?select=key,value',{headers:SUPA_H})
+    ]);
+    if(reconR.ok){(await reconR.json()).forEach(function(row){
+      reconData[row.week_num]={chk:row.chk,sav:row.sav,amx:row.amx,tax:row.tax,lc:row.lc,
+        date:new Date(row.recorded_at).toLocaleDateString('en-US',{month:'short',day:'numeric'})};
+    });}
+    if(tasksR.ok){(await tasksR.json()).forEach(function(row){
+      taskData[row.week_num+'_'+row.task_idx]={completed:row.completed,completedAt:row.completed_at};
+    });}
+    if(notesR.ok){(await notesR.json()).forEach(function(row){
+      noteData[row.week_num]=row.note;
+    });}
+    if(overridesR.ok){(await overridesR.json()).forEach(function(row){
+      overrideData[row.week_num]=row;
+    });}
+    if(goalsR.ok){(await goalsR.json()).forEach(function(row){
       if(row.key==='ak_goal')document.getElementById('akGoal').value=row.value;
       if(row.key==='rt_goal')document.getElementById('rtGoal').value=row.value;
     });}
-  }catch(e){}
+  }catch(e){console.error('loadAll:',e);}
   render();
 }
+
 async function saveGoal(key,value){
   try{await fetch(SUPA_URL+'/rest/v1/goals',{method:'POST',headers:{...SUPA_H,'Prefer':'resolution=merge-duplicates'},body:JSON.stringify({key,value})});}catch(e){}
 }
@@ -761,9 +980,7 @@ async function saveGoal(key,value){
 document.getElementById('akGoal').addEventListener('input',function(){saveGoal('ak_goal',parseFloat(this.value)||7000);render();});
 document.getElementById('rtGoal').addEventListener('input',function(){saveGoal('rt_goal',parseFloat(this.value)||7690.98);render();});
 
-// ── Init ──────────────────────────────────────────────────────────────────────
-initData();
-loadGoals();
+loadAll();
 </script>
 </body>
 </html>
