@@ -45,8 +45,14 @@ body{background:var(--bg);color:var(--text);font-family:Georgia,'Times New Roman
 .prog-track{height:8px;background:var(--surface2);border-radius:4px;overflow:hidden;border:1px solid var(--border)}
 .prog-fill{height:100%;border-radius:4px;transition:width .5s ease}
 .prog-note{font-size:10px;color:var(--amber);margin-top:3px;font-style:italic}
+/* ── Tabs ── */
+.tabs{display:flex;gap:0;margin-bottom:16px;border-bottom:2px solid var(--border)}
+.tab-btn{padding:10px 20px;border:none;background:none;color:var(--text2);cursor:pointer;font-size:13px;font-family:Georgia,serif;border-bottom:3px solid transparent;margin-bottom:-2px;font-weight:600;transition:all .12s}
+.tab-btn:hover{color:var(--blue)}
+.tab-btn.active{color:var(--blue);border-bottom-color:var(--blue)}
+/* ── Nav ── */
 .nav{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:16px}
-.wbtn{padding:7px 11px;border:1px solid var(--border2);border-radius:8px;background:var(--surface);color:var(--text2);cursor:pointer;font-size:11px;line-height:1.3;text-align:center;min-width:72px;transition:all .12s;font-family:Georgia,serif;box-shadow:var(--sh)}
+.wbtn{padding:7px 11px;border:1px solid var(--border2);border-radius:8px;background:var(--surface);color:var(--text2);cursor:pointer;font-size:11px;line-height:1.3;text-align:center;min-width:72px;transition:all .12s;font-family:Georgia,serif;box-shadow:var(--sh);position:relative}
 .wbtn:hover{background:var(--surface2);border-color:var(--blue);color:var(--blue-dk)}
 .wbtn.active{background:var(--blue);border-color:var(--blue);color:white;font-weight:700;box-shadow:var(--sh-md)}
 .wbtn.trough{border-color:var(--orange)}
@@ -57,12 +63,15 @@ body{background:var(--bg);color:var(--text);font-family:Georgia,'Times New Roman
 .wbtn.past.active{opacity:1}
 .wbtn.now:not(.active){border-color:#d97706;border-width:2px;color:#78350f}
 .wbtn.now.active{box-shadow:0 0 0 3px #fde68a,var(--sh-md)}
+.wbtn.open-tasks::after{content:'';position:absolute;top:5px;right:5px;width:7px;height:7px;border-radius:50%;background:#d97706;border:1.5px solid white}
 .wbtn .wn{font-size:12px;font-weight:700;display:block}
 .wbtn .wd{font-size:9px;display:block;opacity:.7;margin-top:1px}
 .mob-nav{display:none}
+/* ── Card ── */
 .card{background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:18px;box-shadow:var(--sh-md)}
 .card.trough-card{border-left:4px solid var(--orange);border-radius:0 12px 12px 0}
 .card.managed-card{border-left:4px solid var(--red);border-radius:0 12px 12px 0}
+.card.reconciled-card{border-top:3px solid var(--green)}
 .card-hdr{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:14px}
 .card-title{font-size:18px;font-weight:700;color:var(--text)}
 .card-dates{font-size:12px;color:var(--text2);margin-top:2px;font-style:italic}
@@ -73,6 +82,7 @@ body{background:var(--bg);color:var(--text);font-family:Georgia,'Times New Roman
 .badge-op{background:var(--blue-lt);color:var(--blue-dk);border:1px solid #bfdbfe}
 .badge-past{background:var(--surface2);color:var(--text3);border:1px solid var(--border2)}
 .badge-now{background:#fef3c7;color:#92400e;border:1px solid #fde68a}
+.badge-recon{background:var(--green-lt);color:var(--green);border:1px solid #86efac}
 .alert-note{border-radius:8px;padding:10px 13px;font-size:12px;margin-bottom:12px;line-height:1.55}
 .alert-trough{background:var(--amber-lt);border:1px solid var(--amber-md);color:var(--amber)}
 .alert-managed{background:var(--red-lt);border:1px solid #fca5a5;color:var(--red)}
@@ -88,6 +98,7 @@ body{background:var(--bg);color:var(--text);font-family:Georgia,'Times New Roman
 .xtext{flex:1}
 .xlbl{color:var(--text);font-size:12.5px;line-height:1.4}
 .xrsn{color:var(--text3);font-size:10.5px;margin-top:2px;font-style:italic}
+/* ── Balances ── */
 .bals{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-top:14px}
 .bal{background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:9px 11px}
 .blbl{font-size:10px;color:var(--text3);margin-bottom:3px;text-transform:uppercase;letter-spacing:.04em}
@@ -101,13 +112,61 @@ body{background:var(--bg);color:var(--text);font-family:Georgia,'Times New Roman
 .bdelta.pos{color:var(--green)}
 .bdelta.neg{color:var(--red)}
 .bdelta.zer{color:var(--text3)}
+/* Sprint 2: actual vs modeled inline in balance card */
+.bactual{font-size:10px;margin-top:4px;padding-top:4px;border-top:1px dashed var(--border2)}
+.bactual-lbl{color:var(--text3)}
+.bactual-val{font-weight:700;color:var(--text)}
+.bactual-var{font-size:9px;font-weight:700;margin-left:3px}
+.bactual-var.under{color:var(--red)}
+.bactual-var.over{color:var(--green)}
+.bactual-var.ok{color:var(--text3)}
 .liq-row{background:var(--blue-lt);border:1px solid #bfdbfe;border-radius:8px;padding:9px 11px;display:flex;justify-content:space-between;align-items:center;margin-top:8px}
 .liq-label{font-size:11px;color:var(--blue-dk);font-weight:600}
 .liq-val{font-size:14px;font-weight:700;color:var(--blue)}
+/* ── Variance alert ── */
+.variance-alert{background:#fff7ed;border:1px solid #fed7aa;border-left:4px solid #ea580c;border-radius:8px;padding:10px 13px;margin-top:10px}
+.variance-title{font-size:11px;font-weight:700;color:#c2410c;margin-bottom:6px}
+.variance-items{display:flex;flex-wrap:wrap;gap:6px}
+.vitem{padding:3px 10px;border-radius:12px;font-size:11px;font-weight:600}
+.vitem.under{background:var(--red-lt);color:var(--red)}
+.vitem.over{background:var(--green-lt);color:var(--green)}
+/* ── Tasks (Sprint 2) ── */
 .acts{margin-top:14px;padding-top:12px;border-top:1px solid var(--border)}
-.act-hdr{font-size:10px;font-weight:700;color:var(--text3);text-transform:uppercase;letter-spacing:.07em;margin-bottom:7px}
-.act-row{display:flex;gap:9px;align-items:flex-start;padding:4px 0;font-size:12.5px;color:var(--text);line-height:1.4}
-.act-dot{width:6px;height:6px;border-radius:50%;background:var(--blue);flex-shrink:0;margin-top:5px}
+.act-hdr{font-size:10px;font-weight:700;color:var(--text3);text-transform:uppercase;letter-spacing:.07em;margin-bottom:7px;display:flex;align-items:center;gap:8px}
+.act-hdr-progress{font-size:10px;font-weight:400;font-style:italic;color:var(--text3)}
+.act-hdr-progress.all-done{color:var(--green)}
+.act-hdr-progress.partial{color:var(--orange)}
+.task-row{display:flex;gap:9px;align-items:flex-start;padding:5px 0;border-bottom:1px solid var(--border)}
+.task-row:last-child{border-bottom:none}
+.task-check{width:18px;height:18px;flex-shrink:0;cursor:pointer;accent-color:var(--blue);margin-top:2px}
+.task-text{flex:1;font-size:12.5px;color:var(--text);line-height:1.4}
+.task-text.done{text-decoration:line-through;color:var(--text3)}
+/* ── Notes (Sprint 2) ── */
+.notes-wrap{margin-top:14px;padding-top:12px;border-top:1px solid var(--border)}
+.notes-hdr{font-size:10px;font-weight:700;color:var(--text3);text-transform:uppercase;letter-spacing:.07em;margin-bottom:6px}
+.notes-area{width:100%;padding:9px 11px;border:1px solid var(--border2);border-radius:8px;font-size:13px;font-family:Georgia,serif;color:var(--text);background:var(--surface);resize:vertical;min-height:64px;line-height:1.5;display:block}
+.notes-area:focus{outline:2px solid var(--blue);border-color:var(--blue)}
+.notes-saved{font-size:10px;color:var(--green);margin-top:4px;height:14px;font-style:italic}
+/* ── Reconcile (Sprint 2) ── */
+.recon-wrap{margin-top:14px;padding-top:12px;border-top:1px solid var(--border)}
+.recon-done-row{display:flex;align-items:center;gap:8px;background:var(--green-lt);border:1px solid #86efac;border-radius:8px;padding:9px 12px;font-size:12px;color:var(--green)}
+.recon-done-lbl{flex:1;font-weight:600}
+.recon-edit-btn{font-size:11px;color:var(--blue);cursor:pointer;background:none;border:none;font-family:Georgia,serif;text-decoration:underline;padding:0}
+.recon-open-btn{width:100%;padding:9px 14px;border:1px dashed var(--border2);border-radius:8px;background:var(--surface);color:var(--text2);cursor:pointer;font-size:12px;font-family:Georgia,serif;transition:all .12s;text-align:center}
+.recon-open-btn:hover{background:var(--blue-lt);border-color:var(--blue);color:var(--blue-dk);border-style:solid}
+.recon-form{background:var(--surface2);border:1px solid var(--border2);border-radius:10px;padding:14px;margin-top:10px}
+.recon-form-title{font-size:11px;font-weight:700;color:var(--text2);text-transform:uppercase;letter-spacing:.06em;margin-bottom:10px}
+.recon-inputs{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:12px}
+.recon-field label{font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:.04em;display:block;margin-bottom:3px}
+.recon-input{width:100%;padding:7px 9px;border:1px solid var(--border2);border-radius:6px;font-size:14px;font-family:Georgia,serif;background:var(--surface);color:var(--text)}
+.recon-input:focus{outline:2px solid var(--blue);border-color:var(--blue)}
+.recon-btn-row{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.recon-save{padding:9px 18px;background:var(--blue);color:white;border:none;border-radius:8px;font-size:13px;font-family:Georgia,serif;cursor:pointer;font-weight:600}
+.recon-save:hover{background:var(--blue-dk)}
+.recon-cancel{padding:9px 14px;background:var(--surface);color:var(--text2);border:1px solid var(--border2);border-radius:8px;font-size:13px;font-family:Georgia,serif;cursor:pointer}
+.recon-delete{padding:9px 14px;background:var(--surface);color:var(--red);border:1px solid #fca5a5;border-radius:8px;font-size:13px;font-family:Georgia,serif;cursor:pointer;margin-left:auto}
+.recon-hint{font-size:10px;color:var(--text3);font-style:italic}
+/* ── Banners ── */
 .banner{border-radius:8px;padding:9px 14px;font-size:12px;font-weight:600;text-align:center;margin-top:12px}
 .banner-green{background:var(--green-lt);color:var(--green);border:1px solid #86efac}
 .banner-blue{background:var(--blue-lt);color:var(--blue-dk);border:1px solid #93c5fd}
@@ -116,6 +175,34 @@ body{background:var(--bg);color:var(--text);font-family:Georgia,'Times New Roman
 .wnav-btn{padding:7px 13px;border:1px solid var(--border2);border-radius:8px;background:var(--surface);color:var(--text2);cursor:pointer;font-size:11.5px;font-weight:600;transition:all .12s;font-family:Georgia,serif;box-shadow:var(--sh)}
 .wnav-btn:hover{background:var(--blue);color:white;border-color:var(--blue)}
 .wnav-spacer{width:120px}
+/* ── History tab ── */
+.history-summary{background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:13px 16px;margin-bottom:14px;font-size:12.5px;color:var(--text2);line-height:1.6}
+.hcard{background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:14px 16px;margin-bottom:10px;box-shadow:var(--sh)}
+.hcard.past-open{border-left:3px solid var(--orange)}
+.hcard.past-recon{border-left:3px solid var(--green)}
+.hcard.current{border-left:3px solid #d97706;border-top:2px solid #d97706}
+.hcard.future{opacity:.6}
+.hcard-hdr{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:10px}
+.hcard-title{font-size:14px;font-weight:700}
+.hcard-dates{font-size:11px;color:var(--text3);font-style:italic;margin-top:1px}
+.hcard-status{font-size:11px;font-weight:600;flex-shrink:0}
+.hcard-bals{display:grid;grid-template-columns:repeat(5,1fr);gap:6px;margin-bottom:8px}
+.hcard-bal{font-size:10px}
+.hbal-name{color:var(--text3);text-transform:uppercase;letter-spacing:.03em;margin-bottom:2px}
+.hbal-val{font-weight:700;font-size:11px;color:var(--text2)}
+.hbal-actual{font-weight:700;font-size:11px;color:var(--text)}
+.hbal-var{font-size:9px;font-weight:700;display:block;margin-top:1px}
+.hbal-var.under{color:var(--red)}
+.hbal-var.over{color:var(--green)}
+.hbal-var.ok{color:var(--text3)}
+.hcard-footer{display:flex;gap:12px;align-items:center;padding-top:8px;border-top:1px solid var(--border);flex-wrap:wrap}
+.hcard-tasks{font-size:11px;font-weight:600}
+.hcard-tasks.done{color:var(--green)}
+.hcard-tasks.partial{color:var(--orange)}
+.hcard-tasks.none{color:var(--text3)}
+.hcard-note{font-size:11px;color:var(--text2);font-style:italic;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.hcard-jump{font-size:11px;color:var(--blue);cursor:pointer;background:none;border:none;font-family:Georgia,serif;text-decoration:underline;margin-left:auto;flex-shrink:0}
+/* ── Mobile ── */
 .mob-bar{display:none}
 .footer{text-align:center;color:var(--text3);font-size:11px;margin-top:32px;font-style:italic}
 @media(max-width:768px){
@@ -132,7 +219,8 @@ body{background:var(--bg);color:var(--text);font-family:Georgia,'Times New Roman
   .mob-nav{display:block;margin-bottom:12px}
   .mob-nav-label{font-size:10px;color:var(--text2);text-transform:uppercase;letter-spacing:.05em;margin-bottom:5px}
   .mob-select{width:100%;padding:11px 12px;border:1px solid var(--border2);border-radius:8px;background:var(--surface);color:var(--text);font-size:15px;font-family:Georgia,serif;appearance:none;-webkit-appearance:none;background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath d='M1 1l5 5 5-5' stroke='%236b6560' stroke-width='1.5' fill='none' stroke-linecap='round'/%3E%3C/svg%3E");background-repeat:no-repeat;background-position:right 12px center;min-height:44px}
-  .bals{grid-template-columns:repeat(2,1fr)}
+  .bals,.hcard-bals{grid-template-columns:repeat(2,1fr)}
+  .recon-inputs{grid-template-columns:1fr}
   .week-nav{display:none}
   .mob-bar{display:flex;position:fixed;bottom:0;left:0;right:0;background:var(--surface);border-top:1px solid var(--border);padding:10px 14px;padding-bottom:calc(10px + env(safe-area-inset-bottom));z-index:100;align-items:center;gap:8px}
   .mob-bar-btn{flex:1;padding:11px 8px;border:1px solid var(--border2);border-radius:9px;background:var(--surface2);color:var(--text2);cursor:pointer;font-size:13px;font-weight:600;font-family:Georgia,serif;text-align:center;min-height:44px;transition:background .1s}
@@ -141,19 +229,20 @@ body{background:var(--bg);color:var(--text);font-family:Georgia,'Times New Roman
   .mob-bar-counter{font-size:12px;color:var(--text2);white-space:nowrap;text-align:center;min-width:52px}
   .ev-row{font-size:13px;padding:6px 0}
   .xlbl{font-size:13px}
-  .act-row{font-size:13px}
+  .task-text{font-size:13px}
   .bval{font-size:15px}
   .ginput input{font-size:15px}
   .badge-row{justify-content:flex-start;margin-top:6px}
   .card-hdr{flex-direction:column;align-items:flex-start}
+  .tab-btn{padding:8px 14px;font-size:12px}
 }
 </style>
 </head>
 <body>
 <div class="header">
   <h1>Herndon Family — 2026 Cash Flow Plan</h1>
-  <p>31-week transfer optimization · Jun 8, 2026 – Jan 10, 2027 · Live recalculating model</p>
-  <p class="mn">Balances represent end-of-week state. Intraday sequencing managed operationally. · Model updated: Jun 8, 2026</p>
+  <p>31-week transfer optimization · Jun 7, 2026 – Jan 9, 2027 · Live recalculating model</p>
+  <p class="mn" id="headerNote">Balances represent end-of-week state. Intraday sequencing managed operationally. · Model updated: Jun 7, 2026 · <span id="lastReconLabel">Not yet reconciled</span></p>
 </div>
 <div class="main">
   <div class="goals">
@@ -187,13 +276,25 @@ body{background:var(--bg);color:var(--text);font-family:Georgia,'Times New Roman
       <div class="prog-track"><div class="prog-fill" id="rtBar" style="background:#6d28d9"></div></div>
     </div>
   </div>
-  <div class="nav" id="nav"></div>
-  <div class="mob-nav">
-    <div class="mob-nav-label">Jump to week</div>
-    <select class="mob-select" id="mobSelect" onchange="activeW=parseInt(this.value);render()"></select>
+  <!-- Sprint 2: Tab bar -->
+  <div class="tabs">
+    <button class="tab-btn active" id="tabPlan" onclick="setTab('plan')">📋 Plan</button>
+    <button class="tab-btn" id="tabHistory" onclick="setTab('history')">📊 History</button>
   </div>
-  <div id="display"></div>
-  <div class="footer">Herndon Family Financial Plan &middot; June 2026 &middot; For Adam &amp; Wendy &middot; Weekly cash flow model</div>
+  <!-- Plan view -->
+  <div id="planView">
+    <div class="nav" id="nav"></div>
+    <div class="mob-nav">
+      <div class="mob-nav-label">Jump to week</div>
+      <select class="mob-select" id="mobSelect" onchange="activeW=parseInt(this.value);render()"></select>
+    </div>
+    <div id="display"></div>
+  </div>
+  <!-- History view -->
+  <div id="historyView" style="display:none">
+    <div id="historyContent"></div>
+  </div>
+  <div class="footer">Herndon Family Financial Plan &middot; June 2026 &middot; For Adam &amp; Wendy</div>
 </div>
 <div class="mob-bar" id="mobBar">
   <button class="mob-bar-btn" id="mobPrev" onclick="goWeek(-1)">&#8592; Prev</button>
@@ -201,47 +302,69 @@ body{background:var(--bg);color:var(--text);font-family:Georgia,'Times New Roman
   <button class="mob-bar-btn" id="mobNext" onclick="goWeek(1)">Next &#8594;</button>
 </div>
 <script>
+// ── Constants (unchanged from Sprint 1) ───────────────────────────────────────
 const EF_ORIG=24738.88,EF_NEW=21738.88;
 const START_CHK=12037.73,START_SAV=6522.77,START_AMX=99.75,START_TAX=0,START_LC=16738.88;
 const EF_SAV_XFR=2750,EF_CHK_XFR=2250,BASE_TAX=521.36,RET_SAV_XFR=3772.74;
 const COMM_TAX=707.18,COMM_AK=1060.76;
 const OP_FL=3000,TR_FL=1500,MIN_XFR=100,AK_START=5;
 const LC_LEVELUP=250,LC_LEVELUP_WKS=new Set([5,9,14,18,22,27,31]);
+const VAR_THRESHOLD=250; // Sprint 2: variance flag threshold
 
+// ── Week definitions (exact from live) ───────────────────────────────────────
 const WD=[
-  [1,'Jun 8-14',false,false,3000,[],[791],[{l:'Kia payment (6/7)',t:'ob',a:-791}],0,0],
-  [2,'Jun 15-21',false,false,9477,[2552.5],[],[{l:'Wendy paycheck + extra $400 (6/19)',t:'in',a:2552.5}],0,0],
-  [3,'Jun 22-28',false,false,4648,[5816.5],[5925.13,6368.48],[{l:'Adam paycheck (6/22)',t:'in',a:5816.5},{l:'Disney Visa $5,925.13 due 6/23 (Winshape $2,349 + party $673)',t:'ob',a:-5925.13},{l:'AMEX Platinum $6,368.48 due 6/27 — LAST major Platinum bill',t:'ob',a:-6368.48}],0,0],
-  [4,'Jun 29-Jul 5',true,false,1500,[2152.5],[2000,2000,1300],[{l:'Rent $2,000 — Zelle to Tiffany Dye (7/1)',t:'ob',a:-2000},{l:'Rent $2,000 — Zelle to Tiffany Dye (7/2)',t:'ob',a:-2000},{l:'Wendy paycheck (7/3)',t:'in',a:2152.5},{l:'Rent $1,300 — Zelle to Tiffany Dye (7/3, late day)',t:'ob',a:-1300}],0,0],
-  [5,'Jul 6-12',false,false,4191,[5816.5],[791],[{l:'Adam paycheck (7/7)',t:'in',a:5816.5},{l:'Kia payment (7/7)',t:'ob',a:-791}],0,0],
-  [6,'Jul 13-19',false,false,3000,[1767.94,2152.5],[5500],[{l:'AMEX Gold ~$5,500 due 7/17 (first statement)',t:'ob',a:-5500},{l:'Wendy Deep South commission $1,767.94 (7/15)',t:'in',a:1767.94},{l:'Wendy paycheck (7/17)',t:'in',a:2152.5}],COMM_TAX,COMM_AK],
-  [7,'Jul 20-26',false,false,3148,[5816.5],[3500],[{l:'Adam paycheck (7/22)',t:'in',a:5816.5},{l:'Disney Visa ~$3,500 due ~7/23',t:'ob',a:-3500}],0,0],
-  [8,'Jul 27-Aug 2',true,false,1500,[2552.5],[200,2000,2000],[{l:'AMEX Platinum ~$200 due ~7/27 (stragglers)',t:'ob',a:-200},{l:'Wendy paycheck + extra $400 (7/31)',t:'in',a:2552.5},{l:'Rent $2,000 — Zelle to Tiffany Dye (8/1)',t:'ob',a:-2000},{l:'Rent $2,000 — Zelle to Tiffany Dye (8/2)',t:'ob',a:-2000}],0,0],
-  [9,'Aug 3-9',false,false,3779,[5816.5],[1300,791],[{l:'Rent $1,300 — Zelle to Tiffany Dye (8/3)',t:'ob',a:-1300},{l:'Adam paycheck (8/7)',t:'in',a:5816.5},{l:'Kia payment (8/7)',t:'ob',a:-791}],0,0],
-  [10,'Aug 10-16',false,false,5931,[2152.5],[],[{l:'Wendy paycheck (8/14)',t:'in',a:2152.5}],0,0],
-  [11,'Aug 17-23',false,false,4248,[5816.5],[5500,3500],[{l:'AMEX Gold ~$5,500 due 8/17',t:'ob',a:-5500},{l:'Adam paycheck (8/21)',t:'in',a:5816.5},{l:'Disney Visa ~$3,500 due ~8/23',t:'ob',a:-3500}],0,0],
-  [12,'Aug 24-30',false,false,5300,[2552.5],[],[{l:'Wendy paycheck + extra $400 (8/28)',t:'in',a:2552.5}],0,0],
-  [13,'Aug 31-Sep 6',true,false,1500,[],[2000,2000,1300],[{l:'Rent $2,000 — Zelle to Tiffany Dye (9/1)',t:'ob',a:-2000},{l:'Rent $2,000 — Zelle to Tiffany Dye (9/2)',t:'ob',a:-2000},{l:'Rent $1,300 — Zelle to Tiffany Dye (9/3)',t:'ob',a:-1300}],0,0],
-  [14,'Sep 7-13',false,false,8500,[5816.5,2152.5],[791],[{l:'Adam paycheck (9/7)',t:'in',a:5816.5},{l:'Kia payment (9/7)',t:'ob',a:-791},{l:'Wendy paycheck (9/11)',t:'in',a:2152.5}],0,0],
-  [15,'Sep 14-20',false,false,3000,[],[5500],[{l:'AMEX Gold ~$5,500 due 9/17',t:'ob',a:-5500}],0,0],
-  [16,'Sep 21-27',false,false,6800,[5816.5,2552.5],[3500],[{l:'Adam paycheck (9/22)',t:'in',a:5816.5},{l:'Disney Visa ~$3,500 due ~9/23',t:'ob',a:-3500},{l:'Wendy paycheck + extra $400 (9/25)',t:'in',a:2552.5}],0,0],
-  [17,'Sep 28-Oct 4',true,false,1500,[],[2000,2000,1300],[{l:'Rent $2,000 — Zelle to Tiffany Dye (10/1)',t:'ob',a:-2000},{l:'Rent $2,000 — Zelle to Tiffany Dye (10/2)',t:'ob',a:-2000},{l:'Rent $1,300 — Zelle to Tiffany Dye (10/3)',t:'ob',a:-1300}],0,0],
-  [18,'Oct 5-11',false,false,8500,[5816.5,2152.5],[791],[{l:'Adam paycheck (10/7)',t:'in',a:5816.5},{l:'Kia payment (10/7)',t:'ob',a:-791},{l:'Wendy paycheck (10/9)',t:'in',a:2152.5}],0,0],
-  [19,'Oct 12-18',false,false,3000,[],[5500],[{l:'AMEX Gold ~$5,500 due ~10/16',t:'ob',a:-5500}],0,0],
-  [20,'Oct 19-25',false,false,3500,[5816.5,2552.5],[3500],[{l:'Adam paycheck (10/22)',t:'in',a:5816.5},{l:'Disney Visa ~$3,500 due ~10/23',t:'ob',a:-3500},{l:'Wendy paycheck + extra $400 (10/23)',t:'in',a:2552.5}],0,0],
-  [21,'Oct 26-Nov 1',true,false,1500,[],[2000],[{l:'Rent $2,000 — Zelle to Tiffany Dye (11/1)',t:'ob',a:-2000}],0,0],
-  [22,'Nov 2-8',false,false,3000,[5816.5],[2000,1300,791],[{l:'Rent $2,000 — Zelle to Tiffany Dye (11/2)',t:'ob',a:-2000},{l:'Rent $1,300 — Zelle to Tiffany Dye (11/3)',t:'ob',a:-1300},{l:'Adam paycheck (11/6)',t:'in',a:5816.5},{l:'Kia payment (11/7)',t:'ob',a:-791}],0,0],
-  [23,'Nov 9-15',false,false,3000,[],[],[],0,0],
-  [24,'Nov 16-22',false,false,6800,[5816.5,2552.5],[5500],[{l:'AMEX Gold ~$5,500 due ~11/17',t:'ob',a:-5500},{l:'Adam paycheck (11/20)',t:'in',a:5816.5},{l:'Wendy paycheck + extra $400 (11/20)',t:'in',a:2552.5}],0,0],
-  [25,'Nov 23-29',false,false,6800,[],[3500],[{l:'Disney Visa ~$3,500 due ~11/23',t:'ob',a:-3500}],0,0],
-  [26,'Nov 30-Dec 6',true,true,1500,[],[2000,2000,1300],[{l:'Rent $2,000 — Zelle to Tiffany Dye (12/1)',t:'ob',a:-2000},{l:'Rent $2,000 — Zelle to Tiffany Dye (12/2)',t:'ob',a:-2000},{l:'Rent $1,300 — Zelle to Tiffany Dye (12/3)',t:'ob',a:-1300}],0,0],
-  [27,'Dec 7-13',false,false,3779,[5816.5],[791],[{l:'Adam paycheck (12/7)',t:'in',a:5816.5},{l:'Kia payment (12/7)',t:'ob',a:-791}],0,0],
-  [28,'Dec 14-20',false,true,3000,[2552.5],[5500],[{l:'AMEX Gold ~$5,500 due ~12/17',t:'ob',a:-5500},{l:'Wendy paycheck + extra $400 (12/18)',t:'in',a:2552.5}],0,0],
-  [29,'Dec 21-27',false,false,3148,[5816.5],[3500],[{l:'Adam paycheck (12/22)',t:'in',a:5816.5},{l:'Disney Visa ~$3,500 due ~12/23',t:'ob',a:-3500}],0,0],
-  [30,'Dec 28-Jan 3',true,true,1500,[2152.5],[2000,2000,1300],[{l:'Wendy paycheck (12/31)',t:'in',a:2152.5},{l:'Rent $2,000 — Zelle to Tiffany Dye (1/1)',t:'ob',a:-2000},{l:'Rent $2,000 — Zelle to Tiffany Dye (1/2)',t:'ob',a:-2000},{l:'Rent $1,300 — Zelle to Tiffany Dye (1/3)',t:'ob',a:-1300}],0,0],
-  [31,'Jan 4-10 2027',false,false,3000,[5816.5],[791],[{l:'Adam paycheck (1/7)',t:'in',a:5816.5},{l:'Kia payment (1/7)',t:'ob',a:-791}],0,0],
+  [1,'Jun 7-13',false,false,3000,[],[791],[{l:'Kia payment (6/7)',t:'ob',a:-791}],0,0],
+  [2,'Jun 14-20',false,false,9477,[2552.5],[],[{l:'Wendy paycheck + extra $400 (6/19)',t:'in',a:2552.5}],0,0],
+  [3,'Jun 21-27',false,false,4648,[5816.5],[5925.13,6368.48],[{l:'Adam paycheck (6/22)',t:'in',a:5816.5},{l:'Disney Visa $5,925.13 due 6/23 (Winshape $2,349 + party $673)',t:'ob',a:-5925.13},{l:'AMEX Platinum $6,368.48 due 6/27 — LAST major Platinum bill',t:'ob',a:-6368.48}],0,0],
+  [4,'Jun 28-Jul 4',true,false,1500,[2152.5],[2000,2000,1300],[{l:'Rent $2,000 — Zelle to Tiffany Dye (7/1)',t:'ob',a:-2000},{l:'Rent $2,000 — Zelle to Tiffany Dye (7/2)',t:'ob',a:-2000},{l:'Wendy paycheck (7/3)',t:'in',a:2152.5},{l:'Rent $1,300 — Zelle to Tiffany Dye (7/3, late day)',t:'ob',a:-1300}],0,0],
+  [5,'Jul 5-11',false,false,4191,[5816.5],[791],[{l:'Adam paycheck (7/7)',t:'in',a:5816.5},{l:'Kia payment (7/7)',t:'ob',a:-791}],0,0],
+  [6,'Jul 12-18',false,false,3000,[1767.94,2152.5],[5500],[{l:'AMEX Gold ~$5,500 due 7/17 (first statement)',t:'ob',a:-5500},{l:'Wendy Deep South commission $1,767.94 (7/15)',t:'in',a:1767.94},{l:'Wendy paycheck (7/17)',t:'in',a:2152.5}],COMM_TAX,COMM_AK],
+  [7,'Jul 19-25',false,false,3148,[5816.5],[3500],[{l:'Adam paycheck (7/22)',t:'in',a:5816.5},{l:'Disney Visa ~$3,500 due ~7/23',t:'ob',a:-3500}],0,0],
+  [8,'Jul 26-Aug 1',true,false,1500,[2552.5],[200,2000,2000],[{l:'AMEX Platinum ~$200 due ~7/27 (stragglers)',t:'ob',a:-200},{l:'Wendy paycheck + extra $400 (7/31)',t:'in',a:2552.5},{l:'Rent $2,000 — Zelle to Tiffany Dye (8/1)',t:'ob',a:-2000},{l:'Rent $2,000 — Zelle to Tiffany Dye (8/2)',t:'ob',a:-2000}],0,0],
+  [9,'Aug 2-8',false,false,3779,[5816.5],[1300,791],[{l:'Rent $1,300 — Zelle to Tiffany Dye (8/3)',t:'ob',a:-1300},{l:'Adam paycheck (8/7)',t:'in',a:5816.5},{l:'Kia payment (8/7)',t:'ob',a:-791}],0,0],
+  [10,'Aug 9-15',false,false,5931,[2152.5],[],[{l:'Wendy paycheck (8/14)',t:'in',a:2152.5}],0,0],
+  [11,'Aug 16-22',false,false,4248,[5816.5],[5500,3500],[{l:'AMEX Gold ~$5,500 due 8/17',t:'ob',a:-5500},{l:'Adam paycheck (8/21)',t:'in',a:5816.5},{l:'Disney Visa ~$3,500 due ~8/23',t:'ob',a:-3500}],0,0],
+  [12,'Aug 23-29',false,false,5300,[2552.5],[],[{l:'Wendy paycheck + extra $400 (8/28)',t:'in',a:2552.5}],0,0],
+  [13,'Aug 30-Sep 5',true,false,1500,[],[2000,2000,1300],[{l:'Rent $2,000 — Zelle to Tiffany Dye (9/1)',t:'ob',a:-2000},{l:'Rent $2,000 — Zelle to Tiffany Dye (9/2)',t:'ob',a:-2000},{l:'Rent $1,300 — Zelle to Tiffany Dye (9/3)',t:'ob',a:-1300}],0,0],
+  [14,'Sep 6-12',false,false,8500,[5816.5,2152.5],[791],[{l:'Adam paycheck (9/7)',t:'in',a:5816.5},{l:'Kia payment (9/7)',t:'ob',a:-791},{l:'Wendy paycheck (9/11)',t:'in',a:2152.5}],0,0],
+  [15,'Sep 13-19',false,false,3000,[],[5500],[{l:'AMEX Gold ~$5,500 due 9/17',t:'ob',a:-5500}],0,0],
+  [16,'Sep 20-26',false,false,6800,[5816.5,2552.5],[3500],[{l:'Adam paycheck (9/22)',t:'in',a:5816.5},{l:'Disney Visa ~$3,500 due ~9/23',t:'ob',a:-3500},{l:'Wendy paycheck + extra $400 (9/25)',t:'in',a:2552.5}],0,0],
+  [17,'Sep 27-Oct 3',true,false,1500,[],[2000,2000,1300],[{l:'Rent $2,000 — Zelle to Tiffany Dye (10/1)',t:'ob',a:-2000},{l:'Rent $2,000 — Zelle to Tiffany Dye (10/2)',t:'ob',a:-2000},{l:'Rent $1,300 — Zelle to Tiffany Dye (10/3)',t:'ob',a:-1300}],0,0],
+  [18,'Oct 4-10',false,false,8500,[5816.5,2152.5],[791],[{l:'Adam paycheck (10/7)',t:'in',a:5816.5},{l:'Kia payment (10/7)',t:'ob',a:-791},{l:'Wendy paycheck (10/9)',t:'in',a:2152.5}],0,0],
+  [19,'Oct 11-17',false,false,3000,[],[5500],[{l:'AMEX Gold ~$5,500 due ~10/16',t:'ob',a:-5500}],0,0],
+  [20,'Oct 18-24',false,false,3500,[5816.5,2552.5],[3500],[{l:'Adam paycheck (10/22)',t:'in',a:5816.5},{l:'Disney Visa ~$3,500 due ~10/23',t:'ob',a:-3500},{l:'Wendy paycheck + extra $400 (10/23)',t:'in',a:2552.5}],0,0],
+  [21,'Oct 25-31',true,false,1500,[],[2000],[{l:'Rent $2,000 — Zelle to Tiffany Dye (11/1)',t:'ob',a:-2000}],0,0],
+  [22,'Nov 1-7',false,false,3000,[5816.5],[2000,1300,791],[{l:'Rent $2,000 — Zelle to Tiffany Dye (11/2)',t:'ob',a:-2000},{l:'Rent $1,300 — Zelle to Tiffany Dye (11/3)',t:'ob',a:-1300},{l:'Adam paycheck (11/6)',t:'in',a:5816.5},{l:'Kia payment (11/7)',t:'ob',a:-791}],0,0],
+  [23,'Nov 8-14',false,false,3000,[],[],[],0,0],
+  [24,'Nov 15-21',false,false,6800,[5816.5,2552.5],[5500],[{l:'AMEX Gold ~$5,500 due ~11/17',t:'ob',a:-5500},{l:'Adam paycheck (11/20)',t:'in',a:5816.5},{l:'Wendy paycheck + extra $400 (11/20)',t:'in',a:2552.5}],0,0],
+  [25,'Nov 22-28',false,false,6800,[],[3500],[{l:'Disney Visa ~$3,500 due ~11/23',t:'ob',a:-3500}],0,0],
+  [26,'Nov 29-Dec 5',true,true,1500,[],[2000,2000,1300],[{l:'Rent $2,000 — Zelle to Tiffany Dye (12/1)',t:'ob',a:-2000},{l:'Rent $2,000 — Zelle to Tiffany Dye (12/2)',t:'ob',a:-2000},{l:'Rent $1,300 — Zelle to Tiffany Dye (12/3)',t:'ob',a:-1300}],0,0],
+  [27,'Dec 6-12',false,false,3779,[5816.5],[791],[{l:'Adam paycheck (12/7)',t:'in',a:5816.5},{l:'Kia payment (12/7)',t:'ob',a:-791}],0,0],
+  [28,'Dec 13-19',false,true,3000,[2552.5],[5500],[{l:'AMEX Gold ~$5,500 due ~12/17',t:'ob',a:-5500},{l:'Wendy paycheck + extra $400 (12/18)',t:'in',a:2552.5}],0,0],
+  [29,'Dec 20-26',false,false,3148,[5816.5],[3500],[{l:'Adam paycheck (12/22)',t:'in',a:5816.5},{l:'Disney Visa ~$3,500 due ~12/23',t:'ob',a:-3500}],0,0],
+  [30,'Dec 27-Jan 2',true,true,1500,[2152.5],[2000,2000,1300],[{l:'Wendy paycheck (12/31)',t:'in',a:2152.5},{l:'Rent $2,000 — Zelle to Tiffany Dye (1/1)',t:'ob',a:-2000},{l:'Rent $2,000 — Zelle to Tiffany Dye (1/2)',t:'ob',a:-2000},{l:'Rent $1,300 — Zelle to Tiffany Dye (1/3)',t:'ob',a:-1300}],0,0],
+  [31,'Jan 3-9 2027',false,false,3000,[5816.5],[791],[{l:'Adam paycheck (1/7)',t:'in',a:5816.5},{l:'Kia payment (1/7)',t:'ob',a:-791}],0,0],
 ];
 
+// ── Sprint 2: localStorage state ──────────────────────────────────────────────
+var reconData={};   // weekNum → {chk,sav,amx,tax,lc,date}
+var taskData={};    // 'N_I' → {completed,completedAt}
+var noteData={};    // weekNum → string
+var reconOpen=null; // weekNum with open form, or null
+var activeTab='plan';
+
+function lsGet(k){try{return localStorage.getItem(k)}catch(e){return null}}
+function lsSet(k,v){try{localStorage.setItem(k,v)}catch(e){}}
+
+function initData(){
+  for(var i=1;i<=31;i++){
+    var rv=lsGet('hcf2_recon_'+i);if(rv)reconData[i]=JSON.parse(rv);
+    var nv=lsGet('hcf2_note_'+i);if(nv!==null)noteData[i]=nv;
+    for(var j=0;j<12;j++){var tv=lsGet('hcf2_task_'+i+'_'+j);if(tv)taskData[i+'_'+j]=JSON.parse(tv);}
+  }
+}
+
+// ── runModel — Sprint 1 logic + Sprint 2 additions (mChk/mSav, recon anchor) ─
 function runModel(akGoal,rtGoal){
   const retChkGoal=Math.max(0,Math.round((rtGoal-START_AMX-RET_SAV_XFR)*100)/100);
   let chk=START_CHK,sav=START_SAV,amx=START_AMX,tax=START_TAX,lc=START_LC;
@@ -279,18 +402,50 @@ function runModel(akGoal,rtGoal){
     if(retChk>0&&alaska===0&&efChk===0){const m=mv(retChk,'amx');if(m>0){retChk=r(retChk-m);const rem=retChk>0?' — $'+fc(retChk)+' remaining':' — retirement funded!';tr.push({l:'Retirement $'+fc(m)+' Checking → AMEX Savings'+rem,r:'done',rsn:'Post $'+fc(chk)+' ≥ '+fn});ac.push('Transfer $'+fc(m)+' from Truist Checking to AMEX Savings (retirement rebuild)');}else{const pot=r(sm(chk,retChk,effFl));if(pot>0&&pot<MIN_XFR)tr.push({l:'Retirement $'+fc(pot)+' suppressed (<$100) — rolls forward',r:'info',rsn:'Too small; carries to next eligible week'});else tr.push({l:'Retirement surplus deferred',r:'defer',rsn:'Post-obligations $'+fc(chk)+' — no surplus above '+fn});}}
     if(LC_LEVELUP_WKS.has(num)){tr.push({l:'LevelUp $250 Vio Bank EF → Lending Club (APY boost)',r:'info',rsn:'Vio EF HYSA → LC rotation — no checking or AMEX impact. Rotate $250 back to Vio after statement closes.'});ac.push('Transfer $250 from Vio Bank EF HYSA to Lending Club (LevelUp qualifying deposit) — then rotate $250 back to Vio Bank within the month');}
     if(!tr.length){tr.push({l:'No transfers this week',r:'info',rsn:'No surplus above floor after obligations'});ac.push('No transfers this week — monitor balances');}
-    weeks.push({num,dates,trough,managed,evs,tr,ac,chk:r(chk),sav:r(sav),amx:r(amx),tax:r(tax),lc:r(lc),akSaved:r(akGoal-alaska),akRem:r(alaska),retRem:r(retChk),ol:r(chk+sav),startChk,startSav,startAmx,startTax,startLc});
+    // Sprint 2: capture modeled end balances before any recon override
+    const mChk=r(chk),mSav=r(sav),mAmx=r(amx),mTax=r(tax),mLc=r(lc);
+    // Sprint 2: apply reconciliation anchor (Option C)
+    let reconciled=false,variance=null,actualBals=null;
+    if(reconData[num]){
+      const rec=reconData[num];
+      reconciled=true;
+      actualBals=rec;
+      variance={chk:r(mChk-rec.chk),sav:r(mSav-rec.sav),amx:r(mAmx-rec.amx),tax:r(mTax-rec.tax),lc:r(mLc-rec.lc)};
+      // override running state with actuals — all future weeks calculate from here
+      chk=rec.chk;sav=rec.sav;amx=rec.amx;tax=rec.tax;lc=rec.lc;
+    }
+    // Sprint 2: task completion counts
+    const realActs=ac.filter(function(a){return!a.includes('No transfers');});
+    const totalTasks=realActs.length;
+    let doneTasks=0;
+    for(var ti=0;ti<totalTasks;ti++){if(taskData[num+'_'+ti]&&taskData[num+'_'+ti].completed)doneTasks++;}
+    weeks.push({num,dates,trough,managed,evs,tr,ac,realActs,totalTasks,doneTasks,
+      chk:r(chk),sav:r(sav),amx:r(amx),tax:r(tax),lc:r(lc),
+      mChk,mSav,mAmx,mTax,mLc,
+      akSaved:r(akGoal-alaska),akRem:r(alaska),retRem:r(retChk),ol:r(chk+sav),
+      startChk,startSav,startAmx,startTax,startLc,
+      reconciled,variance,actualBals});
   }
   return weeks;
 }
 
+// ── Helpers (same as Sprint 1) ────────────────────────────────────────────────
 function f(n){return '$'+Math.abs(n).toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2})}
 function fc(n){return n.toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2})}
-function mkBal(label,start,end,vc){
+
+// Sprint 2: mkBal extended with optional actual+modeled for variance display
+function mkBal(label,start,end,vc,actual,modeled){
   const d=Math.round((end-start)*100)/100;
   const dCls=d>0.005?'pos':d<-0.005?'neg':'zer';
   const dStr=d>0.005?'+'+f(d):d<-0.005?'−'+f(Math.abs(d)):'—';
-  return`<div class="bal"><div class="blbl">${label}</div><div class="bval${vc?' '+vc:''}">${f(end)}</div><div class="brow2"><span class="bfrom">from ${f(start)}</span><span class="bdelta ${dCls}">${dStr}</span></div></div>`;
+  let actualHtml='';
+  if(actual!==undefined&&modeled!==undefined){
+    const v=Math.round((actual-modeled)*100)/100;
+    const vCls=v<-VAR_THRESHOLD?'under':v>VAR_THRESHOLD?'over':'ok';
+    const vStr=v>=0?'+'+f(v):'−'+f(Math.abs(v));
+    actualHtml='<div class="bactual"><span class="bactual-lbl">Actual: </span><span class="bactual-val">'+f(actual)+'</span><span class="bactual-var '+vCls+'">'+vStr+'</span></div>';
+  }
+  return'<div class="bal"><div class="blbl">'+label+'</div><div class="bval'+(vc?' '+vc:'')+'">'+f(end)+'</div><div class="brow2"><span class="bfrom">from '+f(start)+'</span><span class="bdelta '+dCls+'">'+dStr+'</span></div>'+actualHtml+'</div>';
 }
 
 function getMilestones(weeks,ak,rt){
@@ -304,7 +459,7 @@ function getMilestones(weeks,ak,rt){
   ];
 }
 
-function getCurrentWeek(){const s=new Date(2026,5,8);const t=new Date();t.setHours(0,0,0,0);s.setHours(0,0,0,0);const d=Math.floor((t-s)/864e5);if(d<0)return 1;return Math.min(Math.floor(d/7)+1,31);}
+function getCurrentWeek(){const s=new Date(2026,5,7);const t=new Date();t.setHours(0,0,0,0);s.setHours(0,0,0,0);const d=Math.floor((t-s)/864e5);if(d<0)return 1;return Math.min(Math.floor(d/7)+1,31);}
 const currentW=getCurrentWeek();
 let activeW=getCurrentWeek();
 
@@ -316,6 +471,63 @@ function goWeek(dir){
   if(nxt){activeW=nxt.num;render();window.scrollTo({top:document.getElementById('display').offsetTop-10,behavior:'smooth'});}
 }
 
+// ── Sprint 2: tab switching ───────────────────────────────────────────────────
+function setTab(t){
+  activeTab=t;
+  document.getElementById('tabPlan').className='tab-btn'+(t==='plan'?' active':'');
+  document.getElementById('tabHistory').className='tab-btn'+(t==='history'?' active':'');
+  document.getElementById('planView').style.display=t==='plan'?'':'none';
+  document.getElementById('historyView').style.display=t==='history'?'':'none';
+  if(t==='history')renderHistory();
+}
+
+// ── Sprint 2: reconcile action handlers ──────────────────────────────────────
+function openRecon(n){reconOpen=n;render();}
+function cancelRecon(){reconOpen=null;render();}
+function saveRecon(n){
+  function gv(id){return parseFloat(document.getElementById(id).value)||0;}
+  const data={
+    chk:gv('ri_chk'),sav:gv('ri_sav'),amx:gv('ri_amx'),tax:gv('ri_tax'),lc:gv('ri_lc'),
+    date:new Date().toLocaleDateString('en-US',{month:'short',day:'numeric'})
+  };
+  reconData[n]=data;
+  lsSet('hcf2_recon_'+n,JSON.stringify(data));
+  reconOpen=null;
+  render();
+}
+function deleteRecon(n){
+  delete reconData[n];
+  lsSet('hcf2_recon_'+n,'');
+  reconOpen=null;
+  render();
+}
+
+// ── Sprint 2: task + note handlers ───────────────────────────────────────────
+function toggleTask(weekNum,taskIdx,checked){
+  const key=weekNum+'_'+taskIdx;
+  taskData[key]={completed:checked,completedAt:checked?new Date().toISOString():null};
+  lsSet('hcf2_task_'+weekNum+'_'+taskIdx,JSON.stringify(taskData[key]));
+  render();
+}
+function saveNote(weekNum,el){
+  noteData[weekNum]=el.value;
+  lsSet('hcf2_note_'+weekNum,el.value);
+  const s=document.getElementById('ns_'+weekNum);
+  if(s){s.textContent='Saved';setTimeout(function(){if(s)s.textContent='';},1800);}
+}
+
+// ── Sprint 2: header recon label ──────────────────────────────────────────────
+function updateReconLabel(weeks){
+  const keys=Object.keys(reconData).map(Number).filter(function(n){return reconData[n]&&reconData[n].chk!==undefined;});
+  const lbl=document.getElementById('lastReconLabel');
+  if(!lbl)return;
+  if(!keys.length){lbl.textContent='Not yet reconciled';return;}
+  const maxW=Math.max.apply(null,keys);
+  const wx=weeks.find(function(w){return w.num===maxW;});
+  lbl.textContent='Last reconciled: Week '+maxW+(wx?' \xb7 '+wx.dates:'');
+}
+
+// ── render ────────────────────────────────────────────────────────────────────
 function render(){
   const{ak,rt}=getGoals();
   const weeks=runModel(ak,rt);
@@ -329,17 +541,22 @@ function render(){
   document.getElementById('akBar').style.width=Math.min(100,+(w.akSaved/ak*100).toFixed(1))+'%';
   document.getElementById('rtVal').textContent=f(w.amx)+' / '+f(rt);
   document.getElementById('rtBar').style.width=Math.min(100,+(w.amx/rt*100).toFixed(1))+'%';
+  updateReconLabel(weeks);
+  // Nav
   const nav=document.getElementById('nav');
   nav.innerHTML='';
   weeks.forEach(wx=>{
     const b=document.createElement('button');
     const isPast=wx.num<currentW;
     const isNow=wx.num===currentW;
+    // Sprint 2: orange dot for past weeks with incomplete tasks
+    const hasOpenTasks=isPast&&wx.realActs.some(function(_,i){return!taskData[wx.num+'_'+i]||!taskData[wx.num+'_'+i].completed;});
     let cls='wbtn';
     if(wx.managed)cls+=' managed';else if(wx.trough)cls+=' trough';
     if(wx.num===activeW)cls+=' active';
     if(isPast)cls+=' past';
     if(isNow)cls+=' now';
+    if(hasOpenTasks&&wx.realActs.length)cls+=' open-tasks';
     b.className=cls;
     b.innerHTML='<span class="wn">Week '+wx.num+'</span><span class="wd">'+wx.dates+'</span>';
     b.onclick=()=>{activeW=wx.num;render();};
@@ -349,7 +566,8 @@ function render(){
   sel.innerHTML=weeks.map(wx=>{
     const isPast=wx.num<currentW;
     const isNow=wx.num===currentW;
-    const prefix=isPast?'✓ ':isNow?'▶ ':'';
+    const hasOpen=isPast&&wx.realActs.some(function(_,i){return!taskData[wx.num+'_'+i]||!taskData[wx.num+'_'+i].completed;});
+    const prefix=isPast?(hasOpen&&wx.realActs.length?'⚠ ':'✓ '):isNow?'▶ ':'';
     const suffix=isNow?' (Now)':wx.managed?' ⚠️':wx.trough?' 🔶':'';
     return`<option value="${wx.num}"${wx.num===activeW?' selected':''}>${prefix}Week ${wx.num} \xb7 ${wx.dates}${suffix}</option>`;
   }).join('');
@@ -362,8 +580,11 @@ function render(){
   const efFunded=w.lc>=EF_NEW-0.01;
   const isPastWeek=w.num<currentW;
   const isNowWeek=w.num===currentW;
+  // Card class
   let cardCls='card';
-  if(w.managed)cardCls+=' managed-card';else if(w.trough)cardCls+=' trough-card';
+  if(w.reconciled)cardCls+=' reconciled-card';
+  else if(w.managed)cardCls+=' managed-card';
+  else if(w.trough)cardCls+=' trough-card';
   let badgeCls='badge',badgeTxt='normal week';
   if(w.managed){badgeCls+=' badge-managed';badgeTxt='managed trough';}
   else if(w.trough){badgeCls+=' badge-trough';badgeTxt='trough week';}
@@ -371,38 +592,154 @@ function render(){
   let temporalBadge='';
   if(isPastWeek)temporalBadge='<span class="badge badge-past">Past week</span>';
   else if(isNowWeek)temporalBadge='<span class="badge badge-now">● This week</span>';
-  let html=`<div class="${cardCls}">`;
-  if(w.managed){html+=`<div class="alert-note alert-managed">⚠️ <strong>Managed trough</strong> — Checking dips $${fc(Math.abs(w.chk))} below zero from obligations alone. Truist Savings (${f(w.sav)}) is same-bank backup — instant transfer if needed. Operational liquidity remains ${f(w.ol)}. Adam's paycheck restores checking at the start of next week.</div>`;}
-  else if(w.trough&&w.chk<500){html+=`<div class="alert-note alert-trough">⚡ Trough week — checking at monthly low (${f(w.chk)}). Truist Savings (${f(w.sav)}) available as same-bank backup. Adam's paycheck restores checking at the start of next week.</div>`;}
-  html+=`<div class="card-hdr"><div><div class="card-title">Week ${w.num}</div><div class="card-dates">${w.dates}</div></div><div class="badge-row">${temporalBadge}<span class="${badgeCls}">${badgeTxt}</span></div></div>`;
-  if(w.evs&&w.evs.length){html+='<div class="sect">Cash flow this week</div>';w.evs.forEach(e=>{const cls=e.t==='in'?'ev-in':'ev-out';const sign=e.t==='in'?'+':'−';html+=`<div class="ev-row"><span class="ev-lbl">${e.l}</span><span class="${cls}">${sign}${f(Math.abs(e.a))}</span></div>`;});}
+  const reconBadge=w.reconciled?'<span class="badge badge-recon">✅ Reconciled \xb7 '+w.actualBals.date+'</span>':'';
+  let html='<div class="'+cardCls+'">';
+  if(w.managed){html+='<div class="alert-note alert-managed">⚠️ <strong>Managed trough</strong> — Checking dips $'+fc(Math.abs(w.chk))+' below zero from obligations alone. Truist Savings ('+f(w.sav)+') is same-bank backup — instant transfer if needed. Operational liquidity remains '+f(w.ol)+'. Adam\'s paycheck restores checking at the start of next week.</div>';}
+  else if(w.trough&&w.chk<500){html+='<div class="alert-note alert-trough">⚡ Trough week — checking at monthly low ('+f(w.chk)+'). Truist Savings ('+f(w.sav)+') available as same-bank backup. Adam\'s paycheck restores checking at the start of next week.</div>';}
+  html+='<div class="card-hdr"><div><div class="card-title">Week '+w.num+'</div><div class="card-dates">'+w.dates+'</div></div><div class="badge-row">'+reconBadge+temporalBadge+'<span class="'+badgeCls+'">'+badgeTxt+'</span></div></div>';
+  // Cash flow
+  if(w.evs&&w.evs.length){
+    html+='<div class="sect">Cash flow this week</div>';
+    w.evs.forEach(e=>{const cls=e.t==='in'?'ev-in':'ev-out';const sign=e.t==='in'?'+':'−';html+='<div class="ev-row"><span class="ev-lbl">'+e.l+'</span><span class="'+cls+'">'+sign+f(Math.abs(e.a))+'</span></div>';});
+  }
+  // Transfers
   html+='<div class="sect">Transfers</div>';
-  w.tr.forEach(x=>{const ic=x.r==='done'?'✅':x.r==='defer'?'🔴':'ℹ️';html+=`<div class="xfr-row"><span class="xi">${ic}</span><div class="xtext"><div class="xlbl">${x.l}</div><div class="xrsn">${x.rsn}</div></div></div>`;});
+  w.tr.forEach(x=>{const ic=x.r==='done'?'✅':x.r==='defer'?'🔴':'ℹ️';html+='<div class="xfr-row"><span class="xi">'+ic+'</span><div class="xtext"><div class="xlbl">'+x.l+'</div><div class="xrsn">'+x.rsn+'</div></div></div>';});
+  // Balances
   html+='<div class="sect">Account balances — start → end of week</div><div class="bals">';
   const chkCls=w.chk<0?'low':w.chk<500?'warn':w.chk>=5000?'good':'';
-  html+=mkBal('Truist Checking',w.startChk,w.chk,chkCls);
-  html+=mkBal('Truist Savings',w.startSav,w.sav,'');
-  html+=mkBal('AMEX Savings',w.startAmx,w.amx,rtFunded?'good':'');
-  html+=mkBal('Tax HYSA',w.startTax,w.tax,'');
-  html+=mkBal('Lending Club (EF)',w.startLc,w.lc,efFunded?'good':'');
+  if(w.reconciled){
+    // Show modeled end with actual+variance below
+    html+=mkBal('Truist Checking',w.startChk,w.mChk,chkCls,w.actualBals.chk,w.mChk);
+    html+=mkBal('Truist Savings',w.startSav,w.mSav,'',w.actualBals.sav,w.mSav);
+    html+=mkBal('AMEX Savings',w.startAmx,w.mAmx,rtFunded?'good':'',w.actualBals.amx,w.mAmx);
+    html+=mkBal('Tax HYSA',w.startTax,w.mTax,'',w.actualBals.tax,w.mTax);
+    html+=mkBal('Lending Club (EF)',w.startLc,w.mLc,efFunded?'good':'',w.actualBals.lc,w.mLc);
+  } else {
+    html+=mkBal('Truist Checking',w.startChk,w.chk,chkCls);
+    html+=mkBal('Truist Savings',w.startSav,w.sav,'');
+    html+=mkBal('AMEX Savings',w.startAmx,w.amx,rtFunded?'good':'');
+    html+=mkBal('Tax HYSA',w.startTax,w.tax,'');
+    html+=mkBal('Lending Club (EF)',w.startLc,w.lc,efFunded?'good':'');
+  }
   html+='</div>';
-  html+=`<div class="liq-row"><span class="liq-label">Operational liquidity (Checking + Savings)</span><span class="liq-val">${f(w.ol)}</span></div>`;
-  const realActs=(w.ac||[]).filter(a=>!a.includes('No transfers'));
-  if(realActs.length){html+='<div class="acts"><div class="act-hdr">Recommended actions this week</div>';realActs.forEach(a=>{html+=`<div class="act-row"><div class="act-dot"></div><div>${a}</div></div>`;});html+='</div>';}
+  // Sprint 2: variance alert (only show if >$250 below)
+  if(w.reconciled&&w.variance){
+    const underItems=[];
+    const over=[];
+    const names=['chk','sav','amx','tax','lc'];
+    const labels=['Checking','Savings','AMEX','Tax HYSA','Lending Club'];
+    names.forEach((k,i)=>{
+      if(w.variance[k]<-VAR_THRESHOLD)underItems.push(labels[i]+' −'+f(Math.abs(w.variance[k])));
+      else if(w.variance[k]>VAR_THRESHOLD)over.push(labels[i]+' +'+f(w.variance[k]));
+    });
+    if(underItems.length||over.length){
+      html+='<div class="variance-alert"><div class="variance-title">⚠️ Variance from plan (>\$'+VAR_THRESHOLD.toLocaleString()+')</div><div class="variance-items">';
+      underItems.forEach(s=>html+='<span class="vitem over">'+s+' above plan</span>');
+      over.forEach(s=>html+='<span class="vitem under">'+s+' below plan</span>');
+      html+='</div></div>';
+    }
+  }
+  html+='<div class="liq-row"><span class="liq-label">Operational liquidity (Checking + Savings)</span><span class="liq-val">'+f(w.ol)+'</span></div>';
+  // Sprint 2: task checkboxes (replaces bullet dots)
+  if(w.realActs.length){
+    const progCls=w.doneTasks===w.totalTasks?'all-done':'partial';
+    const progTxt=w.doneTasks+'/'+w.totalTasks+' done';
+    html+='<div class="acts"><div class="act-hdr">Recommended actions this week <span class="act-hdr-progress '+progCls+'">'+progTxt+'</span></div>';
+    w.realActs.forEach((a,i)=>{
+      const done=taskData[w.num+'_'+i]&&taskData[w.num+'_'+i].completed;
+      html+='<div class="task-row"><input type="checkbox" class="task-check" '+(done?'checked':'')+' onchange="toggleTask('+w.num+','+i+',this.checked)"><div class="task-text'+(done?' done':'')+'">'+ a+'</div></div>';
+    });
+    html+='</div>';
+  }
+  // Sprint 2: notes
+  const note=noteData[w.num]||'';
+  html+='<div class="notes-wrap"><div class="notes-hdr">Week notes</div><textarea class="notes-area" id="na_'+w.num+'" placeholder="Add notes for this week..." onblur="saveNote('+w.num+',this)">'+note.replace(/</g,'&lt;').replace(/>/g,'&gt;')+'</textarea><div class="notes-saved" id="ns_'+w.num+'"></div></div>';
+  // Sprint 2: reconcile section
+  html+='<div class="recon-wrap">';
+  if(w.reconciled&&reconOpen!==w.num){
+    html+='<div class="recon-done-row"><span class="recon-done-lbl">✅ Reconciled \xb7 '+w.actualBals.date+'</span><button class="recon-edit-btn" onclick="openRecon('+w.num+')">Edit actuals</button></div>';
+  } else if((isPastWeek||isNowWeek)&&reconOpen!==w.num){
+    html+='<button class="recon-open-btn" onclick="openRecon('+w.num+')">Reconcile this week ✏️ — enter actual balances</button>';
+  }
+  if(reconOpen===w.num){
+    const pre=w.actualBals||{chk:w.mChk,sav:w.mSav,amx:w.mAmx,tax:w.mTax,lc:w.mLc};
+    html+='<div class="recon-form"><div class="recon-form-title">Actual end-of-week balances — Week '+w.num+' \xb7 '+w.dates+'</div><div class="recon-inputs">';
+    html+='<div class="recon-field"><label>Truist Checking</label><input class="recon-input" id="ri_chk" type="number" step="0.01" value="'+pre.chk+'"></div>';
+    html+='<div class="recon-field"><label>Truist Savings</label><input class="recon-input" id="ri_sav" type="number" step="0.01" value="'+pre.sav+'"></div>';
+    html+='<div class="recon-field"><label>AMEX Savings</label><input class="recon-input" id="ri_amx" type="number" step="0.01" value="'+pre.amx+'"></div>';
+    html+='<div class="recon-field"><label>Tax HYSA</label><input class="recon-input" id="ri_tax" type="number" step="0.01" value="'+pre.tax+'"></div>';
+    html+='<div class="recon-field"><label>Lending Club (EF)</label><input class="recon-input" id="ri_lc" type="number" step="0.01" value="'+pre.lc+'"></div>';
+    html+='</div><div class="recon-btn-row">';
+    html+='<button class="recon-save" onclick="saveRecon('+w.num+')">Save actuals</button>';
+    html+='<button class="recon-cancel" onclick="cancelRecon()">Cancel</button>';
+    if(!w.reconciled)html+='<span class="recon-hint">Pre-filled with modeled values</span>';
+    if(w.reconciled)html+='<button class="recon-delete" onclick="deleteRecon('+w.num+')">Remove reconciliation</button>';
+    html+='</div></div>';
+  }
+  html+='</div>';
+  // Banners (same as Sprint 1)
   if(w.num===1)html+='<div class="banner banner-green">✅ Week 1 actions restore Lending Club EF to $21,738.88 \xb7 Tax HYSA funded \xb7 $3,000 reclassified as permanent operating cash</div>';
   else if(akFunded&&w.num===weeks.find(x=>x.akRem<=0.01)?.num)html+='<div class="banner banner-amber">⭐ Big week — Alaska fully funded + retirement savings move + retirement rebuild begins</div>';
   else if(akFunded&&!rtFunded)html+='<div class="banner banner-blue">✅ Alaska funded — retirement rebuild in progress</div>';
   else if(efFunded&&!akFunded&&w.akSaved>0)html+='<div class="banner banner-blue">Building Alaska fund — '+f(w.akSaved)+' of '+f(ak)+' saved</div>';
+  // Week nav
   const prevW=weeks.find(x=>x.num===w.num-1),nextW=weeks.find(x=>x.num===w.num+1);
   html+='<div class="week-nav">';
-  if(prevW)html+=`<button class="wnav-btn" onclick="activeW=${w.num-1};render()">← Week ${w.num-1} \xb7 ${prevW.dates}</button>`;
+  if(prevW)html+='<button class="wnav-btn" onclick="activeW='+(w.num-1)+';render()">← Week '+(w.num-1)+' \xb7 '+prevW.dates+'</button>';
   else html+='<div class="wnav-spacer"></div>';
-  if(nextW)html+=`<button class="wnav-btn" onclick="activeW=${w.num+1};render()">Week ${w.num+1} \xb7 ${nextW.dates} →</button>`;
+  if(nextW)html+='<button class="wnav-btn" onclick="activeW='+(w.num+1)+';render()">Week '+(w.num+1)+' \xb7 '+nextW.dates+' →</button>';
   else html+='<div class="wnav-spacer"></div>';
   html+='</div></div>';
   document.getElementById('display').innerHTML=html;
 }
 
+// ── Sprint 2: history tab render ──────────────────────────────────────────────
+function renderHistory(){
+  const{ak,rt}=getGoals();
+  const weeks=runModel(ak,rt);
+  const reconKeys=Object.keys(reconData).map(Number).filter(function(n){return reconData[n]&&reconData[n].chk!==undefined;});
+  const maxRecon=reconKeys.length?Math.max.apply(null,reconKeys):0;
+  let html='<div class="history-summary"><strong>Progress tracker</strong> — '+reconKeys.length+' of '+currentW+' past week'+(currentW!==1?'s':'')+' reconciled.'+(maxRecon?' Last reconciled: Week '+maxRecon+'.':'')+' Click any row to jump to that week.</div>';
+  weeks.forEach(wx=>{
+    const isPast=wx.num<currentW;const isNow=wx.num===currentW;
+    const hasOpenTasks=isPast&&wx.realActs.length&&wx.realActs.some(function(_,i){return!taskData[wx.num+'_'+i]||!taskData[wx.num+'_'+i].completed;});
+    let cls='hcard';
+    if(isNow)cls+=' current';
+    else if(!isPast)cls+=' future';
+    else if(wx.reconciled&&!hasOpenTasks)cls+=' past-recon';
+    else if(hasOpenTasks)cls+=' past-open';
+    const statusColor=isNow?'color:#92400e':!isPast?'color:var(--text3)':wx.reconciled?'color:var(--green)':'color:var(--text2)';
+    const statusTxt=isNow?'▶ Current':!isPast?'Future':wx.reconciled?'✅ Reconciled':'⬜ Not reconciled';
+    html+='<div class="'+cls+'"><div class="hcard-hdr"><div><div class="hcard-title">Week '+wx.num+'</div><div class="hcard-dates">'+wx.dates+'</div></div><div class="hcard-status" style="'+statusColor+'">'+statusTxt+'</div></div><div class="hcard-bals">';
+    const accs=[{n:'Checking',m:wx.mChk,a:wx.actualBals?wx.actualBals.chk:undefined},{n:'Savings',m:wx.mSav,a:wx.actualBals?wx.actualBals.sav:undefined},{n:'AMEX',m:wx.mAmx,a:wx.actualBals?wx.actualBals.amx:undefined},{n:'Tax',m:wx.mTax,a:wx.actualBals?wx.actualBals.tax:undefined},{n:'LC (EF)',m:wx.mLc,a:wx.actualBals?wx.actualBals.lc:undefined}];
+    accs.forEach(function(acc){
+      html+='<div class="hcard-bal"><div class="hbal-name">'+acc.n+'</div>';
+      if(wx.reconciled&&acc.a!==undefined){
+        const v=Math.round((acc.a-acc.m)*100)/100;
+        const vCls=v<-VAR_THRESHOLD?'under':v>VAR_THRESHOLD?'over':'ok';
+        html+='<div class="hbal-actual">'+f(acc.a)+'</div><span class="hbal-var '+vCls+'">'+(v>=0?'+':'−')+f(Math.abs(v))+' vs plan</span>';
+      } else {
+        html+='<div class="hbal-val">'+f(acc.m)+'</div><span class="hbal-var ok">modeled</span>';
+      }
+      html+='</div>';
+    });
+    html+='</div><div class="hcard-footer">';
+    if(wx.realActs.length){
+      const tCls=wx.doneTasks===wx.totalTasks?'done':wx.doneTasks>0?'partial':'none';
+      html+='<div class="hcard-tasks '+tCls+'">'+(wx.doneTasks===wx.totalTasks?'✅ ':'⬜ ')+'Tasks: '+wx.doneTasks+'/'+wx.totalTasks+'</div>';
+    } else {
+      html+='<div class="hcard-tasks none">No actions</div>';
+    }
+    const note=noteData[wx.num];
+    if(note)html+='<div class="hcard-note">“'+note.slice(0,60)+(note.length>60?'…':'')+'”</div>';
+    html+='<button class="hcard-jump" onclick="setTab(\'plan\');activeW='+wx.num+';render()">'+(isNow?'Go to current →':'View →')+'</button>';
+    html+='</div></div>';
+  });
+  document.getElementById('historyContent').innerHTML=html;
+}
+
+// ── Supabase goal persistence (same as Sprint 1, goals only) ─────────────────
 const SUPA_URL='https://usayoldrawwmjsmretin.supabase.co';
 const SUPA_KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InVzYXlvbGRyYXd3bWpzbXJldGluIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzc0NjI0MzIsImV4cCI6MjA5MzAzODQzMn0.7dpPsXdQy2aIYYsm1yWK7D5WJH0tB32ixERMBf5HRWA';
 const SUPA_H={'apikey':SUPA_KEY,'Authorization':'Bearer '+SUPA_KEY,'Content-Type':'application/json'};
@@ -417,17 +754,15 @@ async function loadGoals(){
   }catch(e){}
   render();
 }
-
 async function saveGoal(key,value){
-  try{
-    await fetch(SUPA_URL+'/rest/v1/goals',{method:'POST',
-      headers:{...SUPA_H,'Prefer':'resolution=merge-duplicates'},
-      body:JSON.stringify({key,value})});
-  }catch(e){}
+  try{await fetch(SUPA_URL+'/rest/v1/goals',{method:'POST',headers:{...SUPA_H,'Prefer':'resolution=merge-duplicates'},body:JSON.stringify({key,value})});}catch(e){}
 }
 
 document.getElementById('akGoal').addEventListener('input',function(){saveGoal('ak_goal',parseFloat(this.value)||7000);render();});
 document.getElementById('rtGoal').addEventListener('input',function(){saveGoal('rt_goal',parseFloat(this.value)||7690.98);render();});
+
+// ── Init ──────────────────────────────────────────────────────────────────────
+initData();
 loadGoals();
 </script>
 </body>
