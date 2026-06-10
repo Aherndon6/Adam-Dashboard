@@ -583,6 +583,13 @@ function f(n){return '$'+Math.abs(n).toLocaleString('en-US',{minimumFractionDigi
 function fc(n){return n.toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2})}
 function getCurrentWeek(){const s=new Date(2026,5,7);const t=new Date();t.setHours(0,0,0,0);s.setHours(0,0,0,0);const d=Math.floor((t-s)/864e5);if(d<0)return 1;return Math.min(Math.floor(d/7)+1,31);}
 const currentW=getCurrentWeek();
+// Returns the calendar week-of-year for a given model week number (1–31)
+function getCalWeek(modelWeekNum){
+  var d=new Date(2026,5,7+(modelWeekNum-1)*7);
+  var yearStart=new Date(d.getFullYear(),0,1);
+  var dayOfYear=Math.ceil((d-yearStart)/864e5)+1;
+  return Math.ceil(dayOfYear/7);
+}
 function formatWeekRange(ymd){
   const d=new Date(ymd+'T12:00:00');const end=new Date(d);end.setDate(end.getDate()+6);
   const mo=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
@@ -725,19 +732,19 @@ function updateReconLabel(weeks){
   if(activeSection==='overview'||activeSection==='history'){
     const maxW=keys.length?Math.max.apply(null,keys):0;
     const wx=maxW?weeks.find(function(w){return w.num===maxW;}):null;
-    const reconTxt=maxW?('Last reconciled: Wk '+maxW+(wx?' · '+wx.dates.split('–')[0].trim():'')):'Not yet reconciled';
+    const reconTxt=maxW?('Last reconciled: Wk '+getCalWeek(maxW)+(wx?' · '+wx.dates.split('–')[0].trim():'')):'Not yet reconciled';
     right.innerHTML='<div class="sync-badge"><div class="sync-dot" id="sync-dot" style="background:'+(maxW?'var(--green)':'#fbbf24')+'"></div><span id="lastReconLabel">'+reconTxt+'</span></div>'+
-      '<button class="topbar-action-btn" onclick="setSection(&quot;weekly&quot;);activeW=currentW;renderApp()">Go to Week '+currentW+' →</button>';
+      '<button class="topbar-action-btn" onclick="setSection(&quot;weekly&quot;);activeW=currentW;renderApp()">Go to Wk '+getCalWeek(currentW)+' →</button>';
   } else if(activeSection==='weekly'){
     const isRecon=reconData[activeW]&&reconData[activeW].chk!==undefined;
-    right.innerHTML='<div class="sync-badge"><div class="sync-dot" id="sync-dot" style="background:var(--green)"></div><span id="lastReconLabel">Week '+activeW+' of 31</span></div>'+
+    right.innerHTML='<div class="sync-badge"><div class="sync-dot" id="sync-dot" style="background:var(--green)"></div><span id="lastReconLabel">Wk '+getCalWeek(activeW)+'</span></div>'+
       '<button class="topbar-action-btn" onclick="openEdit('+activeW+')">Edit week</button>'+
       (activeW<=currentW?'<button class="topbar-action-btn primary" onclick="openRecon('+activeW+')">'+(isRecon?'Update actuals':'Reconcile')+'</button>':'');
   } else if(activeSection==='goals'){
-    right.innerHTML='<div class="sync-badge"><div class="sync-dot" id="sync-dot" style="background:var(--green)"></div><span id="lastReconLabel">Model live · Wk '+currentW+' of 31</span></div>'+
+    right.innerHTML='<div class="sync-badge"><div class="sync-dot" id="sync-dot" style="background:var(--green)"></div><span id="lastReconLabel">Model live · Wk '+getCalWeek(currentW)+'</span></div>'+
       '<button class="topbar-action-btn" onclick="setSection(&quot;weekly&quot;)">View weekly model</button>';
   } else {
-    right.innerHTML='<div class="sync-badge"><div class="sync-dot" id="sync-dot" style="background:var(--green)"></div><span id="lastReconLabel">Model live · Wk '+currentW+' of 31</span></div>';
+    right.innerHTML='<div class="sync-badge"><div class="sync-dot" id="sync-dot" style="background:var(--green)"></div><span id="lastReconLabel">Model live · Wk '+getCalWeek(currentW)+'</span></div>';
   }
 }
 
@@ -803,18 +810,17 @@ function renderTimeline(vm,clickSection){
     var short=w.dates.split('-')[0].split(' ');
     var mo=short[0]?short[0].substring(0,1):'';
     var dy=short[1]||'';
-    return '<div class="'+cls+'" onclick="activeW='+w.num+';'+
-      (clickSection?'setSection(\''+clickSection+'\')':'renderApp()')+
-      '" title="Week '+w.num+' · '+w.dates+'"><span class="n">'+w.num+'</span><span class="d">'+mo+dy+'</span></div>';
+    return '<div class="'+cls+'" onclick="activeW='+w.num+';renderApp()'+
+      '" title="Wk '+getCalWeek(w.num)+' · '+w.dates+'"><span class="n">'+getCalWeek(w.num)+'</span><span class="d">'+mo+dy+'</span></div>';
   }).join('');
   var reconCount=vm.reconciledWeeks.length;
   var nextRisk=vm.weeks.find(function(w){return w.num>=currentW&&(w.trough||w.managed);});
-  var nextRiskLabel=nextRisk?(nextRisk.managed?'Managed trough':'Trough')+' · Wk '+nextRisk.num:'None upcoming';
+  var nextRiskLabel=nextRisk?(nextRisk.managed?'Managed trough':'Trough')+' · Wk '+getCalWeek(nextRisk.num):'None upcoming';
   var insightHtml='<div class="timeline-insight-grid">'+
-    '<div class="t-insight"><div class="label">Current week</div><div class="val">Week '+currentW+'</div><div class="meta">'+
+    '<div class="t-insight"><div class="label">Current week</div><div class="val">Wk '+getCalWeek(currentW)+'</div><div class="meta">'+
       (vm.weeks.find(function(w){return w.num===currentW;})||vm.weeks[0]).dates+'</div></div>'+
     '<div class="t-insight"><div class="label">Next risk</div><div class="val">'+
-      (nextRisk?'Week '+nextRisk.num:'Clear')+'</div><div class="meta">'+nextRiskLabel+'</div></div>'+
+      (nextRisk?'Wk '+getCalWeek(nextRisk.num):'Clear')+'</div><div class="meta">'+nextRiskLabel+'</div></div>'+
     '<div class="t-insight"><div class="label">Open actions</div><div class="val">'+vm.openActions.length+'</div><div class="meta">'+reconCount+' of '+vm.pastWeeks.length+' past wks reconciled</div></div>'+
   '</div>';
   var legendHtml='<div class="timeline-legend">'+
@@ -832,8 +838,8 @@ function renderGoalRail(vm){
   var akPct=Math.min(100,+(vm.current.akSaved/vm.goals.ak*100).toFixed(1));
   var rtPct=Math.min(100,+(vm.current.amx/vm.goals.rt*100).toFixed(1));
   var lcPct=Math.min(100,+(vm.current.lc/EF_ORIG*100).toFixed(1));
-  var akForecast=vm.alaskaCompletion?'Completes Week '+vm.alaskaCompletion.num+' · '+vm.alaskaCompletion.dates.split('-')[0].trim():'Not yet scheduled';
-  var rtForecast=vm.retirementCompletion?'Completes Week '+vm.retirementCompletion.num:'Remaining after Wk 31: '+f(vm.finalWeek.retRem);
+  var akForecast=vm.alaskaCompletion?'Completes Wk '+getCalWeek(vm.alaskaCompletion.num)+' · '+vm.alaskaCompletion.dates.split('-')[0].trim():'Not yet scheduled';
+  var rtForecast=vm.retirementCompletion?'Completes Wk '+getCalWeek(vm.retirementCompletion.num):'Remaining after Wk '+getCalWeek(31)+': '+f(vm.finalWeek.retRem);
   return '<div class="goal-forecast-rail panel"><h3>Goal forecast</h3>'+
     '<div class="progress-goal">'+
       '<div class="goal-top"><span class="name">Emergency fund (Lending Club)</span><span class="value">'+f(vm.current.lc)+' / '+f(EF_ORIG)+'</span></div>'+
@@ -864,40 +870,40 @@ function renderOverview(vm){
   var html='<div class="ov-hero">'+
     '<div class="panel sys-panel">'+
       '<div class="status-badge">● System active</div>'+
-      '<h3>Week '+currentW+' of '+vm.weeks.length+' — '+w.dates+'</h3>'+
+      '<h3>Wk '+getCalWeek(currentW)+' — '+w.dates+'</h3>'+
       '<div class="sub">31-week cash-flow optimization · '+vm.reconciledWeeks.length+' weeks reconciled · '+vm.openActions.length+' open action'+(vm.openActions.length!==1?'s':'')+' · Alaska '+
-        (vm.alaskaCompletion?'completes Wk '+vm.alaskaCompletion.num:'in progress')+
+        (vm.alaskaCompletion?'completes Wk '+getCalWeek(vm.alaskaCompletion.num):'in progress')+
       '</div>'+
     '</div>'+
     '<div class="panel alert-panel"><h4>Key indicators</h4>'+
       '<div class="risk-item">'+
         '<div class="risk-icon '+(w.chk<0?'':'blue')+'">'+f(w.chk).replace('$','').split('.')[0]+'</div>'+
-        '<div><div class="risk-title">Checking — Week '+currentW+'</div>'+
+        '<div><div class="risk-title">Checking — Wk '+getCalWeek(currentW)+'</div>'+
         '<div class="risk-meta">'+f(w.chk)+' ending · Floor: '+f(w.chk<0?TR_FL:OP_FL)+'</div></div>'+
       '</div>'+
       '<div class="risk-item">'+
         '<div class="risk-icon '+(nextRisk?'':'green')+'">'+
           (nextRisk?'!':'✓')+'</div>'+
-        '<div><div class="risk-title">'+(nextRisk?'Next risk: Week '+nextRisk.num:'No risk weeks ahead')+'</div>'+
+        '<div><div class="risk-title">'+(nextRisk?'Next risk: Wk '+getCalWeek(nextRisk.num):'No risk weeks ahead')+'</div>'+
         '<div class="risk-meta">'+(nextRisk?(nextRisk.managed?'Managed trough':'Trough week')+' · '+nextRisk.dates:'All remaining weeks clear')+'</div></div>'+
       '</div>'+
       '<div class="risk-item">'+
         '<div class="risk-icon violet">'+vm.openActions.length+'</div>'+
         '<div><div class="risk-title">Open actions</div>'+
-        '<div class="risk-meta">'+(lastReconW?'Last reconciled: Week '+lastReconNum+' · '+lastReconW.dates:'Not yet reconciled')+'</div></div>'+
+        '<div class="risk-meta">'+(lastReconW?'Last reconciled: Wk '+getCalWeek(lastReconNum)+' · '+lastReconW.dates:'Not yet reconciled')+'</div></div>'+
       '</div>'+
     '</div>'+
   '</div>';
   html+='<div class="health-grid">'+
-    '<div class="health-card"><div class="health-label">Checking (Wk '+currentW+')</div><div class="health-value '+chkCls+'">'+f(w.chk)+'</div><div class="health-hint '+(w.chk>=3000?'good':'watch')+'">Floor: '+f(w.trough?TR_FL:OP_FL)+'</div></div>'+
+    '<div class="health-card"><div class="health-label">Checking (Wk '+getCalWeek(currentW)+')</div><div class="health-value '+chkCls+'">'+f(w.chk)+'</div><div class="health-hint '+(w.chk>=3000?'good':'watch')+'">Floor: '+f(w.trough?TR_FL:OP_FL)+'</div></div>'+
     '<div class="health-card"><div class="health-label">Open actions</div><div class="health-value '+(vm.openActions.length===0?'good':vm.openActions.length<3?'warn':'risk')+'">'+vm.openActions.length+'</div><div class="health-hint">Across all '+vm.weeks.length+' weeks</div></div>'+
     '<div class="health-card"><div class="health-label">Last reconciled</div><div class="health-value '+(lastReconNum>0?'good':'warn')+'">'+
-      (lastReconNum>0?'Wk '+lastReconNum:'None')+'</div><div class="health-hint">'+
+      (lastReconNum>0?'Wk '+getCalWeek(lastReconNum):'None')+'</div><div class="health-hint">'+
       (lastReconW?lastReconW.dates:'No reconciliations yet')+'</div></div>'+
     '<div class="health-card"><div class="health-label">Operational liquidity</div><div class="health-value good">'+f(w.ol)+'</div><div class="health-hint">Checking + Savings</div></div>'+
   '</div>';
   html+='<div class="timelineForecastPanel">'+
-    '<div class="panel timelineCard"><div class="timeline-header"><h3>31-Week Timeline</h3><span>Click any week to view · scroll to see all</span></div>'+
+    '<div class="panel timelineCard"><div class="timeline-header"><h3>31-Week Timeline</h3><span>Click to highlight · scroll to see all · use Weekly Model to drill in</span></div>'+
     renderTimeline(vm,'weekly')+'</div>'+
     renderGoalRail(vm)+
   '</div>';
@@ -918,7 +924,7 @@ function renderWeekDetail(w,weeks){
   else if(w.trough&&w.chk<500){html+='<div class="week-alert alert-trough"><strong>Trough week</strong> — checking at monthly low ('+f(w.chk)+'). Truist Savings ('+f(w.sav)+') available as backup.</div>';}
   html+='<div class="panel wk-header-card">'+
     '<div class="wk-header-top">'+
-      '<div><h2>Week '+w.num+'</h2><p>'+w.dates+'</p></div>'+
+      '<div><h2>Wk '+getCalWeek(w.num)+'</h2><p>'+w.dates+'</p></div>'+
       '<div class="wk-action-row">'+
         '<button class="btn" onclick="openEdit('+w.num+')">Edit week</button>'+
         (isPastWeek||isNowWeek?'<button class="btn primary" onclick="openRecon('+w.num+')">'+
@@ -1060,7 +1066,7 @@ function renderWeekDetail(w,weeks){
   }
   if(reconOpen===w.num){
     var pre=w.actualBals||{chk:w.mChk,sav:w.mSav,amx:w.mAmx,tax:w.mTax,lc:w.mLc};
-    html+='<div class="recon-form"><div class="recon-form-title">Actual end-of-week balances — Week '+w.num+' \xb7 '+w.dates+'</div><div class="recon-inputs">'+
+    html+='<div class="recon-form"><div class="recon-form-title">Actual end-of-week balances — Wk '+getCalWeek(w.num)+' \xb7 '+w.dates+'</div><div class="recon-inputs">'+
       '<div class="recon-field"><label>Truist Checking</label><input class="recon-input" id="ri_chk" type="number" step="0.01" value="'+pre.chk+'"></div>'+
       '<div class="recon-field"><label>Truist Savings</label><input class="recon-input" id="ri_sav" type="number" step="0.01" value="'+pre.sav+'"></div>'+
       '<div class="recon-field"><label>AMEX Savings</label><input class="recon-input" id="ri_amx" type="number" step="0.01" value="'+pre.amx+'"></div>'+
@@ -1086,8 +1092,8 @@ function renderWeekDetail(w,weeks){
   // Week nav
   var prevW=weeks.find(function(x){return x.num===w.num-1;}),nextW=weeks.find(function(x){return x.num===w.num+1;});
   html+='<div class="week-nav">'+
-    (prevW?'<button class="wnav-btn" onclick="activeW='+(w.num-1)+';renderApp()">← Week '+(w.num-1)+' \xb7 '+prevW.dates+'</button>':'<div class="wnav-spacer"></div>')+
-    (nextW?'<button class="wnav-btn" onclick="activeW='+(w.num+1)+';renderApp()">Week '+(w.num+1)+' \xb7 '+nextW.dates+' →</button>':'<div class="wnav-spacer"></div>')+
+    (prevW?'<button class="wnav-btn" onclick="activeW='+(w.num-1)+';renderApp()">← Wk '+getCalWeek(w.num-1)+' \xb7 '+prevW.dates+'</button>':'<div class="wnav-spacer"></div>')+
+    (nextW?'<button class="wnav-btn" onclick="activeW='+(w.num+1)+';renderApp()">Wk '+getCalWeek(w.num+1)+' \xb7 '+nextW.dates+' →</button>':'<div class="wnav-spacer"></div>')+
   '</div>';
   return html;
 }
@@ -1102,7 +1108,7 @@ function renderWeekly(vm){
     var rowCls='week-list-item'+(wx.num===activeW?' active':'')+(wx.managed?' managed-item':wx.trough?' trough-item':'')+(wx.reconciled?' reconciled-item':'')+(isNow?' now-item':'');
     var dotCls=isNow?'wli-dot current':isPast&&wx.reconciled?'wli-dot reconciled':wx.managed?'wli-dot managed':wx.trough?'wli-dot trough':overrideData[wx.num]?'wli-dot edited':'wli-dot none';
     return'<div class="'+rowCls+'" onclick="activeW='+wx.num+';renderApp()">'+
-      '<div class="wli-num-wrap"><div class="wli-num">'+wx.num+'</div><div class="'+dotCls+'"></div></div>'+
+      '<div class="wli-num-wrap"><div class="wli-num">'+getCalWeek(wx.num)+'</div><div class="'+dotCls+'"></div></div>'+
       '<div><div class="wli-name">'+wx.dates.split('-')[0].trim()+'</div><div class="wli-dates">'+wx.dates+'</div></div>'+
       '<div class="'+badgeCls+'">'+badgeTxt+'</div>'+
     '</div>';
@@ -1110,7 +1116,7 @@ function renderWeekly(vm){
   // Mobile week picker — visible only on mobile (week list is hidden)
   var mobOpts=vm.weeks.map(function(wx){
     var isPast=wx.num<currentW;var isNow=wx.num===currentW;
-    var lbl='Wk '+wx.num+' · '+wx.dates.split('-')[0].trim()+(isNow?' ● Now':isPast&&wx.reconciled?' ✓':isPast?' ○':'');
+    var lbl='Wk '+getCalWeek(wx.num)+' · '+wx.dates.split('-')[0].trim()+(isNow?' ● Now':isPast&&wx.reconciled?' ✓':isPast?' ○':'');
     return'<option value="'+wx.num+'"'+(wx.num===w.num?' selected':'')+'>'+lbl+'</option>';
   }).join('');
   var html='<div class="mob-week-picker"><select class="mob-week-select" onchange="activeW=parseInt(this.value);renderApp()">'+mobOpts+'</select></div>'+
@@ -1361,7 +1367,7 @@ function renderApp(){
   var vm=buildDashboardViewModel(weeks,g);
   updateReconLabel(weeks);
   // Update nav pill
-  var pill=document.getElementById('nav-pill-weekly');if(pill)pill.textContent='W'+activeW;
+  var pill=document.getElementById('nav-pill-weekly');if(pill)pill.textContent='W'+getCalWeek(activeW);
   // ── Dynamic topbar subtitle ─────────────────────────────────────────────
   (function(){
     var _ts=document.getElementById('topbar-sub');if(!_ts)return;
@@ -1370,9 +1376,9 @@ function renderApp(){
     var _reconCount=Object.keys(reconData).filter(function(n){return reconData[n]&&reconData[n].chk!==undefined;}).length;
     var _openActs=vm.openActions?vm.openActions.length:0;
     if(activeSection==='overview'){
-      _ts.textContent=(_cw?_cw.dates:'')+(vm.alaskaCompletion?' · Alaska completes Wk '+vm.alaskaCompletion.num:'')+' · '+_openActs+' open action'+(_openActs!==1?'s':'');
+      _ts.textContent=(_cw?_cw.dates:'')+(vm.alaskaCompletion?' · Alaska completes Wk '+getCalWeek(vm.alaskaCompletion.num):'')+' · '+_openActs+' open action'+(_openActs!==1?'s':'');
     } else if(activeSection==='weekly'){
-      _ts.textContent=_aw?'Week '+_aw.num+' · '+_aw.dates:('Week '+activeW+' of 31');
+      _ts.textContent=_aw?'Wk '+getCalWeek(_aw.num)+' · '+_aw.dates:('Wk '+getCalWeek(activeW));
     } else if(activeSection==='goals'){
       var _akPct=Math.min(100,+(vm.current.akSaved/vm.goals.ak*100).toFixed(0));
       _ts.textContent='Alaska '+_akPct+'% funded · Retirement in queue';
