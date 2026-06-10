@@ -235,10 +235,10 @@ body{background:var(--bg);color:var(--ink);font-family:Inter,ui-sans-serif,syste
 .banner-green{background:var(--greenSoft);color:var(--green);border:1px solid #86efac}
 .banner-blue{background:var(--blueSoft);color:var(--blue);border:1px solid #93c5fd}
 .banner-amber{background:var(--amberSoft);color:var(--amber);border:1px solid #fde68a}
-.week-nav{display:flex;justify-content:space-between;align-items:center;padding-top:13px;border-top:1px solid var(--line)}
-.wnav-btn{padding:7px 13px;border:1px solid var(--line2);border-radius:9px;background:var(--surface);color:var(--muted);cursor:pointer;font-size:11.5px;font-weight:600;transition:all .12s;font-family:inherit}
-.wnav-btn:hover{background:var(--blue);color:white;border-color:var(--blue)}
-.wnav-spacer{width:100px}
+.wk-title-nav{display:flex;align-items:center;gap:6px}
+.wnav-arrow{width:30px;height:30px;border:1px solid var(--line2);border-radius:8px;background:var(--surface);color:var(--muted);cursor:pointer;font-size:15px;font-weight:700;display:flex;align-items:center;justify-content:center;transition:all .12s;font-family:inherit;flex-shrink:0;padding:0}
+.wnav-arrow:hover{background:var(--blue);color:white;border-color:var(--blue)}
+.wnav-arrow-ph{width:30px;height:30px;flex-shrink:0}
 /* Goals */
 .goals-grid{display:grid;grid-template-columns:1fr 1fr;gap:15px;margin-bottom:15px}
 .goal-card{padding:20px;position:relative}
@@ -282,6 +282,71 @@ body{background:var(--bg);color:var(--ink);font-family:Inter,ui-sans-serif,syste
 .assumption-card p:last-child{margin-bottom:0}
 .assumption-card ul,.assumption-card li{font-size:12.5px;color:var(--muted);line-height:1.6}
 .assumption-card code{background:var(--surface2);border:1px solid var(--line);border-radius:4px;padding:1px 5px;font-size:11.5px;font-family:monospace;color:var(--ink)}
+/* ── Phase 3: Calendar date badge ───────────────────────────────────── */
+.week-date-badge{font-size:10px;font-weight:600;color:var(--muted2);background:var(--surface2);border:1px solid var(--line);border-radius:5px;padding:1px 6px;margin-left:5px;vertical-align:middle}
+.task-date{font-size:10px;color:var(--muted2);margin-left:5px;white-space:nowrap}
+/* ── Phase 3: Scenario preview ──────────────────────────────────────── */
+.scenario-banner{display:flex;align-items:center;gap:10px;padding:10px 16px;border-radius:10px;margin-bottom:14px;font-size:13px;background:linear-gradient(135deg,#1e40af,#6d28d9);color:#fff}
+.scenario-banner-lbl{font-weight:700;flex:1}
+.scenario-banner-type{background:rgba(255,255,255,.18);border-radius:6px;padding:2px 8px;font-size:10.5px;font-weight:800;letter-spacing:.06em;text-transform:uppercase}
+.scenario-cancel-btn{font-size:12px;font-weight:600;padding:5px 11px;border-radius:7px;border:1px solid rgba(255,255,255,.35);background:transparent;color:#fff;cursor:pointer;font-family:inherit}
+.scenario-cancel-btn:hover{background:rgba(255,255,255,.12)}
+.scenario-commit-btn{font-size:12px;font-weight:800;padding:5px 13px;border-radius:7px;border:none;background:#fff;color:#1e40af;cursor:pointer;font-family:inherit}
+.scenario-commit-btn:hover{background:#eff6ff}
+.scenario-type-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:12px;max-width:680px;margin-bottom:18px}
+.scenario-type-card{background:var(--surface);border:2px solid var(--line);border-radius:12px;padding:16px 18px;cursor:pointer;transition:border-color .15s,box-shadow .15s}
+.scenario-type-card:hover{border-color:var(--blue);box-shadow:0 0 0 3px rgba(37,99,235,.1)}
+.scenario-type-card.s-active{border-color:var(--blue);background:#eff6ff}
+.stc-icon{font-size:20px;margin-bottom:8px}
+.stc-title{font-size:13px;font-weight:700;color:var(--ink)}
+.stc-desc{font-size:11.5px;color:var(--muted);margin-top:3px;line-height:1.4}
+.scenario-form{background:var(--surface2);border:1px solid var(--line);border-radius:10px;padding:16px 18px;max-width:500px}
+.sc-field{margin-bottom:12px}
+.sc-field label{display:block;font-size:11px;font-weight:700;color:var(--muted2);text-transform:uppercase;letter-spacing:.05em;margin-bottom:4px}
+.sc-field input,.sc-field select{width:100%;padding:8px 10px;border:1px solid var(--line2);border-radius:7px;font-family:inherit;font-size:13px;background:var(--surface);color:var(--ink);box-sizing:border-box}
+.sc-field input:focus,.sc-field select:focus{outline:none;border-color:var(--blue);box-shadow:0 0 0 3px rgba(37,99,235,.1)}
+.sc-cb-row{display:flex;align-items:center;gap:8px;font-size:13px;color:var(--ink);margin-bottom:12px}
+.sc-preview-box{background:var(--surface);border:1px solid var(--line);border-radius:8px;padding:11px 14px;margin-top:12px;font-size:12px}
+.sc-preview-title{font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:.06em;color:var(--muted2);margin-bottom:8px}
+.sc-diff-row{display:flex;justify-content:space-between;align-items:center;padding:4px 0;border-bottom:1px solid var(--line)}
+.sc-diff-row:last-child{border-bottom:none}
+.sc-diff-lbl{color:var(--muted)}
+.sc-diff-val.pos{color:var(--green);font-weight:700}
+.sc-diff-val.neg{color:var(--red);font-weight:700}
+.sc-diff-val.neutral{color:var(--ink);font-weight:600}
+.sc-apply-btn{margin-top:14px;padding:8px 18px;border-radius:8px;border:none;background:var(--blue);color:#fff;font-family:inherit;font-size:13px;font-weight:700;cursor:pointer}
+.sc-apply-btn:hover{opacity:.88}
+.sc-apply-btn:disabled{opacity:.5;cursor:not-allowed}
+/* Scenario commit modal */
+.sc-modal-overlay{position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:500;display:flex;align-items:center;justify-content:center}
+.sc-modal{background:var(--surface);border-radius:14px;padding:22px 24px;width:360px;box-shadow:0 20px 60px rgba(0,0,0,.22)}
+.sc-modal-title{font-size:16px;font-weight:800;color:var(--ink);margin-bottom:6px}
+.sc-modal-body{font-size:13px;color:var(--muted);line-height:1.55;margin-bottom:16px}
+.sc-modal-note{font-size:11.5px;color:var(--muted2);background:var(--surface2);border-radius:6px;padding:7px 10px;margin-bottom:14px}
+.sc-modal-btns{display:flex;gap:8px;justify-content:flex-end}
+.sc-modal-cancel{font-size:13px;font-weight:600;padding:7px 13px;border-radius:8px;border:1px solid var(--line2);background:var(--surface2);color:var(--ink);cursor:pointer;font-family:inherit}
+.sc-modal-confirm{font-size:13px;font-weight:700;padding:7px 16px;border-radius:8px;border:none;background:var(--blue);color:#fff;cursor:pointer;font-family:inherit}
+/* ── Phase 3: AI Q&A ─────────────────────────────────────────────────── */
+.ask-page{max-width:680px}
+.ask-setup-card{background:var(--surface2);border:1px solid var(--line);border-radius:10px;padding:16px 18px;margin-bottom:16px}
+.ask-setup-card h3{margin:0 0 5px;font-size:14px;font-weight:700;color:var(--ink)}
+.ask-setup-card p{margin:0 0 10px;font-size:12px;color:var(--muted);line-height:1.5}
+.ask-key-row{display:flex;gap:7px}
+.ask-key-input{flex:1;padding:7px 10px;border:1px solid var(--line2);border-radius:7px;font-family:inherit;font-size:13px;background:var(--surface);color:var(--ink)}
+.ask-key-save{padding:7px 13px;border-radius:7px;border:none;background:var(--blue);color:#fff;font-family:inherit;font-size:13px;font-weight:700;cursor:pointer}
+.ask-chat-area{background:var(--surface2);border:1px solid var(--line);border-radius:10px;padding:12px;min-height:160px;max-height:380px;overflow-y:auto;margin-bottom:10px;display:flex;flex-direction:column;gap:9px}
+.ask-msg{padding:9px 12px;border-radius:8px;font-size:13px;line-height:1.55;max-width:90%;word-break:break-word}
+.ask-msg.user{background:var(--blue);color:#fff;align-self:flex-end;border-radius:8px 8px 2px 8px}
+.ask-msg.assistant{background:var(--surface);border:1px solid var(--line);color:var(--ink);align-self:flex-start;border-radius:8px 8px 8px 2px}
+.ask-msg.thinking{color:var(--muted2);font-style:italic;align-self:flex-start;font-size:12px}
+.ask-empty{color:var(--muted2);font-size:12px;text-align:center;padding:24px 0;font-style:italic}
+.ask-input-row{display:flex;gap:7px}
+.ask-input{flex:1;padding:8px 11px;border:1px solid var(--line2);border-radius:8px;font-family:inherit;font-size:13px;background:var(--surface);color:var(--ink);resize:none}
+.ask-input:focus{outline:none;border-color:var(--blue);box-shadow:0 0 0 3px rgba(37,99,235,.1)}
+.ask-send-btn{padding:8px 15px;border-radius:8px;border:none;background:var(--blue);color:#fff;font-family:inherit;font-size:13px;font-weight:700;cursor:pointer;align-self:flex-end}
+.ask-send-btn:disabled{opacity:.5;cursor:not-allowed}
+.ask-footer-note{font-size:11px;color:var(--muted2);margin-top:6px;line-height:1.4}
+.ask-key-status{font-size:11px;color:var(--green);font-weight:600;margin-top:4px}
 /* ── Wishlist ───────────────────────────────────────────────────────── */
 .wl-header-bar{padding:0 2px 18px;border-bottom:1px solid var(--line);margin-bottom:18px}
 .wl-page-title{font-size:17px;font-weight:800;color:var(--ink);margin-bottom:4px}
@@ -300,6 +365,19 @@ body{background:var(--bg);color:var(--ink);font-family:Inter,ui-sans-serif,syste
 .wl-card-footer{display:flex;align-items:center;gap:6px}
 .wl-phase-tag{font-size:10px;font-weight:700;letter-spacing:.04em;padding:2px 7px;border-radius:99px;border:1px solid transparent;white-space:nowrap}
 .wl-empty{color:var(--muted);font-size:12px;text-align:center;padding:28px 14px;font-style:italic;line-height:1.5}
+.wl-card-actions{display:flex;gap:5px;margin-top:7px;flex-wrap:wrap}
+.wl-move-btn{padding:3px 8px;border-radius:6px;border:1px solid var(--line2);background:var(--surface2);color:var(--muted2);font-size:10px;font-weight:700;cursor:pointer;font-family:inherit}
+.wl-move-btn:hover{background:var(--blue);color:#fff;border-color:var(--blue)}
+.wl-del-btn{padding:3px 8px;border-radius:6px;border:1px solid var(--redSoft);background:var(--redSoft);color:var(--red);font-size:10px;font-weight:700;cursor:pointer;font-family:inherit}
+.wl-del-btn:hover{background:var(--red);color:#fff;border-color:var(--red)}
+.wl-add-form{background:var(--surface);border:2px solid var(--blue);border-radius:9px;padding:11px 13px;margin-top:7px}
+.wl-add-form-title{font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:.06em;color:var(--blue);margin-bottom:8px}
+.wl-add-form input,.wl-add-form select,.wl-add-form textarea{width:100%;padding:6px 9px;border:1px solid var(--line2);border-radius:6px;font-family:inherit;font-size:12px;margin-bottom:6px;background:var(--surface);color:var(--ink);box-sizing:border-box}
+.wl-add-form textarea{resize:vertical;min-height:44px}
+.wl-form-btns{display:flex;gap:6px;margin-top:4px}
+.wl-save-btn{padding:5px 12px;border-radius:7px;border:none;background:var(--blue);color:#fff;font-size:11px;font-weight:800;cursor:pointer;font-family:inherit}
+.wl-cancel-btn{padding:5px 10px;border-radius:7px;border:1px solid var(--line2);background:transparent;color:var(--muted2);font-size:11px;cursor:pointer;font-family:inherit}
+.wl-loading{color:var(--muted2);font-size:12px;text-align:center;padding:16px;font-style:italic}
 /* Drawer (preserved from original) */
 .drawer-backdrop{position:fixed;inset:0;background:rgba(0,0,0,.4);z-index:399;display:none}
 .drawer{position:fixed;top:0;right:0;height:100vh;width:420px;background:var(--surface);box-shadow:-4px 0 24px rgba(0,0,0,.18);z-index:400;overflow:hidden;transform:translateX(100%);transition:transform .22s ease;display:flex;flex-direction:column}
@@ -311,7 +389,9 @@ body{background:var(--bg);color:var(--ink);font-family:Inter,ui-sans-serif,syste
 .drawer-sect{font-size:10px;font-weight:700;color:var(--muted2);text-transform:uppercase;letter-spacing:.07em;margin-bottom:8px;margin-top:16px;border-bottom:1px solid var(--line);padding-bottom:4px}
 .drawer-sect:first-of-type{margin-top:12px}
 .drawer-error{font-size:12px;color:var(--red);background:var(--redSoft);border:1px solid #fca5a5;border-radius:6px;padding:8px 10px;margin-top:12px;display:none}
-.ev-edit-row{display:grid;grid-template-columns:1fr 70px 80px 36px 30px;gap:6px;align-items:center;margin-bottom:8px}
+.ev-edit-row{display:grid;grid-template-columns:1fr 70px 80px 90px 36px 30px;gap:6px;align-items:center;margin-bottom:8px}
+.ev-date-sel{font-size:11px;padding:5px 4px;border:1px solid var(--line2);border-radius:6px;background:var(--surface2);color:var(--muted);font-family:inherit;width:100%}
+.ev-date-inline{font-size:11px;color:var(--muted2);font-weight:400;margin-left:2px}
 .ev-tax-wrap{display:flex;flex-direction:column;align-items:center;gap:2px}
 .ev-tax-lbl{font-size:9px;color:var(--muted2);text-transform:uppercase;letter-spacing:.04em;white-space:nowrap}
 .ev-tax-cb{width:15px;height:15px;accent-color:#075985;cursor:pointer}
@@ -339,7 +419,7 @@ body{background:var(--bg);color:var(--ink);font-family:Inter,ui-sans-serif,syste
 button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-visible{outline:2px solid var(--blue);outline-offset:2px}
 /* ── Phase 2: Touch targets ────────────────────────────────────────── */
 @media(max-width:900px){
-  .btn,.wnav-btn,.recon-save,.recon-cancel,.recon-delete,.modal-save,.modal-cancel,.modal-delete,.nav-item,.mob-nav-btn{min-height:44px}
+  .btn,.wnav-arrow,.recon-save,.recon-cancel,.recon-delete,.modal-save,.modal-cancel,.modal-delete,.nav-item,.mob-nav-btn{min-height:44px}
   .task-check{width:22px;height:22px}
 }
 /* ── Phase 2: History filters ──────────────────────────────────────── */
@@ -403,7 +483,7 @@ button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-vis
   .mob-nav-btn{display:flex;flex-direction:column;align-items:center;gap:3px;padding:7px 10px;border:none;background:none;cursor:pointer;font-family:inherit;color:var(--muted);font-size:10px;min-height:44px;min-width:44px;border-radius:9px}
   .mob-nav-btn.active{color:var(--blue);background:var(--blueSoft)}
   .mob-nav-btn .icon{font-size:17px}
-  .ev-edit-row{grid-template-columns:1fr 66px 70px 34px 28px}
+  .ev-edit-row{grid-template-columns:1fr 66px 70px 80px 34px 28px}
   .modal-comm-row{grid-template-columns:1fr}
 }
 @media(max-width:1200px){
@@ -428,6 +508,7 @@ button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-vis
     <button class="nav-item" id="nav-history" onclick="setSection('history')"><span class="nav-icon">◑</span>History</button>
     <button class="nav-item" id="nav-assumptions" onclick="setSection('assumptions')"><span class="nav-icon">≡</span>Assumptions</button>
     <button class="nav-item" id="nav-roadmap" onclick="setSection('roadmap')"><span class="nav-icon">⬡</span>Wishlist</button>
+    <button class="nav-item" id="nav-ask" onclick="setSection('ask')"><span class="nav-icon">✦</span>Ask Claude</button>
     <div class="sidebar-footer">
       <div class="model-card">
         <div class="mc-title">Model</div>
@@ -444,19 +525,15 @@ button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-vis
       <div id="s-overview" class="section active"><div id="overview-content"></div></div>
       <div id="s-weekly" class="section"><div id="weekly-content"></div></div>
       <div id="s-goals" class="section"><div id="goals-content"></div></div>
-      <div id="s-scenarios" class="section">
-        <div class="panel card-pad" style="max-width:600px">
-          <h3 style="margin:0 0 10px;font-size:16px;font-weight:700">Scenario Preview</h3>
-          <p style="color:var(--muted);font-size:13px;line-height:1.6">Scenario preview will be implemented in Phase 3. This will let you model what-if situations — adding a commission, a one-time expense, or changing goal targets — without affecting your saved plan.</p>
-          <p style="color:var(--muted);font-size:13px;line-height:1.6;margin-top:10px">All scenarios will be temporary until explicitly committed, and will never write to Supabase until you confirm.</p>
-        </div>
-      </div>
+      <div id="s-scenarios" class="section"><div id="scenarios-content"></div></div>
+      <div id="s-ask" class="section"><div id="ask-content"></div></div>
       <div id="s-history" class="section"><div id="historyContent"></div></div>
       <div id="s-assumptions" class="section"><div id="assumptions-content"></div></div>
       <div id="s-roadmap" class="section"><div id="roadmap-content"></div></div>
     </div>
   </div>
 </div>
+<div id="scenario-modal-slot"></div>
 <div class="mob-bottom-nav" id="mob-bottom-nav">
   <button class="mob-nav-btn active" id="mob-nav-overview" onclick="setSection('overview')"><span class="icon">◉</span><span>Overview</span></button>
   <button class="mob-nav-btn" id="mob-nav-weekly" onclick="setSection('weekly')"><span class="icon">◈</span><span>Weekly</span></button>
@@ -571,11 +648,11 @@ function runModel(akGoal,rtGoal){
       return m;
     }
     function mvS(amt,dst){const m=r(amt);sav=r(sav-m);if(dst==='lc')lc=r(lc+m);else if(dst==='amx')amx=r(amx+m);return m;}
-    if(ct>0){const m=mv(ct,'tax');if(m>0){tr.push({l:'Commission 40% $'+fc(ct)+' Checking → Tax HYSA',r:'done',rsn:'Post $'+fc(chk)+' ≥ '+fn});ac.push('Transfer $'+fc(ct)+' from Truist Checking to Tax HYSA (commission 40%)');}else{taxTodo=r(taxTodo+ct);tr.push({l:'Commission 40% $'+fc(ct)+' deferred → tax pending',r:'defer',rsn:'No surplus above '+fn+' — picks up next eligible week'});}}
+    if(ct>0){const m=mv(ct,'tax');if(m>0){tr.push({l:'Commission 40% $'+fc(ct)+' Checking → Vio Bank - Tax Reserve',r:'done',rsn:'Post $'+fc(chk)+' ≥ '+fn});ac.push('Transfer $'+fc(ct)+' from Truist Checking to Vio Bank - Tax Reserve (commission 40%)');}else{taxTodo=r(taxTodo+ct);tr.push({l:'Commission 40% $'+fc(ct)+' deferred → tax pending',r:'defer',rsn:'No surplus above '+fn+' — picks up next eligible week'});}}
     if(ca>0&&alaska>0&&num>=AK_START){const m=mv(Math.min(ca,alaska),'sav');if(m>0){alaska=r(alaska-m);tr.push({l:'Commission 60% $'+fc(m)+' Checking → Truist Savings (Alaska)',r:'done',rsn:'Post $'+fc(chk)+' ≥ '+fn});ac.push('Transfer $'+fc(m)+' from Truist Checking to Truist Savings (Alaska)');}else tr.push({l:'Commission 60% $'+fc(ca)+' deferred',r:'defer',rsn:'No surplus above '+fn});}
     if(efSav>0){const m=mvS(efSav,'lc');efSav=0;tr.push({l:'EF $'+fc(m)+' Truist Savings → Lending Club',r:'done',rsn:'Savings move — zero checking impact'});ac.push('Transfer $'+fc(m)+' from Truist Savings to Lending Club (EF restoration)');}
     if(efChk>0){const m=mv(efChk,'lc');if(m>0){efChk=r(efChk-m);const rem=efChk>0?' — $'+fc(efChk)+' carries forward':' — complete';tr.push({l:'EF $'+fc(m)+' Checking → Lending Club'+rem,r:'done',rsn:'Post $'+fc(chk)+' ≥ '+fn});ac.push('Transfer $'+fc(m)+' from Truist Checking to Lending Club (EF restoration)');}else tr.push({l:'EF $'+fc(efChk)+' Checking → Lending Club',r:'defer',rsn:'Post-obligations $'+fc(chk)+' — no surplus above '+fn});}
-    if(taxTodo>0&&ct===0){const m=mv(taxTodo,'tax');if(m>0){taxTodo=r(taxTodo-m);const rem=taxTodo>0?' — $'+fc(taxTodo)+' carries forward':'';tr.push({l:'Tax $'+fc(m)+' Checking → Tax HYSA'+rem,r:'done',rsn:'Post $'+fc(chk)+' ≥ '+fn});ac.push('Transfer $'+fc(m)+' from Truist Checking to Tax HYSA');}else tr.push({l:'Tax $'+fc(taxTodo)+' Checking → Tax HYSA',r:'defer',rsn:'Post-obligations $'+fc(chk)+' — no surplus above '+fn});}
+    if(taxTodo>0&&ct===0){const m=mv(taxTodo,'tax');if(m>0){taxTodo=r(taxTodo-m);const rem=taxTodo>0?' — $'+fc(taxTodo)+' carries forward':'';tr.push({l:'Tax $'+fc(m)+' Checking → Vio Bank - Tax Reserve'+rem,r:'done',rsn:'Post $'+fc(chk)+' ≥ '+fn});ac.push('Transfer $'+fc(m)+' from Truist Checking to Vio Bank - Tax Reserve');}else tr.push({l:'Tax $'+fc(taxTodo)+' Checking → Vio Bank - Tax Reserve',r:'defer',rsn:'Post-obligations $'+fc(chk)+' — no surplus above '+fn});}
     if(alaska>0&&num>=AK_START&&efChk===0&&taxTodo===0&&ca===0){const m=mv(alaska,'sav');if(m>0){alaska=r(alaska-m);const rem=alaska>0?' — $'+fc(alaska)+' remaining':' — Alaska funded!';tr.push({l:'Alaska $'+fc(m)+' Checking → Truist Savings'+rem,r:'done',rsn:'Post $'+fc(chk)+' ≥ '+fn});ac.push('Transfer $'+fc(m)+' from Truist Checking to Truist Savings (Alaska fund)');}else{const pot=r(sm(chk,alaska,effFl));if(pot>0&&pot<MIN_XFR)tr.push({l:'Alaska $'+fc(pot)+' suppressed (<$100) — rolls forward',r:'info',rsn:'Too small; carries to next eligible week'});else tr.push({l:'Alaska surplus deferred',r:'defer',rsn:'Post-obligations $'+fc(chk)+' — no surplus above '+fn});}}
     if(retSav>0&&alaska===0){const m=mvS(retSav,'amx');retSav=0;tr.push({l:'Retirement $'+fc(m)+' Truist Savings → AMEX Savings',r:'done',rsn:'Savings move — zero checking impact'});ac.push('Transfer $'+fc(m)+' from Truist Savings to AMEX Savings (retirement)');}
     if(retChk>0&&alaska===0&&efChk===0){const m=mv(retChk,'amx');if(m>0){retChk=r(retChk-m);const rem=retChk>0?' — $'+fc(retChk)+' remaining':' — retirement funded!';tr.push({l:'Retirement $'+fc(m)+' Checking → AMEX Savings'+rem,r:'done',rsn:'Post $'+fc(chk)+' ≥ '+fn});ac.push('Transfer $'+fc(m)+' from Truist Checking to AMEX Savings (retirement rebuild)');}else{const pot=r(sm(chk,retChk,effFl));if(pot>0&&pot<MIN_XFR)tr.push({l:'Retirement $'+fc(pot)+' suppressed (<$100) — rolls forward',r:'info',rsn:'Too small; carries to next eligible week'});else tr.push({l:'Retirement surplus deferred',r:'defer',rsn:'Post-obligations $'+fc(chk)+' — no surplus above '+fn});}}
@@ -682,15 +759,30 @@ async function saveNote(weekNum,el){
   }catch(e){console.error('saveNote:',e);if(s)s.textContent='Error';}
 }
 
-// ── Edit drawer (unchanged) ────────────────────────────────────────────────
+// ── Edit drawer ────────────────────────────────────────────────────────────
 function openEdit(n){editOpen=n;document.body.style.overflow='hidden';renderApp();}
 function closeEdit(){editOpen=null;document.body.style.overflow='';renderApp();}
+function _weekDayOpts(weekNum,selectedD){
+  var MO=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+  var DN=['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
+  var opts='<option value="">no date</option>';
+  if(weekNum>0&&weekNum<=31){
+    var wsd=getWeekStartDate(weekNum);
+    for(var di=0;di<7;di++){
+      var dd=new Date(wsd);dd.setDate(dd.getDate()+di);
+      var dstr=MO[dd.getMonth()]+' '+dd.getDate();
+      opts+='<option value="'+dstr+'"'+(selectedD===dstr?' selected':'')+'>'+DN[dd.getDay()]+' '+dstr+'</option>';
+    }
+  }
+  return opts;
+}
 function addEditEvent(){
   const list=document.getElementById('ev-edit-list');if(!list)return;
   const i=list.querySelectorAll('.ev-edit-row').length;const div=document.createElement('div');div.className='ev-edit-row';div.setAttribute('data-idx',i);
   div.innerHTML='<input class="ev-edit-lbl" type="text" placeholder="Description (e.g. Wendy paycheck)">'+
     '<select class="ev-edit-type"><option value="in">Inflow</option><option value="ob">Outflow</option></select>'+
     '<input class="ev-edit-amt" type="number" step="0.01" min="0" value="0">'+
+    '<select class="ev-date-sel" title="Exact date (optional)">'+_weekDayOpts(editOpen,'')+'</select>'+
     '<div class="ev-tax-wrap" title="Mark if commission or BK bonus inflow"><span class="ev-tax-lbl">Tax?</span><input class="ev-tax-cb" type="checkbox"></div>'+
     '<button class="ev-del-btn" onclick="this.closest(\'.ev-edit-row\').remove()" title="Remove">&#10005;</button>';
   list.appendChild(div);
@@ -700,9 +792,13 @@ function _readEditEvents(){
   rows.forEach(function(row){
     const lbl=row.querySelector('.ev-edit-lbl');const typ=row.querySelector('.ev-edit-type');
     const amt=row.querySelector('.ev-edit-amt');const txCb=row.querySelector('.ev-tax-cb');
+    const dateSel=row.querySelector('.ev-date-sel');
     if(!lbl||!typ||!amt)return;const l=lbl.value.trim();if(!l)return;
     const t=typ.value;const raw=parseFloat(amt.value)||0;const a=t==='ob'?-Math.abs(raw):Math.abs(raw);
-    const tx=t==='in'&&!!txCb&&txCb.checked;events.push({l,t,a,tx});
+    const tx=t==='in'&&!!txCb&&txCb.checked;
+    const d=dateSel?dateSel.value:'';
+    var ev={l,t,a,tx};if(d)ev.d=d;
+    events.push(ev);
   });
   return events;
 }
@@ -784,7 +880,7 @@ function updateReconLabel(weeks){
 }
 
 // ── setSection ─────────────────────────────────────────────────────────────
-const SECTION_TITLES={overview:'Overview',weekly:'Weekly Model',goals:'Goals',scenarios:'Scenarios',history:'History',assumptions:'Assumptions',roadmap:'Wishlist'};
+const SECTION_TITLES={overview:'Overview',weekly:'Weekly Model',goals:'Goals',scenarios:'Scenarios',history:'History',assumptions:'Assumptions',roadmap:'Wishlist',ask:'Ask Claude'};
 function setSection(s){
   activeSection=s;
   document.querySelectorAll('.section').forEach(function(el){el.classList.remove('active');});
@@ -870,24 +966,26 @@ function renderTimeline(vm,clickSection){
 
 // ── renderGoalRail ─────────────────────────────────────────────────────────
 function renderGoalRail(vm){
-  var akPct=Math.min(100,+(vm.current.akSaved/vm.goals.ak*100).toFixed(1));
-  var rtPct=Math.min(100,+(vm.current.amx/vm.goals.rt*100).toFixed(1));
-  var lcPct=Math.min(100,+(vm.current.lc/EF_ORIG*100).toFixed(1));
+  // Goal rail always shows today's position (currentW), not the browsed week
+  var _grw=vm.weeks.find(function(x){return x.num===currentW;})||vm.weeks[0];
+  var akPct=Math.min(100,+(_grw.akSaved/vm.goals.ak*100).toFixed(1));
+  var rtPct=Math.min(100,+(_grw.amx/vm.goals.rt*100).toFixed(1));
+  var lcPct=Math.min(100,+(_grw.lc/EF_ORIG*100).toFixed(1));
   var akForecast=vm.alaskaCompletion?'Completes Wk '+getCalWeek(vm.alaskaCompletion.num)+' · '+vm.alaskaCompletion.dates.split('-')[0].trim():'Not yet scheduled';
   var rtForecast=vm.retirementCompletion?'Completes Wk '+getCalWeek(vm.retirementCompletion.num):'Remaining after Wk '+getCalWeek(31)+': '+f(vm.finalWeek.retRem);
   return '<div class="goal-forecast-rail panel"><h3>Goal forecast</h3>'+
     '<div class="progress-goal">'+
-      '<div class="goal-top"><span class="name">Emergency fund (Lending Club)</span><span class="value">'+f(vm.current.lc)+' / '+f(EF_ORIG)+'</span></div>'+
+      '<div class="goal-top"><span class="name">Emergency fund (Lending Club)</span><span class="value">'+f(_grw.lc)+' / '+f(EF_ORIG)+'</span></div>'+
       '<div class="prog-bar"><div class="prog-fill" style="background:#1d9e75;width:'+lcPct+'%"></div></div>'+
       '<div class="goal-meta"><span>Restored to '+f(EF_NEW)+'</span><span>'+lcPct.toFixed(0)+'%</span></div>'+
     '</div>'+
     '<div class="progress-goal">'+
-      '<div class="goal-top"><span class="name">Alaska cruise</span><span class="value">'+f(vm.current.akSaved)+' / '+f(vm.goals.ak)+'</span></div>'+
+      '<div class="goal-top"><span class="name">Alaska cruise</span><span class="value">'+f(_grw.akSaved)+' / '+f(vm.goals.ak)+'</span></div>'+
       '<div class="prog-bar"><div class="prog-fill" style="background:var(--blue);width:'+akPct+'%"></div></div>'+
       '<div class="goal-meta"><span>'+akForecast+'</span><span>'+akPct.toFixed(0)+'%</span></div>'+
     '</div>'+
     '<div class="progress-goal">'+
-      '<div class="goal-top"><span class="name">Retirement rebuild</span><span class="value">'+f(vm.current.amx)+' / '+f(vm.goals.rt)+'</span></div>'+
+      '<div class="goal-top"><span class="name">Retirement rebuild</span><span class="value">'+f(_grw.amx)+' / '+f(vm.goals.rt)+'</span></div>'+
       '<div class="prog-bar"><div class="prog-fill" style="background:var(--violet);width:'+rtPct+'%"></div></div>'+
       '<div class="goal-meta"><span>'+rtForecast+'</span><span>'+rtPct.toFixed(0)+'%</span></div>'+
     '</div>'+
@@ -957,9 +1055,14 @@ function renderWeekDetail(w,weeks){
   var html='';
   if(w.managed){html+='<div class="week-alert alert-managed"><strong>Managed trough</strong> — Checking dips '+f(Math.abs(w.chk))+' below zero from obligations alone. Truist Savings ('+f(w.sav)+') is same-bank backup. Operational liquidity: '+f(w.ol)+'.</div>';}
   else if(w.trough&&w.chk<500){html+='<div class="week-alert alert-trough"><strong>Trough week</strong> — checking at monthly low ('+f(w.chk)+'). Truist Savings ('+f(w.sav)+') available as backup.</div>';}
+  var prevW=weeks.find(function(x){return x.num===w.num-1;}),nextW=weeks.find(function(x){return x.num===w.num+1;});
   html+='<div class="panel wk-header-card">'+
     '<div class="wk-header-top">'+
-      '<div><h2>Wk '+getCalWeek(w.num)+'</h2><p>'+w.dates+'</p></div>'+
+      '<div class="wk-title-nav">'+
+        (prevW?'<button class="wnav-arrow" onclick="activeW='+(w.num-1)+';renderApp()" title="Wk '+getCalWeek(w.num-1)+' · '+prevW.dates+'">←</button>':'<span class="wnav-arrow-ph"></span>')+
+        '<div><h2>Wk '+getCalWeek(w.num)+'</h2><p>'+w.dates+'</p></div>'+
+        (nextW?'<button class="wnav-arrow" onclick="activeW='+(w.num+1)+';renderApp()" title="Wk '+getCalWeek(w.num+1)+' · '+nextW.dates+'">→</button>':'<span class="wnav-arrow-ph"></span>')+
+      '</div>'+
       '<div class="wk-action-row">'+
         '<button class="btn" onclick="openEdit('+w.num+')">Edit week</button>'+
         (isPastWeek||isNowWeek?'<button class="btn primary" onclick="openRecon('+w.num+')">'+
@@ -981,7 +1084,7 @@ function renderWeekDetail(w,weeks){
         '<div class="sect">Cash flow this week</div>'+
         w.evs.map(function(e){
           var cls=e.t==='in'?'ev-in':'ev-out';var sign=e.t==='in'?'+':'−';
-          return'<div class="ev-row"><span class="ev-lbl">'+e.l+'</span><span class="'+cls+'">'+sign+f(Math.abs(e.a))+'</span></div>';
+          return'<div class="ev-row"><span class="ev-lbl">'+e.l+(e.d?'<span class="ev-date-inline"> · '+e.d+'</span>':'')+'</span><span class="'+cls+'">'+sign+f(Math.abs(e.a))+'</span></div>';
         }).join(''):'<div class="sect">Cash flow this week</div><div style="color:var(--muted);font-size:13px;padding:8px 0">No scheduled events this week.</div>')+
     '</div>'+
     '<div class="panel card-pad">'+
@@ -990,7 +1093,7 @@ function renderWeekDetail(w,weeks){
         var deferred=w.tr.filter(function(x){return x.r==='defer';});
         var html='';
         if(done.length){
-          html+='<div class="xfr-section-hdr">Transfers this week</div>';
+          html+='<div class="xfr-section-hdr">Transfers this week<span class="week-date-badge">'+getWeekDate(activeW)+'</span></div>';
           html+=done.map(function(x){
             var ic=x.r==='info'?'ℹ️':'✅';
             return'<div class="xfr-row"><span class="xi">'+ic+'</span><div class="xtext"><div class="xlbl">'+x.l+'</div><div class="xrsn">'+x.rsn+'</div></div></div>';
@@ -1014,7 +1117,7 @@ function renderWeekDetail(w,weeks){
     {name:'Truist Checking',start:w.startChk,model:w.mChk,end:w.chk,actual:w.reconciled?w.actualBals.chk:null},
     {name:'Truist Savings',start:w.startSav,model:w.mSav,end:w.sav,actual:w.reconciled?w.actualBals.sav:null},
     {name:'AMEX Savings',start:w.startAmx,model:w.mAmx,end:w.amx,actual:w.reconciled?w.actualBals.amx:null},
-    {name:'Tax HYSA',start:w.startTax,model:w.mTax,end:w.tax,actual:w.reconciled?w.actualBals.tax:null},
+    {name:'Vio Bank - Tax Reserve',start:w.startTax,model:w.mTax,end:w.tax,actual:w.reconciled?w.actualBals.tax:null},
     {name:'Lending Club (EF)',start:w.startLc,model:w.mLc,end:w.lc,actual:w.reconciled?w.actualBals.lc:null},
   ];
   html+='<div class="panel card-pad">'+
@@ -1071,7 +1174,7 @@ function renderWeekDetail(w,weeks){
     }())+
     (w.reconciled&&w.variance?function(){
       var underItems=[],over=[];
-      var names=['chk','sav','amx','tax','lc'];var labels=['Checking','Savings','AMEX','Tax HYSA','Lending Club'];
+      var names=['chk','sav','amx','tax','lc'];var labels=['Checking','Savings','AMEX','Vio Bank - Tax Reserve','Lending Club'];
       names.forEach(function(k,i){
         if(w.variance[k]<-VAR_THRESHOLD)underItems.push(labels[i]+' −'+f(Math.abs(w.variance[k])));
         else if(w.variance[k]>VAR_THRESHOLD)over.push(labels[i]+' +'+f(w.variance[k]));
@@ -1090,7 +1193,7 @@ function renderWeekDetail(w,weeks){
       '<div class="act-hdr">Required actions this week <span class="act-progress '+progCls+'">'+progTxt+'</span></div>'+
       w.realActs.map(function(a,i){
         var done=taskData[w.num+'_'+i]&&taskData[w.num+'_'+i].completed;
-        return'<div class="task-row"><input type="checkbox" class="task-check" '+(done?'checked':'')+' onchange="toggleTask('+w.num+','+i+',this.checked)"><div class="task-text'+(done?' done':'')+'">'+a+'</div></div>';
+        return'<div class="task-row"><input type="checkbox" class="task-check" '+(done?'checked':'')+' onchange="toggleTask('+w.num+','+i+',this.checked)"><div class="task-text'+(done?' done':'')+'">'+a+'<span class="task-date">'+getWeekDate(w.num)+'</span></div></div>';
       }).join('')+
     '</div></div>';
   }
@@ -1114,7 +1217,7 @@ function renderWeekDetail(w,weeks){
       '<div class="recon-field"><label>Truist Checking</label><input class="recon-input" id="ri_chk" type="number" step="0.01" value="'+pre.chk+'"></div>'+
       '<div class="recon-field"><label>Truist Savings</label><input class="recon-input" id="ri_sav" type="number" step="0.01" value="'+pre.sav+'"></div>'+
       '<div class="recon-field"><label>AMEX Savings</label><input class="recon-input" id="ri_amx" type="number" step="0.01" value="'+pre.amx+'"></div>'+
-      '<div class="recon-field"><label>Tax HYSA</label><input class="recon-input" id="ri_tax" type="number" step="0.01" value="'+pre.tax+'"></div>'+
+      '<div class="recon-field"><label>Vio Bank - Tax Reserve</label><input class="recon-input" id="ri_tax" type="number" step="0.01" value="'+pre.tax+'"></div>'+
       '<div class="recon-field"><label>Lending Club (EF)</label><input class="recon-input" id="ri_lc" type="number" step="0.01" value="'+pre.lc+'"></div>'+
       '</div><div class="recon-btn-row">'+
       '<button class="recon-save" onclick="saveRecon('+w.num+')">Save actuals</button>'+
@@ -1130,15 +1233,9 @@ function renderWeekDetail(w,weeks){
   }
   html+='</div>';
   // Banner
-  if(w.num===1){html+='<div class="banner banner-green">✅ Week 1 actions restore Lending Club EF to $21,738.88 \xb7 Tax HYSA funded \xb7 $3,000 reclassified as permanent operating cash</div>';}
+  if(w.num===1){html+='<div class="banner banner-green">✅ Week 1 actions restore Lending Club EF to $21,738.88 \xb7 Vio Bank - Tax Reserve funded \xb7 $3,000 reclassified as permanent operating cash</div>';}
   else if(akFunded&&w.num===weeks.find(function(x){return x.akRem<=0.01;})?.num){html+='<div class="banner banner-amber">⭐ Big week — Alaska fully funded + retirement savings move + retirement rebuild begins</div>';}
   else if(akFunded&&!rtFunded){html+='<div class="banner banner-blue">✅ Alaska funded — retirement rebuild in progress</div>';}
-  // Week nav
-  var prevW=weeks.find(function(x){return x.num===w.num-1;}),nextW=weeks.find(function(x){return x.num===w.num+1;});
-  html+='<div class="week-nav">'+
-    (prevW?'<button class="wnav-btn" onclick="activeW='+(w.num-1)+';renderApp()">← Wk '+getCalWeek(w.num-1)+' \xb7 '+prevW.dates+'</button>':'<div class="wnav-spacer"></div>')+
-    (nextW?'<button class="wnav-btn" onclick="activeW='+(w.num+1)+';renderApp()">Wk '+getCalWeek(w.num+1)+' \xb7 '+nextW.dates+' →</button>':'<div class="wnav-spacer"></div>')+
-  '</div>';
   return html;
 }
 
@@ -1179,6 +1276,11 @@ function renderWeekly(vm){
     '<div class="week-detail" id="week-detail-content">'+renderWeekDetail(w,vm.weeks)+'</div>'+
   '</div>';
   document.getElementById('weekly-content').innerHTML=html;
+  // Restore scroll position — don't jump to top when switching weeks
+  requestAnimationFrame(function(){
+    var activeRow=document.querySelector('.week-list-item.active');
+    if(activeRow)activeRow.scrollIntoView({block:'nearest',behavior:'instant'});
+  });
 }
 
 // ── renderGoals ────────────────────────────────────────────────────────────
@@ -1187,9 +1289,11 @@ function renderGoals(vm){
   var _focused=document.activeElement;
   if(_focused&&(_focused.id==='akGoal'||_focused.id==='rtGoal'))return;
   var ak=vm.goals.ak,rt=vm.goals.rt;
-  var akPct=Math.min(100,+(vm.current.akSaved/ak*100).toFixed(1));
-  var rtPct=Math.min(100,+(vm.current.amx/rt*100).toFixed(1));
-  var lcPct=Math.min(100,+(vm.current.lc/EF_ORIG*100).toFixed(1));
+  // Always show WHERE YOU ARE TODAY (currentW), not the week being browsed
+  var w=vm.weeks.find(function(x){return x.num===currentW;})||vm.weeks[0];
+  var akPct=Math.min(100,+(w.akSaved/ak*100).toFixed(1));
+  var rtPct=Math.min(100,+(w.amx/rt*100).toFixed(1));
+  var lcPct=Math.min(100,+(w.lc/EF_ORIG*100).toFixed(1));
   var akForecast=vm.alaskaCompletion?'<span class="forecast-label">Projected</span> <strong>Completes Wk '+getCalWeek(vm.alaskaCompletion.num)+'</strong> \xb7 '+vm.alaskaCompletion.dates:'<span class="forecast-label">Projected</span> Alaska target not reached within model \xb7 '+f(vm.finalWeek.akRem)+' remaining after Wk '+getCalWeek(31)+'.';
   var rtForecast=vm.retirementCompletion?'<span class="forecast-label">Projected</span> <strong>Completes Wk '+getCalWeek(vm.retirementCompletion.num)+'</strong> \xb7 '+vm.retirementCompletion.dates:'<span class="forecast-label">Projected</span> Not complete within current model \xb7 '+f(vm.finalWeek.retRem)+' remaining after Wk '+getCalWeek(31)+'.';
   var html='<div class="goals-grid">'+
@@ -1197,31 +1301,31 @@ function renderGoals(vm){
       '<div class="goal-priority">Priority 1</div>'+
       '<h3>Alaska Cruise Fund</h3>'+
       '<p class="sub">Destination: Truist Savings \xb7 Starts Week 5 \xb7 funded before retirement</p>'+
-      '<div class="goal-amount" style="color:var(--blue)">'+f(vm.current.akSaved)+'</div>'+
+      '<div class="goal-amount" style="color:var(--blue)">'+f(w.akSaved)+'</div>'+
       '<div class="goal-input-row"><span class="goal-input-label">Target</span>'+
         '<div class="ginput-wrap"><span>$</span><input type="number" id="akGoal" class="goal-inp" value="'+ak+'" step="100" inputmode="numeric"></div>'+
       '</div>'+
       '<div class="prog-bar"><div class="prog-fill" style="background:var(--blue);width:'+akPct+'%"></div></div>'+
-      '<div class="goal-meta"><span>'+f(vm.current.akSaved)+' saved</span><span>'+f(vm.current.akRem)+' remaining</span></div>'+
+      '<div class="goal-meta"><span>'+f(w.akSaved)+' saved</span><span>'+f(w.akRem)+' remaining</span></div>'+
       '<div class="goal-forecast-card">'+akForecast+'</div>'+
     '</div>'+
     '<div class="panel goal-card">'+
       '<div class="goal-priority">Priority 2</div>'+
       '<h3>Retirement Rebuild</h3>'+
       '<p class="sub">Destination: AMEX Savings \xb7 begins after Alaska is completed</p>'+
-      '<div class="goal-amount" style="color:var(--violet)">'+f(vm.current.amx)+'</div>'+
+      '<div class="goal-amount" style="color:var(--violet)">'+f(w.amx)+'</div>'+
       '<div class="goal-input-row"><span class="goal-input-label">Target</span>'+
         '<div class="ginput-wrap"><span>$</span><input type="number" id="rtGoal" class="goal-inp" value="'+rt+'" step="100" inputmode="numeric"></div>'+
       '</div>'+
       '<div class="prog-bar"><div class="prog-fill" style="background:var(--violet);width:'+rtPct+'%"></div></div>'+
-      '<div class="goal-meta"><span>'+f(vm.current.amx)+' in AMEX</span><span>'+f(vm.current.retRem)+' remaining</span></div>'+
+      '<div class="goal-meta"><span>'+f(w.amx)+' in AMEX</span><span>'+f(w.retRem)+' remaining</span></div>'+
       '<div class="goal-forecast-card">'+rtForecast+'<br><span style="font-size:11px;color:var(--muted2)">Breakdown: $99.75 current + $3,772.74 savings seed + $3,818.49 checking rebuild</span></div>'+
     '</div>'+
   '</div>'+
   '<div class="panel card-pad" style="max-width:700px">'+
     '<div class="panel-title"><h3>Emergency Fund (Lending Club)</h3><span class="mini">Reference — not a savings goal</span></div>'+
     '<div class="prog-bar"><div class="prog-fill" style="background:#1d9e75;width:'+lcPct+'%"></div></div>'+
-    '<div class="goal-meta" style="margin-top:6px"><span>'+f(vm.current.lc)+' current</span><span>Target: '+f(EF_ORIG)+' (gap: $3,000 reclassified as operating cash)</span></div>'+
+    '<div class="goal-meta" style="margin-top:6px"><span>'+f(w.lc)+' current</span><span>Target: '+f(EF_ORIG)+' (gap: $3,000 reclassified as operating cash)</span></div>'+
   '</div>';
   document.getElementById('goals-content').innerHTML=html;
   // Re-attach goal input listeners
@@ -1229,10 +1333,10 @@ function renderGoals(vm){
   document.getElementById('rtGoal').addEventListener('change',function(){var v=Math.max(1,parseFloat((this.value||'').replace(/[^0-9.]/g,''))||7690.98);goalRt=v;this.value=v;saveGoal('rt_goal',v);renderApp();});
 }
 
-// ── renderRoadmap (Wishlist) ────────────────────────────────────────────────
-function renderRoadmap(){
-  // Source of truth for what has been built, what is planned, and what is an idea.
-  // Claude reads this list for phase planning. Full Supabase CRUD (add/edit/move) coming in Phase 3.
+// ── renderRoadmap (Wishlist) — Phase 2 static version REMOVED; Phase 3 CRUD version below ──
+// (Phase 3 CRUD renderRoadmap() defined in the Phase 3 block overrides this)
+function _DEAD_renderRoadmap_phase2(){
+  // This function is intentionally inert. Phase 3 CRUD version is defined below.
   var WISHLIST=[
     // ── Done ──
     {title:'App shell & navigation',notes:'New sidebar, CSS design system, section routing',phase:'Phase 1',status:'done'},
@@ -1309,7 +1413,7 @@ function renderRoadmap(){
   '</div>';
 
   document.getElementById('roadmap-content').innerHTML=html;
-}
+} // end _DEAD_renderRoadmap_phase2
 
 // ── renderHistory ──────────────────────────────────────────────────────────
 function setHistoryFilter(f){historyFilter=f;var g=getGoals();renderHistory(runModel(g.ak,g.rt));}
@@ -1388,7 +1492,7 @@ function renderAssumptions(){
       '<p><code>MIN_XFR = $100</code> — Transfers below $100 are suppressed and carry forward to prevent noisy sub-threshold moves.</p>'+
     '</div>'+
     '<div class="panel assumption-card"><h3>Commission Tax Split</h3>'+
-      '<p>When Wendy or Adam has a commission or BK bonus inflow (taxable), the model routes: <strong>40% → Tax HYSA</strong> and <strong>60% → current savings goal</strong>.</p>'+
+      '<p>When Wendy or Adam has a commission or BK bonus inflow (taxable), the model routes: <strong>40% → Vio Bank - Tax Reserve</strong> and <strong>60% → current savings goal</strong>.</p>'+
       '<p><code>COMM_TAX = $707.18</code> (40% of commission gross) and <code>COMM_AK = $1,060.76</code> (60%) are defined as constants. Week 6 commission is deferred because checking is below floor after obligations — both transfers pick up the following week.</p>'+
       '<p>If a commission week has no surplus above the floor, both transfers defer to the next eligible week via <code>taxTodo</code>.</p>'+
     '</div>'+
@@ -1399,7 +1503,7 @@ function renderAssumptions(){
     '<div class="panel assumption-card"><h3>Goal Funding Order</h3>'+
       '<p>1. EF savings move (Truist Savings → Lending Club) — Week 1 only.<br>'+
       '2. EF checking transfer (Checking → Lending Club) — Week 1 only.<br>'+
-      '3. Base tax reserve (Checking → Tax HYSA).<br>'+
+      '3. Base tax reserve (Checking → Vio Bank - Tax Reserve).<br>'+
       '4. Alaska fund (Checking → Truist Savings) — begins Week 5.<br>'+
       '5. Retirement savings seed (Truist Savings → AMEX) — after Alaska funded.<br>'+
       '6. Retirement rebuild (Checking → AMEX) — after Alaska and EF complete.</p>'+
@@ -1412,16 +1516,16 @@ function renderAssumptions(){
     '</div>'+
     '<div class="panel assumption-card"><h3>How Budget Surplus &amp; Extra Income Fund Goals</h3>'+
       '<p><strong>The $2,300/month is real — and it is in the model.</strong> Our monthly budget produces roughly $2,300 more income than expenses. That underspend stays in checking and the dashboard sweeps any surplus above the protective floor into savings goals at the end of each week. It does not go into a separate account automatically; it accumulates in checking and moves to goals whenever a week ends with enough room.</p>'+
-      '<p><strong>Why the model can\'t save $2,300 every single month toward Alaska:</strong> The $2,300 is a monthly average. Individual weeks vary a lot. Rent weeks, large AMEX statements, and other heavy obligation weeks consume most or all of the checking cushion. The model always holds at least $1,500–$3,000 in checking as a buffer (sometimes more when a big bill is coming) and will not sweep below that floor. Early in the model, EF restoration ($2,250) and a deferred commission tax payment ($707) also had to clear before Alaska sweeping could begin — those finished by Week 8.</p>'+
+      '<p><strong>Why the model can\'t save $2,300 every single month toward Alaska:</strong> The $2,300 is a monthly average. Individual weeks vary a lot. Rent weeks, large AMEX statements, and other heavy obligation weeks consume most or all of the checking cushion. The model always holds at least $1,500–$3,000 in checking as a buffer (sometimes more when a big bill is coming) and will not sweep below that floor. Early in the model, EF restoration ($2,250) and a deferred commission tax payment ($707) also had to clear before Alaska sweeping could begin — those finished by Wk 30.</p>'+
       '<p><strong>What actually happens with Alaska:</strong> Only 4 weeks across the full 31-week model have enough surplus above the floor to sweep to Alaska. Those sweeps total $7,000 — the full goal — but they are spread out:</p>'+
       '<ul style="margin:.5rem 0 .75rem 1.2rem;line-height:1.7">'+
-        '<li><strong>Week 5 (Jul 5–11):</strong> $2,237.76 swept — first eligible week</li>'+
-        '<li><strong>Week 7 (Jul 19–25):</strong> $1,072.76 swept — after deferred commission tax clears</li>'+
-        '<li><strong>Week 9 (Aug 2–8):</strong> $1,447.00 swept</li>'+
-        '<li><strong>Week 20 (Oct 18–24):</strong> $2,242.48 final sweep — Alaska fully funded</li>'+
+        '<li><strong>Wk 27 (Jul 5–11):</strong> $2,237.76 swept — first eligible week</li>'+
+        '<li><strong>Wk 29 (Jul 19–25):</strong> $1,072.76 swept — after deferred commission tax clears</li>'+
+        '<li><strong>Wk 31 (Aug 2–8):</strong> $1,447.00 swept</li>'+
+        '<li><strong>Wk 42 (Oct 18–24):</strong> $2,242.48 final sweep — Alaska fully funded</li>'+
       '</ul>'+
-      '<p>Weeks 10–19 have checking balances that look large some weeks ($5,000–$8,000) but the model holds a higher floor during those weeks because upcoming AMEX statements, rent, or other large obligations are close. There is no room above the floor to sweep.</p>'+
-      '<p><strong>Commissions (Jabian / BK bonuses):</strong> Commission income is handled separately from the budget surplus. When either Adam or Wendy receives a commission or BK bonus, the model automatically routes <strong>40% → Tax HYSA</strong> and <strong>60% → current savings goal</strong> (Alaska first, then retirement). This happens on top of whatever regular surplus exists that week. The Week 6 Wendy commission deferred because the AMEX Gold statement ($5,500) hit the same week and pushed checking below the floor — it picked up in Week 7.</p>'+
+      '<p>Wks 32–41 have checking balances that look large some weeks ($5,000–$8,000) but the model holds a higher floor during those weeks because upcoming AMEX statements, rent, or other large obligations are close. There is no room above the floor to sweep.</p>'+
+      '<p><strong>Commissions (Jabian / BK bonuses):</strong> Commission income is handled separately from the budget surplus. When either Adam or Wendy receives a commission or BK bonus, the model automatically routes <strong>40% → Vio Bank - Tax Reserve</strong> and <strong>60% → current savings goal</strong> (Alaska first, then retirement). This happens on top of whatever regular surplus exists that week. The Wk 28 Wendy commission deferred because the AMEX Gold statement ($5,500) hit the same week and pushed checking below the floor — it picked up in Wk 29.</p>'+
       '<p><strong>Other extra income (freelance, gifts, one-time windfalls):</strong> Enter these as events in the Edit Week drawer. Mark the checkbox "Tax?" if the income is taxable (e.g. a consulting payment). The model will apply the same 40/60 split and route the surplus to whatever goal is currently open. If Alaska is not yet funded, extra income accelerates it. Once Alaska is done, it flows to retirement.</p>'+
       '<p><strong>Bottom line for the Alaska timeline:</strong> Wendy\'s math is right — $2,300 × 3 months ≈ $7,000 covers the goal. The model confirms that. The reason Alaska completes in October rather than August is that the $2,300 doesn\'t move in equal monthly increments — it sweeps in 4 lumpy events driven by when checking actually clears the floor. The money is always there in checking; it just can\'t always move.</p>'+
     '</div>'+
@@ -1449,6 +1553,7 @@ function renderEditDrawer(){
         '<input class="ev-edit-lbl" type="text" value="'+safeL+'" placeholder="Description">'+
         '<select class="ev-edit-type"><option value="in"'+(ev.t==='in'?' selected':'')+'>Inflow</option><option value="ob"'+(ev.t==='ob'?' selected':'')+'>Outflow</option></select>'+
         '<input class="ev-edit-amt" type="number" step="0.01" min="0" value="'+Math.abs(ev.a)+'">'+
+        '<select class="ev-date-sel" title="Exact date (optional)">'+_weekDayOpts(editOpen,ev.d||'')+'</select>'+
         '<div class="ev-tax-wrap" title="'+(ev.t==='ob'?'N/A for outflows':'Mark if commission or BK bonus')+'"><span class="ev-tax-lbl">Tax?</span><input class="ev-tax-cb" type="checkbox"'+(isPreTaxed?' checked':'')+(ev.t==='ob'?' disabled':'')+' ></div>'+
         '<button class="ev-del-btn" onclick="this.closest(\'.ev-edit-row\').remove()" title="Remove">&#10005;</button>'+
       '</div>';
@@ -1469,7 +1574,7 @@ function renderEditDrawer(){
         '<div id="ev-edit-list">'+evRows+'</div>'+
         '<button class="modal-add-ev" onclick="addEditEvent()">+ Add event</button>'+
         '<div class="drawer-sect">Commission / bonus split</div>'+
-        '<div class="comm-hint">Check <strong>Tax?</strong> on any inflow that is a <strong>Wendy or Adam commission</strong> or <strong>BK bonus</strong>. The model auto-routes <strong>40% → Tax HYSA</strong> and <strong>60% → current savings goal</strong> on top of normal surplus logic.</div>'+
+        '<div class="comm-hint">Check <strong>Tax?</strong> on any inflow that is a <strong>Wendy or Adam commission</strong> or <strong>BK bonus</strong>. The model auto-routes <strong>40% → Vio Bank - Tax Reserve</strong> and <strong>60% → current savings goal</strong> on top of normal surplus logic.</div>'+
       '</div>'+
       '<div class="drawer-footer">'+
         (editSaving?
@@ -1489,7 +1594,7 @@ function renderEditDrawer(){
 // ── renderApp (central render, replaces render()) ──────────────────────────
 function renderApp(){
   var g=getGoals();
-  var weeks=runModel(g.ak,g.rt);
+  var weeks=getActiveModel();
   var vm=buildDashboardViewModel(weeks,g);
   updateReconLabel(weeks);
   // Update nav pill
@@ -1506,14 +1611,17 @@ function renderApp(){
     } else if(activeSection==='weekly'){
       _ts.textContent=_aw?'Wk '+getCalWeek(_aw.num)+' · '+_aw.dates:('Wk '+getCalWeek(activeW));
     } else if(activeSection==='goals'){
-      var _akPct=Math.min(100,+(vm.current.akSaved/vm.goals.ak*100).toFixed(0));
+      var _gw=vm.weeks.find(function(x){return x.num===currentW;})||vm.weeks[0];
+      var _akPct=Math.min(100,+(_gw.akSaved/vm.goals.ak*100).toFixed(0));
       _ts.textContent='Alaska '+_akPct+'% funded · Retirement in queue';
     } else if(activeSection==='history'){
       _ts.textContent=_reconCount+' of '+currentW+' week'+(currentW!==1?'s':'')+' reconciled · '+_openActs+' open action'+(_openActs!==1?'s':'');
     } else if(activeSection==='assumptions'){
       _ts.textContent='Floor rules · Commission split · Goal sequencing · Reconciliation';
     } else if(activeSection==='scenarios'){
-      _ts.textContent='What-if modeling · Phase 3';
+      _ts.textContent=scenarioState.active?'Preview active — '+scenarioState.type+' scenario':'What-if modeling — preview never writes until committed';
+    } else if(activeSection==='ask'){
+      _ts.textContent='Ask questions about your model in plain English';
     }
   })();
   // Update topbar subtitle for weekly section to show active week
@@ -1523,7 +1631,10 @@ function renderApp(){
   else if(activeSection==='history')renderHistory(weeks);
   else if(activeSection==='assumptions')renderAssumptions();
   else if(activeSection==='roadmap')renderRoadmap();
+  else if(activeSection==='scenarios')renderScenarios(vm);
+  else if(activeSection==='ask')renderAskClaude();
   renderEditDrawer();
+  renderScenarioModal();
 }
 // Backward-compat alias — all existing call sites use render()
 var render=renderApp;
@@ -1542,12 +1653,13 @@ async function saveGoal(key,value){
 
 async function loadAll(){
   try{
-    var[reconR,tasksR,notesR,overridesR,goalsR]=await Promise.all([
+    var[reconR,tasksR,notesR,overridesR,goalsR,wishlistR]=await Promise.all([
       fetch(SUPA_URL+'/rest/v1/weekly_reconciliations?select=*',{headers:SUPA_H}),
       fetch(SUPA_URL+'/rest/v1/weekly_tasks?select=*',{headers:SUPA_H}),
       fetch(SUPA_URL+'/rest/v1/weekly_notes?select=*',{headers:SUPA_H}),
       fetch(SUPA_URL+'/rest/v1/model_week_overrides?select=*',{headers:SUPA_H}),
-      fetch(SUPA_URL+'/rest/v1/goals?select=key,value',{headers:SUPA_H})
+      fetch(SUPA_URL+'/rest/v1/goals?select=key,value',{headers:SUPA_H}),
+      fetch(SUPA_URL+'/rest/v1/wishlist_items?select=*&order=created_at.asc',{headers:SUPA_H})
     ]);
     if(reconR.ok){(await reconR.json()).forEach(function(row){reconData[row.week_num]={chk:row.chk,sav:row.sav,amx:row.amx,tax:row.tax,lc:row.lc,date:new Date(row.recorded_at).toLocaleDateString('en-US',{month:'short',day:'numeric'})};});}
     if(tasksR.ok){(await tasksR.json()).forEach(function(row){taskData[row.week_num+'_'+row.task_idx]={completed:row.completed,completedAt:row.completed_at};});}
@@ -1556,10 +1668,516 @@ async function loadAll(){
     if(goalsR.ok){(await goalsR.json()).forEach(function(row){
       if(row.key==='ak_goal'){goalAk=Math.max(1,parseFloat(row.value)||7000);}
       if(row.key==='rt_goal'){goalRt=Math.max(1,parseFloat(row.value)||7690.98);}
+      if(row.key==='anthropic_key'){anthropicKey=row.value||'';}
     });}
+    if(wishlistR.ok){
+      var wl=await wishlistR.json();
+      if(wl.length>0){wishlistData=wl;wishlistLoaded=true;}
+      // else: will be seeded when roadmap section is first opened
+    }
     _supaConnected=true;
   }catch(e){console.error('loadAll:',e);_supaConnected=false;}
   renderApp();
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// PHASE 3 ADDITIONS
+// ═══════════════════════════════════════════════════════════════════════════
+
+// ── Phase 3 state ─────────────────────────────────────────────────────────
+var wishlistData=[];
+var wishlistLoaded=false;
+var wishlistAddOpen=false;
+var wishlistEditId=null;
+var scenarioState={active:false,type:null,weekNum:1,params:{},previewOverride:null,previewGoal:null,commitModal:false};
+var anthropicKey='';
+var askMessages=[];
+var askLoading=false;
+
+// ── Calendar date helpers ─────────────────────────────────────────────────
+function getWeekStartDate(n){return new Date(2026,5,7+(n-1)*7);}
+function fmtDate(d){var M=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];return M[d.getMonth()]+' '+d.getDate();}
+function getWeekDate(n){return fmtDate(getWeekStartDate(n));}
+
+// ── Scenario-aware model runner ───────────────────────────────────────────
+function getActiveModel(){
+  var g=getGoals();
+  if(!scenarioState.active)return runModel(g.ak,g.rt);
+  var ak=scenarioState.previewGoal?scenarioState.previewGoal.ak:g.ak;
+  var rt=scenarioState.previewGoal?scenarioState.previewGoal.rt:g.rt;
+  if(scenarioState.type==='goal')return runModel(ak,rt);
+  var wn=scenarioState.weekNum;
+  var saved=overrideData[wn];var hasSaved=(saved!==undefined);
+  overrideData[wn]=scenarioState.previewOverride;
+  var weeks=runModel(ak,rt);
+  if(hasSaved)overrideData[wn]=saved;else delete overrideData[wn];
+  return weeks;
+}
+
+// ── Scenario: build preview override for a week-based scenario ────────────
+function buildScenarioPreviewOverride(weekNum,addEvents,addCt,addCa){
+  var existing=overrideData[weekNum];
+  var baseEvs=existing&&existing.events_json&&existing.events_json.length?existing.events_json:
+    (WD.find(function(w){return w[0]===weekNum;})||[])[7]||[];
+  var mergedEvs=baseEvs.concat(addEvents);
+  var baseCt=(existing&&existing.ct!=null)?existing.ct:(WD.find(function(w){return w[0]===weekNum;})||[])[9]||0;
+  var baseCa=(existing&&existing.ca!=null)?existing.ca:(WD.find(function(w){return w[0]===weekNum;})||[])[10]||0;
+  return Object.assign({},existing||{},{week_num:weekNum,events_json:mergedEvs,ct:baseCt+(addCt||0),ca:baseCa+(addCa||0)});
+}
+
+// ── Scenario: apply (set preview active) ─────────────────────────────────
+function applyScenario(){
+  var type=scenarioState.type;
+  var wn=scenarioState.weekNum;
+  var p=scenarioState.params;
+  if(type==='commission'){
+    var gross=parseFloat(p.gross)||0;
+    var ct=Math.round(gross*0.40*100)/100;
+    var ca=Math.round(gross*0.60*100)/100;
+    var addEvs=p.taxable?[{l:'Commission income ('+f(gross)+')',t:'in',a:gross,tx:true}]:[{l:'Commission income ('+f(gross)+')',t:'in',a:gross}];
+    scenarioState.previewOverride=buildScenarioPreviewOverride(wn,addEvs,ct,ca);
+  }else if(type==='expense'){
+    var amt=parseFloat(p.amount)||0;
+    var addEvs=[{l:p.label||'One-time expense',t:'ob',a:-Math.abs(amt)}];
+    scenarioState.previewOverride=buildScenarioPreviewOverride(wn,addEvs,0,0);
+  }else if(type==='inflow'){
+    var amt=parseFloat(p.amount)||0;
+    var addEvs=[{l:p.label||'One-time inflow',t:'in',a:Math.abs(amt),tx:!!p.taxable}];
+    var ct2=p.taxable?Math.round(amt*0.40*100)/100:0;
+    var ca2=p.taxable?Math.round(amt*0.60*100)/100:0;
+    scenarioState.previewOverride=buildScenarioPreviewOverride(wn,addEvs,ct2,ca2);
+  }else if(type==='goal'){
+    scenarioState.previewGoal={ak:parseFloat(p.ak)||goalAk,rt:parseFloat(p.rt)||goalRt};
+  }
+  scenarioState.active=true;
+  setSection('scenarios');renderApp();
+}
+
+// ── Scenario: clear ────────────────────────────────────────────────────────
+function clearScenario(){
+  scenarioState={active:false,type:null,weekNum:currentW,params:{},previewOverride:null,previewGoal:null,commitModal:false};
+  renderApp();
+}
+
+// ── Scenario: open commit modal ────────────────────────────────────────────
+function openScenarioCommit(){scenarioState.commitModal=true;renderApp();}
+function closeScenarioCommit(){scenarioState.commitModal=false;renderApp();}
+
+// ── Scenario: commit (write to Supabase) ───────────────────────────────────
+async function commitScenario(){
+  try{
+    if(scenarioState.type==='goal'&&scenarioState.previewGoal){
+      goalAk=scenarioState.previewGoal.ak;
+      goalRt=scenarioState.previewGoal.rt;
+      await saveGoal('ak_goal',goalAk);
+      await saveGoal('rt_goal',goalRt);
+    }else if(scenarioState.previewOverride){
+      var payload=scenarioState.previewOverride;
+      payload.updated_at=new Date().toISOString();
+      await fetch(SUPA_URL+'/rest/v1/model_week_overrides',{method:'POST',headers:Object.assign({},SUPA_H,{'Prefer':'resolution=merge-duplicates,return=minimal'}),body:JSON.stringify(payload)});
+      overrideData[payload.week_num]=payload;
+    }
+    clearScenario();
+  }catch(e){console.error('commitScenario:',e);alert('Error saving scenario: '+e.message);}
+}
+
+// ── Scenario: render commit modal ─────────────────────────────────────────
+function renderScenarioModal(){
+  var el=document.getElementById('scenario-modal-slot');
+  if(!el)return;
+  if(!scenarioState.commitModal){el.innerHTML='';return;}
+  var type=scenarioState.type;var wn=scenarioState.weekNum;var p=scenarioState.params;
+  var summary='';
+  if(type==='commission')summary='Add commission of '+f(parseFloat(p.gross)||0)+' to <strong>Week '+getCalWeek(wn)+' ('+getWeekDate(wn)+')</strong>. 40% ('+f(Math.round((parseFloat(p.gross)||0)*0.40*100)/100)+') → Tax HYSA, 60% ('+f(Math.round((parseFloat(p.gross)||0)*0.60*100)/100)+') → Alaska.';
+  else if(type==='expense')summary='Add expense "'+((p.label||'One-time expense'))+'" of '+f(parseFloat(p.amount)||0)+' to <strong>Week '+getCalWeek(wn)+' ('+getWeekDate(wn)+')</strong>.';
+  else if(type==='inflow')summary='Add inflow "'+((p.label||'One-time inflow'))+'" of '+f(parseFloat(p.amount)||0)+' to <strong>Week '+getCalWeek(wn)+' ('+getWeekDate(wn)+')</strong>'+(p.taxable?' (taxable — splits applied).':'.');
+  else if(type==='goal')summary='Update goal targets: Alaska to '+f(parseFloat(p.ak)||goalAk)+', Retirement to '+f(parseFloat(p.rt)||goalRt)+'.';
+  el.innerHTML='<div class="sc-modal-overlay"><div class="sc-modal">'+
+    '<div class="sc-modal-title">Commit scenario?</div>'+
+    '<div class="sc-modal-body">'+summary+'</div>'+
+    '<div class="sc-modal-note">This will save to Supabase and update your plan. This cannot be undone automatically — use the Edit Week drawer to reverse week changes, or adjust goal inputs to reverse goal changes.</div>'+
+    '<div class="sc-modal-btns">'+
+      '<button class="sc-modal-cancel" onclick="closeScenarioCommit()">Cancel</button>'+
+      '<button class="sc-modal-confirm" onclick="commitScenario()">Commit</button>'+
+    '</div>'+
+  '</div></div>';
+}
+
+// ── renderScenarios ────────────────────────────────────────────────────────
+function renderScenarios(vm){
+  var el=document.getElementById('scenarios-content');if(!el)return;
+  var weeks=vm?vm.weeks:null;
+  var html='';
+  // Preview banner (if active)
+  if(scenarioState.active){
+    var typeLabel={commission:'Commission',expense:'Add Expense',inflow:'Add Inflow',goal:'Change Goals'}[scenarioState.type]||scenarioState.type;
+    var wkLabel=scenarioState.type!=='goal'?' · Wk '+getCalWeek(scenarioState.weekNum)+' ('+getWeekDate(scenarioState.weekNum)+')':'';
+    html+='<div class="scenario-banner">'+
+      '<span class="scenario-banner-lbl">Preview mode'+wkLabel+'</span>'+
+      '<span class="scenario-banner-type">'+typeLabel+'</span>'+
+      '<div style="display:flex;gap:7px;margin-left:10px">'+
+        '<button class="scenario-cancel-btn" onclick="clearScenario()">✕ Cancel</button>'+
+        '<button class="scenario-commit-btn" onclick="openScenarioCommit()">Commit →</button>'+
+      '</div>'+
+    '</div>';
+  }
+  // Scenario type picker
+  html+='<div class="scenario-type-grid">'+
+    _stc('commission','💰','Commission','Add commission income with 40/60 tax/Alaska split')+
+    _stc('expense','💸','Add Expense','One-time expense in a specific week')+
+    _stc('inflow','📥','Add Inflow','One-time income or transfer in')+
+    _stc('goal','🎯','Change Goal Targets','Adjust Alaska or Retirement savings targets')+
+  '</div>';
+  // Scenario form
+  if(scenarioState.type){html+=_renderScenarioForm(vm);}
+  el.innerHTML=html;
+}
+function _stc(type,icon,title,desc){
+  var active=scenarioState.type===type;
+  return'<div class="scenario-type-card'+(active?' s-active':'')+'" onclick="selectScenarioType(\''+type+'\')">'+
+    '<div class="stc-icon">'+icon+'</div>'+
+    '<div class="stc-title">'+title+'</div>'+
+    '<div class="stc-desc">'+desc+'</div>'+
+  '</div>';
+}
+function selectScenarioType(type){
+  scenarioState.type=type;
+  scenarioState.weekNum=scenarioState.weekNum||currentW;
+  scenarioState.params={};
+  renderApp();
+}
+function _renderScenarioForm(vm){
+  var type=scenarioState.type;var p=scenarioState.params;
+  var wn=scenarioState.weekNum;
+  var weekOpts='';
+  for(var i=1;i<=31;i++){weekOpts+='<option value="'+i+'"'+(i===wn?' selected':'')+'>Wk '+getCalWeek(i)+' · '+getWeekDate(i)+'</option>';}
+  var html='<div class="scenario-form">';
+  if(type==='commission'){
+    html+='<div class="sc-field"><label>Week</label><select onchange="scenarioState.weekNum=+this.value;scenarioState.params={};renderApp()">'+weekOpts+'</select></div>';
+    html+='<div class="sc-field"><label>Gross amount</label><input type="number" min="0" step="0.01" placeholder="e.g. 5000" value="'+(p.gross||'')+'" onchange="scenarioState.params.gross=this.value;_updateScenarioPreview()"></div>';
+    html+='<div class="sc-cb-row"><input type="checkbox" id="sc-tax" '+(p.taxable?'checked':'')+' onchange="scenarioState.params.taxable=this.checked;_updateScenarioPreview()"><label for="sc-tax">Taxable income (enables 40/60 split)</label></div>';
+    var gross=parseFloat(p.gross)||0;
+    if(gross>0){
+      html+='<div class="sc-preview-box"><div class="sc-preview-title">Split preview</div>'+
+        '<div class="sc-diff-row"><span class="sc-diff-lbl">Income to Checking</span><span class="sc-diff-val pos">+'+f(gross)+'</span></div>'+
+        (p.taxable?'<div class="sc-diff-row"><span class="sc-diff-lbl">40% → Vio Bank - Tax Reserve</span><span class="sc-diff-val neutral">'+f(Math.round(gross*0.40*100)/100)+'</span></div>':'')+
+        (p.taxable?'<div class="sc-diff-row"><span class="sc-diff-lbl">60% → Alaska</span><span class="sc-diff-val neutral">'+f(Math.round(gross*0.60*100)/100)+'</span></div>':'')+
+      '</div>';
+    }
+    html+='<button class="sc-apply-btn" '+(gross>0?'':'disabled')+' onclick="applyScenario()">Preview impact →</button>';
+  }else if(type==='expense'){
+    html+='<div class="sc-field"><label>Week</label><select onchange="scenarioState.weekNum=+this.value;scenarioState.params={};renderApp()">'+weekOpts+'</select></div>';
+    html+='<div class="sc-field"><label>Description</label><input type="text" placeholder="e.g. Car repair" value="'+(p.label||'')+'" oninput="scenarioState.params.label=this.value"></div>';
+    html+='<div class="sc-field"><label>Amount</label><input type="number" min="0" step="0.01" placeholder="e.g. 800" value="'+(p.amount||'')+'" onchange="scenarioState.params.amount=this.value;_updateScenarioPreview()"></div>';
+    var amt=parseFloat(p.amount)||0;
+    html+='<button class="sc-apply-btn" '+(amt>0?'':'disabled')+' onclick="applyScenario()">Preview impact →</button>';
+  }else if(type==='inflow'){
+    html+='<div class="sc-field"><label>Week</label><select onchange="scenarioState.weekNum=+this.value;scenarioState.params={};renderApp()">'+weekOpts+'</select></div>';
+    html+='<div class="sc-field"><label>Description</label><input type="text" placeholder="e.g. Side project payment" value="'+(p.label||'')+'" oninput="scenarioState.params.label=this.value"></div>';
+    html+='<div class="sc-field"><label>Amount</label><input type="number" min="0" step="0.01" placeholder="e.g. 2500" value="'+(p.amount||'')+'" onchange="scenarioState.params.amount=this.value;_updateScenarioPreview()"></div>';
+    html+='<div class="sc-cb-row"><input type="checkbox" id="sc-inf-tax" '+(p.taxable?'checked':'')+' onchange="scenarioState.params.taxable=this.checked;_updateScenarioPreview()"><label for="sc-inf-tax">Taxable (apply 40/60 commission split)</label></div>';
+    var amt2=parseFloat(p.amount)||0;
+    html+='<button class="sc-apply-btn" '+(amt2>0?'':'disabled')+' onclick="applyScenario()">Preview impact →</button>';
+  }else if(type==='goal'){
+    html+='<div class="sc-field"><label>Alaska savings target</label><input type="number" min="1" step="0.01" value="'+(p.ak!=null?p.ak:goalAk)+'" onchange="scenarioState.params.ak=this.value"></div>';
+    html+='<div class="sc-field"><label>Retirement savings target</label><input type="number" min="1" step="0.01" value="'+(p.rt!=null?p.rt:goalRt)+'" onchange="scenarioState.params.rt=this.value"></div>';
+    html+='<div style="font-size:11.5px;color:var(--muted);margin-bottom:12px">Current targets: Alaska '+f(goalAk)+', Retirement '+f(goalRt)+'</div>';
+    html+='<button class="sc-apply-btn" onclick="applyScenario()">Preview impact →</button>';
+  }
+  // If scenario is active, show diff table for current week
+  if(scenarioState.active&&scenarioState.type!=='goal'&&vm){
+    var baseline=runModel(goalAk,goalRt);
+    var bw=baseline.find(function(w){return w.num===scenarioState.weekNum;});
+    var pw=vm.weeks.find(function(w){return w.num===scenarioState.weekNum;});
+    if(bw&&pw){
+      html+='<div class="sc-preview-box" style="margin-top:14px"><div class="sc-preview-title">Impact on Wk '+getCalWeek(scenarioState.weekNum)+' balances</div>'+
+        _diffRow('Checking',bw.chk,pw.chk)+
+        _diffRow('Savings',bw.sav,pw.sav)+
+        _diffRow('Vio Bank - Tax Reserve',bw.tax,pw.tax)+
+        _diffRow('Alaska remaining',bw.akRem,pw.akRem,true)+
+      '</div>';
+    }
+  }
+  html+='</div>';
+  return html;
+}
+function _diffRow(label,before,after,invertGood){
+  var delta=Math.round((after-before)*100)/100;
+  if(Math.abs(delta)<0.01)return'<div class="sc-diff-row"><span class="sc-diff-lbl">'+label+'</span><span class="sc-diff-val neutral">'+f(after)+' (no change)</span></div>';
+  var pos=invertGood?delta<0:delta>0;
+  var cls=pos?'pos':'neg';var sign=delta>0?'+':'';
+  return'<div class="sc-diff-row"><span class="sc-diff-lbl">'+label+'</span><span class="sc-diff-val '+cls+'">'+f(after)+' ('+sign+f(delta)+')</span></div>';
+}
+function _updateScenarioPreview(){renderApp();}
+
+// ── Wishlist CRUD ──────────────────────────────────────────────────────────
+var WISHLIST_SEED=[
+  {title:'App shell & navigation',notes:'New sidebar, CSS design system, section routing',phase:'Phase 1',status:'done'},
+  {title:'Overview page',notes:'Health cards, compact timeline, goal forecast rail',phase:'Phase 1',status:'done'},
+  {title:'Weekly Model layout',notes:'Transfers, actions, balances per week',phase:'Phase 1',status:'done'},
+  {title:'Goals page',notes:'Editable Alaska & Retirement savings targets',phase:'Phase 1',status:'done'},
+  {title:'History & Assumptions pages',notes:'Mobile layout, filter bar, assumption cards',phase:'Phase 1',status:'done'},
+  {title:'Required actions with checkboxes',notes:'Persistent via Supabase, sourced from realActs only',phase:'Phase 2',status:'done'},
+  {title:'Floor health panel',notes:'Beginning → Inflows − Outflows = Ending, two-row layout',phase:'Phase 2',status:'done'},
+  {title:'Reconciliation drawer',notes:'Save / error / delete states, variance labels',phase:'Phase 2',status:'done'},
+  {title:'Edit-week drawer',notes:'Validation, taxable split, custom week support',phase:'Phase 2',status:'done'},
+  {title:'History filters',notes:'All, Reconciled, Open Actions, Variance, Trough, Managed, Edited, Custom',phase:'Phase 2',status:'done'},
+  {title:'Calendar week numbers',notes:'Throughout all views',phase:'Phase 2',status:'done'},
+  {title:'Supabase live writes',notes:'All data persists across sessions and devices',phase:'Phase 2',status:'done'},
+  {title:'Sync dot wired to connection state',notes:'Gray on load, green after successful connection',phase:'Phase 2',status:'done'},
+  {title:'Feature wishlist page',notes:'This page — Supabase-backed CRUD',phase:'Phase 2',status:'done'},
+  {title:'Scenario preview sandbox',notes:'Architecture that never writes to Supabase until explicitly committed',phase:'Phase 3',status:'done'},
+  {title:'Commission scenario',notes:'Week, gross amount, taxable toggle, 40/60 split preview',phase:'Phase 3',status:'done'},
+  {title:'Expense & Inflow scenarios',notes:'Add Expense, Add Inflow, Change Goal Target',phase:'Phase 3',status:'done'},
+  {title:'Exact calendar dates on cash flows',notes:'Every transfer and action shows its calendar date',phase:'Phase 3',status:'done'},
+  {title:'Wishlist full CRUD',notes:'Add ideas, edit cards, assign phases, move Planned → Done, synced via Supabase',phase:'Phase 3',status:'done'},
+  {title:'AI Q&A (read-only)',notes:'Ask plain-English questions about the model and get answers',phase:'Phase 3',status:'done'},
+  {title:'Dynamic goal registry',notes:'Add / edit / pause / archive / reprioritize goals',phase:'Phase 4',status:'planned'},
+  {title:'Goal dependency chain',notes:'Start a goal after another goal completes',phase:'Phase 4',status:'planned'},
+  {title:'Goal progress from actions',notes:'Progress gated on checked required actions, not model projection alone',phase:'Phase 4',status:'planned'},
+  {title:'Goal funding source & destination account',notes:'Per-goal: which account funds it, start week, target account',phase:'Phase 4',status:'planned'},
+  {title:'Authentication',notes:'Lock dashboard behind login — required before account connections',phase:'Phase 5',status:'planned'},
+  {title:'Account connections (OAuth)',notes:'Connect Truist, AMEX, and other accounts',phase:'Phase 6',status:'planned'},
+  {title:'Auto balance pre-fill',notes:'Pull current balance automatically when opening reconciliation drawer',phase:'Phase 6',status:'planned'},
+  {title:'Last synced badge per account',notes:'Shows when each account balance was last pulled',phase:'Phase 6',status:'planned'},
+  {title:'Account reconciliation breakdown',notes:'Per-account composition: allocated buckets vs free cash',phase:'Phase 7',status:'planned'},
+  {title:'"What is this balance?" view',notes:'Answers what exactly makes up this $X in Truist Savings',phase:'Phase 7',status:'planned'},
+];
+
+async function loadWishlist(){
+  try{
+    var r=await fetch(SUPA_URL+'/rest/v1/wishlist_items?select=*&order=created_at.asc',{headers:SUPA_H});
+    if(r.ok){
+      wishlistData=await r.json();
+      wishlistLoaded=true;
+      if(wishlistData.length===0)await seedWishlist();
+      else renderApp();
+    }
+  }catch(e){console.error('loadWishlist:',e);}
+}
+async function seedWishlist(){
+  try{
+    var rows=WISHLIST_SEED.map(function(item){return{title:item.title,notes:item.notes,phase:item.phase,status:item.status,priority:0};});
+    var r=await fetch(SUPA_URL+'/rest/v1/wishlist_items',{method:'POST',headers:Object.assign({},SUPA_H,{'Prefer':'return=representation'}),body:JSON.stringify(rows)});
+    if(r.ok){wishlistData=await r.json();wishlistLoaded=true;renderApp();}
+  }catch(e){console.error('seedWishlist:',e);}
+}
+async function saveWishlistItem(item){
+  try{
+    if(item.id){
+      await fetch(SUPA_URL+'/rest/v1/wishlist_items?id=eq.'+item.id,{method:'PATCH',headers:Object.assign({},SUPA_H,{'Prefer':'return=minimal'}),body:JSON.stringify({title:item.title,notes:item.notes,phase:item.phase,status:item.status,updated_at:new Date().toISOString()})});
+      var idx=wishlistData.findIndex(function(x){return x.id===item.id;});
+      if(idx>=0)wishlistData[idx]=Object.assign({},wishlistData[idx],item);
+    }else{
+      var r=await fetch(SUPA_URL+'/rest/v1/wishlist_items',{method:'POST',headers:Object.assign({},SUPA_H,{'Prefer':'return=representation'}),body:JSON.stringify({title:item.title,notes:item.notes||'',phase:item.phase||'Backlog',status:'idea',priority:0})});
+      if(r.ok){var created=await r.json();wishlistData=wishlistData.concat(created);}
+    }
+    wishlistAddOpen=false;wishlistEditId=null;renderApp();
+  }catch(e){console.error('saveWishlistItem:',e);alert('Error saving: '+e.message);}
+}
+async function deleteWishlistItem(id){
+  if(!confirm('Delete this item?'))return;
+  try{
+    await fetch(SUPA_URL+'/rest/v1/wishlist_items?id=eq.'+id,{method:'DELETE',headers:SUPA_H});
+    wishlistData=wishlistData.filter(function(x){return x.id!==id;});
+    renderApp();
+  }catch(e){console.error('deleteWishlistItem:',e);}
+}
+async function moveWishlistItem(id,newStatus){
+  var item=wishlistData.find(function(x){return x.id===id;});
+  if(!item)return;
+  var upd={status:newStatus,updated_at:new Date().toISOString()};
+  if(newStatus==='done')upd.completed_at=new Date().toISOString();
+  try{
+    await fetch(SUPA_URL+'/rest/v1/wishlist_items?id=eq.'+id,{method:'PATCH',headers:Object.assign({},SUPA_H,{'Prefer':'return=minimal'}),body:JSON.stringify(upd)});
+    var idx=wishlistData.findIndex(function(x){return x.id===id;});
+    if(idx>=0)wishlistData[idx]=Object.assign({},wishlistData[idx],upd);
+    renderApp();
+  }catch(e){console.error('moveWishlistItem:',e);}
+}
+
+function renderRoadmap(){
+  var el=document.getElementById('roadmap-content');if(!el)return;
+  if(!wishlistLoaded){
+    el.innerHTML='<div class="wl-header-bar"><div class="wl-page-title">Feature Wishlist</div><div class="wl-page-sub">Loading...</div></div>';
+    if(!wishlistLoaded)loadWishlist();
+    return;
+  }
+  var PHASES=['Backlog','Phase 3','Phase 4','Phase 5','Phase 6','Phase 7'];
+  function phaseColor(p){var m={'Phase 1':'#64748b','Phase 2':'#2563eb','Phase 3':'#7c3aed','Phase 4':'#db2777','Phase 5':'#ea580c','Phase 6':'#0d9488','Phase 7':'#65a30d','Backlog':'#94a3b8'};return m[p]||'#94a3b8';}
+  function card(item,canEdit){
+    var c=phaseColor(item.phase);
+    var isEditing=wishlistEditId===item.id;
+    if(isEditing)return editForm(item);
+    return'<div class="wl-card">'+
+      '<div class="wl-card-title">'+_esc(item.title)+'</div>'+
+      (item.notes?'<div class="wl-card-notes">'+_esc(item.notes)+'</div>':'')+
+      '<div class="wl-card-footer"><span class="wl-phase-tag" style="background:'+c+'18;color:'+c+';border-color:'+c+'44">'+(item.phase||'Backlog')+'</span></div>'+
+      (canEdit?'<div class="wl-card-actions">'+
+        (item.status==='idea'?'<button class="wl-move-btn" onclick="moveWishlistItem('+item.id+',\'planned\')">→ Planned</button>':'')+''+
+        (item.status==='planned'?'<button class="wl-move-btn" onclick="moveWishlistItem('+item.id+',\'idea\')">← Idea</button><button class="wl-move-btn" onclick="moveWishlistItem('+item.id+',\'done\')">✓ Done</button>':'')+''+
+        '<button class="wl-move-btn" onclick="wishlistEditId='+item.id+';renderApp()">Edit</button>'+
+        '<button class="wl-del-btn" onclick="deleteWishlistItem('+item.id+')">Delete</button>'+
+      '</div>':'')+'</div>';
+  }
+  function editForm(item){
+    var pOpts=PHASES.map(function(ph){return'<option value="'+ph+'"'+(item.phase===ph?' selected':'')+'>'+ph+'</option>';}).join('');
+    return'<div class="wl-add-form">'+
+      '<div class="wl-add-form-title">Edit item</div>'+
+      '<input id="wl-edit-title" type="text" placeholder="Title" value="'+_esc(item.title||'')+'" style="margin-bottom:5px">'+
+      '<textarea id="wl-edit-notes" placeholder="Notes (optional)" style="margin-bottom:5px">'+_esc(item.notes||'')+'</textarea>'+
+      '<select id="wl-edit-phase">'+pOpts+'</select>'+
+      '<div class="wl-form-btns">'+
+        '<button class="wl-save-btn" onclick="_saveEditForm('+item.id+')">Save</button>'+
+        '<button class="wl-cancel-btn" onclick="wishlistEditId=null;renderApp()">Cancel</button>'+
+      '</div>'+
+    '</div>';
+  }
+  function addForm(){
+    var pOpts=PHASES.map(function(ph){return'<option value="'+ph+'">'+ph+'</option>';}).join('');
+    return'<div class="wl-add-form">'+
+      '<div class="wl-add-form-title">New idea</div>'+
+      '<input id="wl-new-title" type="text" placeholder="Title *">'+
+      '<textarea id="wl-new-notes" placeholder="Notes (optional)"></textarea>'+
+      '<select id="wl-new-phase">'+pOpts+'</select>'+
+      '<div class="wl-form-btns">'+
+        '<button class="wl-save-btn" onclick="_saveAddForm()">Add</button>'+
+        '<button class="wl-cancel-btn" onclick="wishlistAddOpen=false;renderApp()">Cancel</button>'+
+      '</div>'+
+    '</div>';
+  }
+  var ideas=wishlistData.filter(function(i){return i.status==='idea';});
+  var planned=wishlistData.filter(function(i){return i.status==='planned';});
+  var done=wishlistData.filter(function(i){return i.status==='done';});
+  function col(title,items,showAdd,canEdit,emptyMsg){
+    return'<div class="wl-col">'+
+      '<div class="wl-col-header"><span class="wl-col-title">'+title+'</span><span class="wl-col-count">'+items.length+'</span>'+
+      (showAdd?'<button class="wl-add-btn" onclick="wishlistAddOpen='+(wishlistAddOpen?'false':'true')+';wishlistEditId=null;renderApp()">'+( wishlistAddOpen?'✕':'+ Add')+'</button>':'')+
+      '</div>'+
+      '<div class="wl-col-body">'+
+        (showAdd&&wishlistAddOpen?addForm():'')+
+        (items.length?items.map(function(it){return card(it,canEdit);}).join(''):('<div class="wl-empty">'+emptyMsg+'</div>'))+
+      '</div>'+
+    '</div>';
+  }
+  var html='<div class="wl-header-bar"><div class="wl-page-title">Feature Wishlist</div><div class="wl-page-sub">Source of truth for what has been built, what is coming, and what is on your mind. Claude reads this list for phase planning.</div></div>'+
+  '<div class="wl-board">'+
+    col('Ideas',ideas,true,true,'No ideas yet — click Add to capture one')+
+    col('Planned',planned,false,true,'Nothing planned yet')+
+    col('Done',done,false,false,'Nothing done yet')+
+  '</div>';
+  el.innerHTML=html;
+}
+function _esc(s){return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');}
+function _saveAddForm(){
+  var t=document.getElementById('wl-new-title');var n=document.getElementById('wl-new-notes');var p=document.getElementById('wl-new-phase');
+  if(!t||!t.value.trim())return;
+  saveWishlistItem({title:t.value.trim(),notes:n?n.value.trim():'',phase:p?p.value:'Backlog'});
+}
+function _saveEditForm(id){
+  var t=document.getElementById('wl-edit-title');var n=document.getElementById('wl-edit-notes');var p=document.getElementById('wl-edit-phase');
+  if(!t||!t.value.trim())return;
+  var item=wishlistData.find(function(x){return x.id===id;});
+  if(!item)return;
+  saveWishlistItem(Object.assign({},item,{title:t.value.trim(),notes:n?n.value.trim():item.notes,phase:p?p.value:item.phase}));
+}
+
+// ── AI Q&A ─────────────────────────────────────────────────────────────────
+async function saveApiKey(key){
+  if(!key||!key.trim())return;
+  anthropicKey=key.trim();
+  try{
+    await fetch(SUPA_URL+'/rest/v1/goals',{method:'POST',headers:Object.assign({},SUPA_H,{'Prefer':'resolution=merge-duplicates,return=minimal'}),body:JSON.stringify({key:'anthropic_key',value:anthropicKey})});
+  }catch(e){console.error('saveApiKey:',e);}
+  renderApp();
+}
+function renderAskClaude(){
+  var el=document.getElementById('ask-content');if(!el)return;
+  var html='<div class="ask-page">';
+  if(!anthropicKey){
+    html+='<div class="ask-setup-card">'+
+      '<h3>Connect your Anthropic API key</h3>'+
+      '<p>Paste your API key from <strong>console.anthropic.com</strong> → API Keys. It will be stored in Supabase so it syncs across devices. Claude will only use it to answer questions about your model — it never modifies your data.</p>'+
+      '<div class="ask-key-row">'+
+        '<input class="ask-key-input" id="ask-key-field" type="password" placeholder="sk-ant-...">'+
+        '<button class="ask-key-save" onclick="saveApiKey(document.getElementById(\'ask-key-field\').value)">Save key</button>'+
+      '</div>'+
+    '</div>';
+  }else{
+    html+='<div class="ask-setup-card" style="padding:10px 14px;display:flex;align-items:center;justify-content:space-between">'+
+      '<span class="ask-key-status">✓ API key connected</span>'+
+      '<button class="wl-cancel-btn" onclick="anthropicKey=\'\';renderApp()" style="font-size:11px">Change key</button>'+
+    '</div>';
+  }
+  // Chat area
+  html+='<div class="ask-chat-area" id="ask-chat-area">';
+  if(askMessages.length===0){
+    html+='<div class="ask-empty">Ask anything about your financial model.<br>Examples: "When do I finish Alaska?" · "What\'s my worst cash week?" · "How much goes to taxes by end of year?"</div>';
+  }else{
+    askMessages.forEach(function(m){html+='<div class="ask-msg '+m.role+'">'+_esc(m.content)+'</div>';});
+    if(askLoading)html+='<div class="ask-msg thinking">Thinking...</div>';
+  }
+  html+='</div>';
+  // Input row
+  html+='<div class="ask-input-row">'+
+    '<textarea class="ask-input" id="ask-input" rows="2" placeholder="Ask a question..." onkeydown="if(event.key===\'Enter\'&&!event.shiftKey){event.preventDefault();sendAsk();}"></textarea>'+
+    '<button class="ask-send-btn" onclick="sendAsk()" '+(askLoading||!anthropicKey?'disabled':'')+'>Send</button>'+
+  '</div>'+
+  '<div class="ask-footer-note">Read-only · never modifies your model · key stored encrypted in Supabase</div>';
+  html+='</div>';
+  el.innerHTML=html;
+  // Scroll to bottom
+  var ca=document.getElementById('ask-chat-area');if(ca)ca.scrollTop=ca.scrollHeight;
+}
+function _buildModelContext(){
+  var g=getGoals();var weeks=runModel(g.ak,g.rt);
+  var reconned=Object.keys(reconData).map(Number).filter(function(n){return reconData[n]&&reconData[n].chk!==undefined;});
+  var maxRecon=reconned.length?Math.max.apply(null,reconned):0;
+  var akDone=weeks.find(function(w){return w.akRem<=0.01;});
+  var troughs=weeks.filter(function(w){return w.trough;}).map(function(w){return'Wk '+getCalWeek(w.num)+' ('+getWeekDate(w.num)+')';});
+  var managed=weeks.filter(function(w){return w.managed;}).map(function(w){return'Wk '+getCalWeek(w.num)+'('+getWeekDate(w.num)+')';});
+  var wkSummaries=weeks.slice(0,10).map(function(w){return'Wk '+getCalWeek(w.num)+': Chk='+f(w.chk)+' Sav='+f(w.sav)+' LC='+f(w.lc)+' akRem='+f(w.akRem)+' retRem='+f(w.retRem);}).join('\n');
+  var w31=weeks[30];
+  return'Herndon Financial OS — model context as of today ('+new Date().toLocaleDateString()+')\n'+
+    'Current model week: '+currentW+' (Calendar Wk '+getCalWeek(currentW)+', '+getWeekDate(currentW)+')\n'+
+    'Alaska goal: $'+f(g.ak)+' remaining: $'+f((weeks.find(function(w){return w.num===currentW;})||weeks[0]).akRem)+'\n'+
+    'Retirement goal: $'+f(g.rt)+' remaining at Wk 31: $'+f(w31.retRem)+'\n'+
+    'Alaska completes: '+(akDone?'Wk '+getCalWeek(akDone.num)+' ('+getWeekDate(akDone.num)+')':'Not within 31-week model')+'\n'+
+    'Trough weeks: '+troughs.join(', ')+'\n'+
+    'Managed weeks: '+managed.join(', ')+'\n'+
+    'Last reconciled: Wk '+(maxRecon?getCalWeek(maxRecon):' — not yet')+'\n'+
+    'Week 31 balances: Chk='+f(w31.chk)+' Sav='+f(w31.sav)+' AMEX='+f(w31.amx)+' Tax='+f(w31.tax)+' LC='+f(w31.lc)+'\n'+
+    'First 10 weeks:\n'+wkSummaries;
+}
+async function sendAsk(){
+  var inputEl=document.getElementById('ask-input');
+  var q=inputEl?inputEl.value.trim():'';
+  if(!q||!anthropicKey||askLoading)return;
+  askMessages.push({role:'user',content:q});
+  askLoading=true;if(inputEl)inputEl.value='';
+  renderAskClaude();
+  try{
+    var ctx=_buildModelContext();
+    var msgs=askMessages.slice(0,-1).concat([{role:'user',content:q}]);
+    // Build full messages with system context embedded in first user message
+    var apiMsgs=msgs.map(function(m,i){
+      if(i===0&&m.role==='user'){return{role:'user',content:'You are a financial dashboard assistant for Adam Herndon\'s personal cash flow model. Answer questions based only on the model data below. Be concise and specific. Never suggest modifying the model.\n\n'+ctx+'\n\nQuestion: '+m.content};}
+      return{role:m.role,content:m.content};
+    });
+    var res=await fetch('https://api.anthropic.com/v1/messages',{
+      method:'POST',
+      headers:{'x-api-key':anthropicKey,'anthropic-version':'2023-06-01','content-type':'application/json','anthropic-dangerous-direct-browser-access':'true'},
+      body:JSON.stringify({model:'claude-haiku-4-5-20251001',max_tokens:512,messages:apiMsgs})
+    });
+    if(!res.ok){var err=await res.json();throw new Error(err.error&&err.error.message||'API error '+res.status);}
+    var data=await res.json();
+    var reply=data.content&&data.content[0]&&data.content[0].text||'No response.';
+    askMessages.push({role:'assistant',content:reply});
+  }catch(e){
+    console.error('sendAsk:',e);
+    askMessages.push({role:'assistant',content:'Error: '+e.message});
+  }
+  askLoading=false;renderAskClaude();
 }
 
 // Render immediately with defaults so the page isn't blank while Supabase loads
