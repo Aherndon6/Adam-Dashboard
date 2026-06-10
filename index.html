@@ -282,6 +282,28 @@ body{background:var(--bg);color:var(--ink);font-family:Inter,ui-sans-serif,syste
 .assumption-card p:last-child{margin-bottom:0}
 .assumption-card ul,.assumption-card li{font-size:12.5px;color:var(--muted);line-height:1.6}
 .assumption-card code{background:var(--surface2);border:1px solid var(--line);border-radius:4px;padding:1px 5px;font-size:11.5px;font-family:monospace;color:var(--ink)}
+/* ── Roadmap ───────────────────────────────────────────────────────── */
+.roadmap-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(340px,1fr));gap:16px}
+.roadmap-phase{background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:18px 20px;position:relative}
+.roadmap-phase.done{border-color:#bbf7d0;background:#f0fdf4}
+.roadmap-phase.done .rp-status{background:#bbf7d0;color:#15803d}
+.roadmap-phase.active{border-color:#bfdbfe;background:#eff6ff}
+.roadmap-phase.active .rp-status{background:#bfdbfe;color:#1d4ed8}
+.roadmap-phase.upcoming .rp-status{background:var(--surface2);color:var(--muted2)}
+.rp-header{display:flex;align-items:flex-start;justify-content:space-between;gap:10px;margin-bottom:12px}
+.rp-title{font-size:14px;font-weight:700;color:var(--ink)}
+.rp-num{font-size:10.5px;font-weight:700;color:var(--muted2);text-transform:uppercase;letter-spacing:.06em;margin-bottom:2px}
+.rp-status{display:inline-block;font-size:10px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;border-radius:99px;padding:3px 9px;white-space:nowrap}
+.rp-items{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:5px}
+.rp-items li{display:flex;gap:7px;align-items:baseline;font-size:12px;color:var(--muted);line-height:1.45}
+.rp-items li::before{content:'·';color:var(--muted2);flex-shrink:0}
+.rp-items li strong{color:var(--ink);font-weight:600}
+.rp-note{margin-top:12px;padding:9px 11px;background:var(--surface2);border-radius:8px;font-size:11.5px;color:var(--muted);line-height:1.5;border-left:3px solid var(--amber)}
+.roadmap-rules{margin-top:20px}
+.roadmap-rules h3{font-size:13px;font-weight:700;margin:0 0 10px;color:var(--ink)}
+.rules-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:8px}
+.rule-chip{background:var(--surface2);border:1px solid var(--line);border-radius:8px;padding:9px 12px;font-size:12px;color:var(--muted);line-height:1.45}
+.rule-chip strong{display:block;font-size:11px;font-weight:700;color:var(--ink);text-transform:uppercase;letter-spacing:.05em;margin-bottom:2px}
 .const-grid{display:grid;grid-template-columns:1fr 1fr;gap:4px;margin-top:4px}
 .const-row{display:flex;gap:8px;padding:5px 7px;background:var(--surface2);border:1px solid var(--line);border-radius:7px;font-size:11px}
 .const-key{font-family:monospace;color:var(--blue);font-weight:700;flex-shrink:0}
@@ -413,6 +435,7 @@ button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-vis
     <div class="nav-label">Records</div>
     <button class="nav-item" id="nav-history" onclick="setSection('history')"><span class="nav-icon">◑</span>History</button>
     <button class="nav-item" id="nav-assumptions" onclick="setSection('assumptions')"><span class="nav-icon">≡</span>Assumptions</button>
+    <button class="nav-item" id="nav-roadmap" onclick="setSection('roadmap')"><span class="nav-icon">⬡</span>Planned Upgrades</button>
     <div class="sidebar-footer">
       <div class="model-card">
         <div class="mc-title">Model</div>
@@ -438,6 +461,7 @@ button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-vis
       </div>
       <div id="s-history" class="section"><div id="historyContent"></div></div>
       <div id="s-assumptions" class="section"><div id="assumptions-content"></div></div>
+      <div id="s-roadmap" class="section"><div id="roadmap-content"></div></div>
     </div>
   </div>
 </div>
@@ -768,7 +792,7 @@ function updateReconLabel(weeks){
 }
 
 // ── setSection ─────────────────────────────────────────────────────────────
-const SECTION_TITLES={overview:'Overview',weekly:'Weekly Model',goals:'Goals',scenarios:'Scenarios',history:'History',assumptions:'Assumptions'};
+const SECTION_TITLES={overview:'Overview',weekly:'Weekly Model',goals:'Goals',scenarios:'Scenarios',history:'History',assumptions:'Assumptions',roadmap:'Planned Upgrades'};
 function setSection(s){
   activeSection=s;
   document.querySelectorAll('.section').forEach(function(el){el.classList.remove('active');});
@@ -1213,6 +1237,88 @@ function renderGoals(vm){
   document.getElementById('rtGoal').addEventListener('change',function(){var v=Math.max(1,parseFloat((this.value||'').replace(/[^0-9.]/g,''))||7690.98);goalRt=v;this.value=v;saveGoal('rt_goal',v);renderApp();});
 }
 
+// ── renderRoadmap ──────────────────────────────────────────────────────────
+function renderRoadmap(){
+  function phase(num,title,status,items,note){
+    var cls='roadmap-phase '+(status==='done'?'done':status==='active'?'active':'upcoming');
+    var statusLbl=status==='done'?'✓ Complete':status==='active'?'● In progress':'Upcoming';
+    var lis=items.map(function(it){return'<li>'+it+'</li>';}).join('');
+    return'<div class="'+cls+'">'+
+      '<div class="rp-header">'+
+        '<div><div class="rp-num">Phase '+num+'</div><div class="rp-title">'+title+'</div></div>'+
+        '<span class="rp-status">'+statusLbl+'</span>'+
+      '</div>'+
+      '<ul class="rp-items">'+lis+'</ul>'+
+      (note?'<div class="rp-note">'+note+'</div>':'')+
+    '</div>';
+  }
+  var html='<div class="roadmap-grid">'+
+    phase(1,'Presentation Layer Refactor','done',[
+      'New app shell, sidebar navigation, CSS design system',
+      'Overview with health cards, compact timeline, goal forecast rail',
+      'Weekly Model layout with transfers, actions, balances',
+      'Goals page with editable Alaska &amp; Retirement targets',
+      'History, Assumptions, mobile layout'
+    ])+
+    phase(2,'Operational UX Hardening','done',[
+      'Required actions from model (<code>realActs</code>) with persistent checkboxes',
+      'Deferred transfer display with floor-protection explanation',
+      'Floor health panel — Beginning → Inflows − Outflows = Ending',
+      'Reconciliation drawer with save/error/delete states and variance labels',
+      'Edit-week drawer with validation, taxable split, custom week support',
+      'History filters: All, Reconciled, Open Actions, Variance, Trough, Managed, Edited',
+      'Calendar week numbers throughout (Wk 23 vs model week 1)',
+      'Assumption cards including budget surplus &amp; goal funding explanation',
+      'Supabase writes live — all data persists across sessions',
+      'Timeline click highlights only — no unexpected navigation'
+    ])+
+    phase(3,'Scenario Preview Layer','upcoming',[
+      '<strong>3A</strong> Preview architecture — sandbox that never writes to Supabase until confirmed',
+      '<strong>3B</strong> Add Commission scenario — week, gross, taxable toggle, 40/60 split preview',
+      '<strong>3C</strong> Add Expense, Add Inflow, Change Goal Target scenarios',
+      '<strong>3D</strong> Commit flow — confirmation modal → persist → clear preview',
+      '<strong>3E</strong> Exact calendar date on every transfer and cash flow event',
+      '<strong>3F</strong> AI Q&amp;A — ask questions about the model in plain English (read-only)'
+    ],'Preview never modifies saved plan. Cancel always restores baseline.')+
+    phase(4,'Dynamic Goal Registry','upcoming',[
+      'Reproduce current Alaska + Retirement outputs exactly before enabling changes',
+      'Add / edit / pause / archive / reprioritize goals',
+      'Goal dependency chain — start after another goal completes',
+      'Goal progress gated on checked required actions, not model projection',
+      'Destination account, start week, funding source per goal'
+    ],'High risk — new goal engine must pass full regression before activation.')+
+    phase(5,'Authentication','upcoming',[
+      'Lock dashboard behind login',
+      'Required dependency before account connections (Phase 6) can work',
+      'Scheduled once dashboard and model feel production-solid'
+    ])+
+    phase(6,'Account Connections &amp; Auto-Balance Pull','upcoming',[
+      'Evaluate bank data aggregator (Plaid vs alternatives)',
+      'OAuth connect flow for Truist, AMEX, and other accounts',
+      'Automatic balance pre-fill when opening reconciliation drawer',
+      'Account mapping — connect bank account to dashboard account slot',
+      '"Last synced" badge with manual override preserved'
+    ],'Requires authentication (Phase 5) to be complete first.')+
+    phase(7,'Account Reconciliation Breakdown View','upcoming',[
+      'Per-account breakdown — what is a balance actually made up of?',
+      'Allocated cash buckets vs free cash vs reserved amounts',
+      'Answers "what is this $8,530 in Truist Savings composed of?"'
+    ])+
+  '</div>'+
+  '<div class="roadmap-rules">'+
+    '<h3>Standing constraints — these never change</h3>'+
+    '<div class="rules-grid">'+
+      '<div class="rule-chip"><strong>Model immutability</strong>Never modify <code>runModel()</code>, the <code>WD</code> week array, or model constants.</div>'+
+      '<div class="rule-chip"><strong>Required actions</strong>Checkboxes come from <code>w.realActs</code> only — never hard-coded.</div>'+
+      '<div class="rule-chip"><strong>Deferred transfers</strong>Deferred model transfers are display-only commentary, never checkbox tasks.</div>'+
+      '<div class="rule-chip"><strong>Supabase persistence</strong>All user data writes to Supabase. No silent removal of persistence, no localStorage fallback.</div>'+
+      '<div class="rule-chip"><strong>WD immutability</strong>Week overrides and custom weeks use <code>overrideData</code> — they never mutate <code>WD</code>.</div>'+
+      '<div class="rule-chip"><strong>Scenario isolation</strong>Preview state never writes to Supabase until user explicitly commits.</div>'+
+    '</div>'+
+  '</div>';
+  document.getElementById('roadmap-content').innerHTML=html;
+}
+
 // ── renderHistory ──────────────────────────────────────────────────────────
 function setHistoryFilter(f){historyFilter=f;var g=getGoals();renderHistory(runModel(g.ak,g.rt));}
 function renderHistory(weeksArg){
@@ -1424,6 +1530,7 @@ function renderApp(){
   else if(activeSection==='goals')renderGoals(vm);
   else if(activeSection==='history')renderHistory(weeks);
   else if(activeSection==='assumptions')renderAssumptions();
+  else if(activeSection==='roadmap')renderRoadmap();
   renderEditDrawer();
 }
 // Backward-compat alias — all existing call sites use render()
