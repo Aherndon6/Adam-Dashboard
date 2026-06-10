@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
-<title>Herndon Financial OS</title>
+<title>Herndon Financial OS — Phase 2 Test</title>
 <style>
 :root{
   --bg:#f5f6f8;--surface:#fff;--surface2:#f9fafb;--surface3:#eef2f6;
@@ -279,6 +279,7 @@ body{background:var(--bg);color:var(--ink);font-family:Inter,ui-sans-serif,syste
 .assumption-card h3{font-size:14px;font-weight:700;margin:0 0 10px}
 .assumption-card p{font-size:12.5px;color:var(--muted);line-height:1.6;margin:0 0 8px}
 .assumption-card p:last-child{margin-bottom:0}
+.assumption-card ul,.assumption-card li{font-size:12.5px;color:var(--muted);line-height:1.6}
 .assumption-card code{background:var(--surface2);border:1px solid var(--line);border-radius:4px;padding:1px 5px;font-size:11.5px;font-family:monospace;color:var(--ink)}
 .const-grid{display:grid;grid-template-columns:1fr 1fr;gap:4px;margin-top:4px}
 .const-row{display:flex;gap:8px;padding:5px 7px;background:var(--surface2);border:1px solid var(--line);border-radius:7px;font-size:11px}
@@ -317,6 +318,49 @@ body{background:var(--bg);color:var(--ink);font-family:Inter,ui-sans-serif,syste
 .modal-save:hover{background:#1d4ed8}
 .modal-cancel{padding:9px 14px;border:1px solid var(--line2);border-radius:8px;background:var(--surface2);color:var(--muted);font-size:13px;cursor:pointer;font-family:inherit}
 .modal-delete{padding:9px 14px;border:1px solid #fca5a5;border-radius:8px;background:var(--redSoft);color:var(--red);font-size:13px;cursor:pointer;font-family:inherit;margin-left:auto}
+
+/* ── Phase 2: Focus states ─────────────────────────────────────────── */
+*:focus-visible{outline:2px solid var(--blue);outline-offset:2px;border-radius:4px}
+button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-visible{outline:2px solid var(--blue);outline-offset:2px}
+/* ── Phase 2: Touch targets ────────────────────────────────────────── */
+@media(max-width:900px){
+  .btn,.wnav-btn,.recon-save,.recon-cancel,.recon-delete,.modal-save,.modal-cancel,.modal-delete,.nav-item,.mob-nav-btn{min-height:44px}
+  .task-check{width:22px;height:22px}
+}
+/* ── Phase 2: History filters ──────────────────────────────────────── */
+.history-filters{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:14px}
+.filter-btn{font-size:11px;padding:5px 12px;border-radius:99px;border:1px solid var(--line2);background:var(--surface2);color:var(--muted);cursor:pointer;font-family:inherit;transition:all .12s;white-space:nowrap}
+.filter-btn:hover{background:var(--surface3)}
+.filter-btn.active{background:var(--navy);color:#fff;border-color:var(--navy)}
+/* ── Phase 2: Deferred transfers ───────────────────────────────────── */
+.xfr-section-hdr{font-size:10px;font-weight:700;color:var(--muted2);text-transform:uppercase;letter-spacing:.07em;margin:10px 0 5px;padding-bottom:3px;border-bottom:1px solid var(--line)}
+.xfr-section-hdr:first-child{margin-top:0}
+.xfr-row.deferred{background:var(--amberSoft);border-radius:7px;padding:5px 7px;margin-bottom:4px}
+.xfr-row.deferred .xlbl{color:var(--amber);font-weight:700}
+.deferred-why{font-size:10px;color:var(--amber);margin-top:2px;font-style:italic}
+/* ── Phase 2: Floor health ─────────────────────────────────────────── */
+.floor-health{display:flex;gap:8px;flex-wrap:wrap;margin-top:11px;padding:9px 12px;background:var(--surface2);border:1px solid var(--line);border-radius:9px;font-size:11px}
+.floor-item{display:flex;flex-direction:column;gap:2px;min-width:80px}
+.floor-lbl{color:var(--muted2);text-transform:uppercase;letter-spacing:.06em;font-size:9.5px;font-weight:700}
+.floor-val{font-weight:700;font-size:12px}
+.floor-val.good{color:var(--green)}.floor-val.warn{color:var(--amber)}.floor-val.risk{color:var(--red)}
+/* ── Phase 2: Variance labels ──────────────────────────────────────── */
+.var-label{font-size:9px;display:block;font-weight:600;margin-top:1px}
+.var-label.fav{color:var(--green)}.var-label.unfav{color:var(--red)}.var-label.ok{color:var(--muted2)}
+/* ── Phase 2: Inline confirmation ──────────────────────────────────── */
+.confirm-row{display:flex;gap:8px;align-items:center;background:var(--redSoft);border:1px solid #fca5a5;border-radius:8px;padding:9px 13px;margin-top:6px}
+.confirm-row span{font-size:12px;color:var(--red);font-weight:600;flex:1}
+.confirm-yes{padding:7px 14px;background:var(--red);color:#fff;border:none;border-radius:6px;font-size:12px;cursor:pointer;font-family:inherit;font-weight:600}
+.confirm-no{padding:7px 14px;background:var(--surface);color:var(--muted);border:1px solid var(--line2);border-radius:6px;font-size:12px;cursor:pointer;font-family:inherit}
+/* ── Phase 2: Save state ───────────────────────────────────────────── */
+.save-status{font-size:11px;font-style:italic;padding:4px 0}
+.save-status.saving{color:var(--muted)}.save-status.saved{color:var(--green)}.save-status.error{color:var(--red)}
+/* ── Phase 2: Mobile week picker ────────────────────────────────────── */
+.mob-week-picker{display:none}
+@media(max-width:900px){
+  .mob-week-picker{display:block;margin-bottom:11px}
+  .mob-week-select{width:100%;padding:10px 13px;border:1px solid var(--line2);border-radius:10px;font-size:14px;font-family:inherit;background:var(--surface);color:var(--ink);appearance:none;-webkit-appearance:none;background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath d='M1 1l5 5 5-5' stroke='%236b7280' stroke-width='1.5' fill='none' stroke-linecap='round'/%3E%3C/svg%3E");background-repeat:no-repeat;background-position:right 13px center;padding-right:36px;min-height:44px}
+}
 /* Mobile */
 .mob-bottom-nav{display:none}
 @media(max-width:900px){
@@ -344,6 +388,7 @@ body{background:var(--bg);color:var(--ink);font-family:Inter,ui-sans-serif,syste
 </style>
 </head>
 <body>
+<div style="background:#fbbf24;color:#92400e;text-align:center;font-size:12px;font-weight:700;padding:7px;position:sticky;top:0;z-index:999;letter-spacing:.04em">⚠ PHASE 2 TEST MODE — Supabase writes stubbed · Reads live</div>
 <div class="app">
   <aside class="sidebar">
     <div class="brand">
@@ -448,6 +493,12 @@ var noteData={};
 var overrideData={};
 var reconOpen=null;
 var editOpen=null;
+// Phase 2 state
+var reconDeleteConfirm=false;
+var editDeleteConfirm=false;
+var historyFilter='all';
+var editSaving=false;
+var reconSaving=false;
 
 // Goal state — source of truth, NOT the DOM inputs
 var goalAk=7000,goalRt=7690.98;
@@ -551,17 +602,27 @@ function goWeek(dir){
 // ── Reconcile (unchanged) ──────────────────────────────────────────────────
 function openRecon(n){reconOpen=n;renderApp();setTimeout(function(){var el=document.querySelector('.recon-form');if(el)el.scrollIntoView({behavior:'smooth',block:'nearest'});},80);}
 function cancelRecon(){reconOpen=null;renderApp();}
+function confirmReconDelete(n){reconDeleteConfirm=n;renderApp();}
+function cancelReconDelete(){reconDeleteConfirm=false;renderApp();}
 async function saveRecon(n){
   function gv(id){return parseFloat(document.getElementById(id).value)||0;}
   const data={chk:gv('ri_chk'),sav:gv('ri_sav'),amx:gv('ri_amx'),tax:gv('ri_tax'),lc:gv('ri_lc')};
   const now=new Date();
   reconData[n]={...data,date:now.toLocaleDateString('en-US',{month:'short',day:'numeric'})};
-  try{await fetch(SUPA_URL+'/rest/v1/weekly_reconciliations',{method:'POST',headers:{...SUPA_H,'Prefer':'resolution=merge-duplicates'},body:JSON.stringify({week_num:n,...data,recorded_at:now.toISOString()})});}catch(e){console.error('saveRecon:',e);}
-  reconOpen=null;renderApp();
+  reconSaving=true;renderApp();
+  try{
+    await _supaWriteStub()/*save recon*/;
+    reconSaving=false;reconOpen=null;renderApp();
+  }catch(e){
+    console.error('saveRecon:',e);
+    reconSaving=false;
+    var errEl=document.querySelector('.recon-error');if(errEl){errEl.style.display='block';}
+    renderApp();
+  }
 }
 async function deleteRecon(n){
   delete reconData[n];
-  try{await fetch(SUPA_URL+'/rest/v1/weekly_reconciliations?week_num=eq.'+n,{method:'DELETE',headers:SUPA_H});}catch(e){console.error('deleteRecon:',e);}
+  try{await _supaWriteStub()/*del recon*/;}catch(e){console.error('deleteRecon:',e);}
   reconOpen=null;renderApp();
 }
 
@@ -569,7 +630,7 @@ async function deleteRecon(n){
 async function toggleTask(weekNum,taskIdx,checked){
   const key=weekNum+'_'+taskIdx;const now=new Date().toISOString();
   taskData[key]={completed:checked,completedAt:checked?now:null};
-  try{await fetch(SUPA_URL+'/rest/v1/weekly_tasks',{method:'POST',headers:{...SUPA_H,'Prefer':'resolution=merge-duplicates'},body:JSON.stringify({week_num:weekNum,task_idx:taskIdx,completed:checked,completed_at:checked?now:null})});}catch(e){console.error('toggleTask:',e);}
+  try{await _supaWriteStub()/*toggle task*/;}catch(e){console.error('toggleTask:',e);}
   renderApp();
 }
 
@@ -578,7 +639,7 @@ async function saveNote(weekNum,el){
   noteData[weekNum]=el.value;
   const s=document.getElementById('ns_'+weekNum);if(s)s.textContent='Saving...';
   try{
-    await fetch(SUPA_URL+'/rest/v1/weekly_notes',{method:'POST',headers:{...SUPA_H,'Prefer':'resolution=merge-duplicates'},body:JSON.stringify({week_num:weekNum,note:el.value,updated_at:new Date().toISOString()})});
+    await _supaWriteStub()/*save note*/;
     if(s){s.textContent='Saved';setTimeout(function(){if(s)s.textContent='';},1800);}
   }catch(e){console.error('saveNote:',e);if(s)s.textContent='Error';}
 }
@@ -608,12 +669,19 @@ function _readEditEvents(){
   return events;
 }
 async function saveWeekEdits(n){
+  const errEl=document.getElementById('drawer-error');
+  function showErr(msg){if(errEl){errEl.textContent=msg;errEl.style.display='block';}return false;}
+  // Validate: rows with a label must have a positive amount
+  const rows=document.querySelectorAll('#ev-edit-list .ev-edit-row');
+  for(const row of rows){
+    const lbl=(row.querySelector('.ev-edit-lbl')?.value||'').trim();
+    const amt=parseFloat(row.querySelector('.ev-edit-amt')?.value||'0');
+    if(lbl&&(!amt||amt<=0))return showErr('Event "'+lbl+'" has no valid amount — enter a value greater than zero.');
+  }
   const events=_readEditEvents();
   const taxableGross=events.filter(function(e){return e.t==='in'&&e.tx;}).reduce(function(s,e){return s+e.a;},0);
   const ct=Math.round(taxableGross*0.40*100)/100;const ca=Math.round(taxableGross*0.60*100)/100;
   const isNew=(n===0);let weekNum=n;let dates='';
-  const errEl=document.getElementById('drawer-error');
-  function showErr(msg){if(errEl){errEl.textContent=msg;errEl.style.display='block';}return false;}
   if(isNew){
     const startDateVal=(document.getElementById('edit-start-date')?.value||'').trim();
     if(!startDateVal)return showErr('Please select a week start date.');
@@ -627,15 +695,23 @@ async function saveWeekEdits(n){
   if(errEl)errEl.style.display='none';
   const payload={week_num:weekNum,events_json:events,ct,ca,is_custom:isNew||(n>31),updated_at:new Date().toISOString()};
   if(isNew&&dates)payload.dates=dates;
+  editSaving=true;renderEditDrawer();
   try{
-    await fetch(SUPA_URL+'/rest/v1/model_week_overrides',{method:'POST',headers:{...SUPA_H,'Prefer':'resolution=merge-duplicates'},body:JSON.stringify(payload)});
+    await _supaWriteStub()/*save override*/;
     overrideData[weekNum]=payload;
-  }catch(e){console.error('saveWeekEdits:',e);}
-  editOpen=null;document.body.style.overflow='';renderApp();
+  }catch(e){
+    console.error('saveWeekEdits:',e);
+    editSaving=false;
+    if(errEl){errEl.textContent='Save failed — check connection.';errEl.style.display='block';}
+    return;
+  }
+  editSaving=false;editOpen=null;document.body.style.overflow='';renderApp();
 }
+function confirmEditDelete(n){editDeleteConfirm=n;renderEditDrawer();}
+function cancelEditDelete(){editDeleteConfirm=false;renderEditDrawer();}
 async function deleteWeekOverride(n){
-  try{await fetch(SUPA_URL+'/rest/v1/model_week_overrides?week_num=eq.'+n,{method:'DELETE',headers:SUPA_H});delete overrideData[n];}catch(e){console.error('deleteWeekOverride:',e);}
-  editOpen=null;renderApp();
+  try{await _supaWriteStub()/*del override*/;delete overrideData[n];}catch(e){console.error('deleteWeekOverride:',e);}
+  editDeleteConfirm=false;editOpen=null;renderApp();
 }
 
 // ── updateReconLabel — section-aware topbar right ────────────────────────
@@ -868,11 +944,28 @@ function renderWeekDetail(w,weeks){
         }).join(''):'<div class="sect">Cash flow this week</div><div style="color:var(--muted);font-size:13px;padding:8px 0">No scheduled events this week.</div>')+
     '</div>'+
     '<div class="panel card-pad">'+
-      '<div class="sect">Transfers</div>'+
-      w.tr.map(function(x){
-        var ic=x.r==='done'?'✅':x.r==='defer'?'🔴':'ℹ️';
-        return'<div class="xfr-row"><span class="xi">'+ic+'</span><div class="xtext"><div class="xlbl">'+x.l+'</div><div class="xrsn">'+x.rsn+'</div></div></div>';
-      }).join('')+
+      (function(){
+        var done=w.tr.filter(function(x){return x.r==='done'||x.r==='info';});
+        var deferred=w.tr.filter(function(x){return x.r==='defer';});
+        var html='';
+        if(done.length){
+          html+='<div class="xfr-section-hdr">Transfers this week</div>';
+          html+=done.map(function(x){
+            var ic=x.r==='info'?'ℹ️':'✅';
+            return'<div class="xfr-row"><span class="xi">'+ic+'</span><div class="xtext"><div class="xlbl">'+x.l+'</div><div class="xrsn">'+x.rsn+'</div></div></div>';
+          }).join('');
+        }
+        if(deferred.length){
+          html+='<div class="xfr-section-hdr" style="color:var(--amber)">⏸ Deferred — floor protected</div>';
+          html+=deferred.map(function(x){
+            var floorAmt=w.trough?TR_FL:OP_FL;
+            var why='Checking ('+f(w.chk)+') held above '+f(floorAmt)+' floor — transfer skipped this cycle';
+            return'<div class="xfr-row deferred"><span class="xi">⏸</span><div class="xtext"><div class="xlbl">'+x.l+'</div><div class="xrsn">'+x.rsn+'</div><div class="deferred-why">'+why+'</div></div></div>';
+          }).join('');
+        }
+        if(!done.length&&!deferred.length){html='<div style="color:var(--muted);font-size:13px;padding:8px 0">No transfers this week.</div>';}
+        return html;
+      }())+
     '</div>'+
   '</div>';
   // Balance table
@@ -887,20 +980,45 @@ function renderWeekDetail(w,weeks){
     '<div class="sect">Account balances</div>'+
     '<table class="bal-table"><thead><tr>'+
       '<th>Account</th><th>Beginning</th><th>Projected</th>'+
-      (w.reconciled?'<th>Actual</th><th>Variance</th>':'')+
+      '<th>Actual</th><th>Variance</th>'+
     '</tr></thead><tbody>'+
     accounts.map(function(acc){
-      var varHtml='';
+      var actualCell,varCell;
       if(w.reconciled&&acc.actual!==null){
         var v=Math.round((acc.actual-acc.model)*100)/100;
         var vCls=v<-VAR_THRESHOLD?'var-neg':v>VAR_THRESHOLD?'var-pos':'var-ok';
         var vStr=(v>=0?'+':'−')+f(Math.abs(v));
-        varHtml='<td>'+f(acc.actual)+'</td><td class="'+vCls+'">'+vStr+'</td>';
+        var vLbl=v<-VAR_THRESHOLD?'Unfavorable':v>VAR_THRESHOLD?'Favorable':'On plan';
+        var vLblCls=v<-VAR_THRESHOLD?'unfav':v>VAR_THRESHOLD?'fav':'ok';
+        actualCell='<td>'+f(acc.actual)+'</td>';
+        varCell='<td class="'+vCls+'">'+vStr+'<span class="var-label '+vLblCls+'">'+vLbl+'</span></td>';
+      }else{
+        actualCell='<td style="color:var(--muted2)">—</td>';
+        varCell='<td style="color:var(--muted2)">—</td>';
       }
-      return'<tr><td>'+acc.name+'</td><td>'+f(acc.start)+'</td><td>'+f(acc.model)+'</td>'+varHtml+'</tr>';
+      return'<tr><td>'+acc.name+'</td><td>'+f(acc.start)+'</td><td>'+f(acc.model)+'</td>'+actualCell+varCell+'</tr>';
     }).join('')+
     '</tbody></table>'+
     '<div class="liq-row"><span class="liq-label">Operational liquidity (Checking + Savings)</span><span class="liq-val">'+f(w.ol)+'</span></div>'+
+    (function(){
+      var fl=w.trough?TR_FL:OP_FL;
+      var flLabel=w.trough?'Trough floor':'Operating floor';
+      var cushion=Math.round((w.chk-fl)*100)/100;
+      var cCls=cushion<0?'risk':cushion<500?'warn':'good';
+      var cStr=(cushion>=0?'+':'')+f(cushion)+' vs floor';
+      var statusStr=w.managed?'Managed — Savings backup ('+f(w.sav)+')':w.trough?'Trough week — reduced floor active':'Normal';
+      var totalIn=w.evs.filter(function(e){return e.a>0;}).reduce(function(s,e){return s+e.a;},0);
+      var totalOut=w.evs.filter(function(e){return e.a<0;}).reduce(function(s,e){return s+e.a;},0);
+      return'<div class="floor-health">'+
+        '<div class="floor-item"><div class="floor-lbl">Beginning</div><div class="floor-val">'+f(w.startChk)+'</div></div>'+
+        '<div class="floor-item"><div class="floor-lbl">Inflows</div><div class="floor-val" style="color:var(--green)">+'+f(totalIn)+'</div></div>'+
+        '<div class="floor-item"><div class="floor-lbl">Outflows</div><div class="floor-val" style="color:var(--red)">'+f(totalOut)+'</div></div>'+
+        '<div class="floor-item"><div class="floor-lbl">Ending</div><div class="floor-val">'+f(w.chk)+'</div></div>'+
+        '<div class="floor-item"><div class="floor-lbl">'+flLabel+'</div><div class="floor-val">'+f(fl)+'</div></div>'+
+        '<div class="floor-item"><div class="floor-lbl">Cushion</div><div class="floor-val '+cCls+'">'+cStr+'</div></div>'+
+        '<div class="floor-item"><div class="floor-lbl">Status</div><div class="floor-val '+cCls+'">'+statusStr+'</div></div>'+
+      '</div>';
+    }())+
     (w.reconciled&&w.variance?function(){
       var underItems=[],over=[];
       var names=['chk','sav','amx','tax','lc'];var labels=['Checking','Savings','AMEX','Tax HYSA','Lending Club'];
@@ -951,8 +1069,13 @@ function renderWeekDetail(w,weeks){
       '</div><div class="recon-btn-row">'+
       '<button class="recon-save" onclick="saveRecon('+w.num+')">Save actuals</button>'+
       '<button class="recon-cancel" onclick="cancelRecon()">Cancel</button>'+
-      (!w.reconciled?'<span class="recon-hint">Pre-filled with modeled values</span>':'')+
-      (w.reconciled?'<button class="recon-delete" onclick="deleteRecon('+w.num+')">Remove reconciliation</button>':'')+
+      (!w.reconciled?'<span class="recon-hint">Pre-filled with modeled values — enter your actual end-of-week balances. These roll forward into all future weeks.</span>':
+        '<span class="recon-hint">Actuals saved '+w.actualBals.date+' — edits will update all following weeks.</span>')+
+      '<div class="recon-error" style="display:none;color:var(--red);font-size:12px;background:var(--redSoft);border:1px solid #fca5a5;border-radius:6px;padding:8px 10px;margin-top:8px">Save failed — check your connection and try again.</div>'+
+      (w.reconciled?(reconDeleteConfirm===w.num?
+        '<div class="confirm-row"><span>Remove this reconciliation?</span><button class="confirm-no" onclick="cancelReconDelete()">Keep it</button><button class="confirm-yes" onclick="deleteRecon('+w.num+')">Yes, remove</button></div>':
+        '<button class="recon-delete" onclick="confirmReconDelete('+w.num+')">Remove reconciliation</button>'):'')+
+      (reconSaving?'<span class="save-status saving">Saving…</span>':'')+
       '</div></div>';
   }
   html+='</div>';
@@ -984,7 +1107,14 @@ function renderWeekly(vm){
       '<div class="'+badgeCls+'">'+badgeTxt+'</div>'+
     '</div>';
   }).join('');
-  var html='<div class="weekly-grid">'+
+  // Mobile week picker — visible only on mobile (week list is hidden)
+  var mobOpts=vm.weeks.map(function(wx){
+    var isPast=wx.num<currentW;var isNow=wx.num===currentW;
+    var lbl='Wk '+wx.num+' · '+wx.dates.split('-')[0].trim()+(isNow?' ● Now':isPast&&wx.reconciled?' ✓':isPast?' ○':'');
+    return'<option value="'+wx.num+'"'+(wx.num===w.num?' selected':'')+'>'+lbl+'</option>';
+  }).join('');
+  var html='<div class="mob-week-picker"><select class="mob-week-select" onchange="activeW=parseInt(this.value);renderApp()">'+mobOpts+'</select></div>'+
+    '<div class="weekly-grid">'+
     '<div class="panel week-list-panel">'+
       '<h3>All weeks</h3>'+
       '<div class="week-list">'+listItems+'</div>'+
@@ -1050,13 +1180,35 @@ function renderGoals(vm){
 }
 
 // ── renderHistory ──────────────────────────────────────────────────────────
+function setHistoryFilter(f){historyFilter=f;var g=getGoals();renderHistory(runModel(g.ak,g.rt));}
 function renderHistory(weeksArg){
   var weeks=weeksArg;
   if(!weeks){var g=getGoals();weeks=runModel(g.ak,g.rt);}
   var reconKeys=Object.keys(reconData).map(Number).filter(function(n){return reconData[n]&&reconData[n].chk!==undefined;});
   var maxRecon=reconKeys.length?Math.max.apply(null,reconKeys):0;
-  var html='<div class="history-summary"><strong>Progress tracker</strong> — '+reconKeys.length+' of '+currentW+' past week'+(currentW!==1?'s':'')+' reconciled.'+(maxRecon?' Last reconciled: Week '+maxRecon+'.':'')+' Click any row to jump to that week.</div>';
-  weeks.forEach(function(wx){
+  // Filter logic
+  var filters=[
+    {id:'all',label:'All ('+weeks.length+')'},
+    {id:'reconciled',label:'Reconciled ('+weeks.filter(function(w){return w.reconciled;}).length+')'},
+    {id:'open',label:'Open Actions ('+weeks.filter(function(w){return w.realActs.length&&w.realActs.some(function(_,i){return!taskData[w.num+'_'+i]||!taskData[w.num+'_'+i].completed;});}).length+')'},
+    {id:'variance',label:'Variance >$'+VAR_THRESHOLD+' ('+weeks.filter(function(w){return w.reconciled&&w.variance&&Object.values(w.variance).some(function(v){return Math.abs(v)>VAR_THRESHOLD;});}).length+')'},
+    {id:'trough',label:'Trough ('+weeks.filter(function(w){return w.trough;}).length+')'},
+    {id:'managed',label:'Managed ('+weeks.filter(function(w){return w.managed;}).length+')'},
+    {id:'edited',label:'Edited ('+weeks.filter(function(w){return!!overrideData[w.num]&&!overrideData[w.num].is_custom;}).length+')'},
+    {id:'custom',label:'Custom ('+weeks.filter(function(w){return overrideData[w.num]&&overrideData[w.num].is_custom;}).length+')'},
+  ];
+  var filteredWeeks=weeks;
+  if(historyFilter==='reconciled')filteredWeeks=weeks.filter(function(w){return w.reconciled;});
+  else if(historyFilter==='open')filteredWeeks=weeks.filter(function(w){return w.realActs.length&&w.realActs.some(function(_,i){return!taskData[w.num+'_'+i]||!taskData[w.num+'_'+i].completed;});});
+  else if(historyFilter==='variance')filteredWeeks=weeks.filter(function(w){return w.reconciled&&w.variance&&Object.values(w.variance).some(function(v){return Math.abs(v)>VAR_THRESHOLD;});});
+  else if(historyFilter==='trough')filteredWeeks=weeks.filter(function(w){return w.trough;});
+  else if(historyFilter==='managed')filteredWeeks=weeks.filter(function(w){return w.managed;});
+  else if(historyFilter==='edited')filteredWeeks=weeks.filter(function(w){return!!overrideData[w.num]&&!overrideData[w.num].is_custom;});
+  else if(historyFilter==='custom')filteredWeeks=weeks.filter(function(w){return overrideData[w.num]&&overrideData[w.num].is_custom;});
+  var html='<div class="history-filters">'+filters.map(function(fi){return'<button class="filter-btn'+(historyFilter===fi.id?' active':'')+'" onclick="setHistoryFilter(\''+fi.id+'\')">'+fi.label+'</button>';}).join('')+'</div>';
+  html+='<div class="history-summary"><strong>Progress tracker</strong> — '+reconKeys.length+' of '+currentW+' past week'+(currentW!==1?'s':'')+' reconciled.'+(maxRecon?' Last reconciled: Week '+maxRecon+'.':'')+' Click any row to jump to that week.</div>';
+  if(!filteredWeeks.length){html+='<div style="color:var(--muted);font-size:13px;padding:16px 0">No weeks match this filter.</div>';}
+  filteredWeeks.forEach(function(wx){
     var isPast=wx.num<currentW;var isNow=wx.num===currentW;
     var hasOpenTasks=isPast&&wx.realActs.length&&wx.realActs.some(function(_,i){return!taskData[wx.num+'_'+i]||!taskData[wx.num+'_'+i].completed;});
     var cls='hcard';
@@ -1126,6 +1278,21 @@ function renderAssumptions(){
       '<p><strong>Week overrides:</strong> Editing a week creates an entry in <code>overrideData</code>. The model reads <code>overrideData[num]</code> when building the effective week list. Overrides never mutate <code>WD</code>. Deleting an override restores the base week definition.</p>'+
       '<p><strong>Custom weeks:</strong> Weeks 32+ are created as <code>is_custom: true</code> overrides. They are sorted by <code>week_num</code> and appended after Week 31. Custom weeks persist through Supabase.</p>'+
     '</div>'+
+    '<div class="panel assumption-card"><h3>How Budget Surplus &amp; Extra Income Fund Goals</h3>'+
+      '<p><strong>The $2,300/month is real — and it is in the model.</strong> Our monthly budget produces roughly $2,300 more income than expenses. That underspend stays in checking and the dashboard sweeps any surplus above the protective floor into savings goals at the end of each week. It does not go into a separate account automatically; it accumulates in checking and moves to goals whenever a week ends with enough room.</p>'+
+      '<p><strong>Why the model can\'t save $2,300 every single month toward Alaska:</strong> The $2,300 is a monthly average. Individual weeks vary a lot. Rent weeks, large AMEX statements, and other heavy obligation weeks consume most or all of the checking cushion. The model always holds at least $1,500–$3,000 in checking as a buffer (sometimes more when a big bill is coming) and will not sweep below that floor. Early in the model, EF restoration ($2,250) and a deferred commission tax payment ($707) also had to clear before Alaska sweeping could begin — those finished by Week 8.</p>'+
+      '<p><strong>What actually happens with Alaska:</strong> Only 4 weeks across the full 31-week model have enough surplus above the floor to sweep to Alaska. Those sweeps total $7,000 — the full goal — but they are spread out:</p>'+
+      '<ul style="margin:.5rem 0 .75rem 1.2rem;line-height:1.7">'+
+        '<li><strong>Week 5 (Jul 5–11):</strong> $2,237.76 swept — first eligible week</li>'+
+        '<li><strong>Week 7 (Jul 19–25):</strong> $1,072.76 swept — after deferred commission tax clears</li>'+
+        '<li><strong>Week 9 (Aug 2–8):</strong> $1,447.00 swept</li>'+
+        '<li><strong>Week 20 (Oct 18–24):</strong> $2,242.48 final sweep — Alaska fully funded</li>'+
+      '</ul>'+
+      '<p>Weeks 10–19 have checking balances that look large some weeks ($5,000–$8,000) but the model holds a higher floor during those weeks because upcoming AMEX statements, rent, or other large obligations are close. There is no room above the floor to sweep.</p>'+
+      '<p><strong>Commissions (Jabian / BK bonuses):</strong> Commission income is handled separately from the budget surplus. When either Adam or Wendy receives a commission or BK bonus, the model automatically routes <strong>40% → Tax HYSA</strong> and <strong>60% → current savings goal</strong> (Alaska first, then retirement). This happens on top of whatever regular surplus exists that week. The Week 6 Wendy commission deferred because the AMEX Gold statement ($5,500) hit the same week and pushed checking below the floor — it picked up in Week 7.</p>'+
+      '<p><strong>Other extra income (freelance, gifts, one-time windfalls):</strong> Enter these as events in the Edit Week drawer. Mark the checkbox "Tax?" if the income is taxable (e.g. a consulting payment). The model will apply the same 40/60 split and route the surplus to whatever goal is currently open. If Alaska is not yet funded, extra income accelerates it. Once Alaska is done, it flows to retirement.</p>'+
+      '<p><strong>Bottom line for the Alaska timeline:</strong> Wendy\'s math is right — $2,300 × 3 months ≈ $7,000 covers the goal. The model confirms that. The reason Alaska completes in October rather than August is that the $2,300 doesn\'t move in equal monthly increments — it sweeps in 4 lumpy events driven by when checking actually clears the floor. The money is always there in checking; it just can\'t always move.</p>'+
+    '</div>'+
   '</div>';
   document.getElementById('assumptions-content').innerHTML=html;
 }
@@ -1173,9 +1340,13 @@ function renderEditDrawer(){
         '<div class="comm-hint">Check <strong>Tax?</strong> on any inflow that is a <strong>Wendy or Adam commission</strong> or <strong>BK bonus</strong>. The model auto-routes <strong>40% → Tax HYSA</strong> and <strong>60% → current savings goal</strong> on top of normal surplus logic.</div>'+
       '</div>'+
       '<div class="drawer-footer">'+
-        '<button class="modal-save" onclick="saveWeekEdits('+editOpen+')">Save &amp; Recalculate</button>'+
+        (editSaving?
+          '<button class="modal-save" disabled style="opacity:.6">Saving…</button>':
+          '<button class="modal-save" onclick="saveWeekEdits('+editOpen+')">Save &amp; Recalculate</button>')+
         '<button class="modal-cancel" onclick="closeEdit()">Cancel</button>'+
-        (!isNew&&ov?'<button class="modal-delete" onclick="deleteWeekOverride('+editOpen+')">Remove edits</button>':'')+
+        (!isNew&&ov?(editDeleteConfirm===editOpen?
+          '<div class="confirm-row" style="margin:0"><span>Remove all edits for Week '+editOpen+'?</span><button class="confirm-no" onclick="cancelEditDelete()">Keep</button><button class="confirm-yes" onclick="deleteWeekOverride('+editOpen+')">Remove</button></div>':
+          '<button class="modal-delete" onclick="confirmEditDelete('+editOpen+')">Remove edits</button>'):'')+
       '</div>';
     requestAnimationFrame(function(){drawer.classList.add('open');});
   }else{
@@ -1224,6 +1395,10 @@ function renderApp(){
 // Backward-compat alias — all existing call sites use render()
 var render=renderApp;
 
+
+// ── PHASE 2 TEST MODE — writes stubbed ─────────────────────────────────────
+function saveGoal(){}
+var _supaWriteStub=function(){return Promise.resolve({ok:true,json:()=>Promise.resolve({})});};
 // ── Supabase ───────────────────────────────────────────────────────────────
 const SUPA_URL='https://usayoldrawwmjsmretin.supabase.co';
 const SUPA_KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InVzYXlvbGRyYXd3bWpzbXJldGluIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzc0NjI0MzIsImV4cCI6MjA5MzAzODQzMn0.7dpPsXdQy2aIYYsm1yWK7D5WJH0tB32ixERMBf5HRWA';
@@ -1250,9 +1425,7 @@ async function loadAll(){
   renderApp();
 }
 
-async function saveGoal(key,value){
-  try{await fetch(SUPA_URL+'/rest/v1/goals',{method:'POST',headers:{...SUPA_H,'Prefer':'resolution=merge-duplicates'},body:JSON.stringify({key,value})});}catch(e){}
-}
+// saveGoal stubbed above — writes to goals table suppressed in test mode
 
 // Render immediately with defaults so the page isn't blank while Supabase loads
 try{
