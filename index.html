@@ -254,6 +254,7 @@ body{background:var(--bg);color:var(--ink);font-family:Inter,ui-sans-serif,syste
 .goal-priority{position:absolute;right:16px;top:16px;font-size:10px;font-weight:700;color:var(--blue);background:var(--blueSoft);border-radius:99px;padding:4px 9px}
 .goal-forecast-card{background:var(--surface2);border:1px solid var(--line);border-radius:10px;padding:11px 13px;margin-top:11px;font-size:12px;color:var(--muted);line-height:1.55}
 .goal-forecast-card strong{color:var(--ink)}
+.forecast-label{display:inline-block;font-size:9.5px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;background:var(--blueSoft);color:var(--blue);border-radius:4px;padding:1px 5px;margin-right:4px;vertical-align:middle}
 /* History */
 .history-summary{background:var(--surface);border:1px solid var(--line);border-radius:13px;padding:13px 17px;margin-bottom:13px;font-size:12.5px;color:var(--muted);line-height:1.6;box-shadow:var(--shadow)}
 .hcard{background:var(--surface);border:1px solid var(--line);border-radius:13px;padding:14px 17px;margin-bottom:9px;box-shadow:var(--shadow)}
@@ -339,11 +340,20 @@ button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-vis
 .xfr-row.deferred .xlbl{color:var(--amber);font-weight:700}
 .deferred-why{font-size:10px;color:var(--amber);margin-top:2px;font-style:italic}
 /* ── Phase 2: Floor health ─────────────────────────────────────────── */
-.floor-health{display:flex;gap:8px;flex-wrap:wrap;margin-top:11px;padding:9px 12px;background:var(--surface2);border:1px solid var(--line);border-radius:9px;font-size:11px}
-.floor-item{display:flex;flex-direction:column;gap:2px;min-width:80px}
+.floor-health{margin-top:11px;padding:10px 14px;background:var(--surface2);border:1px solid var(--line);border-radius:9px;font-size:11px;display:flex;flex-direction:column;gap:8px}
+.floor-row{display:flex;align-items:center;gap:0}
+.floor-item{display:flex;flex-direction:column;gap:2px;min-width:88px;padding:0 10px}
+.floor-item:first-child{padding-left:0}
+.floor-item.grow{flex:1}
+.floor-arrow{color:var(--muted2);font-size:13px;padding:0 2px;align-self:flex-end;padding-bottom:2px}
+.floor-divider{width:1px;background:var(--line);height:32px;margin:0 4px}
 .floor-lbl{color:var(--muted2);text-transform:uppercase;letter-spacing:.06em;font-size:9.5px;font-weight:700}
 .floor-val{font-weight:700;font-size:12px}
 .floor-val.good{color:var(--green)}.floor-val.warn{color:var(--amber)}.floor-val.risk{color:var(--red)}
+.floor-check-row{display:flex;align-items:center;gap:4px;padding-top:4px;border-top:1px solid var(--line)}
+.floor-check-item{display:flex;flex-direction:column;gap:2px;min-width:100px;padding:0 10px}
+.floor-check-item:first-child{padding-left:0}
+.floor-check-item.grow{flex:1}
 /* ── Phase 2: Variance labels ──────────────────────────────────────── */
 .var-label{font-size:9px;display:block;font-weight:600;margin-top:1px}
 .var-label.fav{color:var(--green)}.var-label.unfav{color:var(--red)}.var-label.ok{color:var(--muted2)}
@@ -388,7 +398,6 @@ button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-vis
 </style>
 </head>
 <body>
-<div style="background:#fbbf24;color:#92400e;text-align:center;font-size:12px;font-weight:700;padding:7px;position:sticky;top:0;z-index:999;letter-spacing:.04em">⚠ PHASE 2 TEST MODE — Supabase writes stubbed · Reads live</div>
 <div class="app">
   <aside class="sidebar">
     <div class="brand">
@@ -618,7 +627,8 @@ async function saveRecon(n){
   reconData[n]={...data,date:now.toLocaleDateString('en-US',{month:'short',day:'numeric'})};
   reconSaving=true;renderApp();
   try{
-    await _supaWriteStub()/*save recon*/;
+    var r=await fetch(SUPA_URL+'/rest/v1/weekly_reconciliations',{method:'POST',headers:Object.assign({},SUPA_H,{'Prefer':'resolution=merge-duplicates,return=minimal'}),body:JSON.stringify({week_num:n,chk:data.chk,sav:data.sav,amx:data.amx,tax:data.tax,lc:data.lc,recorded_at:now.toISOString()})});
+    if(!r.ok)throw new Error('HTTP '+r.status);
     reconSaving=false;reconOpen=null;renderApp();
   }catch(e){
     console.error('saveRecon:',e);
@@ -629,7 +639,9 @@ async function saveRecon(n){
 }
 async function deleteRecon(n){
   delete reconData[n];
-  try{await _supaWriteStub()/*del recon*/;}catch(e){console.error('deleteRecon:',e);}
+  try{
+    await fetch(SUPA_URL+'/rest/v1/weekly_reconciliations?week_num=eq.'+n,{method:'DELETE',headers:SUPA_H});
+  }catch(e){console.error('deleteRecon:',e);}
   reconOpen=null;renderApp();
 }
 
@@ -637,7 +649,9 @@ async function deleteRecon(n){
 async function toggleTask(weekNum,taskIdx,checked){
   const key=weekNum+'_'+taskIdx;const now=new Date().toISOString();
   taskData[key]={completed:checked,completedAt:checked?now:null};
-  try{await _supaWriteStub()/*toggle task*/;}catch(e){console.error('toggleTask:',e);}
+  try{
+    await fetch(SUPA_URL+'/rest/v1/weekly_tasks',{method:'POST',headers:Object.assign({},SUPA_H,{'Prefer':'resolution=merge-duplicates,return=minimal'}),body:JSON.stringify({week_num:weekNum,task_idx:taskIdx,completed:checked,completed_at:checked?now:null})});
+  }catch(e){console.error('toggleTask:',e);}
   renderApp();
 }
 
@@ -646,7 +660,8 @@ async function saveNote(weekNum,el){
   noteData[weekNum]=el.value;
   const s=document.getElementById('ns_'+weekNum);if(s)s.textContent='Saving...';
   try{
-    await _supaWriteStub()/*save note*/;
+    var r=await fetch(SUPA_URL+'/rest/v1/weekly_notes',{method:'POST',headers:Object.assign({},SUPA_H,{'Prefer':'resolution=merge-duplicates,return=minimal'}),body:JSON.stringify({week_num:weekNum,note:el.value})});
+    if(!r.ok)throw new Error('HTTP '+r.status);
     if(s){s.textContent='Saved';setTimeout(function(){if(s)s.textContent='';},1800);}
   }catch(e){console.error('saveNote:',e);if(s)s.textContent='Error';}
 }
@@ -704,7 +719,8 @@ async function saveWeekEdits(n){
   if(isNew&&dates)payload.dates=dates;
   editSaving=true;renderEditDrawer();
   try{
-    await _supaWriteStub()/*save override*/;
+    var r=await fetch(SUPA_URL+'/rest/v1/model_week_overrides',{method:'POST',headers:Object.assign({},SUPA_H,{'Prefer':'resolution=merge-duplicates,return=minimal'}),body:JSON.stringify(payload)});
+    if(!r.ok)throw new Error('HTTP '+r.status);
     overrideData[weekNum]=payload;
   }catch(e){
     console.error('saveWeekEdits:',e);
@@ -717,7 +733,10 @@ async function saveWeekEdits(n){
 function confirmEditDelete(n){editDeleteConfirm=n;renderEditDrawer();}
 function cancelEditDelete(){editDeleteConfirm=false;renderEditDrawer();}
 async function deleteWeekOverride(n){
-  try{await _supaWriteStub()/*del override*/;delete overrideData[n];}catch(e){console.error('deleteWeekOverride:',e);}
+  try{
+    await fetch(SUPA_URL+'/rest/v1/model_week_overrides?week_num=eq.'+n,{method:'DELETE',headers:SUPA_H});
+    delete overrideData[n];
+  }catch(e){console.error('deleteWeekOverride:',e);}
   editDeleteConfirm=false;editOpen=null;renderApp();
 }
 
@@ -1016,13 +1035,22 @@ function renderWeekDetail(w,weeks){
       var totalIn=w.evs.filter(function(e){return e.a>0;}).reduce(function(s,e){return s+e.a;},0);
       var totalOut=w.evs.filter(function(e){return e.a<0;}).reduce(function(s,e){return s+e.a;},0);
       return'<div class="floor-health">'+
-        '<div class="floor-item"><div class="floor-lbl">Beginning</div><div class="floor-val">'+f(w.startChk)+'</div></div>'+
-        '<div class="floor-item"><div class="floor-lbl">Inflows</div><div class="floor-val" style="color:var(--green)">+'+f(totalIn)+'</div></div>'+
-        '<div class="floor-item"><div class="floor-lbl">Outflows</div><div class="floor-val" style="color:var(--red)">'+f(totalOut)+'</div></div>'+
-        '<div class="floor-item"><div class="floor-lbl">Ending</div><div class="floor-val">'+f(w.chk)+'</div></div>'+
-        '<div class="floor-item"><div class="floor-lbl">'+flLabel+'</div><div class="floor-val">'+f(fl)+'</div></div>'+
-        '<div class="floor-item"><div class="floor-lbl">Cushion</div><div class="floor-val '+cCls+'">'+cStr+'</div></div>'+
-        '<div class="floor-item"><div class="floor-lbl">Status</div><div class="floor-val '+cCls+'">'+statusStr+'</div></div>'+
+        '<div class="floor-row">'+
+          '<div class="floor-item"><div class="floor-lbl">Beginning</div><div class="floor-val">'+f(w.startChk)+'</div></div>'+
+          '<div class="floor-arrow">+</div>'+
+          '<div class="floor-item"><div class="floor-lbl">Inflows</div><div class="floor-val" style="color:var(--green)">'+f(totalIn)+'</div></div>'+
+          '<div class="floor-arrow">−</div>'+
+          '<div class="floor-item"><div class="floor-lbl">Outflows</div><div class="floor-val" style="color:var(--red)">'+f(Math.abs(totalOut))+'</div></div>'+
+          '<div class="floor-arrow">=</div>'+
+          '<div class="floor-item"><div class="floor-lbl">Ending (Checking)</div><div class="floor-val">'+f(w.chk)+'</div></div>'+
+        '</div>'+
+        '<div class="floor-check-row">'+
+          '<div class="floor-check-item"><div class="floor-lbl">'+flLabel+'</div><div class="floor-val">'+f(fl)+'</div></div>'+
+          '<div class="floor-divider"></div>'+
+          '<div class="floor-check-item"><div class="floor-lbl">Cushion</div><div class="floor-val '+cCls+'">'+cStr+'</div></div>'+
+          '<div class="floor-divider"></div>'+
+          '<div class="floor-check-item grow"><div class="floor-lbl">Status</div><div class="floor-val '+cCls+'">'+statusStr+'</div></div>'+
+        '</div>'+
       '</div>';
     }())+
     (w.reconciled&&w.variance?function(){
@@ -1146,8 +1174,8 @@ function renderGoals(vm){
   var akPct=Math.min(100,+(vm.current.akSaved/ak*100).toFixed(1));
   var rtPct=Math.min(100,+(vm.current.amx/rt*100).toFixed(1));
   var lcPct=Math.min(100,+(vm.current.lc/EF_ORIG*100).toFixed(1));
-  var akForecast=vm.alaskaCompletion?'<strong>Completes Week '+vm.alaskaCompletion.num+'</strong> \xb7 '+vm.alaskaCompletion.dates:'Alaska target not yet reached within model. '+f(vm.finalWeek.akRem)+' remaining after Week 31.';
-  var rtForecast=vm.retirementCompletion?'<strong>Completes Week '+vm.retirementCompletion.num+'</strong> \xb7 '+vm.retirementCompletion.dates:'Not complete within current model \xb7 '+f(vm.finalWeek.retRem)+' remaining after Week 31.';
+  var akForecast=vm.alaskaCompletion?'<span class="forecast-label">Projected</span> <strong>Completes Wk '+getCalWeek(vm.alaskaCompletion.num)+'</strong> \xb7 '+vm.alaskaCompletion.dates:'<span class="forecast-label">Projected</span> Alaska target not reached within model \xb7 '+f(vm.finalWeek.akRem)+' remaining after Wk '+getCalWeek(31)+'.';
+  var rtForecast=vm.retirementCompletion?'<span class="forecast-label">Projected</span> <strong>Completes Wk '+getCalWeek(vm.retirementCompletion.num)+'</strong> \xb7 '+vm.retirementCompletion.dates:'<span class="forecast-label">Projected</span> Not complete within current model \xb7 '+f(vm.finalWeek.retRem)+' remaining after Wk '+getCalWeek(31)+'.';
   var html='<div class="goals-grid">'+
     '<div class="panel goal-card">'+
       '<div class="goal-priority">Priority 1</div>'+
@@ -1402,13 +1430,16 @@ function renderApp(){
 var render=renderApp;
 
 
-// ── PHASE 2 TEST MODE — writes stubbed ─────────────────────────────────────
-function saveGoal(){}
-var _supaWriteStub=function(){return Promise.resolve({ok:true,json:()=>Promise.resolve({})});};
 // ── Supabase ───────────────────────────────────────────────────────────────
 const SUPA_URL='https://usayoldrawwmjsmretin.supabase.co';
 const SUPA_KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InVzYXlvbGRyYXd3bWpzbXJldGluIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzc0NjI0MzIsImV4cCI6MjA5MzAzODQzMn0.7dpPsXdQy2aIYYsm1yWK7D5WJH0tB32ixERMBf5HRWA';
 const SUPA_H={'apikey':SUPA_KEY,'Authorization':'Bearer '+SUPA_KEY,'Content-Type':'application/json'};
+
+async function saveGoal(key,value){
+  try{
+    await fetch(SUPA_URL+'/rest/v1/goals',{method:'POST',headers:Object.assign({},SUPA_H,{'Prefer':'resolution=merge-duplicates,return=minimal'}),body:JSON.stringify({key:key,value:String(value)})});
+  }catch(e){console.error('saveGoal:',e);}
+}
 
 async function loadAll(){
   try{
@@ -1430,8 +1461,6 @@ async function loadAll(){
   }catch(e){console.error('loadAll:',e);}
   renderApp();
 }
-
-// saveGoal stubbed above — writes to goals table suppressed in test mode
 
 // Render immediately with defaults so the page isn't blank while Supabase loads
 try{
