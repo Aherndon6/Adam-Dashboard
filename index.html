@@ -206,7 +206,7 @@ body{background:var(--bg);color:var(--ink);font-family:Inter,ui-sans-serif,syste
 .task-row:last-child{margin-bottom:0}
 .task-check{width:18px;height:18px;flex-shrink:0;cursor:pointer;accent-color:var(--green);margin-top:2px}
 .task-text{flex:1;font-size:12.5px;color:var(--ink);line-height:1.4}
-.task-text.done{text-decoration:line-through;color:var(--muted2)}
+.task-text.done{text-decoration:line-through;color:var(--muted2)}.rec-row{display:flex;gap:9px;align-items:flex-start;padding:7px 9px;border:1px dashed var(--line);border-radius:9px;margin-bottom:5px;background:var(--bg);opacity:.9}.rec-row:last-child{margin-bottom:0}.rec-icon{font-size:13px;flex-shrink:0;margin-top:1px}.rec-text{flex:1;font-size:12px;color:var(--muted2);line-height:1.4}
 /* Notes */
 .notes-hdr{font-size:10px;font-weight:700;color:var(--muted2);text-transform:uppercase;letter-spacing:.07em;margin-bottom:6px}
 .notes-area{width:100%;padding:9px 11px;border:1px solid var(--line2);border-radius:9px;font-size:13px;font-family:inherit;color:var(--ink);background:var(--surface);resize:vertical;min-height:60px;line-height:1.5;display:block}
@@ -491,7 +491,7 @@ button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-vis
 }
 </style>
 </head>
-<body>
+<body><div id="staging-banner" style="position:fixed;top:0;left:0;right:0;z-index:9999;background:#b45309;color:#fff;font-size:11px;font-weight:700;text-align:center;padding:3px 8px;letter-spacing:.06em">⚠ STAGING BUILD — Supabase writes disabled — local review only</div><div style="height:22px"></div>
 <div class="app">
   <aside class="sidebar">
     <div class="brand">
@@ -545,47 +545,50 @@ button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-vis
 <div id="edit-drawer" class="drawer"></div>
 <script>
 // ── Constants (unchanged) ──────────────────────────────────────────────────
-const EF_ORIG=24738.88,EF_NEW=21738.88;
-const START_CHK=12037.73,START_SAV=6522.77,START_AMX=99.75,START_TAX=0,START_LC=16738.88;
-const EF_SAV_XFR=2750,EF_CHK_XFR=2250,BASE_TAX=521.36,RET_SAV_XFR=3772.74;
+// Simplified architecture — $6k EF injection · $6,500 operating floor · no legacy mechanics
+// Real-world moves: keep $2,250 in chk, move $2,750 sav→chk, move $1,000 LC→chk
+const START_CHK=18037.73,START_SAV=3772.77,START_AMX=99.75,START_TAX=0,START_LC=15738.88;
+const EF_AMT=15738.88; // LC/EF balance — static this model year (no transfers in or out)
+const BASE_TAX=521.36,RET_SAV_XFR=3772.74;
 const COMM_TAX=707.18,COMM_AK=1060.76;
-const OP_FL=3000,TR_FL=1500,MIN_XFR=100,AK_START=5;
-const LC_LEVELUP=250,LC_LEVELUP_WKS=new Set([5,9,14,18,22,27,31]);
+const OP_FL=6500,MIN_XFR=100,AK_START=5;
 const VAR_THRESHOLD=250;
 
 // ── Week definitions (unchanged) ───────────────────────────────────────────
+// WD: [num, dates, [inflows], [bills], [evts], ct, ca, calNote]
+// trough/managed/holdFloor removed — single OP_FL=6500 governs all weeks
 const WD=[
-  [1,'Jun 7-13',false,false,3000,[],[791],[{l:'Kia payment (6/7)',t:'ob',a:-791}],0,0],
-  [2,'Jun 14-20',false,false,9477,[2552.5],[],[{l:'Wendy paycheck + extra $400 (6/19)',t:'in',a:2552.5}],0,0],
-  [3,'Jun 21-27',false,false,4648,[5816.5],[5925.13,6368.48],[{l:'Adam paycheck (6/22)',t:'in',a:5816.5},{l:'Disney Visa $5,925.13 due 6/23 (Winshape $2,349 + party $673)',t:'ob',a:-5925.13},{l:'AMEX Platinum $6,368.48 due 6/27 — LAST major Platinum bill',t:'ob',a:-6368.48}],0,0],
-  [4,'Jun 28-Jul 4',true,false,1500,[2152.5],[2000,2000,1300],[{l:'Rent $2,000 — Zelle to Tiffany Dye (7/1)',t:'ob',a:-2000},{l:'Rent $2,000 — Zelle to Tiffany Dye (7/2)',t:'ob',a:-2000},{l:'Wendy paycheck (7/3)',t:'in',a:2152.5},{l:'Rent $1,300 — Zelle to Tiffany Dye (7/3, late day)',t:'ob',a:-1300}],0,0],
-  [5,'Jul 5-11',false,false,4191,[5816.5],[791],[{l:'Adam paycheck (7/7)',t:'in',a:5816.5},{l:'Kia payment (7/7)',t:'ob',a:-791}],0,0],
-  [6,'Jul 12-18',false,false,3000,[1767.94,2152.5],[5500],[{l:'AMEX Gold ~$5,500 due 7/17 (first statement)',t:'ob',a:-5500},{l:'Wendy Deep South commission $1,767.94 (7/15)',t:'in',a:1767.94},{l:'Wendy paycheck (7/17)',t:'in',a:2152.5}],COMM_TAX,COMM_AK],
-  [7,'Jul 19-25',false,false,3148,[5816.5],[3500],[{l:'Adam paycheck (7/22)',t:'in',a:5816.5},{l:'Disney Visa ~$3,500 due ~7/23',t:'ob',a:-3500}],0,0],
-  [8,'Jul 26-Aug 1',true,false,1500,[2552.5],[200,2000,2000],[{l:'AMEX Platinum ~$200 due ~7/27 (stragglers)',t:'ob',a:-200},{l:'Wendy paycheck + extra $400 (7/31)',t:'in',a:2552.5},{l:'Rent $2,000 — Zelle to Tiffany Dye (8/1)',t:'ob',a:-2000},{l:'Rent $2,000 — Zelle to Tiffany Dye (8/2)',t:'ob',a:-2000}],0,0],
-  [9,'Aug 2-8',false,false,3779,[5816.5],[1300,791],[{l:'Rent $1,300 — Zelle to Tiffany Dye (8/3)',t:'ob',a:-1300},{l:'Adam paycheck (8/7)',t:'in',a:5816.5},{l:'Kia payment (8/7)',t:'ob',a:-791}],0,0],
-  [10,'Aug 9-15',false,false,5931,[2152.5],[],[{l:'Wendy paycheck (8/14)',t:'in',a:2152.5}],0,0],
-  [11,'Aug 16-22',false,false,4248,[5816.5],[5500,3500],[{l:'AMEX Gold ~$5,500 due 8/17',t:'ob',a:-5500},{l:'Adam paycheck (8/21)',t:'in',a:5816.5},{l:'Disney Visa ~$3,500 due ~8/23',t:'ob',a:-3500}],0,0],
-  [12,'Aug 23-29',false,false,5300,[2552.5],[],[{l:'Wendy paycheck + extra $400 (8/28)',t:'in',a:2552.5}],0,0],
-  [13,'Aug 30-Sep 5',true,false,1500,[],[2000,2000,1300],[{l:'Rent $2,000 — Zelle to Tiffany Dye (9/1)',t:'ob',a:-2000},{l:'Rent $2,000 — Zelle to Tiffany Dye (9/2)',t:'ob',a:-2000},{l:'Rent $1,300 — Zelle to Tiffany Dye (9/3)',t:'ob',a:-1300}],0,0],
-  [14,'Sep 6-12',false,false,8500,[5816.5,2152.5],[791],[{l:'Adam paycheck (9/7)',t:'in',a:5816.5},{l:'Kia payment (9/7)',t:'ob',a:-791},{l:'Wendy paycheck (9/11)',t:'in',a:2152.5}],0,0],
-  [15,'Sep 13-19',false,false,3000,[],[5500],[{l:'AMEX Gold ~$5,500 due 9/17',t:'ob',a:-5500}],0,0],
-  [16,'Sep 20-26',false,false,6800,[5816.5,2552.5],[3500],[{l:'Adam paycheck (9/22)',t:'in',a:5816.5},{l:'Disney Visa ~$3,500 due ~9/23',t:'ob',a:-3500},{l:'Wendy paycheck + extra $400 (9/25)',t:'in',a:2552.5}],0,0],
-  [17,'Sep 27-Oct 3',true,false,1500,[],[2000,2000,1300],[{l:'Rent $2,000 — Zelle to Tiffany Dye (10/1)',t:'ob',a:-2000},{l:'Rent $2,000 — Zelle to Tiffany Dye (10/2)',t:'ob',a:-2000},{l:'Rent $1,300 — Zelle to Tiffany Dye (10/3)',t:'ob',a:-1300}],0,0],
-  [18,'Oct 4-10',false,false,8500,[5816.5,2152.5],[791],[{l:'Adam paycheck (10/7)',t:'in',a:5816.5},{l:'Kia payment (10/7)',t:'ob',a:-791},{l:'Wendy paycheck (10/9)',t:'in',a:2152.5}],0,0],
-  [19,'Oct 11-17',false,false,3000,[],[5500],[{l:'AMEX Gold ~$5,500 due ~10/16',t:'ob',a:-5500}],0,0],
-  [20,'Oct 18-24',false,false,3500,[5816.5,2552.5],[3500],[{l:'Adam paycheck (10/22)',t:'in',a:5816.5},{l:'Disney Visa ~$3,500 due ~10/23',t:'ob',a:-3500},{l:'Wendy paycheck + extra $400 (10/23)',t:'in',a:2552.5}],0,0],
-  [21,'Oct 25-31',true,false,1500,[],[2000],[{l:'Rent $2,000 — Zelle to Tiffany Dye (11/1)',t:'ob',a:-2000}],0,0],
-  [22,'Nov 1-7',false,false,3000,[5816.5],[2000,1300,791],[{l:'Rent $2,000 — Zelle to Tiffany Dye (11/2)',t:'ob',a:-2000},{l:'Rent $1,300 — Zelle to Tiffany Dye (11/3)',t:'ob',a:-1300},{l:'Adam paycheck (11/6)',t:'in',a:5816.5},{l:'Kia payment (11/7)',t:'ob',a:-791}],0,0],
-  [23,'Nov 8-14',false,false,3000,[],[],[],0,0],
-  [24,'Nov 15-21',false,false,6800,[5816.5,2552.5],[5500],[{l:'AMEX Gold ~$5,500 due ~11/17',t:'ob',a:-5500},{l:'Adam paycheck (11/20)',t:'in',a:5816.5},{l:'Wendy paycheck + extra $400 (11/20)',t:'in',a:2552.5}],0,0],
-  [25,'Nov 22-28',false,false,6800,[],[3500],[{l:'Disney Visa ~$3,500 due ~11/23',t:'ob',a:-3500}],0,0],
-  [26,'Nov 29-Dec 5',true,true,1500,[],[2000,2000,1300],[{l:'Rent $2,000 — Zelle to Tiffany Dye (12/1)',t:'ob',a:-2000},{l:'Rent $2,000 — Zelle to Tiffany Dye (12/2)',t:'ob',a:-2000},{l:'Rent $1,300 — Zelle to Tiffany Dye (12/3)',t:'ob',a:-1300}],0,0],
-  [27,'Dec 6-12',false,false,3779,[5816.5],[791],[{l:'Adam paycheck (12/7)',t:'in',a:5816.5},{l:'Kia payment (12/7)',t:'ob',a:-791}],0,0],
-  [28,'Dec 13-19',false,true,3000,[2552.5],[5500],[{l:'AMEX Gold ~$5,500 due ~12/17',t:'ob',a:-5500},{l:'Wendy paycheck + extra $400 (12/18)',t:'in',a:2552.5}],0,0],
-  [29,'Dec 20-26',false,false,3148,[5816.5],[3500],[{l:'Adam paycheck (12/22)',t:'in',a:5816.5},{l:'Disney Visa ~$3,500 due ~12/23',t:'ob',a:-3500}],0,0],
-  [30,'Dec 27-Jan 2',true,true,1500,[2152.5],[2000,2000,1300],[{l:'Wendy paycheck (12/31)',t:'in',a:2152.5},{l:'Rent $2,000 — Zelle to Tiffany Dye (1/1)',t:'ob',a:-2000},{l:'Rent $2,000 — Zelle to Tiffany Dye (1/2)',t:'ob',a:-2000},{l:'Rent $1,300 — Zelle to Tiffany Dye (1/3)',t:'ob',a:-1300}],0,0],
-  [31,'Jan 3-9 2027',false,false,3000,[5816.5],[791],[{l:'Adam paycheck (1/7)',t:'in',a:5816.5},{l:'Kia payment (1/7)',t:'ob',a:-791}],0,0],
+  [1,'Jun 7-13',[],[791],[{l:'Kia payment (6/7)',t:'ob',a:-791}],0,0,''],
+  [2,'Jun 14-20',[2552.5],[],[{l:'Wendy paycheck + extra $400 (6/19)',t:'in',a:2552.5}],0,0,''],
+  [3,'Jun 21-27',[5816.5],[5925.13,6368.48],[{l:'Adam paycheck (6/22)',t:'in',a:5816.5},{l:'Disney Visa $5,925.13 due 6/23 (Winshape $2,349 + party $673)',t:'ob',a:-5925.13},{l:'AMEX Platinum $6,368.48 due 6/27 — LAST major Platinum bill',t:'ob',a:-6368.48}],0,0,''],
+  [4,'Jun 28-Jul 4',[2152.5],[2000,2000,1300],[{l:'Rent $2,000 — Zelle to Tiffany Dye (7/1)',t:'ob',a:-2000},{l:'Rent $2,000 — Zelle to Tiffany Dye (7/2)',t:'ob',a:-2000},{l:'Wendy paycheck (7/3)',t:'in',a:2152.5},{l:'Rent $1,300 — Zelle to Tiffany Dye (7/3, late day)',t:'ob',a:-1300}],0,0,''],
+  [5,'Jul 5-11',[5816.5],[791],[{l:'Adam paycheck (7/7)',t:'in',a:5816.5},{l:'Kia payment (7/7)',t:'ob',a:-791}],0,0,''],
+  [6,'Jul 12-18',[1767.94,2152.5],[5500],[{l:'AMEX Gold ~$5,500 due 7/17 (first statement)',t:'ob',a:-5500},{l:'Wendy Deep South commission $1,767.94 (7/15)',t:'in',a:1767.94},{l:'Wendy paycheck (7/17)',t:'in',a:2152.5}],COMM_TAX,COMM_AK,''],
+  [7,'Jul 19-25',[5816.5],[3500],[{l:'Adam paycheck (7/22)',t:'in',a:5816.5},{l:'Disney Visa ~$3,500 due ~7/23',t:'ob',a:-3500}],0,0,''],
+  [8,'Jul 26-Aug 1',[2552.5],[200,2000,2000],[{l:'AMEX Platinum ~$200 due ~7/27 (stragglers)',t:'ob',a:-200},{l:'Wendy paycheck + extra $400 (7/31)',t:'in',a:2552.5},{l:'Rent $2,000 — Zelle to Tiffany Dye (8/1)',t:'ob',a:-2000},{l:'Rent $2,000 — Zelle to Tiffany Dye (8/2)',t:'ob',a:-2000}],0,0,''],
+  [9,'Aug 2-8',[5816.5],[1300,791],[{l:'Rent $1,300 — Zelle to Tiffany Dye (8/3)',t:'ob',a:-1300},{l:'Adam paycheck (8/7)',t:'in',a:5816.5},{l:'Kia payment (8/7)',t:'ob',a:-791}],0,0,''],
+  [10,'Aug 9-15',[2152.5],[],[{l:'Wendy paycheck (8/14)',t:'in',a:2152.5}],0,0,''],
+  [11,'Aug 16-22',[5816.5],[5500,3500],[{l:'AMEX Gold ~$5,500 due 8/17',t:'ob',a:-5500},{l:'Adam paycheck (8/21)',t:'in',a:5816.5},{l:'Disney Visa ~$3,500 due ~8/23',t:'ob',a:-3500}],0,0,''],
+  [12,'Aug 23-29',[2552.5],[1500],[{l:'Wendy paycheck + extra $400 (8/28)',t:'in',a:2552.5},{l:'Alaska cruise expenses week 1 (8/23-29)',t:'ob',a:-1500}],0,0,'Alaska cruise week 1 — $1,500 trip costs'],
+  [13,'Aug 30-Sep 5',[],[2000,2000,1300],[{l:'Rent $2,000 — Zelle to Tiffany Dye (9/1)',t:'ob',a:-2000},{l:'Rent $2,000 — Zelle to Tiffany Dye (9/2)',t:'ob',a:-2000},{l:'Rent $1,300 — Zelle to Tiffany Dye (9/3)',t:'ob',a:-1300}],0,0,'CALENDAR NOTE: Late-August low-liquidity week — avoid discretionary spending'],
+  [14,'Sep 6-12',[5816.5,2152.5],[791],[{l:'Adam paycheck (9/7)',t:'in',a:5816.5},{l:'Kia payment (9/7)',t:'ob',a:-791},{l:'Wendy paycheck (9/11)',t:'in',a:2152.5}],0,0,''],
+  [15,'Sep 13-19',[],[5500],[{l:'AMEX Gold ~$5,500 due 9/17',t:'ob',a:-5500}],0,0,''],
+  [16,'Sep 20-26',[5816.5,2552.5],[3500,5500],[{l:'Adam paycheck (9/22)',t:'in',a:5816.5},{l:'Disney Visa ~$3,500 due ~9/23',t:'ob',a:-3500},{l:'Wendy paycheck + extra $400 (9/25)',t:'in',a:2552.5},{l:'Alaska cruise expenses week 2 (9/20-26)',t:'ob',a:-5500}],0,0,'Alaska cruise week 2 — $5,500 trip costs'],
+  [17,'Sep 27-Oct 3',[],[2000,2000,1300],[{l:'Rent $2,000 — Zelle to Tiffany Dye (10/1)',t:'ob',a:-2000},{l:'Rent $2,000 — Zelle to Tiffany Dye (10/2)',t:'ob',a:-2000},{l:'Rent $1,300 — Zelle to Tiffany Dye (10/3)',t:'ob',a:-1300}],0,0,'CALENDAR NOTE: Late-September low-liquidity week — avoid discretionary spending'],
+  [18,'Oct 4-10',[5816.5,2152.5],[791],[{l:'Adam paycheck (10/7)',t:'in',a:5816.5},{l:'Kia payment (10/7)',t:'ob',a:-791},{l:'Wendy paycheck (10/9)',t:'in',a:2152.5}],0,0,''],
+  [19,'Oct 11-17',[],[5500],[{l:'AMEX Gold ~$5,500 due ~10/16',t:'ob',a:-5500}],0,0,''],
+  [20,'Oct 18-24',[5816.5,2552.5],[3500],[{l:'Adam paycheck (10/22)',t:'in',a:5816.5},{l:'Disney Visa ~$3,500 due ~10/23',t:'ob',a:-3500},{l:'Wendy paycheck + extra $400 (10/23)',t:'in',a:2552.5}],0,0,''],
+  [21,'Oct 25-31',[],[2000],[{l:'Rent $2,000 — Zelle to Tiffany Dye (11/1)',t:'ob',a:-2000}],0,0,''],
+  [22,'Nov 1-7',[5816.5],[2000,1300,791],[{l:'Rent $2,000 — Zelle to Tiffany Dye (11/2)',t:'ob',a:-2000},{l:'Rent $1,300 — Zelle to Tiffany Dye (11/3)',t:'ob',a:-1300},{l:'Adam paycheck (11/6)',t:'in',a:5816.5},{l:'Kia payment (11/7)',t:'ob',a:-791}],0,0,''],
+  [23,'Nov 8-14',[],[],[],0,0,''],
+  [24,'Nov 15-21',[5816.5,2552.5],[5500],[{l:'AMEX Gold ~$5,500 due ~11/17',t:'ob',a:-5500},{l:'Adam paycheck (11/20)',t:'in',a:5816.5},{l:'Wendy paycheck + extra $400 (11/20)',t:'in',a:2552.5}],0,0,''],
+  [25,'Nov 22-28',[],[3500],[{l:'Disney Visa ~$3,500 due ~11/23',t:'ob',a:-3500}],0,0,''],
+  [26,'Nov 29-Dec 5',[],[2000,2000,1300],[{l:'Rent $2,000 — Zelle to Tiffany Dye (12/1)',t:'ob',a:-2000},{l:'Rent $2,000 — Zelle to Tiffany Dye (12/2)',t:'ob',a:-2000},{l:'Rent $1,300 — Zelle to Tiffany Dye (12/3)',t:'ob',a:-1300}],0,0,'Late-November low-liquidity week — $5,300 in bills with no paycheck. Avoid discretionary spending.'],
+  [27,'Dec 6-12',[5816.5],[791],[{l:'Adam paycheck (12/7)',t:'in',a:5816.5},{l:'Kia payment (12/7)',t:'ob',a:-791}],0,0,''],
+  [28,'Dec 13-19',[2552.5],[5500],[{l:'AMEX Gold ~$5,500 due ~12/17',t:'ob',a:-5500},{l:'Wendy paycheck + extra $400 (12/18)',t:'in',a:2552.5}],0,0,''],
+  [29,'Dec 20-26',[5816.5],[3500],[{l:'Adam paycheck (12/22)',t:'in',a:5816.5},{l:'Disney Visa ~$3,500 due ~12/23',t:'ob',a:-3500}],0,0,''],
+  [30,'Dec 27-Jan 2',[2152.5],[2000,2000,1300],[{l:'Wendy paycheck (12/31)',t:'in',a:2152.5},{l:'Rent $2,000 — Zelle to Tiffany Dye (1/1)',t:'ob',a:-2000},{l:'Rent $2,000 — Zelle to Tiffany Dye (1/2)',t:'ob',a:-2000},{l:'Rent $1,300 — Zelle to Tiffany Dye (1/3)',t:'ob',a:-1300}],0,0,''],
+  [31,'Jan 3-9 2027',[5816.5],[791],[{l:'Adam paycheck (1/7)',t:'in',a:5816.5},{l:'Kia payment (1/7)',t:'ob',a:-791}],0,0,''],
 ];
 
 // ── State (Supabase-backed; no localStorage) ───────────────────────────────
@@ -611,52 +614,68 @@ var activeSection='overview';
 function runModel(akGoal,rtGoal){
   const retChkGoal=Math.max(0,Math.round((rtGoal-START_AMX-RET_SAV_XFR)*100)/100);
   let chk=START_CHK,sav=START_SAV,amx=START_AMX,tax=START_TAX,lc=START_LC;
-  let efSav=EF_SAV_XFR,efChk=EF_CHK_XFR,taxTodo=BASE_TAX;
+  let taxTodo=BASE_TAX;
+  let surplusSwept=0,surplusStart=null;
   let alaska=akGoal,retSav=RET_SAV_XFR,retChk=retChkGoal;
   const weeks=[];
   function r(n){return Math.round(n*100)/100}
   function sm(b,a,f){return Math.max(0,Math.min(r(a),r(r(b)-r(f))))}
   const effectiveWD=WD.map(function(wd){
-    const[num,dates,trough,managed,holdFloor,,,evs,ct,ca]=wd;
+    const[num,dates,,,evs,ct,ca]=wd;
     const ov=overrideData[num];
     if(!ov)return wd;
     const effEvs=(ov.events_json&&ov.events_json.length)?ov.events_json:evs;
     const effIn=effEvs.filter(function(e){return e.t==='in';}).map(function(e){return e.a;});
     const effObs=effEvs.filter(function(e){return e.t==='ob';}).map(function(e){return Math.abs(e.a);});
-    return[num,ov.dates||dates,ov.trough!=null?ov.trough:trough,ov.managed!=null?ov.managed:managed,ov.hold_floor!=null?ov.hold_floor:holdFloor,effIn,effObs,effEvs,ov.ct!=null?ov.ct:ct,ov.ca!=null?ov.ca:ca];
+    const[,,,,,,,origCalNote]=wd;return[num,ov.dates||dates,effIn,effObs,effEvs,ov.ct!=null?ov.ct:ct,ov.ca!=null?ov.ca:ca,origCalNote||''];
   });
   Object.values(overrideData).filter(function(ov){return ov.is_custom;}).sort(function(a,b){return a.week_num-b.week_num;}).forEach(function(ov){
     var effEvs=ov.events_json||[];
-    effectiveWD.push([ov.week_num,ov.dates||'Custom week',!!ov.trough,!!ov.managed,ov.hold_floor||3000,effEvs.filter(function(e){return e.t==='in';}).map(function(e){return e.a;}),effEvs.filter(function(e){return e.t==='ob';}).map(function(e){return Math.abs(e.a);}),effEvs,ov.ct||0,ov.ca||0]);
+    effectiveWD.push([ov.week_num,ov.dates||'Custom week',effEvs.filter(function(e){return e.t==='in';}).map(function(e){return e.a;}),effEvs.filter(function(e){return e.t==='ob';}).map(function(e){return Math.abs(e.a);}),effEvs,ov.ct||0,ov.ca||0,'']);
   });
   for(const wd of effectiveWD){
-    const[num,dates,trough,managed,holdFloor,inflows,obs,evs,ct,ca]=wd;
+    const[num,dates,inflows,obs,evs,ct,ca,calNote]=wd;
     const startChk=r(chk),startSav=r(sav),startAmx=r(amx),startTax=r(tax),startLc=r(lc);
-    const baseFl=trough?TR_FL:OP_FL;
-    const effFl=Math.max(baseFl,holdFloor);
+    const effFl=OP_FL; // single floor — no trough/holdFloor overrides
     for(const a of inflows)chk=r(chk+a);
     for(const a of obs)chk=r(chk-a);
-    const tr=[],ac=[];
-    const fn='$'+effFl.toLocaleString('en-US')+(effFl>baseFl?' (covers upcoming obligations)':'');
-    function mv(amt,dst){
+    const tr=[],ac=[],recActs=[];
+    const fn='$'+effFl.toLocaleString('en-US');
+    if(num===1){
+      tr.push({l:'SETUP ✔ Move $2,750 — Truist Savings → Truist Checking',r:'done',rsn:'EF injection: redirect savings to checking (do before other transfers)'});
+      tr.push({l:'SETUP ✔ Move $1,000 — Lending Club → Truist Checking',r:'done',rsn:'EF injection: partial LC drawdown for operating capital'});
+      tr.push({l:'SETUP ✔ Cancel prior $2,250 Checking→LC plan — keep in checking',r:'info',rsn:'EF injection: funds stay in checking, no LC transfer needed'});
+      ac.push('Move $2,750 Truist Savings → Truist Checking (EF injection — do first)');
+      ac.push('Move $1,000 Lending Club → Truist Checking (EF injection — do first)');
+      ac.push('[PENDING #20] Costco Visa — Confirm closing date, due date, and card transition timing (provide date to Claude to complete)');
+    }
+    function mv(amt,dst,allowFinal){
       const m=r(sm(chk,amt,effFl));
       if(m<=0)return 0;
-      if(m<MIN_XFR)return -m;
+      if(m<MIN_XFR&&!allowFinal)return -m;
       chk=r(chk-m);
       if(dst==='lc')lc=r(lc+m);else if(dst==='tax')tax=r(tax+m);
       else if(dst==='sav')sav=r(sav+m);else if(dst==='amx')amx=r(amx+m);
+      else if(dst==='surplus'){surplusSwept=r(surplusSwept+m);if(!surplusStart)surplusStart=num;}
       return m;
     }
-    function mvS(amt,dst){const m=r(amt);sav=r(sav-m);if(dst==='lc')lc=r(lc+m);else if(dst==='amx')amx=r(amx+m);return m;}
+    function mvS(amt,dst){const m=r(amt);sav=r(sav-m);if(dst==='lc')lc=r(lc+m);else if(dst==='amx')amx=r(amx+m);else if(dst==='chk')chk=r(chk+m);return m;}
+    if(num===12){mvS(1500,'chk');tr.push({l:'Alaska trip $1,500 Truist Savings → Truist Checking',r:'done',a:1500,rsn:'Fund cruise week 1 costs from Alaska savings'});ac.push('Transfer $1,500 from Truist Savings to Truist Checking (Alaska cruise week 1)');}
+    if(num===16){mvS(2500,'chk');tr.push({l:'Alaska trip $2,500 Truist Savings → Truist Checking',r:'done',a:2500,rsn:'Fund cruise week 2 costs from Alaska savings'});ac.push('Transfer $2,500 from Truist Savings to Truist Checking (Alaska cruise week 2)');}
     if(ct>0){const m=mv(ct,'tax');if(m>0){tr.push({l:'Commission 40% $'+fc(ct)+' Checking → Vio Bank - Tax Reserve',r:'done',rsn:'Post $'+fc(chk)+' ≥ '+fn});ac.push('Transfer $'+fc(ct)+' from Truist Checking to Vio Bank - Tax Reserve (commission 40%)');}else{taxTodo=r(taxTodo+ct);tr.push({l:'Commission 40% $'+fc(ct)+' deferred → tax pending',r:'defer',rsn:'No surplus above '+fn+' — picks up next eligible week'});}}
-    if(ca>0&&alaska>0&&num>=AK_START){const m=mv(Math.min(ca,alaska),'sav');if(m>0){alaska=r(alaska-m);tr.push({l:'Commission 60% $'+fc(m)+' Checking → Truist Savings (Alaska)',r:'done',rsn:'Post $'+fc(chk)+' ≥ '+fn});ac.push('Transfer $'+fc(m)+' from Truist Checking to Truist Savings (Alaska)');}else tr.push({l:'Commission 60% $'+fc(ca)+' deferred',r:'defer',rsn:'No surplus above '+fn});}
-    if(efSav>0){const m=mvS(efSav,'lc');efSav=0;tr.push({l:'EF $'+fc(m)+' Truist Savings → Lending Club',r:'done',rsn:'Savings move — zero checking impact'});ac.push('Transfer $'+fc(m)+' from Truist Savings to Lending Club (EF restoration)');}
-    if(efChk>0){const m=mv(efChk,'lc');if(m>0){efChk=r(efChk-m);const rem=efChk>0?' — $'+fc(efChk)+' carries forward':' — complete';tr.push({l:'EF $'+fc(m)+' Checking → Lending Club'+rem,r:'done',rsn:'Post $'+fc(chk)+' ≥ '+fn});ac.push('Transfer $'+fc(m)+' from Truist Checking to Lending Club (EF restoration)');}else tr.push({l:'EF $'+fc(efChk)+' Checking → Lending Club',r:'defer',rsn:'Post-obligations $'+fc(chk)+' — no surplus above '+fn});}
+    if(ca>0&&alaska>0&&num>=AK_START){const m=mv(Math.min(ca,alaska),'sav',true);if(m>0){alaska=r(alaska-m);tr.push({l:'Commission 60% $'+fc(m)+' Checking → Truist Savings (Alaska)',r:'done',rsn:'Post $'+fc(chk)+' ≥ '+fn});ac.push('Transfer $'+fc(m)+' from Truist Checking to Truist Savings (Alaska)');}else tr.push({l:'Commission 60% $'+fc(ca)+' deferred',r:'defer',rsn:'No surplus above '+fn});}
+    // EF_SAV_XFR eliminated — starting balances reflect real-world moves
+    // EF_CHK_XFR eliminated — starting balances reflect real-world moves
     if(taxTodo>0&&ct===0){const m=mv(taxTodo,'tax');if(m>0){taxTodo=r(taxTodo-m);const rem=taxTodo>0?' — $'+fc(taxTodo)+' carries forward':'';tr.push({l:'Tax $'+fc(m)+' Checking → Vio Bank - Tax Reserve'+rem,r:'done',rsn:'Post $'+fc(chk)+' ≥ '+fn});ac.push('Transfer $'+fc(m)+' from Truist Checking to Vio Bank - Tax Reserve');}else tr.push({l:'Tax $'+fc(taxTodo)+' Checking → Vio Bank - Tax Reserve',r:'defer',rsn:'Post-obligations $'+fc(chk)+' — no surplus above '+fn});}
-    if(alaska>0&&num>=AK_START&&efChk===0&&taxTodo===0&&ca===0){const m=mv(alaska,'sav');if(m>0){alaska=r(alaska-m);const rem=alaska>0?' — $'+fc(alaska)+' remaining':' — Alaska funded!';tr.push({l:'Alaska $'+fc(m)+' Checking → Truist Savings'+rem,r:'done',rsn:'Post $'+fc(chk)+' ≥ '+fn});ac.push('Transfer $'+fc(m)+' from Truist Checking to Truist Savings (Alaska fund)');}else{const pot=r(sm(chk,alaska,effFl));if(pot>0&&pot<MIN_XFR)tr.push({l:'Alaska $'+fc(pot)+' suppressed (<$100) — rolls forward',r:'info',rsn:'Too small; carries to next eligible week'});else tr.push({l:'Alaska surplus deferred',r:'defer',rsn:'Post-obligations $'+fc(chk)+' — no surplus above '+fn});}}
+    if(alaska>0&&num>=AK_START&&taxTodo===0&&ca===0){const m=mv(alaska,'sav',true);if(m>0){alaska=r(alaska-m);const rem=alaska>0?' — $'+fc(alaska)+' remaining':' — Alaska funded!';tr.push({l:'Alaska $'+fc(m)+' Checking → Truist Savings'+rem,r:'done',rsn:'Post $'+fc(chk)+' ≥ '+fn});ac.push('Transfer $'+fc(m)+' from Truist Checking to Truist Savings (Alaska fund)');}else{const pot=r(sm(chk,alaska,effFl));if(pot>0&&pot<MIN_XFR)tr.push({l:'Alaska $'+fc(pot)+' suppressed (<$100) — rolls forward',r:'info',rsn:'Too small; carries to next eligible week'});else tr.push({l:'Alaska surplus deferred',r:'defer',rsn:'Post-obligations $'+fc(chk)+' — no surplus above '+fn});}}
     if(retSav>0&&alaska===0){const m=mvS(retSav,'amx');retSav=0;tr.push({l:'Retirement $'+fc(m)+' Truist Savings → AMEX Savings',r:'done',rsn:'Savings move — zero checking impact'});ac.push('Transfer $'+fc(m)+' from Truist Savings to AMEX Savings (retirement)');}
-    if(retChk>0&&alaska===0&&efChk===0){const m=mv(retChk,'amx');if(m>0){retChk=r(retChk-m);const rem=retChk>0?' — $'+fc(retChk)+' remaining':' — retirement funded!';tr.push({l:'Retirement $'+fc(m)+' Checking → AMEX Savings'+rem,r:'done',rsn:'Post $'+fc(chk)+' ≥ '+fn});ac.push('Transfer $'+fc(m)+' from Truist Checking to AMEX Savings (retirement rebuild)');}else{const pot=r(sm(chk,retChk,effFl));if(pot>0&&pot<MIN_XFR)tr.push({l:'Retirement $'+fc(pot)+' suppressed (<$100) — rolls forward',r:'info',rsn:'Too small; carries to next eligible week'});else tr.push({l:'Retirement surplus deferred',r:'defer',rsn:'Post-obligations $'+fc(chk)+' — no surplus above '+fn});}}
-    if(LC_LEVELUP_WKS.has(num)){tr.push({l:'LevelUp $250 Vio Bank EF → Lending Club (APY boost)',r:'info',rsn:'Vio EF HYSA → LC rotation — no checking or AMEX impact. Rotate $250 back to Vio after statement closes.'});ac.push('Transfer $250 from Vio Bank EF HYSA to Lending Club (LevelUp qualifying deposit) — then rotate $250 back to Vio Bank within the month');}
+    if(retChk>0&&alaska===0){const m=mv(retChk,'amx',true);if(m>0){retChk=r(retChk-m);const rem=retChk>0?' — $'+fc(retChk)+' remaining':' — retirement funded!';tr.push({l:'Retirement $'+fc(m)+' Checking → AMEX Savings'+rem,r:'done',rsn:'Post $'+fc(chk)+' ≥ '+fn});ac.push('Transfer $'+fc(m)+' from Truist Checking to AMEX Savings (retirement rebuild)');}else{const pot=r(sm(chk,retChk,effFl));if(pot>0&&pot<MIN_XFR)tr.push({l:'Retirement $'+fc(pot)+' suppressed (<$100) — rolls forward',r:'info',rsn:'Too small; carries to next eligible week'});else tr.push({l:'Retirement surplus deferred',r:'defer',rsn:'Post-obligations $'+fc(chk)+' — no surplus above '+fn});}}
+    // LC_LEVELUP eliminated — LC is static EF, no activity this model year
+    if(alaska===0&&retChk<=0){
+      var surplusAvail=r(Math.max(0,chk-effFl));
+      if(!surplusStart&&surplusAvail>0)surplusStart=num;
+      surplusSwept=r(surplusSwept+surplusAvail); // cumulative FGB virtual total — money stays in checking
+      if(surplusAvail>0){tr.push({l:'Cumulative surplus available after goals: '+fc(surplusAvail)+' (display only — stays in Truist Checking)',r:'info',rsn:'All active goals funded — surplus accumulates in checking until Phase 4 goal queue'});}}
     if(!tr.length){tr.push({l:'No transfers this week',r:'info',rsn:'No surplus above floor after obligations'});ac.push('No transfers this week — monitor balances');}
     const mChk=r(chk),mSav=r(sav),mAmx=r(amx),mTax=r(tax),mLc=r(lc);
     let reconciled=false,variance=null,actualBals=null;
@@ -670,10 +689,14 @@ function runModel(akGoal,rtGoal){
     const totalTasks=realActs.length;
     let doneTasks=0;
     for(var ti=0;ti<totalTasks;ti++){if(taskData[num+'_'+ti]&&taskData[num+'_'+ti].completed)doneTasks++;}
-    weeks.push({num,dates,trough,managed,evs,tr,ac,realActs,totalTasks,doneTasks,
+    // ── Recurring Jabian reimbursement review (first Adam-paycheck week of each month)
+    if([5,9,14,18,22,27,31].indexOf(num)>=0){
+      recActs.push('Review Jabian reimbursements — compare expected vs. received. If a large or unusual amount is pending or recently arrived, add it as a one-time inflow via Edit Week. No action needed if reimbursements are on schedule.');}
+        weeks.push({num,dates,trough:false,managed:false,calNote,evs,tr,ac,recActs,realActs,totalTasks,doneTasks,
       chk:r(chk),sav:r(sav),amx:r(amx),tax:r(tax),lc:r(lc),
       mChk,mSav,mAmx,mTax,mLc,
       akSaved:r(akGoal-alaska),akRem:r(alaska),retRem:r(retChk),ol:r(chk+sav),
+      surplusSwept:r(surplusSwept),surplusStart,
       startChk,startSav,startAmx,startTax,startLc,
       reconciled,variance,actualBals});
   }
@@ -913,6 +936,7 @@ function buildDashboardViewModel(weeks,goals){
   const finalWeek=weeks[weeks.length-1];
   const alaskaCompletion=weeks.find(function(w){return w.akRem<=0.01;})||null;
   const retirementCompletion=weeks.find(function(w){return w.retRem<=0.01;})||null;
+  const surplusCompletion=weeks.find(function(w){return w.surplusSwept>0;})||null;
   const lowestChecking=weeks.reduce(function(min,w){return w.chk<min.chk?w:min;},weeks[0]);
   const allActions=weeks.flatMap(function(w){
     return w.realActs.map(function(label,index){
@@ -923,7 +947,7 @@ function buildDashboardViewModel(weeks,goals){
   return{
     goals:goals,weeks:weeks,current:current,finalWeek:finalWeek,
     currentWeekNum:current.num,alaskaCompletion:alaskaCompletion,
-    retirementCompletion:retirementCompletion,lowestChecking:lowestChecking,
+    retirementCompletion:retirementCompletion,surplusCompletion:surplusCompletion,lowestChecking:lowestChecking,
     allActions:allActions,openActions:allActions.filter(function(a){return!a.completed;}),
     troughWeeks:weeks.filter(function(w){return w.trough;}),
     managedWeeks:weeks.filter(function(w){return w.managed;}),
@@ -945,8 +969,8 @@ function renderTimeline(vm,clickSection){
       '" title="Wk '+getCalWeek(w.num)+' · '+w.dates+'"><span class="n">'+getCalWeek(w.num)+'</span><span class="d">'+mo+dy+'</span></div>';
   }).join('');
   var reconCount=vm.reconciledWeeks.length;
-  var nextRisk=vm.weeks.find(function(w){return w.num>=currentW&&(w.trough||w.managed);});
-  var nextRiskLabel=nextRisk?(nextRisk.managed?'Managed trough':'Trough')+' · Wk '+getCalWeek(nextRisk.num):'None upcoming';
+  var nextRisk=vm.weeks.find(function(w){return w.num>=currentW&&!!w.calNote;});
+  var nextRiskLabel=nextRisk?'Low-liquidity · Wk '+getCalWeek(nextRisk.num)+' · '+nextRisk.dates.split('-')[0].trim():'None upcoming';
   var insightHtml='<div class="timeline-insight-grid">'+
     '<div class="t-insight"><div class="label">Current week</div><div class="val">Wk '+getCalWeek(currentW)+'</div><div class="meta">'+
       (vm.weeks.find(function(w){return w.num===currentW;})||vm.weeks[0]).dates+'</div></div>'+
@@ -956,8 +980,7 @@ function renderTimeline(vm,clickSection){
   '</div>';
   var legendHtml='<div class="timeline-legend">'+
     '<div class="legend-item"><div class="legend-dot" style="background:var(--blueSoft);border:2px solid var(--blue)"></div>Current</div>'+
-    '<div class="legend-item"><div class="legend-dot" style="background:var(--amberSoft);border:1px solid #fbbf24"></div>Trough</div>'+
-    '<div class="legend-item"><div class="legend-dot" style="background:var(--redSoft);border:1px solid var(--red)"></div>Managed</div>'+
+    '<div class="legend-item"><div class="legend-dot" style="background:var(--amberSoft);border:1px solid #fbbf24"></div>Low-liquidity</div>'+
     '<div class="legend-item"><div class="legend-dot" style="background:var(--greenSoft);border:1px solid var(--green)"></div>Reconciled</div>'+
     '<div class="legend-item"><div class="legend-dot" style="background:white;border:2px dashed var(--line2)"></div>Custom</div>'+
   '</div>';
@@ -966,19 +989,16 @@ function renderTimeline(vm,clickSection){
 
 // ── renderGoalRail ─────────────────────────────────────────────────────────
 function renderGoalRail(vm){
-  // Goal rail always shows today's position (currentW), not the browsed week
-  var _grw=vm.weeks.find(function(x){return x.num===currentW;})||vm.weeks[0];
+  // Goal rail reflects the currently browsed week (activeW)
+  var _grw=vm.current;
   var akPct=Math.min(100,+(_grw.akSaved/vm.goals.ak*100).toFixed(1));
   var rtPct=Math.min(100,+(_grw.amx/vm.goals.rt*100).toFixed(1));
-  var lcPct=Math.min(100,+(_grw.lc/EF_ORIG*100).toFixed(1));
+  var lcPct=Math.min(100,+(_grw.lc/EF_AMT*100).toFixed(1));
   var akForecast=vm.alaskaCompletion?'Completes Wk '+getCalWeek(vm.alaskaCompletion.num)+' · '+vm.alaskaCompletion.dates.split('-')[0].trim():'Not yet scheduled';
   var rtForecast=vm.retirementCompletion?'Completes Wk '+getCalWeek(vm.retirementCompletion.num):'Remaining after Wk '+getCalWeek(31)+': '+f(vm.finalWeek.retRem);
+  var surplusForecast=vm.surplusCompletion?'Begins Cal Wk '+getCalWeek(vm.surplusCompletion.num)+' · '+f(vm.finalWeek.surplusSwept)+' virtual total by Cal Wk 53':'Starts after retirement funded';
+  var surplusPct=Math.min(100,vm.finalWeek.surplusSwept>0?Math.round((_grw.surplusSwept/vm.finalWeek.surplusSwept)*100):0);
   return '<div class="goal-forecast-rail panel"><h3>Goal forecast</h3>'+
-    '<div class="progress-goal">'+
-      '<div class="goal-top"><span class="name">Emergency fund (Lending Club)</span><span class="value">'+f(_grw.lc)+' / '+f(EF_ORIG)+'</span></div>'+
-      '<div class="prog-bar"><div class="prog-fill" style="background:#1d9e75;width:'+lcPct+'%"></div></div>'+
-      '<div class="goal-meta"><span>Restored to '+f(EF_NEW)+'</span><span>'+lcPct.toFixed(0)+'%</span></div>'+
-    '</div>'+
     '<div class="progress-goal">'+
       '<div class="goal-top"><span class="name">Alaska cruise</span><span class="value">'+f(_grw.akSaved)+' / '+f(vm.goals.ak)+'</span></div>'+
       '<div class="prog-bar"><div class="prog-fill" style="background:var(--blue);width:'+akPct+'%"></div></div>'+
@@ -989,17 +1009,24 @@ function renderGoalRail(vm){
       '<div class="prog-bar"><div class="prog-fill" style="background:var(--violet);width:'+rtPct+'%"></div></div>'+
       '<div class="goal-meta"><span>'+rtForecast+'</span><span>'+rtPct.toFixed(0)+'%</span></div>'+
     '</div>'+
+    '<div class="progress-goal">'+
+      '<div class="goal-top"><span class="name">Cumulative Surplus Available After Goals</span><span class="value">'+f(_grw.surplusSwept)+'</span></div>'+'<div style="font-size:11px;color:var(--muted);margin:2px 0 4px">Display only · cash stays in Truist Checking · Phase 4 converts to named goal funding</div>'+
+      '<div class="prog-bar"><div class="prog-fill" style="background:#94a3b8;width:'+surplusPct+'%"></div></div>'+
+      '<div class="goal-meta"><span>'+surplusForecast+'</span><span>'+(vm.finalWeek.surplusSwept>0?f(vm.finalWeek.surplusSwept)+' projected':'—')+'</span></div>'+
+    '</div>'+
   '</div>';
 }
 
 // ── renderOverview ─────────────────────────────────────────────────────────
 function renderOverview(vm){
   var w=vm.weeks.find(function(x){return x.num===currentW;})||vm.weeks[0];
-  var chkCls=w.chk<0?'risk':w.chk<1000?'warn':'good';
-  var nextRisk=vm.weeks.find(function(x){return x.num>=currentW&&(x.trough||x.managed);});
+  var chkCls=w.chk<0?'risk':w.chk<OP_FL?'warn':'good';
+  var nextRisk=vm.weeks.find(function(x){return x.num>=currentW&&!!x.calNote;});
   var reconKeys=Object.keys(reconData).map(Number).filter(function(n){return reconData[n]&&reconData[n].chk!==undefined;});
   var lastReconNum=reconKeys.length?Math.max.apply(null,reconKeys):0;
   var lastReconW=lastReconNum?vm.weeks.find(function(x){return x.num===lastReconNum;}):null;
+  var cushion=Math.round((w.chk-OP_FL)*100)/100;
+  var cCls2=cushion<0?'risk':cushion<500?'warn':'good';
   var html='<div class="ov-hero">'+
     '<div class="panel sys-panel">'+
       '<div class="status-badge">● System active</div>'+
@@ -1010,31 +1037,26 @@ function renderOverview(vm){
     '</div>'+
     '<div class="panel alert-panel"><h4>Key indicators</h4>'+
       '<div class="risk-item">'+
-        '<div class="risk-icon '+(w.chk<0?'':'blue')+'">'+f(w.chk).replace('$','').split('.')[0]+'</div>'+
-        '<div><div class="risk-title">Checking — Wk '+getCalWeek(currentW)+'</div>'+
-        '<div class="risk-meta">'+f(w.chk)+' ending · Floor: '+f(w.chk<0?TR_FL:OP_FL)+'</div></div>'+
+        '<div class="risk-icon '+(cushion<0?'risk':cushion<500?'warn':'blue')+'">'+(cushion>=0?'+':'')+Math.round(cushion).toLocaleString()+'</div>'+
+        '<div>'+
+          '<div class="risk-title">Checking cushion</div>'+
+          '<div class="risk-meta" style="margin-top:2px">Wk '+getCalWeek(currentW)+' · '+f(w.chk)+' balance · $6,500 floor</div>'+
+          '<div class="risk-meta" style="margin-top:1px;opacity:.85">'+(nextRisk?'Next thin: Wk '+getCalWeek(nextRisk.num)+' · '+f(nextRisk.chk)+' projected':'No thin weeks remaining ✓')+'</div>'+
+        '</div>'+
       '</div>'+
+      (nextRisk?'<div class="risk-item">'+
+        '<div class="risk-icon '+(nextRisk.chk<1500?'risk':'warn')+'">⚠️</div>'+
+        '<div><div class="risk-title">Thin week: Wk '+getCalWeek(nextRisk.num)+' · '+nextRisk.dates+'</div>'+
+        '<div class="risk-meta">'+(nextRisk.num-currentW)+' week'+(nextRisk.num-currentW!==1?'s':'')+' away · '+f(nextRisk.chk)+' projected · '+(nextRisk.calNote||'low-liquidity week')+'</div></div>'+
+      '</div>':'')+
       '<div class="risk-item">'+
-        '<div class="risk-icon '+(nextRisk?'':'green')+'">'+
-          (nextRisk?'!':'✓')+'</div>'+
-        '<div><div class="risk-title">'+(nextRisk?'Next risk: Wk '+getCalWeek(nextRisk.num):'No risk weeks ahead')+'</div>'+
-        '<div class="risk-meta">'+(nextRisk?(nextRisk.managed?'Managed trough':'Trough week')+' · '+nextRisk.dates:'All remaining weeks clear')+'</div></div>'+
-      '</div>'+
-      '<div class="risk-item">'+
-        '<div class="risk-icon violet">'+vm.openActions.length+'</div>'+
-        '<div><div class="risk-title">Open actions</div>'+
-        '<div class="risk-meta">'+(lastReconW?'Last reconciled: Wk '+getCalWeek(lastReconNum)+' · '+lastReconW.dates:'Not yet reconciled')+'</div></div>'+
+        '<div class="risk-icon '+(vm.alaskaCompletion&&vm.retirementCompletion?'green':'violet')+'">'+(vm.alaskaCompletion&&vm.retirementCompletion?'✓':'◎')+'</div>'+
+        '<div><div class="risk-title">'+(vm.alaskaCompletion&&vm.retirementCompletion?'Both goals funded':'Goals in progress')+'</div>'+
+        '<div class="risk-meta">'+(vm.alaskaCompletion&&vm.retirementCompletion?'Alaska ✓ · Retirement ✓ · Surplus accumulating in CHK':vm.alaskaCompletion?'Alaska ✓ · Retirement by Wk '+getCalWeek(vm.retirementCompletion?vm.retirementCompletion.num:10):'Alaska by Wk '+(vm.alaskaCompletion?getCalWeek(vm.alaskaCompletion.num):'TBD'))+' · '+(lastReconW?'Reconciled thru Wk '+getCalWeek(lastReconNum):'Not reconciled')+'</div></div>'+
       '</div>'+
     '</div>'+
   '</div>';
-  html+='<div class="health-grid">'+
-    '<div class="health-card"><div class="health-label">Checking (Wk '+getCalWeek(currentW)+')</div><div class="health-value '+chkCls+'">'+f(w.chk)+'</div><div class="health-hint '+(w.chk>=3000?'good':'watch')+'">Floor: '+f(w.trough?TR_FL:OP_FL)+'</div></div>'+
-    '<div class="health-card"><div class="health-label">Open actions</div><div class="health-value '+(vm.openActions.length===0?'good':vm.openActions.length<3?'warn':'risk')+'">'+vm.openActions.length+'</div><div class="health-hint">Across all '+vm.weeks.length+' weeks</div></div>'+
-    '<div class="health-card"><div class="health-label">Last reconciled</div><div class="health-value '+(lastReconNum>0?'good':'warn')+'">'+
-      (lastReconNum>0?'Wk '+getCalWeek(lastReconNum):'None')+'</div><div class="health-hint">'+
-      (lastReconW?lastReconW.dates:'No reconciliations yet')+'</div></div>'+
-    '<div class="health-card"><div class="health-label">Operational liquidity</div><div class="health-value good">'+f(w.ol)+'</div><div class="health-hint">Checking + Savings</div></div>'+
-  '</div>';
+  html+='<div class="health-grid">'+'<div class="health-card"><div class="health-label">Checking (Wk '+getCalWeek(currentW)+')</div><div class="health-value '+chkCls+'">'+f(w.chk)+'</div><div class="health-hint '+cCls2+'">Cushion: '+(cushion>=0?'+':'')+f(Math.abs(cushion))+' vs $6,500 floor</div></div>'+'<div class="health-card"><div class="health-label">Truist Savings</div><div class="health-value good">'+f(w.sav)+'</div><div class="health-hint good">Alaska fund + float</div></div>'+'<div class="health-card"><div class="health-label">Tax Reserve (Vio)</div><div class="health-value '+(w.tax>0?'good':'warn')+'">'+f(w.tax)+'</div><div class="health-hint">Income tax set aside</div></div>'+'<div class="health-card"><div class="health-label">AMEX Savings</div><div class="health-value '+(w.amx>=7690.98?'good':w.amx>99.75?'warn':'risk')+'">'+f(w.amx)+'</div><div class="health-hint">Retirement rebuild</div></div>'+'</div>';
   html+='<div class="timelineForecastPanel">'+
     '<div class="panel timelineCard"><div class="timeline-header"><h3>31-Week Timeline</h3><span>Click to highlight · scroll to see all · use Weekly Model to drill in</span></div>'+
     renderTimeline(vm,'weekly')+'</div>'+
@@ -1048,13 +1070,13 @@ function renderWeekDetail(w,weeks){
   var retChkGoal=Math.max(0,Math.round(((getGoals().rt)-START_AMX-RET_SAV_XFR)*100)/100);
   var akFunded=w.akRem<=0.01;
   var rtFunded=w.retRem<=0.01&&retChkGoal>0;
-  var efFunded=w.lc>=EF_NEW-0.01;
+  var efFunded=w.lc>=EF_AMT-0.01;
   var isPastWeek=w.num<currentW;
   var isNowWeek=w.num===currentW;
   var hasOverride=!!overrideData[w.num];
   var html='';
-  if(w.managed){html+='<div class="week-alert alert-managed"><strong>Managed trough</strong> — Checking dips '+f(Math.abs(w.chk))+' below zero from obligations alone. Truist Savings ('+f(w.sav)+') is same-bank backup. Operational liquidity: '+f(w.ol)+'.</div>';}
-  else if(w.trough&&w.chk<500){html+='<div class="week-alert alert-trough"><strong>Trough week</strong> — checking at monthly low ('+f(w.chk)+'). Truist Savings ('+f(w.sav)+') available as backup.</div>';}
+  if(w.calNote){html+='<div class="week-alert alert-trough"><strong>⚠️ '+w.calNote+'</div>';}
+  else if(w.chk<2500){html+='<div class="week-alert alert-trough"><strong>Watch</strong> — checking at '+f(w.chk)+'. Below $2,500 buffer. Review discretionary spending.</div>';}
   var prevW=weeks.find(function(x){return x.num===w.num-1;}),nextW=weeks.find(function(x){return x.num===w.num+1;});
   html+='<div class="panel wk-header-card">'+
     '<div class="wk-header-top">'+
@@ -1074,7 +1096,7 @@ function renderWeekDetail(w,weeks){
       (w.reconciled?'<span class="badge badge-recon">Reconciled \xb7 '+w.actualBals.date+'</span>':'')+
       (isPastWeek?'<span class="badge badge-past">Past</span>':'')+
       (isNowWeek?'<span class="badge badge-now">● This week</span>':'')+
-      (w.managed?'<span class="badge badge-managed">Managed trough</span>':w.trough?'<span class="badge badge-trough">Trough week</span>':'<span class="badge badge-op">Normal week</span>')+
+      (w.calNote?'<span class="badge badge-trough">⚠️ Low-liquidity week</span>':w.chk<OP_FL?'<span class="badge badge-trough">Watch</span>':'<span class="badge badge-op">Normal week</span>')+
     '</div>'+
   '</div>';
   // Cash flow + transfers
@@ -1102,7 +1124,7 @@ function renderWeekDetail(w,weeks){
         if(deferred.length){
           html+='<div class="xfr-section-hdr" style="color:var(--amber)">⏸ Deferred — floor protected</div>';
           html+=deferred.map(function(x){
-            var floorAmt=w.trough?TR_FL:OP_FL;
+            var floorAmt=OP_FL;
             var why='Checking ('+f(w.chk)+') held above '+f(floorAmt)+' floor — transfer skipped this cycle';
             return'<div class="xfr-row deferred"><span class="xi">⏸</span><div class="xtext"><div class="xlbl">'+x.l+'</div><div class="xrsn">'+x.rsn+'</div><div class="deferred-why">'+why+'</div></div></div>';
           }).join('');
@@ -1145,19 +1167,21 @@ function renderWeekDetail(w,weeks){
     '</tbody></table>'+
     '<div class="liq-row"><span class="liq-label">Operational liquidity (Checking + Savings)</span><span class="liq-val">'+f(w.ol)+'</span></div>'+
     (function(){
-      var fl=w.trough?TR_FL:OP_FL;
-      var flLabel=w.trough?'Trough floor':'Operating floor';
+      var fl=OP_FL;
+      var flLabel='Operating floor';
       var cushion=Math.round((w.chk-fl)*100)/100;
       var cCls=cushion<0?'risk':cushion<500?'warn':'good';
       var cStr=(cushion>=0?'+':'')+f(cushion)+' vs floor';
-      var statusStr=w.managed?'Managed — Savings backup ('+f(w.sav)+')':w.trough?'Trough week — reduced floor active':'Normal';
+      var statusStr=w.chk<OP_FL?'Watch — below operating floor':'Normal';
       var totalIn=w.evs.filter(function(e){return e.a>0;}).reduce(function(s,e){return s+e.a;},0);
       var totalOut=w.evs.filter(function(e){return e.a<0;}).reduce(function(s,e){return s+e.a;},0);
+      var savToChk=w.tr.filter(function(t){return t.a>0&&t.l&&t.l.indexOf('Savings → Truist Checking')>=0;}).reduce(function(s,t){return s+t.a;},0);
       return'<div class="floor-health">'+
         '<div class="floor-row">'+
           '<div class="floor-item"><div class="floor-lbl">Beginning</div><div class="floor-val">'+f(w.startChk)+'</div></div>'+
           '<div class="floor-arrow">+</div>'+
           '<div class="floor-item"><div class="floor-lbl">Inflows</div><div class="floor-val" style="color:var(--green)">'+f(totalIn)+'</div></div>'+
+          (savToChk>0?'<div class="floor-arrow">+</div><div class="floor-item"><div class="floor-lbl">Savings Drawdown</div><div class="floor-val" style="color:var(--blue)">'+f(savToChk)+'</div></div>':'')+
           '<div class="floor-arrow">−</div>'+
           '<div class="floor-item"><div class="floor-lbl">Outflows</div><div class="floor-val" style="color:var(--red)">'+f(Math.abs(totalOut))+'</div></div>'+
           '<div class="floor-arrow">=</div>'+
@@ -1197,6 +1221,15 @@ function renderWeekDetail(w,weeks){
       }).join('')+
     '</div></div>';
   }
+  // Recommended actions (no checkbox, no progress, not counted in openActions)
+  if(w.recActs&&w.recActs.length){
+    html+='<div class="panel card-pad"><div class="acts">'+
+      '<div class="act-hdr">Recommended review this week</div>'+
+      w.recActs.map(function(a){
+        return'<div class="rec-row"><span class="rec-icon">💡</span><span class="rec-text">'+a+'</span></div>';
+      }).join('')+
+    '</div></div>';
+  }
   // Notes
   var note=noteData[w.num]||'';
   html+='<div class="panel card-pad">'+
@@ -1233,7 +1266,7 @@ function renderWeekDetail(w,weeks){
   }
   html+='</div>';
   // Banner
-  if(w.num===1){html+='<div class="banner banner-green">✅ Week 1 actions restore Lending Club EF to $21,738.88 \xb7 Vio Bank - Tax Reserve funded \xb7 $3,000 reclassified as permanent operating cash</div>';}
+  if(w.num===1){html+='<div class="banner banner-green">✅ Week 1 actions Move $2,750 Truist Savings→Checking \xb7 Move $1,000 LC→Checking \xb7 Cancel $2,250 Checking→LC plan \xb7 $6,000 injection complete \xb7 Starting balances reflect these moves</div>';}
   else if(akFunded&&w.num===weeks.find(function(x){return x.akRem<=0.01;})?.num){html+='<div class="banner banner-amber">⭐ Big week — Alaska fully funded + retirement savings move + retirement rebuild begins</div>';}
   else if(akFunded&&!rtFunded){html+='<div class="banner banner-blue">✅ Alaska funded — retirement rebuild in progress</div>';}
   return html;
@@ -1244,9 +1277,9 @@ function renderWeekly(vm){
   var w=vm.weeks.find(function(x){return x.num===activeW;})||vm.weeks[0];
   var listItems=vm.weeks.map(function(wx){
     var isPast=wx.num<currentW;var isNow=wx.num===currentW;
-    var badgeCls='wli-badge '+(isNow?'now':isPast?(wx.reconciled?'ok':'past'):(wx.managed?'risk':wx.trough?'watch':''));
-    var badgeTxt=isNow?'Now':isPast?(wx.reconciled?'Recon':'Open'):(wx.managed?'Managed':wx.trough?'Trough':'');
-    var rowCls='week-list-item'+(wx.num===activeW?' active':'')+(wx.managed?' managed-item':wx.trough?' trough-item':'')+(wx.reconciled?' reconciled-item':'')+(isNow?' now-item':'');
+    var badgeCls='wli-badge '+(isNow?'now':isPast?(wx.reconciled?'ok':'past'):(wx.calNote?'watch':''));
+    var badgeTxt=isNow?'Now':isPast?(wx.reconciled?'Recon':'Open'):(wx.calNote?'Low-liq':'');
+    var rowCls='week-list-item'+(wx.num===activeW?' active':'')+(wx.calNote?' trough-item':'')+(wx.reconciled?' reconciled-item':'')+(isNow?' now-item':'');
     var dotCls=isNow?'wli-dot current':isPast&&wx.reconciled?'wli-dot reconciled':wx.managed?'wli-dot managed':wx.trough?'wli-dot trough':overrideData[wx.num]?'wli-dot edited':'wli-dot none';
     return'<div class="'+rowCls+'" onclick="activeW='+wx.num+';renderApp()">'+
       '<div class="wli-num-wrap"><div class="wli-num">'+getCalWeek(wx.num)+'</div><div class="'+dotCls+'"></div></div>'+
@@ -1293,39 +1326,54 @@ function renderGoals(vm){
   var w=vm.weeks.find(function(x){return x.num===currentW;})||vm.weeks[0];
   var akPct=Math.min(100,+(w.akSaved/ak*100).toFixed(1));
   var rtPct=Math.min(100,+(w.amx/rt*100).toFixed(1));
-  var lcPct=Math.min(100,+(w.lc/EF_ORIG*100).toFixed(1));
+  var lcPct=Math.min(100,+(w.lc/EF_AMT*100).toFixed(1));
   var akForecast=vm.alaskaCompletion?'<span class="forecast-label">Projected</span> <strong>Completes Wk '+getCalWeek(vm.alaskaCompletion.num)+'</strong> \xb7 '+vm.alaskaCompletion.dates:'<span class="forecast-label">Projected</span> Alaska target not reached within model \xb7 '+f(vm.finalWeek.akRem)+' remaining after Wk '+getCalWeek(31)+'.';
   var rtForecast=vm.retirementCompletion?'<span class="forecast-label">Projected</span> <strong>Completes Wk '+getCalWeek(vm.retirementCompletion.num)+'</strong> \xb7 '+vm.retirementCompletion.dates:'<span class="forecast-label">Projected</span> Not complete within current model \xb7 '+f(vm.finalWeek.retRem)+' remaining after Wk '+getCalWeek(31)+'.';
   var html='<div class="goals-grid">'+
     '<div class="panel goal-card">'+
       '<div class="goal-priority">Priority 1</div>'+
       '<h3>Alaska Cruise Fund</h3>'+
-      '<p class="sub">Destination: Truist Savings \xb7 Starts Week 5 \xb7 funded before retirement</p>'+
+      '<p class="sub">Destination: Truist Savings \xb7 Sweeps begin Wk 27 \xb7 funded before retirement</p>'+
       '<div class="goal-amount" style="color:var(--blue)">'+f(w.akSaved)+'</div>'+
       '<div class="goal-input-row"><span class="goal-input-label">Target</span>'+
         '<div class="ginput-wrap"><span>$</span><input type="number" id="akGoal" class="goal-inp" value="'+ak+'" step="100" inputmode="numeric"></div>'+
       '</div>'+
-      '<div class="prog-bar"><div class="prog-fill" style="background:var(--blue);width:'+akPct+'%"></div></div>'+
-      '<div class="goal-meta"><span>'+f(w.akSaved)+' saved</span><span>'+f(w.akRem)+' remaining</span></div>'+
+      '<div class="prog-bar" style="margin-top:10px"><div class="prog-fill" style="background:var(--blue);width:'+akPct+'%"></div></div>'+
+      '<div class="goal-meta"><span>'+f(w.akSaved)+' in Truist Savings</span><span>'+akPct.toFixed(0)+'%</span></div>'+
       '<div class="goal-forecast-card">'+akForecast+'</div>'+
     '</div>'+
     '<div class="panel goal-card">'+
       '<div class="goal-priority">Priority 2</div>'+
       '<h3>Retirement Rebuild</h3>'+
-      '<p class="sub">Destination: AMEX Savings \xb7 begins after Alaska is completed</p>'+
+      '<p class="sub">Destination: AMEX Savings \xb7 begins after Alaska is funded</p>'+
       '<div class="goal-amount" style="color:var(--violet)">'+f(w.amx)+'</div>'+
       '<div class="goal-input-row"><span class="goal-input-label">Target</span>'+
         '<div class="ginput-wrap"><span>$</span><input type="number" id="rtGoal" class="goal-inp" value="'+rt+'" step="100" inputmode="numeric"></div>'+
       '</div>'+
-      '<div class="prog-bar"><div class="prog-fill" style="background:var(--violet);width:'+rtPct+'%"></div></div>'+
+      '<div class="prog-bar" style="margin-top:10px"><div class="prog-fill" style="background:var(--violet);width:'+rtPct+'%"></div></div>'+
       '<div class="goal-meta"><span>'+f(w.amx)+' in AMEX</span><span>'+f(w.retRem)+' remaining</span></div>'+
       '<div class="goal-forecast-card">'+rtForecast+'<br><span style="font-size:11px;color:var(--muted2)">Breakdown: $99.75 current + $3,772.74 savings seed + $3,818.49 checking rebuild</span></div>'+
     '</div>'+
   '</div>'+
-  '<div class="panel card-pad" style="max-width:700px">'+
-    '<div class="panel-title"><h3>Emergency Fund (Lending Club)</h3><span class="mini">Reference — not a savings goal</span></div>'+
-    '<div class="prog-bar"><div class="prog-fill" style="background:#1d9e75;width:'+lcPct+'%"></div></div>'+
-    '<div class="goal-meta" style="margin-top:6px"><span>'+f(w.lc)+' current</span><span>Target: '+f(EF_ORIG)+' (gap: $3,000 reclassified as operating cash)</span></div>'+
+  '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:15px;max-width:1100px;margin-top:15px">'+
+    '<div class="panel card-pad">'+
+      '<div class="panel-title"><h3>Cumulative Surplus Available After Goals</h3><span class="mini">Display only · no cash has left Truist Checking</span></div>'+
+      '<div style="font-size:26px;font-weight:800;color:#64748b;margin:6px 0">'+f(w.surplusSwept)+'</div>'+'<div style="font-size:11px;color:var(--muted);margin:-4px 0 6px">Display only · cash remains in Truist Checking</div>'+
+      '<div class="prog-bar"><div class="prog-fill" style="background:#94a3b8;width:'+Math.min(100,vm.finalWeek.surplusSwept>0?Math.round(w.surplusSwept/vm.finalWeek.surplusSwept*100):0)+'%"></div></div>'+
+      '<div class="goal-meta" style="margin-top:6px"><span>'+(vm.surplusCompletion?'Begins Wk '+getCalWeek(vm.surplusCompletion.num):'Starts after retirement funded')+'</span><span>'+(vm.finalWeek.surplusSwept>0?f(vm.finalWeek.surplusSwept)+' projected end of model':'—')+'</span></div>'+
+      '<p style="font-size:12px;color:var(--muted);margin-top:8px">Display only · cash stays in Truist Checking · Phase 4 converts to named goal funding once goals are created and prioritized.</p>'+
+    '</div>'+
+    '<div class="panel card-pad">'+
+      '<div class="panel-title"><h3>Emergency Fund — Lending Club</h3><span class="mini">Structural reserve · untouched all year</span></div>'+
+      '<div class="prog-bar"><div class="prog-fill" style="background:#1d9e75;width:100%"></div></div>'+
+      '<div class="goal-meta" style="margin-top:6px"><span>'+f(w.lc)+' in Lending Club</span><span>6-month cash runway</span></div>'+
+      '<div style="font-size:12px;color:var(--muted);margin-top:10px;line-height:1.7">'+
+        '<p style="margin:0 0 6px"><strong>Original EF</strong> — $21,738.88 total across Lending Club + Truist Savings. Goal: 6 months of core expenses.</p>'+
+        '<p style="margin:0 0 6px"><strong>Cal Wk 23 (Jun 7) reclassification:</strong> Moved $6,000 to permanent operating reserve: $2,750 Truist Savings → Checking, $1,000 Lending Club → Checking, $2,250 Chk→LC transfer plan cancelled. This front-loads the cushion once so the model holds a clean $6,500 floor all year.</p>'+
+        '<p style="margin:0 0 6px"><strong>Remaining EF</strong> — $15,738.88 stays in Lending Club. Untouched all model year. Not a sweep target.</p>'+
+        '<p style="margin:0"><strong>Why the architecture changed:</strong> Prior model had recurring weekly EF top-up transfers that created circular complexity and obscured true cash-flow. Simplified approach: one reset in cal Wk 23, then hold $6,500 floor. Lending Club balance is genuine emergency coverage, not working capital.</p>'+
+      '</div>'+
+    '</div>'+
   '</div>';
   document.getElementById('goals-content').innerHTML=html;
   // Re-attach goal input listeners
@@ -1481,53 +1529,64 @@ function renderHistory(weeksArg){
 // ── renderAssumptions ──────────────────────────────────────────────────────
 function renderAssumptions(){
   var html='<div class="assumptions-grid">'+
-    '<div class="panel assumption-card"><h3>Emergency Fund Reclassification</h3>'+
-      '<p>The May AMEX Platinum payoff ($37,482) left checking too thin to cover July and September rent without going negative. <strong>$3,000 reclassified as permanent operating cash</strong> in Truist Checking.</p>'+
-      '<p>Lending Club restored to <strong>$21,738.88</strong>. Total EF = <strong>$139,832</strong> — $168 below $140K floor, operationally insignificant. December and January rent troughs managed via Truist Savings same-bank backup.</p>'+
+    '<div class="panel assumption-card"><h3>EF Injection + Starting Balances</h3>'+
+      '<p><strong>$6,000 injected into Truist Checking</strong> from three real-world moves: (1) keep $2,250 in checking instead of sending to LC, (2) move $2,750 from Truist Savings to Truist Checking, (3) move $1,000 from Lending Club to Truist Checking.</p>'+
+      '<p>Lending Club sits at <strong>$15,738.88</strong> and is untouched all year — no transfers in or out. It is pure emergency fund, not a sweep target.</p>'+
     '</div>'+
     '<div class="panel assumption-card"><h3>Floor Rules</h3>'+
-      '<p><code>OP_FL = $3,000</code> — Operating floor. Normal weeks must keep checking above this before transferring surplus.</p>'+
-      '<p><code>TR_FL = $1,500</code> — Trough floor. Rent-heavy weeks (flagged <code>trough=true</code>) have a lower floor since the system is designed to handle them.</p>'+
-      '<p><code>holdFloor</code> — Per-week override. If a week has a higher floor set, that overrides both <code>OP_FL</code> and <code>TR_FL</code>.</p>'+
-      '<p><code>MIN_XFR = $100</code> — Transfers below $100 are suppressed and carry forward to prevent noisy sub-threshold moves.</p>'+
+      '<p><code>OP_FL = $6,500</code> — Single operating floor. All weeks use this floor before sweeping surplus to goals. No trough, holdFloor, or per-week overrides.</p>'+
+      '<p><code>MIN_XFR = $100</code> — Transfers below $100 are suppressed, except for final goal-completion sweeps which bypass this threshold.</p>'+
     '</div>'+
     '<div class="panel assumption-card"><h3>Commission Tax Split</h3>'+
       '<p>When Wendy or Adam has a commission or BK bonus inflow (taxable), the model routes: <strong>40% → Vio Bank - Tax Reserve</strong> and <strong>60% → current savings goal</strong>.</p>'+
       '<p><code>COMM_TAX = $707.18</code> (40% of commission gross) and <code>COMM_AK = $1,060.76</code> (60%) are defined as constants. Week 6 commission is deferred because checking is below floor after obligations — both transfers pick up the following week.</p>'+
       '<p>If a commission week has no surplus above the floor, both transfers defer to the next eligible week via <code>taxTodo</code>.</p>'+
     '</div>'+
-    '<div class="panel assumption-card"><h3>LevelUp Qualifying Deposits</h3>'+
-      '<p>Lending Club requires a monthly qualifying deposit for the LevelUp APY tier. Each qualifying week ('+[5,9,14,18,22,27,31].join(', ')+'), the model generates a required action: move $250 from Vio Bank EF HYSA → Lending Club, then rotate $250 back to Vio within the month.</p>'+
-      '<p>These transfers have zero net effect on checking or AMEX. They appear in <code>realActs</code> as required actions.</p>'+
+    '<div class="panel assumption-card"><h3>Calendar Notes</h3>'+
+      '<p>Five weeks are flagged as structurally thin — bill-heavy or cruise-expense weeks. Checking stays positive throughout but discretionary spending must be avoided.</p>'+
+      '<ul style="margin:8px 0 0 16px;font-size:13px;line-height:1.9">'+
+      '<li><strong>Cal Wk 35 / Aug 30 (model Wk 13)</strong> — $5,300 bills, no inflow. CHK dips to $2,189.</li>'+
+      '<li><strong>Cal Wk 39 / Sep 27 (model Wk 17)</strong> — $5,300 rent week after Alaska cruise. Model minimum: <strong>$437</strong>.</li>'+
+      '<li><strong>Cal Wk 48 / Nov 29 (model Wk 26)</strong> — $5,300 bills, no inflow. CHK dips to <strong>$778</strong>.</li>'+
+      '<li><strong>Cal Wk 34 / Aug 23 (model Wk 12)</strong> — Alaska cruise week 1 · $1,500 trip cost from savings.</li>'+
+      '<li><strong>Cal Wk 38 / Sep 20 (model Wk 16)</strong> — Alaska cruise week 2 · $5,500 trip cost + $2,500 savings drawdown.</li>'+
+      '</ul>'+
     '</div>'+
     '<div class="panel assumption-card"><h3>Goal Funding Order</h3>'+
-      '<p>1. EF savings move (Truist Savings → Lending Club) — Week 1 only.<br>'+
-      '2. EF checking transfer (Checking → Lending Club) — Week 1 only.<br>'+
-      '3. Base tax reserve (Checking → Vio Bank - Tax Reserve).<br>'+
-      '4. Alaska fund (Checking → Truist Savings) — begins Week 5.<br>'+
-      '5. Retirement savings seed (Truist Savings → AMEX) — after Alaska funded.<br>'+
-      '6. Retirement rebuild (Checking → AMEX) — after Alaska and EF complete.</p>'+
-      '<p>All transfers respect the effective floor. Insufficient surplus defers to the next eligible week.</p>'+
+      '<p>1. Base income tax reserve (Checking → Vio Bank - Tax Reserve) — fires model Wk 1 (checking has surplus immediately).<br>'+
+      '2. Commission tax split (40% → Tax Reserve, 60% → Truist Savings) — when Wk 6 commission arrives.<br>'+
+      '3. Alaska fund (Checking → Truist Savings) — surplus sweeps each eligible week · completes model Wk 5 (cal Wk 27, Jul 5-11).<br>'+
+      '4. Retirement savings seed ($3,772.74 Truist Savings → AMEX) — one-time transfer immediately after Alaska funded.<br>'+
+      '5. Retirement rebuild (Checking → AMEX) — starts model Wk 5 · completes model Wk 10 (cal Wk 32, Aug 9-15).<br>'+
+      '6. Future Goals Bucket — excess above $6,500 floor tracked as a virtual accumulator (<code>surplusSwept</code>). Funds stay in Truist Checking but are earmarked for transfer to AMEX Savings when a Phase 4 goal is created.</p>'+
+      '<p>All transfers respect the $6,500 operating floor. No EF transfers — LC balance is static all year at $15,738.88.</p>'+
+      '<p><strong>Phase 4 note:</strong> The goal queue is hard-coded for Phase 3 (Alaska → Retirement). Phase 4 will introduce a dynamic goal priority queue with configurable goals, funding sources, start weeks, and target amounts. The surplus accumulation behavior (step 6) is designed as the Phase 4 entry point — no architectural changes required to add new goals.</p>'+
+    '</div>'+
+    '<div class="panel assumption-card"><h3>Jabian Business Expense Float</h3>'+
+      '<p>Jabian business expenses and reimbursements are intentionally excluded from weekly projections because they are highly reliable, self-funding, and typically reimburse within one payroll cycle.</p>'+
+      '<p><strong>Spending pattern:</strong> ~80% of Jabian expenses land on AMEX Gold · ~20% on Disney Visa / Costco Visa. Total ~$9,500–$10,000/year (~$800–$1,000/month).</p>'+
+      '<p><strong>When to intervene:</strong> Large or unusual Jabian expenses or reimbursements should be added manually through Edit Week when they materially affect a paycheck, AMEX Gold bill, or Disney/Costco bill.</p>'+
+      '<p><strong>Monthly review:</strong> A recommended action appears in the first Adam-paycheck week of each month (around the 7th). Review outstanding Jabian expenses and expected reimbursements at that time.</p>'+
     '</div>'+
     '<div class="panel assumption-card"><h3>Reconciliation &amp; Overrides</h3>'+
       '<p><strong>Reconciliation roll-forward:</strong> When you enter actual balances for a week, those actuals replace the modeled ending balances as the starting point for the next week. This propagates real-world variances through the forecast.</p>'+
       '<p><strong>Week overrides:</strong> Editing a week creates an entry in <code>overrideData</code>. The model reads <code>overrideData[num]</code> when building the effective week list. Overrides never mutate <code>WD</code>. Deleting an override restores the base week definition.</p>'+
       '<p><strong>Custom weeks:</strong> Weeks 32+ are created as <code>is_custom: true</code> overrides. They are sorted by <code>week_num</code> and appended after Week 31. Custom weeks persist through Supabase.</p>'+
     '</div>'+
-    '<div class="panel assumption-card"><h3>How Budget Surplus &amp; Extra Income Fund Goals</h3>'+
-      '<p><strong>The $2,300/month is real — and it is in the model.</strong> Our monthly budget produces roughly $2,300 more income than expenses. That underspend stays in checking and the dashboard sweeps any surplus above the protective floor into savings goals at the end of each week. It does not go into a separate account automatically; it accumulates in checking and moves to goals whenever a week ends with enough room.</p>'+
-      '<p><strong>Why the model can\'t save $2,300 every single month toward Alaska:</strong> The $2,300 is a monthly average. Individual weeks vary a lot. Rent weeks, large AMEX statements, and other heavy obligation weeks consume most or all of the checking cushion. The model always holds at least $1,500–$3,000 in checking as a buffer (sometimes more when a big bill is coming) and will not sweep below that floor. Early in the model, EF restoration ($2,250) and a deferred commission tax payment ($707) also had to clear before Alaska sweeping could begin — those finished by Wk 30.</p>'+
-      '<p><strong>What actually happens with Alaska:</strong> Only 4 weeks across the full 31-week model have enough surplus above the floor to sweep to Alaska. Those sweeps total $7,000 — the full goal — but they are spread out:</p>'+
-      '<ul style="margin:.5rem 0 .75rem 1.2rem;line-height:1.7">'+
-        '<li><strong>Wk 27 (Jul 5–11):</strong> $2,237.76 swept — first eligible week</li>'+
-        '<li><strong>Wk 29 (Jul 19–25):</strong> $1,072.76 swept — after deferred commission tax clears</li>'+
-        '<li><strong>Wk 31 (Aug 2–8):</strong> $1,447.00 swept</li>'+
-        '<li><strong>Wk 42 (Oct 18–24):</strong> $2,242.48 final sweep — Alaska fully funded</li>'+
-      '</ul>'+
-      '<p>Wks 32–41 have checking balances that look large some weeks ($5,000–$8,000) but the model holds a higher floor during those weeks because upcoming AMEX statements, rent, or other large obligations are close. There is no room above the floor to sweep.</p>'+
-      '<p><strong>Commissions (Jabian / BK bonuses):</strong> Commission income is handled separately from the budget surplus. When either Adam or Wendy receives a commission or BK bonus, the model automatically routes <strong>40% → Vio Bank - Tax Reserve</strong> and <strong>60% → current savings goal</strong> (Alaska first, then retirement). This happens on top of whatever regular surplus exists that week. The Wk 28 Wendy commission deferred because the AMEX Gold statement ($5,500) hit the same week and pushed checking below the floor — it picked up in Wk 29.</p>'+
-      '<p><strong>Other extra income (freelance, gifts, one-time windfalls):</strong> Enter these as events in the Edit Week drawer. Mark the checkbox "Tax?" if the income is taxable (e.g. a consulting payment). The model will apply the same 40/60 split and route the surplus to whatever goal is currently open. If Alaska is not yet funded, extra income accelerates it. Once Alaska is done, it flows to retirement.</p>'+
-      '<p><strong>Bottom line for the Alaska timeline:</strong> Wendy\'s math is right — $2,300 × 3 months ≈ $7,000 covers the goal. The model confirms that. The reason Alaska completes in October rather than August is that the $2,300 doesn\'t move in equal monthly increments — it sweeps in 4 lumpy events driven by when checking actually clears the floor. The money is always there in checking; it just can\'t always move.</p>'+
+    '<div class="panel assumption-card"><h3>How Surplus Sweeps Work + Why Sweeps Stop After Wk 32</h3>'+
+      '<p><strong>The sweep rule:</strong> Each week, after inflows and bills are applied, if checking exceeds the $6,500 operating floor, the model sweeps surplus to the highest-priority open goal. No manual action required.</p>'+
+      '<p><strong>Priority order (simplified architecture):</strong></p>'+
+      '<ol style="margin:6px 0 10px 18px;font-size:13px;line-height:1.9">'+
+        '<li>Base income tax reserve → Vio Bank — fires model Wk 1 (cal Wk 23, checking has immediate surplus)</li>'+
+        '<li>Commission 40% → Tax Reserve, 60% → Alaska — triggers on Wk 6 commission income</li>'+
+        '<li>Alaska fund → Truist Savings — sweeps each eligible week · <strong>completes model Wk 5 (cal Wk 27, Jul 5-11) in one large sweep</strong></li>'+
+        '<li>Retirement savings seed — $3,772.74 one-time Truist Savings → AMEX, fires immediately after Alaska funded</li>'+
+        '<li>Retirement rebuild → AMEX — <strong>completes model Wk 10 (cal Wk 32, Aug 9-15)</strong></li>'+
+        '<li>No active goal → <strong>Cumulative Surplus Available After Goals</strong> (display-only virtual tracker — cash stays in Truist Checking until a Phase 4 named goal is created)</li>'+
+      '</ol>'+
+      '<p><strong>Why sweeps stop after Cal Wk 32:</strong> All defined goal buckets are funded. No cash actually leaves checking — the <strong>Cumulative Surplus Available After Goals</strong> display on the Goals page is a running virtual total showing how much could be deployed once a Phase 4 goal is named. The money remains in Truist Checking as structural float. Once you create a named goal, the model routes surplus there at step 6.</p>'+
+      '<p><strong>Commission income:</strong> When Adam or Wendy earns a commission or BK bonus, the model auto-routes 40% → Vio Bank - Tax Reserve and 60% → current open goal. If the commission week is below floor (e.g. heavy AMEX statement same week), both amounts defer via <code>taxTodo</code> to the next eligible week.</p>'+
+      '<p><strong>Adding extra income:</strong> Use Edit Week to add one-time inflows. Check "Tax?" for taxable income — the 40/60 split fires automatically and accelerates whichever goal is currently open.</p>'+
     '</div>'+
   '</div>';
   document.getElementById('assumptions-content').innerHTML=html;
@@ -1542,8 +1601,8 @@ function renderEditDrawer(){
     var isNew=(editOpen===0);
     var wdEntry=WD.find(function(wd){return wd[0]===editOpen;});
     var ov=overrideData[editOpen];
-    var drawerEvs=ov&&ov.events_json?ov.events_json:(wdEntry?wdEntry[7]:[]);
-    var drawerCt=ov&&ov.ct!=null?ov.ct:(wdEntry?wdEntry[8]:0);
+    var drawerEvs=ov&&ov.events_json?ov.events_json:(wdEntry?wdEntry[4]:[]);
+    var drawerCt=ov&&ov.ct!=null?ov.ct:(wdEntry?wdEntry[5]:0);
     var grossFromCt=drawerCt>0?Math.round(drawerCt/0.40*100)/100:0;
     var evRows='';
     drawerEvs.forEach(function(ev,i){
@@ -1640,7 +1699,22 @@ function renderApp(){
 var render=renderApp;
 
 
-// ── Supabase ───────────────────────────────────────────────────────────────
+// ── Staging mode — disable all Supabase writes ────────────────────────────
+const STAGING_MODE=false; // PRODUCTION — live writes enabled
+if(STAGING_MODE){
+  const _origFetch=window.fetch.bind(window);
+  window.fetch=function(url,opts){
+    const method=(opts&&opts.method||'GET').toUpperCase();
+    const isSupaWrite=['POST','PATCH','DELETE','PUT'].includes(method)&&String(url).includes('supabase.co');
+    if(isSupaWrite){
+      console.warn('[STAGING] Blocked '+method+' → '+url);
+      return Promise.resolve(new Response('{}',{status:200,headers:{'Content-Type':'application/json'}}));
+    }
+    return _origFetch(url,opts);
+  };
+}
+
+// ── Supabase ──────────────────────────────────────────────────────────────────────────────────────
 const SUPA_URL='https://usayoldrawwmjsmretin.supabase.co';
 const SUPA_KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InVzYXlvbGRyYXd3bWpzbXJldGluIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzc0NjI0MzIsImV4cCI6MjA5MzAzODQzMn0.7dpPsXdQy2aIYYsm1yWK7D5WJH0tB32ixERMBf5HRWA';
 const SUPA_H={'apikey':SUPA_KEY,'Authorization':'Bearer '+SUPA_KEY,'Content-Type':'application/json'};
@@ -1717,11 +1791,11 @@ function getActiveModel(){
 // ── Scenario: build preview override for a week-based scenario ────────────
 function buildScenarioPreviewOverride(weekNum,addEvents,addCt,addCa){
   var existing=overrideData[weekNum];
-  var baseEvs=existing&&existing.events_json&&existing.events_json.length?existing.events_json:
-    (WD.find(function(w){return w[0]===weekNum;})||[])[7]||[];
+  var _wd=WD.find(function(w){return w[0]===weekNum;})||[];
+  var baseEvs=existing&&existing.events_json&&existing.events_json.length?existing.events_json:_wd[4]||[];
   var mergedEvs=baseEvs.concat(addEvents);
-  var baseCt=(existing&&existing.ct!=null)?existing.ct:(WD.find(function(w){return w[0]===weekNum;})||[])[9]||0;
-  var baseCa=(existing&&existing.ca!=null)?existing.ca:(WD.find(function(w){return w[0]===weekNum;})||[])[10]||0;
+  var baseCt=(existing&&existing.ct!=null)?existing.ct:_wd[5]||0;
+  var baseCa=(existing&&existing.ca!=null)?existing.ca:_wd[6]||0;
   return Object.assign({},existing||{},{week_num:weekNum,events_json:mergedEvs,ct:baseCt+(addCt||0),ca:baseCa+(addCa||0)});
 }
 
