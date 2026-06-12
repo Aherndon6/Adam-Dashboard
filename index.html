@@ -1769,7 +1769,7 @@ var wishlistLoaded=false;
 var wishlistAddOpen=false;
 var wishlistEditId=null;
 var scenarioState={active:false,type:null,weekNum:1,params:{},previewOverride:null,previewGoal:null,commitModal:false};
-var anthropicKey='';
+var anthropicKey=localStorage.getItem('herndon_anthropic_key')||'';
 var askMessages=[];
 var askLoading=false;
 
@@ -2165,6 +2165,7 @@ function _saveEditForm(id){
 async function saveApiKey(key){
   if(!key||!key.trim())return;
   anthropicKey=key.trim();
+  localStorage.setItem('herndon_anthropic_key',anthropicKey);
   try{
     await fetch(SUPA_URL+'/rest/v1/goals',{method:'POST',headers:Object.assign({},SUPA_H,{'Prefer':'resolution=merge-duplicates,return=minimal'}),body:JSON.stringify({key:'anthropic_key',value:anthropicKey})});
   }catch(e){console.error('saveApiKey:',e);}
