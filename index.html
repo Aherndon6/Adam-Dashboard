@@ -2209,24 +2209,75 @@ function renderAskClaude(){
   var ca=document.getElementById('ask-chat-area');if(ca)ca.scrollTop=ca.scrollHeight;
 }
 function _buildModelContext(){
-  var g=getGoals();var weeks=runModel(g.ak,g.rt);
+  var g=getGoals();
+  var weeks=runModel(g.ak,g.rt);
+  var now=new Date().toLocaleDateString();
+  var curW=weeks.find(function(w){return w.num===currentW;})||weeks[0];
+  var w31=weeks[weeks.length-1];
   var reconned=Object.keys(reconData).map(Number).filter(function(n){return reconData[n]&&reconData[n].chk!==undefined;});
   var maxRecon=reconned.length?Math.max.apply(null,reconned):0;
   var akDone=weeks.find(function(w){return w.akRem<=0.01;});
-  var troughs=weeks.filter(function(w){return w.trough;}).map(function(w){return'Wk '+getCalWeek(w.num)+' ('+getWeekDate(w.num)+')';});
-  var managed=weeks.filter(function(w){return w.managed;}).map(function(w){return'Wk '+getCalWeek(w.num)+'('+getWeekDate(w.num)+')';});
-  var wkSummaries=weeks.slice(0,10).map(function(w){return'Wk '+getCalWeek(w.num)+': Chk='+f(w.chk)+' Sav='+f(w.sav)+' LC='+f(w.lc)+' akRem='+f(w.akRem)+' retRem='+f(w.retRem);}).join('\n');
-  var w31=weeks[30];
-  return'Herndon Financial OS — model context as of today ('+new Date().toLocaleDateString()+')\n'+
-    'Current model week: '+currentW+' (Calendar Wk '+getCalWeek(currentW)+', '+getWeekDate(currentW)+')\n'+
-    'Alaska goal: $'+f(g.ak)+' remaining: $'+f((weeks.find(function(w){return w.num===currentW;})||weeks[0]).akRem)+'\n'+
-    'Retirement goal: $'+f(g.rt)+' remaining at Wk 31: $'+f(w31.retRem)+'\n'+
-    'Alaska completes: '+(akDone?'Wk '+getCalWeek(akDone.num)+' ('+getWeekDate(akDone.num)+')':'Not within 31-week model')+'\n'+
-    'Trough weeks: '+troughs.join(', ')+'\n'+
-    'Managed weeks: '+managed.join(', ')+'\n'+
-    'Last reconciled: Wk '+(maxRecon?getCalWeek(maxRecon):' — not yet')+'\n'+
-    'Week 31 balances: Chk='+f(w31.chk)+' Sav='+f(w31.sav)+' AMEX='+f(w31.amx)+' Tax='+f(w31.tax)+' LC='+f(w31.lc)+'\n'+
-    'First 10 weeks:\n'+wkSummaries;
+  var retDone=weeks.find(function(w){return w.retRem<=0.01;});
+  var surplusStart=weeks.find(function(w){return w.surplusSwept>0;});
+  var lines=[];
+  lines.push('HERNDON FINANCIAL OS — FULL MODEL CONTEXT');
+  lines.push('Generated: '+now+' | Current week: Cal Wk '+getCalWeek(currentW)+' (Model Wk '+currentW+', '+curW.dates+')');
+  lines.push('');
+  lines.push('=== MODEL CONSTANTS ===');
+  lines.push('Starting balances (post-SETUP transfers, pre-Week-1 events):');
+  lines.push('  Truist Checking: $18,037.73 | Truist Savings: $3,772.77 | AMEX Savings: $103.64');
+  lines.push('  Vio Bank Tax Reserve: $0.00 | Lending Club EF: $13,488.88');
+  lines.push('Operating floor: $6,500 (all weeks) | Min transfer threshold: $100');
+  lines.push('Base tax reserve: $521.36 | Commission tax split: 40% ($707.18) to Vio, 60% ($1,060.76) to Alaska savings');
+  lines.push('Retirement savings seed (Truist Savings → AMEX Savings): $3,772.74 | Alaska savings start: Cal Wk 27 (Model Wk 5)');
+  lines.push('EF (Lending Club): $13,488.88 — structural reserve, untouched all year');
+  lines.push('');
+  lines.push('=== GOALS ===');
+  lines.push('Alaska Cruise Fund: Target '+f(g.ak)+' | Saved: '+f(curW.akSaved)+' | Remaining: '+f(curW.akRem));
+  lines.push('  Funded: '+(akDone?'Cal Wk '+getCalWeek(akDone.num)+' ('+akDone.dates+')':'Not fully funded within model'));
+  lines.push('Retirement (AMEX Savings rebuild): Target '+f(g.rt)+' | Remaining at end of model: '+f(w31.retRem));
+  lines.push('  Breakdown: $103.64 current AMEX (incl $3.89 interest) + $3,772.74 savings seed + $3,818.49 checking rebuild = $7,694.87');
+  lines.push('  Funded: '+(retDone?'Cal Wk '+getCalWeek(retDone.num)+' ('+retDone.dates+')':'Not fully funded within model'));
+  lines.push('Surplus after goals: '+f(curW.surplusSwept)+' accumulated | End-of-model projected: '+f(w31.surplusSwept));
+  lines.push('  Surplus begins: '+(surplusStart?'Cal Wk '+getCalWeek(surplusStart.num)+' ('+surplusStart.dates+')':'After retirement funded'));
+  lines.push('  Note: surplus stays in Truist Checking — earmarked but not swept until Phase 4');
+  lines.push('');
+  lines.push('=== RECONCILIATION ===');
+  lines.push('Last reconciled: '+(maxRecon?'Cal Wk '+getCalWeek(maxRecon)+' (Model Wk '+maxRecon+')':'Not yet reconciled'));
+  lines.push('');
+  lines.push('=== ALL 31 WEEKS ===');
+  lines.push('Format: Cal Wk | Dates | Events (IN/OUT) | Actions (TODO/DONE) | End balances | Goals progress');
+  lines.push('');
+  weeks.forEach(function(w){
+    var calWk=getCalWeek(w.num);
+    var isNow=w.num===currentW;
+    lines.push('--- Cal Wk '+calWk+(isNow?' [CURRENT WEEK]':'')+' | Model Wk '+w.num+' | '+w.dates+' ---');
+    if(w.calNote)lines.push('  ⚠ NOTE: '+w.calNote);
+    // Events
+    if(w.evs&&w.evs.length){
+      w.evs.forEach(function(e){lines.push('  '+(e.t==='in'?'IN ':'OUT')+' '+e.l+': '+f(Math.abs(e.a)));});
+    }else{lines.push('  No events');}
+    // Actions with completion status
+    if(w.ac&&w.ac.length){
+      var realActs=w.ac.filter(function(a){return!a.includes('No transfers');});
+      if(realActs.length){
+        realActs.forEach(function(a,i){
+          var done=taskData[w.num+'_'+i]&&taskData[w.num+'_'+i].completed;
+          lines.push('  ACTION ['+(done?'DONE':'TODO')+']: '+a);
+        });
+      }
+    }
+    // End balances
+    lines.push('  End balances: Chk='+f(w.chk)+' | Sav='+f(w.sav)+' | AMEX='+f(w.amx)+' | Tax='+f(w.tax)+' | LC='+f(w.lc));
+    // Reconciliation actuals
+    if(w.reconciled&&w.actualBals){
+      lines.push('  RECONCILED — Actual: Chk='+f(w.actualBals.chk)+' Sav='+f(w.actualBals.sav)+' | Chk variance: '+f(w.variance.chk));
+    }
+    // Goals progress
+    lines.push('  Goals: AK saved='+f(w.akSaved)+' AK rem='+f(w.akRem)+' | Ret rem='+f(w.retRem)+' | Surplus='+f(w.surplusSwept));
+    lines.push('');
+  });
+  return lines.join('\n');
 }
 async function sendAsk(){
   var inputEl=document.getElementById('ask-input');
@@ -2240,13 +2291,13 @@ async function sendAsk(){
     var msgs=askMessages.slice(0,-1).concat([{role:'user',content:q}]);
     // Build full messages with system context embedded in first user message
     var apiMsgs=msgs.map(function(m,i){
-      if(i===0&&m.role==='user'){return{role:'user',content:'You are a financial dashboard assistant for Adam Herndon\'s personal cash flow model. Answer questions based only on the model data below. Be concise and specific. Never suggest modifying the model.\n\n'+ctx+'\n\nQuestion: '+m.content};}
+      if(i===0&&m.role==='user'){return{role:'user',content:'You are a financial assistant embedded in the Herndon Financial OS — Adam Herndon\'s personal cash flow dashboard for Jun 2026–Jan 2027. You have full access to all 31 weeks of the model including every event, action item, account balance, goal, and reconciliation status. Answer any question about the model concisely and specifically. Use calendar week numbers (Cal Wk) not model week numbers when referring to weeks. Never suggest modifying the model.\n\n'+ctx+'\n\nQuestion: '+m.content};}
       return{role:m.role,content:m.content};
     });
     var res=await fetch('https://api.anthropic.com/v1/messages',{
       method:'POST',
       headers:{'x-api-key':anthropicKey,'anthropic-version':'2023-06-01','content-type':'application/json','anthropic-dangerous-direct-browser-access':'true'},
-      body:JSON.stringify({model:'claude-haiku-4-5-20251001',max_tokens:512,messages:apiMsgs})
+      body:JSON.stringify({model:'claude-haiku-4-5-20251001',max_tokens:1024,messages:apiMsgs})
     });
     if(!res.ok){var err=await res.json();throw new Error(err.error&&err.error.message||'API error '+res.status);}
     var data=await res.json();
