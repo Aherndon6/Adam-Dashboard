@@ -545,10 +545,10 @@ button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-vis
 <div id="edit-drawer" class="drawer"></div>
 <script>
 // ── Constants (unchanged) ──────────────────────────────────────────────────
-// Simplified architecture — $6k EF injection · $6,500 operating floor · no legacy mechanics
-// Real-world moves: keep $2,250 in chk, move $2,750 sav→chk, move $1,000 LC→chk
-const START_CHK=18037.73,START_SAV=3772.77,START_AMX=99.75,START_TAX=0,START_LC=15738.88;
-const EF_AMT=15738.88; // LC/EF balance — static this model year (no transfers in or out)
+// Simplified architecture — $8,250 total from LC · $6,500 operating floor · no legacy mechanics
+// Real-world moves: keep $2,250 in chk, move $2,750 sav→chk, move $1,000 LC→chk, move $2,250 LC→chk (Option 1 correction)
+const START_CHK=18037.73,START_SAV=3772.77,START_AMX=103.64,START_TAX=0,START_LC=13488.88;
+const EF_AMT=13488.88; // LC/EF balance — static this model year (no transfers in or out)
 const BASE_TAX=521.36,RET_SAV_XFR=3772.74;
 const COMM_TAX=707.18,COMM_AK=1060.76;
 const OP_FL=6500,MIN_XFR=100,AK_START=5;
@@ -606,7 +606,7 @@ var editSaving=false;
 var reconSaving=false;
 
 // Goal state — source of truth, NOT the DOM inputs
-var goalAk=7000,goalRt=7690.98;
+var goalAk=7000,goalRt=7694.87;
 var activeTab='plan';
 var activeSection='overview';
 
@@ -645,8 +645,10 @@ function runModel(akGoal,rtGoal){
       tr.push({l:'SETUP ✔ Move $2,750 — Truist Savings → Truist Checking',r:'done',rsn:'EF injection: redirect savings to checking (do before other transfers)'});
       tr.push({l:'SETUP ✔ Move $1,000 — Lending Club → Truist Checking',r:'done',rsn:'EF injection: partial LC drawdown for operating capital'});
       tr.push({l:'SETUP ✔ Cancel prior $2,250 Checking→LC plan — keep in checking',r:'info',rsn:'EF injection: funds stay in checking, no LC transfer needed'});
+      tr.push({l:'SETUP ✔ Move $2,250 — Lending Club → Truist Checking',r:'done',rsn:'Option 1 correction: aligns model with actual balances — $3,250 total drawn from LC'});
       ac.push('Move $2,750 Truist Savings → Truist Checking (EF injection — do first)');
       ac.push('Move $1,000 Lending Club → Truist Checking (EF injection — do first)');
+      ac.push('Move $2,250 Lending Club → Truist Checking (Option 1 correction — do with other SETUP transfers)');
       ac.push('[PENDING #20] Costco Visa — Confirm closing date, due date, and card transition timing (provide date to Claude to complete)');
     }
     function mv(amt,dst,allowFinal){
@@ -1352,7 +1354,7 @@ function renderGoals(vm){
       '</div>'+
       '<div class="prog-bar" style="margin-top:10px"><div class="prog-fill" style="background:var(--violet);width:'+rtPct+'%"></div></div>'+
       '<div class="goal-meta"><span>'+f(w.amx)+' in AMEX</span><span>'+f(w.retRem)+' remaining</span></div>'+
-      '<div class="goal-forecast-card">'+rtForecast+'<br><span style="font-size:11px;color:var(--muted2)">Breakdown: $99.75 current + $3,772.74 savings seed + $3,818.49 checking rebuild</span></div>'+
+      '<div class="goal-forecast-card">'+rtForecast+'<br><span style="font-size:11px;color:var(--muted2)">Breakdown: $103.64 current (incl. $3.89 interest) + $3,772.74 savings seed + $3,818.49 checking rebuild = $7,694.87 target</span></div>'+
     '</div>'+
   '</div>'+
   '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:15px;max-width:1100px;margin-top:15px">'+
@@ -1368,10 +1370,11 @@ function renderGoals(vm){
       '<div class="prog-bar"><div class="prog-fill" style="background:#1d9e75;width:100%"></div></div>'+
       '<div class="goal-meta" style="margin-top:6px"><span>'+f(w.lc)+' in Lending Club</span><span>6-month cash runway</span></div>'+
       '<div style="font-size:12px;color:var(--muted);margin-top:10px;line-height:1.7">'+
-        '<p style="margin:0 0 6px"><strong>Original EF</strong> — $21,738.88 total across Lending Club + Truist Savings. Goal: 6 months of core expenses.</p>'+
-        '<p style="margin:0 0 6px"><strong>Cal Wk 23 (Jun 7) reclassification:</strong> Moved $6,000 to permanent operating reserve: $2,750 Truist Savings → Checking, $1,000 Lending Club → Checking, $2,250 Chk→LC transfer plan cancelled. This front-loads the cushion once so the model holds a clean $6,500 floor all year.</p>'+
-        '<p style="margin:0 0 6px"><strong>Remaining EF</strong> — $15,738.88 stays in Lending Club. Untouched all model year. Not a sweep target.</p>'+
-        '<p style="margin:0"><strong>Why the architecture changed:</strong> Prior model had recurring weekly EF top-up transfers that created circular complexity and obscured true cash-flow. Simplified approach: one reset in cal Wk 23, then hold $6,500 floor. Lending Club balance is genuine emergency coverage, not working capital.</p>'+
+        '<p style="margin:0 0 6px"><strong>Original plan</strong> — Restore Lending Club to $24,738.88 by sending $5,250 from checking + $2,750 from savings → LC. Goal: 6-month cash runway.</p>'+
+        '<p style="margin:0 0 6px"><strong>Phase 1 — $3,000 reclassification:</strong> The May AMEX Platinum payoff ($37,482) left checking too thin for July and September rent troughs. $3,000 of the planned checking→LC transfer was reclassified as permanent operating cash — only $2,250 was sent. LC settled at $21,738.88.</p>'+
+        '<p style="margin:0 0 6px"><strong>Phase 2 — $6,000 injection:</strong> Reversed direction entirely. $2,750 Truist Savings → Checking, $1,000 Lending Club → Checking, $2,250 retained in checking (prior LC transfer plan cancelled). Net: +$6,000 to checking. LC at $15,738.88.</p>'+
+        '<p style="margin:0 0 6px"><strong>Phase 3 — $2,250 correction:</strong> Balance audit revealed the "$2,250 retained" component was always in checking — double-counted as new cash. Additional $2,250 Lending Club → Truist Checking corrects the model. LC settles at $13,488.88. Total EF = $137,582.</p>'+
+        '<p style="margin:0"><strong>Remaining EF</strong> — $13,488.88 in Lending Club. Untouched all model year. Not a sweep target. Total improvement vs. original restoration plan: <strong>$11,250 better positioning in checking</strong>.</p>'+
       '</div>'+
     '</div>'+
   '</div>';
@@ -1530,9 +1533,10 @@ function renderHistory(weeksArg){
 function renderAssumptions(){
   var html='<div class="assumptions-grid">'+
     '<div class="panel assumption-card"><h3>EF Injection + Starting Balances</h3>'+
-      '<p>Checking is <strong>$9,000 better positioned vs. the original EF restoration plan</strong> — achieved in two phases:</p>'+
+      '<p>Checking is <strong>$11,250 better positioned vs. the original EF restoration plan</strong> — achieved in three phases:</p>'+
       '<p><strong>Phase 1 — $3,000 reclassification:</strong> The original plan was to send $5,250 from checking + $2,750 from savings to Lending Club, restoring LC to $24,738.88. The May AMEX Platinum payoff ($37,482) left checking too thin for July and September rent troughs. $3,000 of the planned checking→LC transfer was reclassified as permanent operating cash — only $2,250 was sent. LC settled at $21,738.88. Operating floors revised from $7,000/$5,000 to $3,000/$1,500.</p>'+
       '<p><strong>Phase 2 — $6,000 injection:</strong> Reversed direction entirely. Rather than draining checking and savings into LC, cash was reoriented into checking: (1) $2,750 Truist Savings → Truist Checking, (2) $1,000 Lending Club → Truist Checking, (3) $2,250 retained in checking rather than sent to LC. Net injection: +$6,000. Checking opens Week 1 at $18,037.73. LC at $15,738.88. Total EF = $139,832 — $168 below $140,000 floor, operationally insignificant.</p>'+
+      '<p><strong>Phase 3 — $2,250 correction:</strong> A Cal Wk 23 balance audit revealed the "$2,250 retained" component of the Phase 2 injection was double-counted — those funds were always in checking and were not new cash. Net real injection from Phase 2 was $3,750, not $6,000. An additional $2,250 Lending Club → Truist Checking transfer corrects the model. LC settles at $13,488.88. Total EF = $137,582. Total improvement vs. original restoration plan: $11,250.</p>'+
     '</div>'+
     '<div class="panel assumption-card"><h3>Floor Rules</h3>'+
       '<p><code>OP_FL = $6,500</code> — Single operating floor. All weeks use this floor before sweeping surplus to goals. No trough, holdFloor, or per-week overrides.</p>'+
