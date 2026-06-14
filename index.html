@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
-<title>Herndon Financial OS — Phase 2 Test</title>
+<title>Herndon Financial OS</title>
 <style>
 :root{
   --bg:#f5f6f8;--surface:#fff;--surface2:#f9fafb;--surface3:#eef2f6;
@@ -143,7 +143,7 @@ body{background:var(--bg);color:var(--ink);font-family:Inter,ui-sans-serif,syste
 .add-week-btn-new{display:flex;align-items:center;justify-content:center;height:38px;border:2px dashed var(--line2);border-radius:11px;background:transparent;color:var(--muted);cursor:pointer;font-size:12px;transition:all .12s;margin-top:5px;font-family:inherit;width:100%}
 .add-week-btn-new:hover{border-color:var(--blue);color:var(--blue);background:var(--blueSoft)}
 .week-detail{display:grid;gap:13px}
-.wk-header-card{padding:18px}
+.wk-header-card{overflow:hidden}
 .wk-header-top{display:flex;justify-content:space-between;align-items:flex-start;gap:14px}
 .wk-header-top h2{font-size:20px;font-weight:700;margin:0}
 .wk-header-top p{font-size:12px;color:var(--muted);margin:4px 0 0;font-style:italic}
@@ -154,7 +154,7 @@ body{background:var(--bg);color:var(--ink);font-family:Inter,ui-sans-serif,syste
 .badge-trough{background:var(--amberSoft);color:var(--amber);border:1px solid #fde68a}
 .badge-managed{background:var(--redSoft);color:var(--red);border:1px solid #fca5a5}
 .badge-recon{background:var(--greenSoft);color:var(--green);border:1px solid #86efac}
-.badge-now{background:#fef3c7;color:#92400e;border:1px solid #fde68a}
+.badge-now{background:var(--blueSoft);color:var(--blue);border:1px solid #bfdbfe}
 .badge-past{background:var(--surface3);color:var(--muted2);border:1px solid var(--line2)}
 .badge-op{background:var(--blueSoft);color:var(--blue);border:1px solid #bfdbfe}
 .badge-edited{background:var(--violetSoft);color:var(--violet);border:1px solid #c4b5fd}
@@ -165,6 +165,27 @@ body{background:var(--bg);color:var(--ink);font-family:Inter,ui-sans-serif,syste
 .btn.primary:hover{background:var(--navy)}
 /* Week alerts */
 .week-alert{border-radius:9px;padding:10px 13px;font-size:12px;margin-bottom:4px;line-height:1.55}
+.week-alert-strip{font-size:12px;padding:8px 18px;border-bottom:1px solid #fde68a;background:var(--amberSoft);color:var(--amber);display:flex;align-items:center;gap:5px;line-height:1.4;font-weight:500}
+.wk-inner-pad{padding:16px 18px 18px}
+/* Decision Queue */
+.dq-section{margin-top:18px}
+.dq-section-hdr{font-size:11px;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);font-weight:700;margin-bottom:10px;display:flex;align-items:center;gap:8px}
+.dq-item{display:flex;gap:11px;padding:11px 0;border-top:1px solid var(--line);align-items:flex-start}
+.dq-item:first-of-type{border-top:none;padding-top:0}
+.dq-icon{font-size:20px;flex-shrink:0;margin-top:1px}
+.dq-body{flex:1}
+.dq-name{font-size:13px;font-weight:700;margin-bottom:3px}
+.dq-desc{font-size:11.5px;color:var(--muted);line-height:1.5}
+.dq-deadline{font-size:11px;font-weight:600;margin-top:4px;color:var(--amber)}
+/* Custom tasks */
+.custom-task-add-btn{font-size:11px;padding:4px 10px;border-radius:7px;border:1px dashed var(--line2);background:none;color:var(--muted);cursor:pointer;margin-top:8px;transition:all .12s;font-family:inherit}
+.custom-task-add-btn:hover{border-color:var(--blue);color:var(--blue);background:var(--blueSoft)}
+.custom-task-form{display:flex;gap:6px;margin-top:8px}
+.custom-task-input{flex:1;font-size:12px;padding:5px 9px;border:1px solid var(--line2);border-radius:7px;font-family:inherit;color:var(--ink);background:var(--surface)}
+.custom-task-input:focus{outline:none;border-color:var(--blue)}
+.custom-task-save-btn{font-size:11px;padding:5px 10px;border:none;border-radius:7px;background:var(--blue);color:#fff;cursor:pointer;font-weight:600;font-family:inherit}
+.custom-task-del{font-size:11px;color:var(--muted);background:none;border:none;cursor:pointer;padding:0 4px;opacity:.5;transition:opacity .1s}
+.custom-task-del:hover{opacity:1;color:var(--red)}
 .alert-trough{background:var(--amberSoft);border:1px solid #fde68a;color:var(--amber)}
 .alert-managed{background:var(--redSoft);border:1px solid #fca5a5;color:var(--red)}
 /* Cashflow */
@@ -293,10 +314,11 @@ body{background:var(--bg);color:var(--ink);font-family:Inter,ui-sans-serif,syste
 .scenario-cancel-btn:hover{background:rgba(255,255,255,.12)}
 .scenario-commit-btn{font-size:12px;font-weight:800;padding:5px 13px;border-radius:7px;border:none;background:#fff;color:#1e40af;cursor:pointer;font-family:inherit}
 .scenario-commit-btn:hover{background:#eff6ff}
-.scenario-type-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:12px;max-width:680px;margin-bottom:18px}
-.scenario-type-card{background:var(--surface);border:2px solid var(--line);border-radius:12px;padding:16px 18px;cursor:pointer;transition:border-color .15s,box-shadow .15s}
+.scenario-type-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:12px;margin-bottom:18px}
+.scenario-type-card{background:var(--surface);border:2px solid var(--line);border-radius:12px;padding:14px 16px;cursor:pointer;transition:border-color .15s,box-shadow .15s;position:relative}
 .scenario-type-card:hover{border-color:var(--blue);box-shadow:0 0 0 3px rgba(37,99,235,.1)}
-.scenario-type-card.s-active{border-color:var(--blue);background:#eff6ff}
+.scenario-type-card.s-active{border-color:var(--blue);background:#eff6ff;box-shadow:0 0 0 3px rgba(37,99,235,.15)}
+.scenario-type-card.s-active::after{content:'✓';position:absolute;top:10px;right:12px;font-size:14px;font-weight:700;color:var(--blue)}
 .stc-icon{font-size:20px;margin-bottom:8px}
 .stc-title{font-size:13px;font-weight:700;color:var(--ink)}
 .stc-desc{font-size:11.5px;color:var(--muted);margin-top:3px;line-height:1.4}
@@ -489,6 +511,129 @@ button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-vis
 @media(max-width:1200px){
   .timelineForecastPanel{grid-template-columns:1fr}
 }
+/* ── Goals Tab Phase 4 ──────────────────────────────────────────────────── */
+.goals-subnav{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:18px}
+.goals-pill{font-size:12px;font-weight:600;padding:7px 14px;border-radius:99px;border:1px solid var(--line2);background:var(--surface2);color:var(--muted);cursor:pointer;font-family:inherit;transition:all .12s;white-space:nowrap}
+.goals-pill:hover{background:var(--surface3)}
+.goals-pill.active{background:var(--navy);color:#fff;border-color:var(--navy)}
+.goals-flag-bar{display:flex;gap:10px;flex-wrap:wrap;margin-bottom:16px;padding:12px 14px;background:var(--surface2);border:1px solid var(--line);border-radius:10px;align-items:center}
+.goals-flag-label{font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;margin-right:4px}
+.flag-toggle{display:inline-flex;align-items:center;gap:7px;font-size:12px;font-weight:600;padding:5px 11px;border-radius:8px;border:1px solid var(--line2);background:var(--surface);color:var(--ink);cursor:pointer;font-family:inherit;transition:all .12s}
+.flag-toggle.on{background:var(--greenSoft);border-color:#86efac;color:var(--green)}
+.flag-toggle.off{background:var(--redSoft);border-color:#fca5a5;color:var(--red)}
+.goals-table-panel{padding:16px 20px}
+.goal-tbl-section{font-size:10px;text-transform:uppercase;letter-spacing:.08em;color:var(--muted2);font-weight:700;background:var(--surface2);padding:5px 10px;border-radius:6px;margin:14px 0 6px}
+.goal-tbl-header{display:grid;grid-template-columns:1fr 88px 88px 88px 140px;gap:8px;padding:5px 2px 8px;border-bottom:2px solid var(--line)}
+.goal-tbl-header span{font-size:10px;text-transform:uppercase;letter-spacing:.07em;color:var(--muted2);font-weight:700;text-align:right}
+.goal-tbl-header span:first-child{text-align:left}
+.goal-tbl-row{display:grid;grid-template-columns:1fr 88px 88px 88px 140px;gap:8px;align-items:center;padding:10px 2px;border-bottom:1px solid var(--line)}
+.goal-tbl-row:last-child{border-bottom:none}
+.goal-tbl-row.locked-row .goal-tbl-name{color:var(--muted)}
+.goal-tbl-row.stretch-row{opacity:.7}
+.goal-tbl-row.stretch-row .goal-tbl-name{color:var(--muted);font-style:italic}
+.goal-tbl-name-cell{display:flex;flex-direction:column;gap:2px}
+.goal-tbl-name{font-size:13px;font-weight:700;line-height:1.3}
+.goal-tbl-sub{font-size:10px;color:var(--muted);line-height:1.3}
+.goal-tbl-amt{font-size:13px;font-weight:700;text-align:right}
+.goal-tbl-funded{font-size:12px;font-weight:700;text-align:right}
+.goal-tbl-rem{font-size:12px;color:var(--muted);text-align:right}
+.goal-tbl-prog{display:flex;flex-direction:column;gap:3px}
+.goal-tbl-bar{height:6px;background:var(--surface3);border-radius:99px;overflow:hidden}
+.goal-tbl-fill{height:100%;border-radius:99px;transition:width .4s}
+.goal-tbl-fill.g{background:var(--green)}.goal-tbl-fill.a{background:#f59e0b}.goal-tbl-fill.r{background:var(--red)}.goal-tbl-fill.s{background:#94a3b8}
+.goal-tbl-pct{font-size:10px;color:var(--muted)}
+.priority-tier{padding:14px 16px;background:var(--surface);border:1px solid var(--line);border-radius:11px;margin-bottom:9px;box-shadow:var(--shadow)}
+.priority-tier-hdr{display:flex;align-items:center;gap:10px;margin-bottom:10px}
+.tier-num{width:26px;height:26px;border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:900;flex-shrink:0}
+.tier-name{font-size:13px;font-weight:700;flex:1}
+.tier-status{font-size:10px;font-weight:700;padding:3px 9px;border-radius:99px;white-space:nowrap;flex-shrink:0}
+.tier-status.complete{background:var(--greenSoft);color:var(--green)}.tier-status.in-progress{background:var(--amberSoft);color:var(--amber)}.tier-status.locked{background:var(--redSoft);color:var(--red)}.tier-status.not-started{background:var(--surface3);color:var(--muted2)}
+.tier-goals{display:flex;flex-direction:column;gap:5px}
+.tier-goal-item{display:flex;align-items:center;gap:8px;padding:6px 8px;background:var(--surface2);border:1px solid var(--line);border-radius:8px;font-size:12px}
+.tier-goal-icon{font-size:13px;flex-shrink:0}
+.tier-goal-name{flex:1;font-weight:600}
+.tier-goal-rem{font-size:11px;color:var(--muted);flex-shrink:0}
+.funding-timeline{display:flex;flex-direction:column;gap:8px}
+.funding-event{display:flex;gap:12px;align-items:flex-start;padding:12px 14px;background:var(--surface);border:1px solid var(--line);border-left:3px solid var(--line2);border-radius:10px;box-shadow:var(--shadow)}
+.funding-event.fe-funded{border-left-color:var(--green)}
+.funding-event.fe-pending{border-left-color:#f59e0b}
+.funding-event.fe-locked{border-left-color:var(--red);opacity:.8}
+.funding-event.fe-stretch{border-left-color:#94a3b8;opacity:.65}
+.fe-dot{width:32px;height:32px;border-radius:10px;display:flex;align-items:center;justify-content:center;font-size:15px;flex-shrink:0}
+.fe-dot.g{background:var(--greenSoft)}.fe-dot.a{background:var(--amberSoft)}.fe-dot.r{background:var(--redSoft)}.fe-dot.s{background:var(--surface3)}
+.fe-week{font-size:10px;font-weight:700;color:var(--muted2);margin-bottom:2px;text-transform:uppercase;letter-spacing:.06em}
+.fe-name{font-size:13px;font-weight:700}
+.fe-detail{font-size:11px;color:var(--muted);margin-top:2px;line-height:1.45}
+.engine-form{background:var(--surface2);border:1px solid var(--line);border-radius:10px;padding:16px 18px;max-width:540px;margin-bottom:14px}
+.engine-label{font-size:11px;font-weight:700;color:var(--muted2);text-transform:uppercase;letter-spacing:.05em;display:block;margin-bottom:6px}
+.engine-amount-row{display:flex;align-items:center;gap:6px;margin-bottom:14px}
+.engine-dollar{font-size:18px;color:var(--muted);font-weight:700}
+.engine-inp{font-size:18px;font-weight:800;padding:9px 11px;border:2px solid var(--line2);border-radius:9px;font-family:inherit;background:var(--surface);color:var(--ink);flex:1;width:100%}
+.engine-inp:focus{outline:none;border-color:var(--blue)}
+.engine-type-row{display:flex;gap:8px;margin-bottom:14px;flex-wrap:wrap}
+.engine-type-btn{padding:8px 12px;border-radius:8px;border:2px solid var(--line2);background:var(--surface);color:var(--muted);font-size:12px;font-weight:700;cursor:pointer;font-family:inherit;transition:all .12s;flex:1;text-align:center;line-height:1.4}
+.engine-type-btn.sel{border-color:var(--blue);background:var(--blueSoft);color:var(--blue)}
+.engine-flags{background:var(--surface);border:1px solid var(--line);border-radius:8px;padding:10px 12px;margin-bottom:14px;display:flex;flex-direction:column;gap:7px}
+.engine-flag-row{display:flex;align-items:center;justify-content:space-between;font-size:12px}
+.engine-flag-lbl{color:var(--muted)}
+.engine-flag-val{font-weight:700}
+.engine-flag-val.cleared{color:var(--green)}.engine-flag-val.blocked{color:var(--red)}
+.engine-run{width:100%;padding:11px;border-radius:9px;border:none;background:var(--navy);color:#fff;font-size:14px;font-weight:700;cursor:pointer;font-family:inherit;transition:background .12s}
+.engine-run:hover{background:#1a3a60}
+.engine-run:disabled{opacity:.4;cursor:not-allowed}
+.engine-output{background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:16px 18px;box-shadow:var(--shadow)}
+.engine-output-title{font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:.06em;color:var(--muted2);margin-bottom:12px}
+.engine-step{display:flex;gap:10px;padding:9px 0;border-bottom:1px solid var(--line);align-items:flex-start}
+.engine-step:last-child{border-bottom:none}
+.engine-step-num{width:22px;height:22px;border-radius:99px;font-size:11px;font-weight:900;display:flex;align-items:center;justify-content:center;flex-shrink:0;margin-top:1px;background:var(--navy);color:#fff}
+.engine-step-num.tax{background:#b45309}.engine-step-num.hold{background:#94a3b8}.engine-step-num.surplus{background:#64748b}
+.engine-step-body{flex:1;min-width:0}
+.engine-step-label{font-size:13px;font-weight:700;line-height:1.3}
+.engine-step-note{font-size:11px;color:var(--muted);margin-top:2px;line-height:1.4}
+.engine-step-amt{font-size:13px;font-weight:800;color:var(--green);min-width:76px;text-align:right;flex-shrink:0}
+.engine-step-amt.tax{color:#b45309}.engine-step-amt.hold{color:#94a3b8}.engine-step-amt.dim{color:var(--muted2)}
+.engine-total-row{display:flex;justify-content:space-between;align-items:center;margin-top:12px;padding-top:10px;border-top:2px solid var(--line);font-size:14px;font-weight:800}
+.engine-empty{padding:24px;text-align:center;color:var(--muted2);font-size:13px;background:var(--surface2);border:1px dashed var(--line2);border-radius:10px}
+.goals-two-col{display:grid;grid-template-columns:1fr 1fr;gap:16px;align-items:start}
+.goal-route{display:inline-flex;align-items:center;gap:4px;font-size:10px;color:var(--muted2);margin-top:3px;line-height:1.3}
+.goal-route .route-acct{background:var(--surface3);border:1px solid var(--line);border-radius:4px;padding:1px 5px;font-weight:600;color:var(--muted);white-space:nowrap}
+.goal-route .route-arrow{color:var(--muted2);font-size:9px}
+.goal-starts-after{font-size:10px;color:var(--amber);margin-top:2px}
+.fe-routing{display:flex;align-items:center;gap:4px;font-size:10px;color:var(--muted2);margin-top:4px}
+.fe-routing .route-acct{background:rgba(0,0,0,.04);border:1px solid var(--line);border-radius:4px;padding:1px 5px;font-weight:600;color:var(--muted);white-space:nowrap}
+/* ── Funding Plan table ──────────────────────────────────────────────────── */
+.funding-tbl-header{display:grid;grid-template-columns:110px 1fr 110px 80px 1fr;gap:8px;padding:8px 14px;background:var(--surface2);border-bottom:2px solid var(--line);font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.07em;color:var(--muted2)}
+.ft-row{display:grid;grid-template-columns:110px 1fr 110px 80px 1fr;gap:8px;align-items:center;padding:10px 14px;border-bottom:1px solid var(--line);transition:background .15s}
+.ft-row:last-child{border-bottom:none}
+.ft-row:hover{background:var(--surface2)}
+.ft-funded-row{background:rgba(16,185,129,.03)}
+.ft-locked-row{opacity:.75}
+.ft-stretch-row{opacity:.65}
+.ft-when{font-size:10px;font-weight:700;line-height:1.4;letter-spacing:.04em}
+.ft-when.funded{color:var(--green)}
+.ft-when.projected{color:var(--blue)}
+.ft-when.locked{color:var(--red)}
+.ft-when.auto{color:#6d28d9}
+.ft-when.stretch,.ft-when.pending{color:var(--muted2)}
+.ft-tier{display:inline-flex;align-items:center;justify-content:center;width:22px;height:18px;border-radius:5px;font-size:9px;font-weight:900;flex-shrink:0;margin-right:4px}
+.ft-name-cell{display:flex;align-items:flex-start;gap:4px;flex-direction:column}
+.ft-name-row{display:flex;align-items:center;gap:4px;flex-wrap:wrap}
+.ft-name{font-size:12px;font-weight:700;line-height:1.3}
+.ft-sub{font-size:10px;color:var(--muted);line-height:1.3}
+.ft-live{display:inline-block;font-size:8px;font-weight:800;background:var(--blueSoft);color:var(--blue);padding:1px 4px;border-radius:3px;margin-left:3px;vertical-align:middle;letter-spacing:.03em}
+.ft-prog-wrap{display:flex;align-items:center;gap:6px}
+.ft-pct{font-size:10px;color:var(--muted);flex-shrink:0;min-width:28px}
+.ft-rem{font-size:12px;font-weight:600;text-align:right}
+.ft-route{display:flex;flex-direction:column;gap:2px}
+.ft-route .route-acct{background:rgba(0,0,0,.04);border:1px solid var(--line);border-radius:4px;padding:1px 5px;font-size:9px;font-weight:600;color:var(--muted);white-space:nowrap;display:inline-block}
+.ft-route-arrow{font-size:9px;color:var(--muted2);padding:0 1px}
+/* Priorities: projected week badge */
+.tier-proj{font-size:9px;color:var(--blue);font-weight:700;background:var(--blueSoft);padding:1px 5px;border-radius:4px;flex-shrink:0;white-space:nowrap}
+@media(max-width:900px){
+  .goal-tbl-header,.goal-tbl-row{grid-template-columns:1fr 80px 80px}
+  .goal-tbl-rem,.goal-tbl-prog{display:none}
+  .goals-two-col{grid-template-columns:1fr}
+}
 </style>
 </head>
 <body>
@@ -496,14 +641,13 @@ button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-vis
   <aside class="sidebar">
     <div class="brand">
       <div class="logo">H</div>
-      <div class="brand-text"><h1>Herndon<br>Financial OS</h1><p>Family Cash Flow · 2026</p></div>
+      <div class="brand-text"><h1>Herndon<br>Financial OS</h1><p>Wealth Plan · 2026</p></div>
     </div>
     <div class="nav-label">Dashboard</div>
     <button class="nav-item active" id="nav-overview" onclick="setSection('overview')"><span class="nav-icon">◉</span>Overview</button>
     <button class="nav-item" id="nav-weekly" onclick="setSection('weekly')"><span class="nav-icon">◈</span>Weekly Model<span class="nav-pill" id="nav-pill-weekly">W1</span></button>
     <div class="nav-label">Planning</div>
     <button class="nav-item" id="nav-goals" onclick="setSection('goals')"><span class="nav-icon">◎</span>Goals</button>
-    <button class="nav-item" id="nav-scenarios" onclick="setSection('scenarios')"><span class="nav-icon">◇</span>Scenarios</button>
     <div class="nav-label">Records</div>
     <button class="nav-item" id="nav-history" onclick="setSection('history')"><span class="nav-icon">◑</span>History</button>
     <button class="nav-item" id="nav-assumptions" onclick="setSection('assumptions')"><span class="nav-icon">≡</span>Assumptions</button>
@@ -569,21 +713,21 @@ const WD=[
   [9,'Aug 2-8',[5816.5],[1300,791],[{l:'Rent $1,300 — Zelle to Tiffany Dye (8/3)',t:'ob',a:-1300},{l:'Adam paycheck (8/7)',t:'in',a:5816.5},{l:'Kia payment (8/7)',t:'ob',a:-791}],0,0,''],
   [10,'Aug 9-15',[2152.5],[],[{l:'Wendy paycheck (8/14)',t:'in',a:2152.5}],0,0,''],
   [11,'Aug 16-22',[5816.5],[5500,3500],[{l:'AMEX Gold ~$5,500 due 8/17',t:'ob',a:-5500},{l:'Adam paycheck (8/21)',t:'in',a:5816.5},{l:'Disney Visa ~$3,500 due ~8/23',t:'ob',a:-3500}],0,0,''],
-  [12,'Aug 23-29',[2552.5],[1500],[{l:'Wendy paycheck + extra $400 (8/28)',t:'in',a:2552.5},{l:'Alaska cruise expenses week 1 (8/23-29)',t:'ob',a:-1500}],0,0,'Alaska cruise week 1 — $1,500 trip costs'],
+  [12,'Aug 23-29',[2552.5],[],[{l:'Wendy paycheck + extra $400 (8/28)',t:'in',a:2552.5}],0,0,''],
   [13,'Aug 30-Sep 5',[],[2000,2000,1300],[{l:'Rent $2,000 — Zelle to Tiffany Dye (9/1)',t:'ob',a:-2000},{l:'Rent $2,000 — Zelle to Tiffany Dye (9/2)',t:'ob',a:-2000},{l:'Rent $1,300 — Zelle to Tiffany Dye (9/3)',t:'ob',a:-1300}],0,0,'CALENDAR NOTE: Late-August low-liquidity week — avoid discretionary spending'],
   [14,'Sep 6-12',[5816.5,2152.5],[791],[{l:'Adam paycheck (9/7)',t:'in',a:5816.5},{l:'Kia payment (9/7)',t:'ob',a:-791},{l:'Wendy paycheck (9/11)',t:'in',a:2152.5}],0,0,''],
-  [15,'Sep 13-19',[],[5500],[{l:'AMEX Gold ~$5,500 due 9/17',t:'ob',a:-5500}],0,0,''],
-  [16,'Sep 20-26',[5816.5,2552.5],[3500,5500],[{l:'Adam paycheck (9/22)',t:'in',a:5816.5},{l:'Disney Visa ~$3,500 due ~9/23',t:'ob',a:-3500},{l:'Wendy paycheck + extra $400 (9/25)',t:'in',a:2552.5},{l:'Alaska cruise expenses week 2 (9/20-26)',t:'ob',a:-5500}],0,0,'Alaska cruise week 2 — $5,500 trip costs'],
+  [15,'Sep 13-19',[],[5500],[{l:'AMEX Gold ~$5,500 due 9/17',t:'ob',a:-5500}],0,0,'Alaska $7,000 Truist Savings → Checking this week — funds elevated Sep cruise card bills'],
+  [16,'Sep 20-26',[5816.5,2552.5],[3500],[{l:'Adam paycheck (9/22)',t:'in',a:5816.5},{l:'Disney Visa ~$3,500 due ~9/23',t:'ob',a:-3500},{l:'Wendy paycheck + extra $400 (9/25)',t:'in',a:2552.5}],0,0,''],
   [17,'Sep 27-Oct 3',[],[2000,2000,1300],[{l:'Rent $2,000 — Zelle to Tiffany Dye (10/1)',t:'ob',a:-2000},{l:'Rent $2,000 — Zelle to Tiffany Dye (10/2)',t:'ob',a:-2000},{l:'Rent $1,300 — Zelle to Tiffany Dye (10/3)',t:'ob',a:-1300}],0,0,'CALENDAR NOTE: Late-September low-liquidity week — avoid discretionary spending'],
   [18,'Oct 4-10',[5816.5,2152.5],[791],[{l:'Adam paycheck (10/7)',t:'in',a:5816.5},{l:'Kia payment (10/7)',t:'ob',a:-791},{l:'Wendy paycheck (10/9)',t:'in',a:2152.5}],0,0,''],
   [19,'Oct 11-17',[],[5500],[{l:'AMEX Gold ~$5,500 due ~10/16',t:'ob',a:-5500}],0,0,''],
   [20,'Oct 18-24',[5816.5,2552.5],[3500],[{l:'Adam paycheck (10/22)',t:'in',a:5816.5},{l:'Disney Visa ~$3,500 due ~10/23',t:'ob',a:-3500},{l:'Wendy paycheck + extra $400 (10/23)',t:'in',a:2552.5}],0,0,''],
   [21,'Oct 25-31',[],[2000],[{l:'Rent $2,000 — Zelle to Tiffany Dye (11/1)',t:'ob',a:-2000}],0,0,''],
-  [22,'Nov 1-7',[5816.5],[2000,1300,791],[{l:'Rent $2,000 — Zelle to Tiffany Dye (11/2)',t:'ob',a:-2000},{l:'Rent $1,300 — Zelle to Tiffany Dye (11/3)',t:'ob',a:-1300},{l:'Adam paycheck (11/6)',t:'in',a:5816.5},{l:'Kia payment (11/7)',t:'ob',a:-791}],0,0,''],
+  [22,'Nov 1-7',[5816.5,2152.5],[2000,1300,791],[{l:'Rent $2,000 — Zelle to Tiffany Dye (11/2)',t:'ob',a:-2000},{l:'Rent $1,300 — Zelle to Tiffany Dye (11/3)',t:'ob',a:-1300},{l:'Adam paycheck (11/6)',t:'in',a:5816.5},{l:'Wendy paycheck (11/6)',t:'in',a:2152.5},{l:'Kia payment (11/7)',t:'ob',a:-791}],0,0,''],
   [23,'Nov 8-14',[],[],[],0,0,''],
   [24,'Nov 15-21',[5816.5,2552.5],[5500],[{l:'AMEX Gold ~$5,500 due ~11/17',t:'ob',a:-5500},{l:'Adam paycheck (11/20)',t:'in',a:5816.5},{l:'Wendy paycheck + extra $400 (11/20)',t:'in',a:2552.5}],0,0,''],
   [25,'Nov 22-28',[],[3500],[{l:'Disney Visa ~$3,500 due ~11/23',t:'ob',a:-3500}],0,0,''],
-  [26,'Nov 29-Dec 5',[],[2000,2000,1300],[{l:'Rent $2,000 — Zelle to Tiffany Dye (12/1)',t:'ob',a:-2000},{l:'Rent $2,000 — Zelle to Tiffany Dye (12/2)',t:'ob',a:-2000},{l:'Rent $1,300 — Zelle to Tiffany Dye (12/3)',t:'ob',a:-1300}],0,0,'Late-November low-liquidity week — $5,300 in bills with no paycheck. Avoid discretionary spending.'],
+  [26,'Nov 29-Dec 5',[2152.5],[2000,2000,1300],[{l:'Wendy paycheck (12/4)',t:'in',a:2152.5},{l:'Rent $2,000 — Zelle to Tiffany Dye (12/1)',t:'ob',a:-2000},{l:'Rent $2,000 — Zelle to Tiffany Dye (12/2)',t:'ob',a:-2000},{l:'Rent $1,300 — Zelle to Tiffany Dye (12/3)',t:'ob',a:-1300}],0,0,''],
   [27,'Dec 6-12',[5816.5],[791],[{l:'Adam paycheck (12/7)',t:'in',a:5816.5},{l:'Kia payment (12/7)',t:'ob',a:-791}],0,0,''],
   [28,'Dec 13-19',[2552.5],[5500],[{l:'AMEX Gold ~$5,500 due ~12/17',t:'ob',a:-5500},{l:'Wendy paycheck + extra $400 (12/18)',t:'in',a:2552.5}],0,0,''],
   [29,'Dec 20-26',[5816.5],[3500],[{l:'Adam paycheck (12/22)',t:'in',a:5816.5},{l:'Disney Visa ~$3,500 due ~12/23',t:'ob',a:-3500}],0,0,''],
@@ -610,14 +754,113 @@ var goalAk=7000,goalRt=7694.87;
 var activeTab='plan';
 var activeSection='overview';
 
-// ── runModel (unchanged) ───────────────────────────────────────────────────
-function runModel(akGoal,rtGoal){
-  const retChkGoal=Math.max(0,Math.round((rtGoal-START_AMX-RET_SAV_XFR)*100)/100);
-  let chk=START_CHK,sav=START_SAV,amx=START_AMX,tax=START_TAX,lc=START_LC;
-  let taxTodo=BASE_TAX;
-  let surplusSwept=0,surplusStart=null;
-  let alaska=akGoal,retSav=RET_SAV_XFR,retChk=retChkGoal;
-  const weeks=[];
+// ── Goals Phase 4 state ────────────────────────────────────────────────────
+var goalsSubTab='savings';
+var goalFlags={ira_cpa_cleared:false};
+var goalFundedAmounts={adam_401k:10208,wendy_sep:17859,adam_ira:0,wendy_ira:0,bailey_529:0,bryce_529:0,preston_529:0,wewe_rccl:0,wewe_dcl:0,christmas_cruise:0,bryce_vehicle:0,taxable_etf:0};
+var engineAmt='';
+var engineType='regular';
+var engineResult=null;
+var vm_snapshot=null;
+
+// ── Custom task state (localStorage-backed) ────────────────────────────────
+var customTaskData={};  // weekNum → [{id, label, completed}]
+var customTaskState=null;  // {addingWeek: N} when add form is open
+(function(){try{var s=localStorage.getItem('hfos_custom_tasks');if(s)customTaskData=JSON.parse(s);}catch(e){}})();
+function _saveCustomTasks(){try{localStorage.setItem('hfos_custom_tasks',JSON.stringify(customTaskData));}catch(e){}}
+function saveCustomTask(weekNum){
+  var inp=document.getElementById('ct-inp-'+weekNum);
+  var label=inp?inp.value.trim():'';
+  if(!label)return;
+  if(!customTaskData[weekNum])customTaskData[weekNum]=[];
+  customTaskData[weekNum].push({id:'ct_'+Date.now()+'_'+Math.random().toString(36).slice(2,6),label:label,completed:false});
+  _saveCustomTasks();
+  customTaskState=null;
+  renderApp();
+}
+function toggleCustomTask(weekNum,id,checked){
+  if(!customTaskData[weekNum])return;
+  var ct=customTaskData[weekNum].find(function(t){return t.id===id;});
+  if(ct){ct.completed=checked;_saveCustomTasks();}
+}
+function deleteCustomTask(weekNum,id){
+  if(!customTaskData[weekNum])return;
+  customTaskData[weekNum]=customTaskData[weekNum].filter(function(t){return t.id!==id;});
+  _saveCustomTasks();
+  renderApp();
+}
+
+const GOALS_REGISTRY=[
+  // src: where money comes FROM · dest: where it lands · startsAfter: goal id that must complete first
+  // status: planned | funding | funded | approved | executed | cancelled
+  {id:'adam_401k',name:'Adam 401(k)',tier:'Retirement',target:24500,notes:'Auto-funded via payroll',auto:true,status:'funding',
+    src:'Payroll (auto-deduction)',dest:'Empower 401(k)'},
+  {id:'wendy_sep',name:'Wendy SEP',tier:'Retirement',target:17859,notes:'Completed — 2025 SE income',complete:true,status:'executed',
+    src:'Wendy SE income',dest:'Ascensus / BK CPA'},
+  {id:'alaska',name:'Alaska Cruise',tier:'Travel',target:7000,notes:'Funded Cal Wk 27 — cruise Sep 2026',fromModel:'ak',status:'funded',
+    src:'Truist Checking (weekly surplus)',dest:'Truist Savings'},
+  {id:'wewe_rccl',name:'Wewe RCCL',tier:'Travel',target:600,notes:'Due end of July (Cal Wk 30)',startsAfter:'alaska',dueWeek:8,status:'funding',
+    src:'Truist Checking',dest:'RCCL payment'},
+  {id:'wewe_dcl',name:'Wewe DCL',tier:'Travel',target:500,notes:'Due first week of October (Cal Wk 41)',startsAfter:'alaska',dueWeek:19,status:'funding',
+    src:'Truist Checking',dest:'DCL payment'},
+  {id:'adam_ira',name:'Adam IRA',tier:'Retirement',target:7000,notes:'Backdoor Roth — pending CPA clearance',needsFlag:'ira_cpa_cleared',startsAfter:'wewe_dcl',status:'planned',
+    src:'Truist Checking (weekly surplus)',dest:'AMEX Savings (IRA Holding)'},
+  {id:'wendy_ira',name:'Wendy IRA',tier:'Retirement',target:7000,notes:'Pending CPA clearance',needsFlag:'ira_cpa_cleared',status:'planned',
+    src:'Truist Checking (weekly surplus)',dest:'AMEX Savings (IRA Holding)'},
+  {id:'bailey_529',name:'Bailey 529',tier:'Education',target:3500,notes:'Highest priority 529',status:'planned',
+    src:'Truist Checking (weekly surplus)',dest:'AMEX Savings (529 Holding)'},
+  {id:'bryce_529',name:'Bryce 529',tier:'Education',target:1500,notes:'',status:'planned',
+    src:'Truist Checking (weekly surplus)',dest:'AMEX Savings (529 Holding)'},
+  {id:'preston_529',name:'Preston 529',tier:'Education',target:1000,notes:'',status:'planned',
+    src:'Truist Checking (weekly surplus)',dest:'AMEX Savings (529 Holding)'},
+  {id:'bryce_vehicle',name:'Bryce Vehicle',tier:'Emerging',target:8000,notes:'Evaluate September 2026',status:'planned',
+    src:'Truist Checking',dest:'Truist Checking (hold until Sep decision)'},
+  {id:'christmas_cruise',name:'Christmas Cruise',tier:'Travel',target:5000,milestone:2500,notes:'Interim milestone $2,500 — full target $5,000',status:'planned',
+    src:'Truist Checking',dest:'Truist Savings (earmarked)'},
+  {id:'taxable_etf',name:'Taxable ETF',tier:'Stretch',target:4999.79,notes:'2027 restart — after all other goals funded',stretch:true,status:'planned',
+    src:'Truist Checking surplus',dest:'Brokerage (Fidelity)'},
+];
+const PRIORITY_TIERS=[
+  {num:1,name:'Alaska Cruise',goals:['alaska'],color:'#0369a1'},
+  {num:2,name:'Wewe RCCL',goals:['wewe_rccl'],color:'#be185d'},
+  {num:3,name:'Wewe DCL',goals:['wewe_dcl'],color:'#9333ea'},
+  {num:4,name:'Adam IRA',goals:['adam_ira'],color:'#6d28d9'},
+  {num:5,name:'Wendy IRA',goals:['wendy_ira'],color:'#7c3aed'},
+  {num:6,name:'Bailey 529',goals:['bailey_529'],color:'#0e7490'},
+  {num:7,name:'Bryce 529',goals:['bryce_529'],color:'#0891b2'},
+  {num:8,name:'Preston 529',goals:['preston_529'],color:'#0284c7'},
+  {num:9,name:'Bryce Vehicle',goals:['bryce_vehicle'],color:'#b45309'},
+  {num:10,name:'Christmas Cruise',goals:['christmas_cruise'],color:'#4d7c0f'},
+  {num:11,name:'Stretch Goal',goals:['taxable_etf'],color:'#94a3b8'},
+];
+// Direct waterfall — all goals sweep from Truist Checking. IRA/529 goals route to AMEX Savings (holding).
+const VARIABLE_WATERFALL=['alaska','wewe_rccl','wewe_dcl','adam_ira','wendy_ira','bailey_529','bryce_529','preston_529','bryce_vehicle','christmas_cruise'];
+const REGULAR_WATERFALL=['alaska','wewe_rccl','wewe_dcl','adam_ira','wendy_ira','bailey_529','bryce_529','preston_529','bryce_vehicle','christmas_cruise'];
+
+// ── runModel — full waterfall-integrated model ─────────────────────────────
+function runModel(akGoal,rtGoal,flags){
+  flags=flags||goalFlags;
+  var akTarget=akGoal!=null?akGoal:((GOALS_REGISTRY.find(function(g){return g.id==='alaska';})||{}).target||7000);
+  var rtTarget=rtGoal!=null?rtGoal:7694.87; // retained for backwards compat only — retirement_rebuild removed
+  // ── Goal savings tracker (cumulative funded per goal) ────────────────────
+  // Initialised to 0 for all model-tracked goals; 401k seeds from YTD amount
+  var goalSaved={};
+  GOALS_REGISTRY.forEach(function(g){if(!g.complete)goalSaved[g.id]=0;});
+  goalSaved['adam_ira']=Math.round(START_AMX*100)/100; // AMEX Savings already holds this as initial IRA seed
+  goalSaved['adam_401k']=goalFundedAmounts['adam_401k']||0;      // YTD payroll contributions
+  // Adam bi-weekly paycheck weeks within 31-week model (matched to WD inflow dates)
+  var PAYCHECK_WKS=[3,5,7,9,11,14,16,18,20,22,24,27,29,31];
+  var PAY_401K=1020.83; // $24,500 / 24 pay periods
+  var rtSavSwept=false; // one-time Truist Savings → AMEX when Alaska completes
+  // Waterfall arrays minus auto/complete goals (handled outside waterfall loop)
+  var skipIds={};
+  GOALS_REGISTRY.forEach(function(g){if(g.auto||g.complete)skipIds[g.id]=true;});
+  var regWF=REGULAR_WATERFALL.filter(function(id){return!skipIds[id];});
+  var varWF=VARIABLE_WATERFALL.filter(function(id){return!skipIds[id];});
+  var chk=START_CHK,sav=START_SAV,amx=START_AMX,tax=START_TAX,lc=START_LC;
+  var taxTodo=BASE_TAX;
+  var surplusSwept=0,surplusStart=null;
+  var weeks=[];
   function r(n){return Math.round(n*100)/100}
   function sm(b,a,f){return Math.max(0,Math.min(r(a),r(r(b)-r(f))))}
   const effectiveWD=WD.map(function(wd){
@@ -636,11 +879,12 @@ function runModel(akGoal,rtGoal){
   for(const wd of effectiveWD){
     const[num,dates,inflows,obs,evs,ct,ca,calNote]=wd;
     const startChk=r(chk),startSav=r(sav),startAmx=r(amx),startTax=r(tax),startLc=r(lc);
-    const effFl=OP_FL; // single floor — no trough/holdFloor overrides
+    const effFl=OP_FL;
     for(const a of inflows)chk=r(chk+a);
     for(const a of obs)chk=r(chk-a);
     const tr=[],ac=[],recActs=[];
     const fn='$'+effFl.toLocaleString('en-US');
+    // ── Week 1 setup (unchanged) ──────────────────────────────────────────
     if(num===1){
       tr.push({l:'SETUP ✔ Move $2,750 — Truist Savings → Truist Checking',r:'done',rsn:'EF injection: redirect savings to checking (do before other transfers)'});
       tr.push({l:'SETUP ✔ Move $1,000 — Lending Club → Truist Checking',r:'done',rsn:'EF injection: partial LC drawdown for operating capital'});
@@ -651,6 +895,7 @@ function runModel(akGoal,rtGoal){
       ac.push('Move $2,250 Lending Club → Truist Checking (Option 1 correction — do with other SETUP transfers)');
       ac.push('[PENDING #20] Costco Visa — Confirm closing date, due date, and card transition timing (provide date to Claude to complete)');
     }
+    // ── Transfer helpers ──────────────────────────────────────────────────
     function mv(amt,dst,allowFinal){
       const m=r(sm(chk,amt,effFl));
       if(m<=0)return 0;
@@ -659,25 +904,119 @@ function runModel(akGoal,rtGoal){
       if(dst==='lc')lc=r(lc+m);else if(dst==='tax')tax=r(tax+m);
       else if(dst==='sav')sav=r(sav+m);else if(dst==='amx')amx=r(amx+m);
       else if(dst==='surplus'){surplusSwept=r(surplusSwept+m);if(!surplusStart)surplusStart=num;}
+      // 'goal': deducted from checking; external destination — no model account tracked
       return m;
     }
     function mvS(amt,dst){const m=r(amt);sav=r(sav-m);if(dst==='lc')lc=r(lc+m);else if(dst==='amx')amx=r(amx+m);else if(dst==='chk')chk=r(chk+m);return m;}
-    if(num===12){mvS(1500,'chk');tr.push({l:'Alaska trip $1,500 Truist Savings → Truist Checking',r:'done',a:1500,rsn:'Fund cruise week 1 costs from Alaska savings'});ac.push('Transfer $1,500 from Truist Savings to Truist Checking (Alaska cruise week 1)');}
-    if(num===16){mvS(2500,'chk');tr.push({l:'Alaska trip $2,500 Truist Savings → Truist Checking',r:'done',a:2500,rsn:'Fund cruise week 2 costs from Alaska savings'});ac.push('Transfer $2,500 from Truist Savings to Truist Checking (Alaska cruise week 2)');}
+    // ── Alaska savings draw (single $7k pull — funds elevated Sep cruise card bills) ──
+    if(num===15){mvS(7000,'chk');tr.push({l:'Alaska $7,000 Truist Savings → Truist Checking',r:'done',a:7000,rsn:'Fund elevated September cruise card bills (Gold + Disney Visa) from Alaska savings'});ac.push('Transfer $7,000 from Truist Savings to Truist Checking (Alaska cruise card bills — Sep Gold & Disney Visa)');}
+    // ── 401(k) auto-contribution — payroll deduction, no checking impact ──
+    if(PAYCHECK_WKS.indexOf(num)>=0){
+      var k401Target=(GOALS_REGISTRY.find(function(g){return g.id==='adam_401k';})||{}).target||24500;
+      var contrib=r(Math.min(PAY_401K,Math.max(0,k401Target-(goalSaved['adam_401k']||0))));
+      if(contrib>0){goalSaved['adam_401k']=r((goalSaved['adam_401k']||0)+contrib);tr.push({l:'401(k) $'+fc(contrib)+' auto-deducted payroll (Empower)',r:'info',rsn:'Pre-tax payroll deduction — no checking impact'});}
+    }
+    // ── Commission tax deduction ──────────────────────────────────────────
     if(ct>0){const m=mv(ct,'tax');if(m>0){tr.push({l:'Commission 40% $'+fc(ct)+' Checking → Vio Bank - Tax Reserve',r:'done',rsn:'Post $'+fc(chk)+' ≥ '+fn});ac.push('Transfer $'+fc(ct)+' from Truist Checking to Vio Bank - Tax Reserve (commission 40%)');}else{taxTodo=r(taxTodo+ct);tr.push({l:'Commission 40% $'+fc(ct)+' deferred → tax pending',r:'defer',rsn:'No surplus above '+fn+' — picks up next eligible week'});}}
-    if(ca>0&&alaska>0&&num>=AK_START){const m=mv(Math.min(ca,alaska),'sav',true);if(m>0){alaska=r(alaska-m);tr.push({l:'Commission 60% $'+fc(m)+' Checking → Truist Savings (Alaska)',r:'done',rsn:'Post $'+fc(chk)+' ≥ '+fn});ac.push('Transfer $'+fc(m)+' from Truist Checking to Truist Savings (Alaska)');}else tr.push({l:'Commission 60% $'+fc(ca)+' deferred',r:'defer',rsn:'No surplus above '+fn});}
-    // EF_SAV_XFR eliminated — starting balances reflect real-world moves
-    // EF_CHK_XFR eliminated — starting balances reflect real-world moves
-    if(taxTodo>0&&ct===0){const m=mv(taxTodo,'tax');if(m>0){taxTodo=r(taxTodo-m);const rem=taxTodo>0?' — $'+fc(taxTodo)+' carries forward':'';tr.push({l:'Tax $'+fc(m)+' Checking → Vio Bank - Tax Reserve'+rem,r:'done',rsn:'Post $'+fc(chk)+' ≥ '+fn});ac.push('Transfer $'+fc(m)+' from Truist Checking to Vio Bank - Tax Reserve');}else tr.push({l:'Tax $'+fc(taxTodo)+' Checking → Vio Bank - Tax Reserve',r:'defer',rsn:'Post-obligations $'+fc(chk)+' — no surplus above '+fn});}
-    if(alaska>0&&num>=AK_START&&taxTodo===0&&ca===0){const m=mv(alaska,'sav',true);if(m>0){alaska=r(alaska-m);const rem=alaska>0?' — $'+fc(alaska)+' remaining':' — Alaska funded!';tr.push({l:'Alaska $'+fc(m)+' Checking → Truist Savings'+rem,r:'done',rsn:'Post $'+fc(chk)+' ≥ '+fn});ac.push('Transfer $'+fc(m)+' from Truist Checking to Truist Savings (Alaska fund)');}else{const pot=r(sm(chk,alaska,effFl));if(pot>0&&pot<MIN_XFR)tr.push({l:'Alaska $'+fc(pot)+' suppressed (<$100) — rolls forward',r:'info',rsn:'Too small; carries to next eligible week'});else tr.push({l:'Alaska surplus deferred',r:'defer',rsn:'Post-obligations $'+fc(chk)+' — no surplus above '+fn});}}
-    if(retSav>0&&alaska===0){const m=mvS(retSav,'amx');retSav=0;tr.push({l:'Retirement $'+fc(m)+' Truist Savings → AMEX Savings',r:'done',rsn:'Savings move — zero checking impact'});ac.push('Transfer $'+fc(m)+' from Truist Savings to AMEX Savings (retirement)');}
-    if(retChk>0&&alaska===0){const m=mv(retChk,'amx',true);if(m>0){retChk=r(retChk-m);const rem=retChk>0?' — $'+fc(retChk)+' remaining':' — retirement funded!';tr.push({l:'Retirement $'+fc(m)+' Checking → AMEX Savings'+rem,r:'done',rsn:'Post $'+fc(chk)+' ≥ '+fn});ac.push('Transfer $'+fc(m)+' from Truist Checking to AMEX Savings (retirement rebuild)');}else{const pot=r(sm(chk,retChk,effFl));if(pot>0&&pot<MIN_XFR)tr.push({l:'Retirement $'+fc(pot)+' suppressed (<$100) — rolls forward',r:'info',rsn:'Too small; carries to next eligible week'});else tr.push({l:'Retirement surplus deferred',r:'defer',rsn:'Post-obligations $'+fc(chk)+' — no surplus above '+fn});}}
-    // LC_LEVELUP eliminated — LC is static EF, no activity this model year
-    if(alaska===0&&retChk<=0){
+    // ── Tax backlog (non-commission weeks) ────────────────────────────────
+    if(taxTodo>0&&ct===0){const m=mv(taxTodo,'tax');if(m>0){taxTodo=r(taxTodo-m);const remT=taxTodo>0?' — $'+fc(taxTodo)+' carries forward':'';tr.push({l:'Tax $'+fc(m)+' Checking → Vio Bank - Tax Reserve'+remT,r:'done',rsn:'Post $'+fc(chk)+' ≥ '+fn});ac.push('Transfer $'+fc(m)+' from Truist Checking to Vio Bank - Tax Reserve');}else tr.push({l:'Tax $'+fc(taxTodo)+' Checking → Vio Bank - Tax Reserve',r:'defer',rsn:'Post-obligations $'+fc(chk)+' — no surplus above '+fn});}
+    // ── Retirement Rebuild savings sweep (one-time when Alaska completes) ─
+    // Runs after waterfall so Alaska can complete this same week before sweep triggers
+    // ── Goal waterfall ────────────────────────────────────────────────────
+    // Look-ahead floor: "Don't pull from checking for a goal if I haven't
+    // saved the additional funds through inflows." — Adam
+    // Before sweeping to goals, check if next week's mandatory outflows (rent,
+    // AMEX, Disney Visa) would push checking below OP_FL. If so, raise the
+    // effective floor this week so that buffer stays in checking.
+    var _laWde=WD.find(function(x){return x[0]===num+1;});
+    var _laNetOut=0;
+    if(_laWde&&_laWde[4]){
+      var _laIn=0,_laOut=0;
+      _laWde[4].forEach(function(ev){
+        if(ev.t==='in')_laIn+=Math.abs(ev.a||0);
+        else _laOut+=Math.abs(ev.a||0);
+      });
+      _laNetOut=Math.max(0,_laOut-_laIn);
+    }
+    // Only raise floor if next week has large net outflows (rent/AMEX/Disney weeks).
+    // Threshold: $3,000 — below this, normal weekly variance; above, protect it.
+    var LA_THRESHOLD=3000;
+    var laFl=_laNetOut>LA_THRESHOLD?r(effFl+_laNetOut):effFl;
+    var isCommWk=ct>0||ca>0;
+    var wf=isCommWk?varWF:regWF;
+    for(var wi=0;wi<wf.length;wi++){
+      if(r(Math.max(0,chk-laFl))<0.005)break;
+      var goalId=wf[wi];
+      var gdef=GOALS_REGISTRY.find(function(x){return x.id===goalId;});
+      if(!gdef)continue;
+      // Gate: dependency (startsAfter) — skip if prereq not yet complete
+      if(gdef.startsAfter){
+        var depG=GOALS_REGISTRY.find(function(x){return x.id===gdef.startsAfter;});
+        var depTgt=gdef.startsAfter==='alaska'?akTarget
+          :(depG?depG.target:999999);
+        if((goalSaved[gdef.startsAfter]||0)<depTgt-0.01)continue;
+      }
+      // Gate: flag — if prereq IS met but flag not cleared, BLOCK (don't skip to lower goals)
+      if(gdef.needsFlag&&!flags[gdef.needsFlag])break;
+      // Gate: No waterfall allocations until setup settles (AK_START weeks)
+      if(num<AK_START)continue;
+      var gTgt=goalId==='alaska'?akTarget:gdef.target;
+      var funded0=goalSaved[goalId]||0;
+      var rem0=r(Math.max(0,gTgt-funded0));
+      if(rem0<0.005)continue;
+      // IRA/529 goals accumulate in AMEX Savings (holding); cruise/vehicle goals are external
+      var _amxGoals=['adam_ira','wendy_ira','bailey_529','bryce_529','preston_529'];
+      var dst=goalId==='alaska'?'sav':(_amxGoals.indexOf(goalId)>=0?'amx':'goal');
+      var allowFin=rem0<MIN_XFR*2; // allow tiny final contribution to complete goal
+      var m=mv(rem0,dst,allowFin);
+      if(m>0){
+        goalSaved[goalId]=r(funded0+m);
+        var remAfter=r(Math.max(0,gTgt-goalSaved[goalId]));
+        var sfx=remAfter<0.01?' — '+gdef.name+' funded!':(': $'+fc(remAfter)+' remaining');
+        var dstLbl=dst==='sav'?'Truist Savings':dst==='amx'?'AMEX Savings':(gdef.dest||gdef.name);
+        tr.push({l:gdef.name+' $'+fc(m)+' → '+dstLbl+sfx,r:'done',rsn:'Waterfall allocation'});
+        ac.push('Transfer $'+fc(m)+' from Truist Checking to '+dstLbl+' ('+gdef.name+')');
+      }else if(m<0){
+        tr.push({l:gdef.name+' $'+fc(-m)+' suppressed (<$'+MIN_XFR+') — rolls forward',r:'info',rsn:'Too small; carries to next eligible week'});
+      }else{
+        tr.push({l:gdef.name+' deferred — no surplus above '+fn,r:'defer',rsn:'Post-obligations $'+fc(chk)+' — no surplus above floor'});
+      }
+    }
+    // ── Due-date warnings — flag goals that hit deadline underfunded ─────────
+    GOALS_REGISTRY.forEach(function(gd){
+      if(!gd.dueWeek||gd.auto||gd.complete)return;
+      if(num!==gd.dueWeek)return; // only fire on the due week itself
+      var gTgt=gd.id==='alaska'?akTarget:gd.target;
+      var funded=goalSaved[gd.id]||0;
+      var shortfall=r(Math.max(0,gTgt-funded));
+      if(shortfall>0.01){
+        tr.push({l:'⚠️ '+gd.name+' due this week — $'+fc(shortfall)+' short of $'+fc(gTgt)+' target. Decision needed.',r:'warn',rsn:'Goal deadline reached underfunded'});
+      }
+    });
+    // ── IRA seed sweep — fires once when Alaska completes; moves residual savings → AMEX ─
+    // ── Seeds adam_ira in AMEX Savings (IRA Holding) — zero checking impact         ─
+    var akNowComplete=r(goalSaved['alaska']||0)>=r(akTarget-0.01);
+    if(akNowComplete&&!rtSavSwept){
+      const ms=mvS(RET_SAV_XFR,'amx');
+      goalSaved['adam_ira']=r((goalSaved['adam_ira']||0)+ms);
+      rtSavSwept=true;
+      tr.push({l:'Adam IRA seed $'+fc(ms)+' Truist Savings → AMEX Savings',r:'done',rsn:'Initial IRA allocation from Alaska residual savings — zero checking impact'});
+      ac.push('Transfer $'+fc(ms)+' from Truist Savings to AMEX Savings (Adam IRA seed — IRA Holding)');
+    }
+    // ── Surplus tracking (all active waterfall goals funded) ──────────────
+    var allFunded=regWF.every(function(id){
+      var gd=GOALS_REGISTRY.find(function(x){return x.id===id;});
+      if(!gd)return true;
+      if(gd.needsFlag&&!flags[gd.needsFlag])return false; // gated — counts as unfunded; blocks surplus
+      var gt=id==='alaska'?akTarget:gd.target;
+      return(goalSaved[id]||0)>=gt-0.01;
+    });
+    if(allFunded){
       var surplusAvail=r(Math.max(0,chk-effFl));
       if(!surplusStart&&surplusAvail>0)surplusStart=num;
-      surplusSwept=r(surplusSwept+surplusAvail); // cumulative FGB virtual total — money stays in checking
-      if(surplusAvail>0){tr.push({l:'Cumulative surplus available after goals: '+fc(surplusAvail)+' (display only — stays in Truist Checking)',r:'info',rsn:'All active goals funded — surplus accumulates in checking until Phase 4 goal queue'});}}
+      surplusSwept=r(surplusSwept+surplusAvail);
+      if(surplusAvail>0)tr.push({l:'Cumulative surplus after goals: '+fc(surplusAvail)+' (stays in Truist Checking)',r:'info',rsn:'All active goals funded — surplus accumulates in checking'});
+    }
     if(!tr.length){tr.push({l:'No transfers this week',r:'info',rsn:'No surplus above floor after obligations'});ac.push('No transfers this week — monitor balances');}
     const mChk=r(chk),mSav=r(sav),mAmx=r(amx),mTax=r(tax),mLc=r(lc);
     let reconciled=false,variance=null,actualBals=null;
@@ -691,21 +1030,34 @@ function runModel(akGoal,rtGoal){
     const totalTasks=realActs.length;
     let doneTasks=0;
     for(var ti=0;ti<totalTasks;ti++){if(taskData[num+'_'+ti]&&taskData[num+'_'+ti].completed)doneTasks++;}
-    // ── Recurring Jabian reimbursement review (first Adam-paycheck week of each month)
+    // ── Monthly Vio→LC $250 APR boost (first week of each month) ─────────────
+    var VIO_LC_MONTHS=[1,5,9,14,18,22,27,31];
+    if(VIO_LC_MONTHS.indexOf(num)>=0){
+      if(num===14||num===27){
+        recActs.push('📌 QUARTERLY LC RETURN — Transfer $750 Lending Club → Vio Bank - Tax Reserve before this month\'s deposit (end-of-quarter APR cycle return: Jun/Jul/Aug or Sep/Oct/Nov).');
+      }
+      recActs.push('📌 MONTHLY LC BOOST — Transfer $250 Vio Bank - Tax Reserve → Lending Club (first of month, maintains LC APR rate tier).');
+    }
     if([5,9,14,18,22,27,31].indexOf(num)>=0){
       recActs.push('Review Jabian reimbursements — compare expected vs. received. If a large or unusual amount is pending or recently arrived, add it as a one-time inflow via Edit Week. No action needed if reimbursements are on schedule.');}
-        weeks.push({num,dates,trough:false,managed:false,calNote,evs,tr,ac,recActs,realActs,totalTasks,doneTasks,
+    // Snapshot goal savings for this week (deep copy)
+    var gSnap={};Object.keys(goalSaved).forEach(function(k){gSnap[k]=goalSaved[k];});
+    weeks.push({num,dates,trough:false,managed:false,calNote,evs,tr,ac,recActs,realActs,totalTasks,doneTasks,
       chk:r(chk),sav:r(sav),amx:r(amx),tax:r(tax),lc:r(lc),
       mChk,mSav,mAmx,mTax,mLc,
-      akSaved:r(akGoal-alaska),akRem:r(alaska),retRem:r(retChk),ol:r(chk+sav),
-      surplusSwept:r(surplusSwept),surplusStart,
-      startChk,startSav,startAmx,startTax,startLc,
-      reconciled,variance,actualBals});
+      goalSaved:gSnap,
+      // Backwards-compat fields
+      akSaved:r(goalSaved['alaska']||0),
+      akRem:r(Math.max(0,akTarget-(goalSaved['alaska']||0))),
+      retRem:r(Math.max(0,7000-(goalSaved['adam_ira']||0))), // retRem now tracks adam_ira remaining (backwards compat)
+      ol:r(chk+sav),surplusSwept:r(surplusSwept),surplusStart,
+      startChk,startSav,startAmx,startTax,startLc,reconciled,variance,actualBals});
   }
   return weeks;
 }
 
 // ── Helpers (unchanged) ────────────────────────────────────────────────────
+function r(n){return Math.round(n*100)/100}  // global — also declared inside runModel for local perf
 function f(n){return '$'+Math.abs(n).toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2})}
 function fc(n){return n.toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2})}
 function getCurrentWeek(){const s=new Date(2026,5,7);const t=new Date();t.setHours(0,0,0,0);s.setHours(0,0,0,0);const d=Math.floor((t-s)/864e5);if(d<0)return 1;return Math.min(Math.floor(d/7)+1,31);}
@@ -946,10 +1298,20 @@ function buildDashboardViewModel(weeks,goals){
       return{weekNum:w.num,taskIdx:index,label:label,completed:!!(taskData[key]&&taskData[key].completed)};
     });
   });
+  // Per-goal completion weeks derived from model output
+  var goalCompletion={};
+  GOALS_REGISTRY.forEach(function(g){
+    if(g.complete){goalCompletion[g.id]={num:0,dates:'Completed'};return;}
+    var tgt=g.id==='alaska'?(goals?goals.ak:7000):g.target;
+    goalCompletion[g.id]=weeks.find(function(w){return w.goalSaved&&(w.goalSaved[g.id]||0)>=tgt-0.01;})||null;
+  });
   return{
     goals:goals,weeks:weeks,current:current,finalWeek:finalWeek,
-    currentWeekNum:current.num,alaskaCompletion:alaskaCompletion,
-    retirementCompletion:retirementCompletion,surplusCompletion:surplusCompletion,lowestChecking:lowestChecking,
+    currentWeekNum:current.num,
+    alaskaCompletion:alaskaCompletion,           // backwards compat
+    retirementCompletion:retirementCompletion,   // backwards compat
+    goalCompletion:goalCompletion,               // NEW: keyed by goal id
+    surplusCompletion:surplusCompletion,lowestChecking:lowestChecking,
     allActions:allActions,openActions:allActions.filter(function(a){return!a.completed;}),
     troughWeeks:weeks.filter(function(w){return w.trough;}),
     managedWeeks:weeks.filter(function(w){return w.managed;}),
@@ -1075,12 +1437,27 @@ function renderWeekDetail(w,weeks){
   var efFunded=w.lc>=EF_AMT-0.01;
   var isPastWeek=w.num<currentW;
   var isNowWeek=w.num===currentW;
-  var hasOverride=!!overrideData[w.num];
+  var ov=overrideData[w.num];
+  var _baseWDE=WD.find(function(x){return x[0]===w.num;});
+  var hasOverride=false;
+  if(ov){
+    if(ov.is_custom){hasOverride=true;}
+    else if(_baseWDE){
+      var _normEv=function(arr){return JSON.stringify((arr||[]).map(function(e){return{l:e.l,t:e.t,a:e.a};}));};
+      hasOverride=_normEv(ov.events_json)!==_normEv(_baseWDE[4])||
+        !!(ov.dates&&ov.dates!==_baseWDE[1])||
+        (ov.ct!=null&&Number(ov.ct)!==Number(_baseWDE[5]||0))||
+        (ov.ca!=null&&Number(ov.ca)!==Number(_baseWDE[6]||0));
+    }else{hasOverride=!!(ov.events_json&&ov.events_json.length>0);}
+  }
   var html='';
-  if(w.calNote){html+='<div class="week-alert alert-trough"><strong>⚠️ '+w.calNote+'</div>';}
-  else if(w.chk<2500){html+='<div class="week-alert alert-trough"><strong>Watch</strong> — checking at '+f(w.chk)+'. Below $2,500 buffer. Review discretionary spending.</div>';}
   var prevW=weeks.find(function(x){return x.num===w.num-1;}),nextW=weeks.find(function(x){return x.num===w.num+1;});
+  var alertStrip='';
+  if(w.calNote){alertStrip='<div class="week-alert-strip">⚠️ '+w.calNote+'</div>';}
+  else if(w.chk<2500){alertStrip='<div class="week-alert-strip">⚠️ Watch — checking at '+f(w.chk)+'. Below $2,500 buffer. Review discretionary spending.</div>';}
   html+='<div class="panel wk-header-card">'+
+    alertStrip+
+    '<div class="wk-inner-pad">'+
     '<div class="wk-header-top">'+
       '<div class="wk-title-nav">'+
         (prevW?'<button class="wnav-arrow" onclick="activeW='+(w.num-1)+';renderApp()" title="Wk '+getCalWeek(w.num-1)+' · '+prevW.dates+'">←</button>':'<span class="wnav-arrow-ph"></span>')+
@@ -1100,6 +1477,7 @@ function renderWeekDetail(w,weeks){
       (isNowWeek?'<span class="badge badge-now">● This week</span>':'')+
       (w.calNote?'<span class="badge badge-trough">⚠️ Low-liquidity week</span>':w.chk<OP_FL?'<span class="badge badge-trough">Watch</span>':'<span class="badge badge-op">Normal week</span>')+
     '</div>'+
+    '</div>'+
   '</div>';
   // Cash flow + transfers
   html+='<div class="two-col">'+
@@ -1108,7 +1486,9 @@ function renderWeekDetail(w,weeks){
         '<div class="sect">Cash flow this week</div>'+
         w.evs.map(function(e){
           var cls=e.t==='in'?'ev-in':'ev-out';var sign=e.t==='in'?'+':'−';
-          return'<div class="ev-row"><span class="ev-lbl">'+e.l+(e.d?'<span class="ev-date-inline"> · '+e.d+'</span>':'')+'</span><span class="'+cls+'">'+sign+f(Math.abs(e.a))+'</span></div>';
+          var isEstimate=e.t==='ob'&&e.l.indexOf('~')>=0;
+          var estBadge=isEstimate?'<span style="font-size:9.5px;font-weight:600;color:var(--amber);background:var(--amberSoft);border:1px solid #fde68a;border-radius:4px;padding:1px 5px;margin-left:5px">Est.</span>':'';
+          return'<div class="ev-row"><span class="ev-lbl">'+e.l.replace('~','')+estBadge+(e.d?'<span class="ev-date-inline"> · '+e.d+'</span>':'')+'</span><span class="'+cls+'">'+sign+f(Math.abs(e.a))+'</span></div>';
         }).join(''):'<div class="sect">Cash flow this week</div><div style="color:var(--muted);font-size:13px;padding:8px 0">No scheduled events this week.</div>')+
     '</div>'+
     '<div class="panel card-pad">'+
@@ -1178,14 +1558,20 @@ function renderWeekDetail(w,weeks){
       var totalIn=w.evs.filter(function(e){return e.a>0;}).reduce(function(s,e){return s+e.a;},0);
       var totalOut=w.evs.filter(function(e){return e.a<0;}).reduce(function(s,e){return s+e.a;},0);
       var savToChk=w.tr.filter(function(t){return t.a>0&&t.l&&t.l.indexOf('Savings → Truist Checking')>=0;}).reduce(function(s,t){return s+t.a;},0);
+      // Goal transfers = money that left checking for savings goals (not in WD events).
+      // Computed as the arithmetic residual so the equation always balances:
+      // Beginning + Inflows + SavDrawdown − Bills − GoalTransfers = Ending
+      var billsOut=r(Math.abs(totalOut));
+      var totalChkDelta=r(w.startChk+totalIn+savToChk-w.chk);
+      var goalTransfers=r(Math.max(0,totalChkDelta-billsOut));
       return'<div class="floor-health">'+
         '<div class="floor-row">'+
           '<div class="floor-item"><div class="floor-lbl">Beginning</div><div class="floor-val">'+f(w.startChk)+'</div></div>'+
           '<div class="floor-arrow">+</div>'+
           '<div class="floor-item"><div class="floor-lbl">Inflows</div><div class="floor-val" style="color:var(--green)">'+f(totalIn)+'</div></div>'+
           (savToChk>0?'<div class="floor-arrow">+</div><div class="floor-item"><div class="floor-lbl">Savings Drawdown</div><div class="floor-val" style="color:var(--blue)">'+f(savToChk)+'</div></div>':'')+
-          '<div class="floor-arrow">−</div>'+
-          '<div class="floor-item"><div class="floor-lbl">Outflows</div><div class="floor-val" style="color:var(--red)">'+f(Math.abs(totalOut))+'</div></div>'+
+          (billsOut>0?'<div class="floor-arrow">−</div><div class="floor-item"><div class="floor-lbl">Outflows</div><div class="floor-val" style="color:var(--red)">'+f(billsOut)+'</div></div>':'')+
+          (goalTransfers>0.5?'<div class="floor-arrow">−</div><div class="floor-item"><div class="floor-lbl">Goal Transfers</div><div class="floor-val" style="color:var(--amber)">'+f(goalTransfers)+'</div></div>':'')+
           '<div class="floor-arrow">=</div>'+
           '<div class="floor-item"><div class="floor-lbl">Ending (Checking)</div><div class="floor-val">'+f(w.chk)+'</div></div>'+
         '</div>'+
@@ -1211,16 +1597,25 @@ function renderWeekDetail(w,weeks){
         over.map(function(s){return'<span class="vitem under">'+s+' below plan</span>';}).join('')+
       '</div></div>';
     }():'')+'</div>';
-  // Tasks
-  if(w.realActs.length){
-    var progCls=w.doneTasks===w.totalTasks?'all-done':'partial';
-    var progTxt=w.doneTasks+'/'+w.totalTasks+' done';
+  // Tasks (model + custom)
+  var customTasks=customTaskData[w.num]||[];
+  var totalAll=w.realActs.length+customTasks.length;
+  var doneCustom=customTasks.filter(function(ct){return ct.completed;}).length;
+  var doneAll=w.doneTasks+doneCustom;
+  if(totalAll>0||true){
+    var progCls=doneAll===totalAll&&totalAll>0?'all-done':'partial';
+    var progTxt=doneAll+'/'+totalAll+' done';
+    var addingCustom=customTaskState&&customTaskState.addingWeek===w.num;
     html+='<div class="panel card-pad"><div class="acts">'+
-      '<div class="act-hdr">Required actions this week <span class="act-progress '+progCls+'">'+progTxt+'</span></div>'+
-      w.realActs.map(function(a,i){
+      '<div class="act-hdr">Required actions this week <span class="act-progress '+(totalAll>0?progCls:'')+'">'+progTxt+'</span></div>'+
+      (w.realActs.length?w.realActs.map(function(a,i){
         var done=taskData[w.num+'_'+i]&&taskData[w.num+'_'+i].completed;
         return'<div class="task-row"><input type="checkbox" class="task-check" '+(done?'checked':'')+' onchange="toggleTask('+w.num+','+i+',this.checked)"><div class="task-text'+(done?' done':'')+'">'+a+'<span class="task-date">'+getWeekDate(w.num)+'</span></div></div>';
-      }).join('')+
+      }).join(''):'')+(customTasks.length?customTasks.map(function(ct,ci){
+        return'<div class="task-row"><input type="checkbox" class="task-check" '+(ct.completed?'checked':'')+' onchange="toggleCustomTask('+w.num+',\''+ct.id+'\',this.checked)"><div class="task-text'+(ct.completed?' done':'')+'">'+ct.label+'<span class="task-date">Custom</span></div><button class="custom-task-del" onclick="deleteCustomTask('+w.num+',\''+ct.id+'\')" title="Remove">✕</button></div>';
+      }).join(''):'')+(addingCustom?
+        '<div class="custom-task-form"><input class="custom-task-input" id="ct-inp-'+w.num+'" type="text" placeholder="Describe the action..." maxlength="200"><button class="custom-task-save-btn" onclick="saveCustomTask('+w.num+')">Add</button><button class="custom-task-add-btn" onclick="customTaskState=null;renderApp()">Cancel</button></div>':
+        '<button class="custom-task-add-btn" onclick="customTaskState={addingWeek:'+w.num+'};renderApp()">+ Add action</button>')+
     '</div></div>';
   }
   // Recommended actions (no checkbox, no progress, not counted in openActions)
@@ -1269,8 +1664,8 @@ function renderWeekDetail(w,weeks){
   html+='</div>';
   // Banner
   if(w.num===1){html+='<div class="banner banner-green">✅ Week 1 actions Move $2,750 Truist Savings→Checking \xb7 Move $1,000 LC→Checking \xb7 Cancel $2,250 Checking→LC plan \xb7 $6,000 injection complete \xb7 Starting balances reflect these moves</div>';}
-  else if(akFunded&&w.num===weeks.find(function(x){return x.akRem<=0.01;})?.num){html+='<div class="banner banner-amber">⭐ Big week — Alaska fully funded + retirement savings move + retirement rebuild begins</div>';}
-  else if(akFunded&&!rtFunded){html+='<div class="banner banner-blue">✅ Alaska funded — retirement rebuild in progress</div>';}
+  else if(akFunded&&w.num===weeks.find(function(x){return x.akRem<=0.01;})?.num){html+='<div class="banner banner-amber">⭐ Big week — Alaska fully funded + $3,772.74 savings seed moves to AMEX</div>';}
+  else if(akFunded&&!rtFunded){html+='<div class="banner banner-blue">✅ Alaska funded — waterfall continues: RCCL → DCL → IRA funding</div>';}
   return html;
 }
 
@@ -1279,8 +1674,9 @@ function renderWeekly(vm){
   var w=vm.weeks.find(function(x){return x.num===activeW;})||vm.weeks[0];
   var listItems=vm.weeks.map(function(wx){
     var isPast=wx.num<currentW;var isNow=wx.num===currentW;
-    var badgeCls='wli-badge '+(isNow?'now':isPast?(wx.reconciled?'ok':'past'):(wx.calNote?'watch':''));
-    var badgeTxt=isNow?'Now':isPast?(wx.reconciled?'Recon':'Open'):(wx.calNote?'Low-liq':'');
+    var isFutureWatch=!isPast&&!isNow&&(wx.calNote||wx.chk<2500);
+    var badgeCls='wli-badge '+(isNow?'now':isPast?(wx.reconciled?'ok':'past'):(isFutureWatch?'watch':''));
+    var badgeTxt=isNow?'Now':isPast?(wx.reconciled?'Recon':'Open'):(wx.calNote?'Low-liq':wx.chk<2500?'Watch':'');
     var rowCls='week-list-item'+(wx.num===activeW?' active':'')+(wx.calNote?' trough-item':'')+(wx.reconciled?' reconciled-item':'')+(isNow?' now-item':'');
     var dotCls=isNow?'wli-dot current':isPast&&wx.reconciled?'wli-dot reconciled':wx.managed?'wli-dot managed':wx.trough?'wli-dot trough':overrideData[wx.num]?'wli-dot edited':'wli-dot none';
     return'<div class="'+rowCls+'" onclick="activeW='+wx.num+';renderApp()">'+
@@ -1318,70 +1714,653 @@ function renderWeekly(vm){
   });
 }
 
-// ── renderGoals ────────────────────────────────────────────────────────────
-function renderGoals(vm){
-  // Don't recreate inputs while user is actively editing a goal field
-  var _focused=document.activeElement;
-  if(_focused&&(_focused.id==='akGoal'||_focused.id==='rtGoal'))return;
-  var ak=vm.goals.ak,rt=vm.goals.rt;
-  // Always show WHERE YOU ARE TODAY (currentW), not the week being browsed
+// ── renderGoals — Phase 4 full implementation ──────────────────────────────
+
+function getGoalFunded(id,vm){
+  var g=GOALS_REGISTRY.find(function(x){return x.id===id;});
+  if(!g)return 0;
+  // Complete/external goals: read static funded amount only
+  if(g.complete)return goalFundedAmounts[id]||0;
+  // All goals: model-backed via goalSaved snapshot on current week
   var w=vm.weeks.find(function(x){return x.num===currentW;})||vm.weeks[0];
-  var akPct=Math.min(100,+(w.akSaved/ak*100).toFixed(1));
-  var rtPct=Math.min(100,+(w.amx/rt*100).toFixed(1));
-  var lcPct=Math.min(100,+(w.lc/EF_AMT*100).toFixed(1));
-  var akForecast=vm.alaskaCompletion?'<span class="forecast-label">Projected</span> <strong>Completes Wk '+getCalWeek(vm.alaskaCompletion.num)+'</strong> \xb7 '+vm.alaskaCompletion.dates:'<span class="forecast-label">Projected</span> Alaska target not reached within model \xb7 '+f(vm.finalWeek.akRem)+' remaining after Wk '+getCalWeek(31)+'.';
-  var rtForecast=vm.retirementCompletion?'<span class="forecast-label">Projected</span> <strong>Completes Wk '+getCalWeek(vm.retirementCompletion.num)+'</strong> \xb7 '+vm.retirementCompletion.dates:'<span class="forecast-label">Projected</span> Not complete within current model \xb7 '+f(vm.finalWeek.retRem)+' remaining after Wk '+getCalWeek(31)+'.';
-  var html='<div class="goals-grid">'+
-    '<div class="panel goal-card">'+
-      '<div class="goal-priority">Priority 1</div>'+
-      '<h3>Alaska Cruise Fund</h3>'+
-      '<p class="sub">Destination: Truist Savings \xb7 Sweeps begin Wk 27 \xb7 funded before retirement</p>'+
-      '<div class="goal-amount" style="color:var(--blue)">'+f(w.akSaved)+'</div>'+
-      '<div class="goal-input-row"><span class="goal-input-label">Target</span>'+
-        '<div class="ginput-wrap"><span>$</span><input type="number" id="akGoal" class="goal-inp" value="'+ak+'" step="100" inputmode="numeric"></div>'+
+  if(!w||!w.goalSaved)return goalFundedAmounts[id]||0;
+  var v=w.goalSaved[id];
+  return v!==undefined?Math.round(v*100)/100:(goalFundedAmounts[id]||0);
+}
+function getGoalRemaining(id,vm){
+  var g=GOALS_REGISTRY.find(function(x){return x.id===id;});
+  if(!g)return 0;
+  return Math.max(0,Math.round((g.target-getGoalFunded(id,vm))*100)/100);
+}
+function setGoalsSubTab(tab){goalsSubTab=tab;renderApp();}
+function toggleGoalFlag(flag){goalFlags[flag]=!goalFlags[flag];engineResult=null;renderApp();}
+
+function runEngine(vm){
+  var amt=parseFloat(engineAmt)||0;
+  if(!vm||amt<=0){engineResult=null;renderApp();return;}
+  var steps=[];
+  var remaining=Math.round(amt*100)/100;
+  var w=vm.weeks.find(function(x){return x.num===currentW;})||vm.weeks[0];
+  if(engineType==='variable'){
+    var taxAmt=Math.round(amt*0.40*100)/100;
+    var allocAmt=Math.round(amt*0.60*100)/100;
+    steps.push({type:'tax',num:'→',label:'40% Tax Reserve → Vio Bank (Tax HYSA)',amt:taxAmt,note:'Non-negotiable on all variable income. Always moves first before any other allocation.'});
+    steps.push({type:'info',label:'60% working allocation: '+f(allocAmt),amt:allocAmt,note:'Remaining funds follow the waterfall below.'});
+    remaining=allocAmt;
+  }
+  var waterfall=engineType==='variable'?VARIABLE_WATERFALL:REGULAR_WATERFALL;
+  var stepNum=1;
+  var justFunded={}; // track same-run allocations so startsAfter works within one deposit
+  var hitGate=false; // true when a needsFlag gate blocks the waterfall
+  for(var wi=0;wi<waterfall.length;wi++){
+    if(remaining<0.005)break;
+    var id=waterfall[wi];
+    var gdef=GOALS_REGISTRY.find(function(x){return x.id===id;});
+    if(!gdef)continue;
+    // Gate: dependency (startsAfter) — skip if prereq not yet funded, including this run's allocations
+    if(gdef.startsAfter){
+      var depG2=GOALS_REGISTRY.find(function(x){return x.id===gdef.startsAfter;});
+      var depTgt2=gdef.startsAfter==='alaska'?goalAk:(depG2?depG2.target:999999);
+      var depCur=getGoalFunded(gdef.startsAfter,vm)+(justFunded[gdef.startsAfter]||0);
+      if(depCur<depTgt2-0.01)continue;
+    }
+    var funded=getGoalFunded(id,vm)+(justFunded[id]||0);
+    var rem=Math.max(0,Math.round((gdef.target-funded)*100)/100);
+    if(rem<0.005)continue; // already funded — skip silently
+    // Gate: flag — strict block matching runModel behavior; absorbs remaining, no surplus step fires
+    if(gdef.needsFlag&&!goalFlags[gdef.needsFlag]){
+      steps.push({type:'hold',num:stepNum++,label:'🔒 '+gdef.name+' — CPA clearance pending',amt:remaining,note:'IRA gate not cleared. All '+f(remaining)+' stays in Truist Checking. Toggle "IRA CPA Cleared" in the Goals tab once your CPA approves. No lower-priority goals will fund until this gate lifts.'});
+      hitGate=true;
+      break;
+    }
+    var toAllocate=Math.min(remaining,rem);
+    toAllocate=Math.round(toAllocate*100)/100;
+    var afterNote=rem>toAllocate?f(rem-toAllocate)+' still remaining after this':'Fully funded!';
+    if(id==='alaska')afterNote='Alaska Cruise Fund: '+(rem>toAllocate?f(rem-toAllocate)+' still remaining':'Fully funded!');
+    if(id==='adam_ira')afterNote='Adam IRA (AMEX holding): '+(rem>toAllocate?f(rem-toAllocate)+' still remaining':'Fully funded!');
+    steps.push({type:'goal',num:stepNum++,label:gdef.name+' ('+gdef.tier+')',amt:toAllocate,note:afterNote});
+    justFunded[id]=(justFunded[id]||0)+toAllocate;
+    remaining=Math.round((remaining-toAllocate)*100)/100;
+  }
+  if(!hitGate&&remaining>0.005){
+    steps.push({type:'surplus',num:stepNum,label:'Surplus — stays in Truist Checking',amt:remaining,note:'All active goals funded. Cash accumulates in Truist Checking until next Phase 4 goal queue review.'});
+  }
+  engineResult=steps;
+  renderApp();
+}
+
+function _gProgCls(pct,locked,stretch){
+  if(locked||stretch)return's';
+  if(pct>=75)return'g';
+  if(pct>=25)return'a';
+  if(pct>0)return'r';
+  return's';
+}
+
+function _renderGoalsSavings(vm){
+  var flagBar='<div class="goals-flag-bar">'+
+    '<span class="goals-flag-label">Flags</span>'+
+    '<button class="flag-toggle '+(goalFlags.ira_cpa_cleared?'on':'off')+'" onclick="toggleGoalFlag(\'ira_cpa_cleared\')">'+
+      (goalFlags.ira_cpa_cleared?'✓ IRA CPA Cleared':'🔒 IRA CPA Pending')+'</button>'+
+    '<span style="font-size:11px;color:var(--muted)">Toggle once your CPA clears IRA contributions for 2026</span>'+
+  '</div>';
+  var TIER_ORDER=['Retirement','Travel','Education','Emerging','Stretch'];
+  var tierGroups={};
+  TIER_ORDER.forEach(function(t){tierGroups[t]=[];});
+  GOALS_REGISTRY.forEach(function(g){if(tierGroups[g.tier])tierGroups[g.tier].push(g);});
+  var html=''+'<div class="panel goals-table-panel">';
+  html+='<div class="goal-tbl-header"><span>Goal</span><span>Target</span><span>Funded</span><span>Remaining</span><span>Progress</span></div>';
+  TIER_ORDER.forEach(function(tier){
+    var goals=tierGroups[tier];if(!goals.length)return;
+    html+='<div class="goal-tbl-section">'+tier+'</div>';
+    goals.forEach(function(g){
+      var funded=getGoalFunded(g.id,vm);
+      var rem=Math.max(0,Math.round((g.target-funded)*100)/100);
+      var pct=g.complete?100:Math.min(100,funded>0?Math.round(funded/g.target*100):0);
+      var locked=!!(g.needsFlag&&!goalFlags[g.needsFlag]);
+      var rowCls='goal-tbl-row'+(locked?' locked-row':'')+(g.stretch?' stretch-row':'');
+      var fc=_gProgCls(pct,locked,g.stretch);
+      var prefix=locked?'🔒 ':g.complete?'✓ ':g.auto?'⚙️ ':'';
+      var modelTag=(!g.auto&&!g.complete&&!g.stretch)?'<span style="font-size:9px;font-weight:700;background:var(--blueSoft);color:var(--blue);padding:1px 5px;border-radius:4px;margin-left:4px;vertical-align:middle">Live</span>':'';
+      var fundedColor=pct===100?'color:var(--green)':'color:var(--ink)';
+      var routeHtml='';
+      if(g.src&&g.dest){
+        routeHtml='<div class="goal-route">'+
+          '<span class="route-acct">'+g.src+'</span>'+
+          '<span class="route-arrow">→</span>'+
+          '<span class="route-acct">'+g.dest+'</span>'+
+        '</div>';
+      }
+      var startsAfterHtml='';
+      if(g.startsAfter){
+        var dep=GOALS_REGISTRY.find(function(x){return x.id===g.startsAfter;});
+        startsAfterHtml='<div class="goal-starts-after">⏳ Starts after: '+(dep?dep.name:g.startsAfter)+'</div>';
+      }
+      html+='<div class="'+rowCls+'">'+
+        '<div class="goal-tbl-name-cell">'+
+          '<div class="goal-tbl-name">'+prefix+g.name+modelTag+'</div>'+
+          (g.notes?'<div class="goal-tbl-sub">'+g.notes+'</div>':'')+
+          routeHtml+
+          startsAfterHtml+
+        '</div>'+
+        '<div class="goal-tbl-amt">'+f(g.target)+'</div>'+
+        '<div class="goal-tbl-funded" style="'+fundedColor+'">'+f(funded)+'</div>'+
+        '<div class="goal-tbl-rem" style="'+(rem===0?'color:var(--green)':'')+'">'+f(rem)+'</div>'+
+        '<div class="goal-tbl-prog">'+
+          '<div class="goal-tbl-bar"><div class="goal-tbl-fill '+fc+'" style="width:'+pct+'%"></div></div>'+
+          '<div class="goal-tbl-pct">'+pct+'%'+(locked?' · Pending CPA':'')+(g.complete?' · Complete':'')+(g.auto?' · Auto':'')+'</div>'+
+        '</div>'+
+      '</div>';
+    });
+  });
+  html+='</div>';
+  // Snapshot the goals table, then reset html for the mechanics panel (built first)
+  var _tableHtml=html; html='';
+
+  // ── Cash Flow Mechanics panel ──────────────────────────────────────────────
+  // Compute sweep stats from model
+  var _weeks=Array.from({length:31},function(_,i){return vm.weeks?vm.weeks[i]:null;}).filter(Boolean);
+  if(!_weeks.length&&vm[0])_weeks=Array.from({length:31},function(_,i){return vm[i];}).filter(Boolean);
+  var _totalSwept=0,_sweepWks=0;
+  var _prevGS={};
+  _weeks.forEach(function(w){
+    var gs=w.goalSaved||{};
+    var wkSweep=0;
+    Object.keys(gs).forEach(function(k){
+      if(k!=='adam_401k'&&k!=='wendy_sep'){
+        var d=(gs[k]||0)-(_prevGS[k]||0);
+        if(d>0.01){wkSweep+=d;}
+      }
+    });
+    if(wkSweep>0.01)_sweepWks++;
+    _totalSwept+=wkSweep;
+    _prevGS=Object.assign({},gs);
+  });
+  var _modelMonths=_weeks.length/4.33;
+  var _avgMoSweep=_modelMonths>0?Math.round(_totalSwept/_modelMonths):0;
+  var _avgWkSweep=_weeks.length>0?Math.round(_totalSwept/_weeks.length):0;
+  // Monthly income estimate from WD
+  var _adamMo=Math.round(5816.5*2);   // 2 paychecks/month
+  var _wendyMo=Math.round(2152.5*2);  // 2 paychecks/month
+  var _incomeMo=_adamMo+_wendyMo;
+  // Monthly recurring bills (steady state)
+  var _billsMo=5300+5500+3500+791;    // rent + AMEX Gold + Disney Visa + Kia
+  var _netMo=_incomeMo-_billsMo;
+  // Current week data for live numbers
+  var _cw=_weeks.find(function(w){return w.num===currentW;})||_weeks[_weeks.length-1]||_weeks[0];
+  var _curChk=_cw?_cw.chk:0;
+  var _curOl=_cw?_cw.ol:0;
+  var _liveFloor=Math.max(OP_FL,_curOl);
+  var _liveSurplus=Math.max(0,r(_curChk-_liveFloor));
+
+  // Visual flow box helper
+  function _fbox(label,sub,color,bg){
+    return '<div style="text-align:center;min-width:90px;flex:1">'+
+      '<div style="background:'+bg+';border:1.5px solid '+color+';border-radius:8px;padding:6px 8px">'+
+        '<div style="font-size:11px;font-weight:700;color:'+color+'">'+label+'</div>'+
+        (sub?'<div style="font-size:10px;color:var(--muted);margin-top:2px">'+sub+'</div>':'')+
       '</div>'+
-      '<div class="prog-bar" style="margin-top:10px"><div class="prog-fill" style="background:var(--blue);width:'+akPct+'%"></div></div>'+
-      '<div class="goal-meta"><span>'+f(w.akSaved)+' in Truist Savings</span><span>'+akPct.toFixed(0)+'%</span></div>'+
-      '<div class="goal-forecast-card">'+akForecast+'</div>'+
+    '</div>';
+  }
+  function _farrow(note){
+    return '<div style="display:flex;flex-direction:column;align-items:center;justify-content:center;flex-shrink:0;padding:0 2px">'+
+      '<div style="font-size:16px;color:var(--muted)">→</div>'+
+      (note?'<div style="font-size:9px;color:var(--muted);white-space:nowrap">'+note+'</div>':'')+
+    '</div>';
+  }
+
+  html+='<div class="panel" style="margin-top:14px">'+
+    '<h3 style="margin:0 0 10px;font-size:14px;font-weight:700;color:var(--ink)">Cash Flow Mechanics</h3>'+
+    '<p style="font-size:12px;color:var(--muted);margin:0 0 12px">How surplus travels from paycheck to funded goal bucket each week</p>'+
+    // Flow chain
+    '<div style="display:flex;align-items:flex-start;gap:4px;flex-wrap:wrap;padding:4px 0 14px;overflow-x:auto">'+
+      _fbox('Paychecks','Adam $5,817 · Wendy $2,153<br>(biweekly each)','var(--blue)','var(--blueSoft)')+
+      _farrow('net in')+
+      _fbox('Truist Checking','Running balance<br>currently '+f(_curChk),'var(--ink)','var(--bg)')+
+      _farrow('protect')+
+      _fbox('Floor Protection','OP_FL $6,500<br>+ look-ahead floor','#92400e','#fef3c7')+
+      _farrow('surplus')+
+      _fbox('Available to Sweep','This week<br>'+(_liveSurplus>0?f(_liveSurplus):'$0 (floor locked)'),'var(--green)','var(--greenSoft)')+
+      _farrow('route')+
+      _fbox('Waterfall Goals','Priority order:<br>Alaska→RCCL→DCL→Ret.','var(--blue)','var(--blueSoft)')+
+      _farrow('funded')+
+      _fbox('Goal Buckets','Sav · AMEX · Fidelity<br>Available to pull','var(--green)','var(--greenSoft)')+
     '</div>'+
-    '<div class="panel goal-card">'+
-      '<div class="goal-priority">Priority 2</div>'+
-      '<h3>Retirement Rebuild</h3>'+
-      '<p class="sub">Destination: AMEX Savings \xb7 begins after Alaska is funded</p>'+
-      '<div class="goal-amount" style="color:var(--violet)">'+f(w.amx)+'</div>'+
-      '<div class="goal-input-row"><span class="goal-input-label">Target</span>'+
-        '<div class="ginput-wrap"><span>$</span><input type="number" id="rtGoal" class="goal-inp" value="'+rt+'" step="100" inputmode="numeric"></div>'+
+    // Key mechanic: look-ahead floor
+    '<div style="background:#fef3c7;border:1px solid #f59e0b;border-radius:6px;padding:8px 10px;margin-bottom:12px;font-size:12px">'+
+      '<span style="font-weight:700;color:#92400e">⚠ Look-ahead floor: </span>'+
+      '<span style="color:var(--ink)">When next week has large bills (rent $5,300 · AMEX $5,500 · Disney Visa $3,500), the effective floor rises to '+f(_liveFloor)+', locking surplus in checking even when the balance looks high. That\'s why checking can show $8,000+ with zero sweep.</span>'+
+    '</div>'+
+    // Stats grid
+    '<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:12px">'+
+      '<div style="background:var(--bg);border:1px solid var(--border);border-radius:6px;padding:8px 10px">'+
+        '<div style="font-size:10px;color:var(--muted);font-weight:600;text-transform:uppercase;letter-spacing:.05em">Monthly Income</div>'+
+        '<div style="font-size:18px;font-weight:700;color:var(--blue);margin:2px 0">'+f(_incomeMo)+'</div>'+
+        '<div style="font-size:10px;color:var(--muted)">Adam $'+fc(_adamMo)+' + Wendy $'+fc(_wendyMo)+'</div>'+
       '</div>'+
-      '<div class="prog-bar" style="margin-top:10px"><div class="prog-fill" style="background:var(--violet);width:'+rtPct+'%"></div></div>'+
-      '<div class="goal-meta"><span>'+f(w.amx)+' in AMEX</span><span>'+f(w.retRem)+' remaining</span></div>'+
-      '<div class="goal-forecast-card">'+rtForecast+'<br><span style="font-size:11px;color:var(--muted2)">Breakdown: $103.64 current (incl. $3.89 interest) + $3,772.74 savings seed + $3,818.49 checking rebuild = $7,694.87 target</span></div>'+
+      '<div style="background:var(--bg);border:1px solid var(--border);border-radius:6px;padding:8px 10px">'+
+        '<div style="font-size:10px;color:var(--muted);font-weight:600;text-transform:uppercase;letter-spacing:.05em">Monthly Bills (Recurring)</div>'+
+        '<div style="font-size:18px;font-weight:700;color:#ef4444;margin:2px 0">'+f(_billsMo)+'</div>'+
+        '<div style="font-size:10px;color:var(--muted)">Rent $5,300 · Gold $5,500 · Visa $3,500 · Kia $791</div>'+
+      '</div>'+
+      '<div style="background:var(--bg);border:1px solid var(--border);border-radius:6px;padding:8px 10px">'+
+        '<div style="font-size:10px;color:var(--muted);font-weight:600;text-transform:uppercase;letter-spacing:.05em">Net Surplus / Month</div>'+
+        '<div style="font-size:18px;font-weight:700;color:var(--green);margin:2px 0">'+f(_netMo)+'</div>'+
+        '<div style="font-size:10px;color:var(--muted)">Before floor — actual sweep depends on bill timing</div>'+
+      '</div>'+
     '</div>'+
+    '<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:12px">'+
+      '<div style="background:var(--greenSoft);border:1px solid var(--border);border-radius:6px;padding:8px 10px">'+
+        '<div style="font-size:10px;color:var(--muted);font-weight:600;text-transform:uppercase;letter-spacing:.05em">Model Avg Sweep / Month</div>'+
+        '<div style="font-size:18px;font-weight:700;color:#166534;margin:2px 0">'+f(_avgMoSweep)+'</div>'+
+        '<div style="font-size:10px;color:var(--muted)">Across Cal Wk 23-53 · avg $'+fc(_avgWkSweep)+'/wk across all wks</div>'+
+      '</div>'+
+      '<div style="background:var(--bg);border:1px solid var(--border);border-radius:6px;padding:8px 10px">'+
+        '<div style="font-size:10px;color:var(--muted);font-weight:600;text-transform:uppercase;letter-spacing:.05em">Active Sweep Weeks</div>'+
+        '<div style="font-size:18px;font-weight:700;color:var(--ink);margin:2px 0">'+_sweepWks+' of '+_weeks.length+'</div>'+
+        '<div style="font-size:10px;color:var(--muted)">Remaining weeks blocked by look-ahead floor or no active goal</div>'+
+      '</div>'+
+      '<div style="background:var(--bg);border:1px solid var(--border);border-radius:6px;padding:8px 10px">'+
+        '<div style="font-size:10px;color:var(--muted);font-weight:600;text-transform:uppercase;letter-spacing:.05em">This Week Available</div>'+
+        '<div style="font-size:18px;font-weight:700;color:'+(_liveSurplus>0?'var(--green)':'var(--muted)')+';margin:2px 0">'+f(_liveSurplus)+'</div>'+
+        '<div style="font-size:10px;color:var(--muted)">Cal Wk '+currentW+' · effective floor '+f(_liveFloor)+'</div>'+
+      '</div>'+
+    '</div>'+
+    // "Available to pull" concept
+    '<div style="background:var(--bg);border:1px solid var(--border);border-radius:6px;padding:8px 10px;font-size:12px">'+
+      '<span style="font-weight:700;color:var(--ink)">What "funded" means: </span>'+
+      '<span style="color:var(--ink)">Once a goal reaches 100%, its balance is held in the destination account (Truist Savings, AMEX Savings, or Fidelity) and can be pulled at any time. Funded goals in Savings are liquid. IRA and 529 goals are held in AMEX Savings as a holding account pending CPA clearance before transfer to Fidelity.</span>'+
+    '</div>'+
+  '</div>';
+
+  // Mechanics first, then flag bar, then goals table
+  return html+flagBar+_tableHtml;
+}
+
+function _renderGoalsPriorities(vm){
+  // Status badge colors
+  function statusStyle(s){
+    var map={funded:'background:#dcfce7;color:#166534;border-color:#bbf7d0',funding:'background:#dbeafe;color:#1d4ed8;border-color:#93c5fd',planned:'background:#f1f5f9;color:#64748b;border-color:#cbd5e1',approved:'background:#fef9c3;color:#854d0e;border-color:#fde68a',executed:'background:#f0fdf4;color:#15803d;border-color:#86efac',cancelled:'background:#fee2e2;color:#991b1b;border-color:#fca5a5'};
+    return map[s]||map.planned;
+  }
+  // Ranked priority list
+  var listHtml='<div style="background:var(--bg);border:1px solid var(--border);border-radius:8px;overflow:hidden">';
+  listHtml+='<div style="display:grid;grid-template-columns:38px 1fr 72px 72px 80px 80px;gap:0;padding:6px 10px;background:var(--surface3);border-bottom:1px solid var(--border)">'+
+    '<div style="font-size:10px;font-weight:700;color:var(--muted2);text-transform:uppercase;letter-spacing:.06em">Rank</div>'+
+    '<div style="font-size:10px;font-weight:700;color:var(--muted2);text-transform:uppercase;letter-spacing:.06em">Goal</div>'+
+    '<div style="font-size:10px;font-weight:700;color:var(--muted2);text-transform:uppercase;letter-spacing:.06em;text-align:right">Target</div>'+
+    '<div style="font-size:10px;font-weight:700;color:var(--muted2);text-transform:uppercase;letter-spacing:.06em;text-align:right">Funded</div>'+
+    '<div style="font-size:10px;font-weight:700;color:var(--muted2);text-transform:uppercase;letter-spacing:.06em">Progress</div>'+
+    '<div style="font-size:10px;font-weight:700;color:var(--muted2);text-transform:uppercase;letter-spacing:.06em">Status / ETA</div>'+
+  '</div>';
+  PRIORITY_TIERS.forEach(function(tier,idx){
+    var g=GOALS_REGISTRY.find(function(x){return x.id===tier.goals[0];});
+    if(!g)return;
+    var funded=getGoalFunded(g.id,vm);
+    var rem=getGoalRemaining(g.id,vm);
+    var pct=g.complete?100:Math.min(100,funded>0?Math.round(funded/g.target*100):0);
+    var gLocked=!!(g.needsFlag&&!goalFlags[g.needsFlag]);
+    var c=tier.color;
+    var fc=_gProgCls(pct,gLocked,g.stretch);
+    var comp=vm.goalCompletion?vm.goalCompletion[g.id]:null;
+    // Status / ETA cell
+    var etaHtml='';
+    var lifecycleStatus=g.status||'planned';
+    if(rem<=0||g.complete){
+      etaHtml='<span style="font-size:9px;font-weight:700;padding:2px 6px;border-radius:4px;border:1px solid;'+statusStyle('funded')+'">Funded</span>';
+    }else if(gLocked){
+      etaHtml='<span style="font-size:9px;font-weight:700;padding:2px 6px;border-radius:4px;border:1px solid;'+statusStyle('planned')+'">🔒 Pending CPA</span>';
+    }else if(comp&&comp.num>0){
+      etaHtml='<span style="font-size:9px;font-weight:700;padding:2px 6px;border-radius:4px;border:1px solid;background:#dbeafe;color:#1d4ed8;border-color:#93c5fd">Wk '+getCalWeek(comp.num)+'</span>';
+    }else if(funded>0){
+      etaHtml='<span style="font-size:9px;font-weight:700;padding:2px 6px;border-radius:4px;border:1px solid;background:#fff7ed;color:#b45309;border-color:#fed7aa">2027+</span>';
+    }else{
+      etaHtml='<span style="font-size:9px;font-weight:700;padding:2px 6px;border-radius:4px;border:1px solid;'+statusStyle(lifecycleStatus)+';text-transform:capitalize">'+lifecycleStatus+'</span>';
+    }
+    var rowBg=idx%2===0?'':'background:var(--surface3)';
+    listHtml+='<div style="display:grid;grid-template-columns:38px 1fr 72px 72px 80px 80px;gap:0;padding:8px 10px;border-bottom:1px solid var(--border);align-items:center;'+rowBg+'">'+
+      '<div style="font-size:11px;font-weight:800;color:'+c+';background:'+c+'18;border-radius:4px;width:28px;text-align:center;padding:2px 0">T'+tier.num+'</div>'+
+      '<div>'+
+        '<div style="font-size:12px;font-weight:600;color:var(--ink)">'+(rem<=0||g.complete?'✅ ':gLocked?'🔒 ':g.auto?'⚙️ ':'')+g.name+'</div>'+
+        (g.notes?'<div style="font-size:10px;color:var(--muted);margin-top:1px">'+g.notes+'</div>':'')+
+      '</div>'+
+      '<div style="font-size:11px;font-weight:600;color:var(--ink);text-align:right">'+f(g.target)+'</div>'+
+      '<div style="font-size:11px;color:'+(rem<=0?'var(--green)':'var(--muted2)')+';text-align:right">'+f(funded)+'</div>'+
+      '<div style="padding:0 4px">'+
+        '<div style="display:flex;align-items:center;gap:4px">'+
+          '<div class="goal-tbl-bar" style="flex:1"><div class="goal-tbl-fill '+fc+'" style="width:'+pct+'%"></div></div>'+
+          '<span style="font-size:10px;color:var(--muted);width:26px;text-align:right">'+pct+'%</span>'+
+        '</div>'+
+      '</div>'+
+      '<div>'+etaHtml+'</div>'+
+    '</div>';
+  });
+  listHtml+='</div>';
+  // Three-tier floor legend
+  listHtml+='<div style="margin-top:10px;padding:10px 12px;background:var(--bg);border:1px solid var(--border);border-radius:8px">'+
+    '<div style="font-size:10px;font-weight:700;color:var(--muted2);text-transform:uppercase;letter-spacing:.06em;margin-bottom:6px">Checking Floor Tiers</div>'+
+    '<div style="display:flex;gap:12px;flex-wrap:wrap">'+
+      '<div style="display:flex;align-items:center;gap:5px"><div style="width:10px;height:10px;border-radius:2px;background:#dc2626"></div><span style="font-size:11px;color:var(--muted)">$6,500 — Emergency floor (hard gate)</span></div>'+
+      '<div style="display:flex;align-items:center;gap:5px"><div style="width:10px;height:10px;border-radius:2px;background:#f59e0b"></div><span style="font-size:11px;color:var(--muted)">$10,000 — Warning zone</span></div>'+
+      '<div style="display:flex;align-items:center;gap:5px"><div style="width:10px;height:10px;border-radius:2px;background:#16a34a"></div><span style="font-size:11px;color:var(--muted)">$12,000 — Target floor</span></div>'+
+    '</div>'+
+  '</div>';
+  // Right column: Decision Queue
+  var dqHtml='<div style="font-size:11px;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);font-weight:700;margin-bottom:10px;display:flex;align-items:center;gap:8px">'+
+    '⚖️ Decision Queue'+
+    '<span style="font-weight:400;color:var(--muted);font-size:10px;text-transform:none;letter-spacing:0">Pending capital decisions</span>'+
   '</div>'+
-  '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:15px;max-width:1100px;margin-top:15px">'+
-    '<div class="panel card-pad">'+
-      '<div class="panel-title"><h3>Cumulative Surplus Available After Goals</h3><span class="mini">Display only · no cash has left Truist Checking</span></div>'+
-      '<div style="font-size:26px;font-weight:800;color:#64748b;margin:6px 0">'+f(w.surplusSwept)+'</div>'+'<div style="font-size:11px;color:var(--muted);margin:-4px 0 6px">Display only · cash remains in Truist Checking</div>'+
-      '<div class="prog-bar"><div class="prog-fill" style="background:#94a3b8;width:'+Math.min(100,vm.finalWeek.surplusSwept>0?Math.round(w.surplusSwept/vm.finalWeek.surplusSwept*100):0)+'%"></div></div>'+
-      '<div class="goal-meta" style="margin-top:6px"><span>'+(vm.surplusCompletion?'Begins Wk '+getCalWeek(vm.surplusCompletion.num):'Starts after retirement funded')+'</span><span>'+(vm.finalWeek.surplusSwept>0?f(vm.finalWeek.surplusSwept)+' projected end of model':'—')+'</span></div>'+
-      '<p style="font-size:12px;color:var(--muted);margin-top:8px">Display only · cash stays in Truist Checking · Phase 4 converts to named goal funding once goals are created and prioritized.</p>'+
+  '<div class="panel card-pad" style="padding:12px 14px">'+
+    '<div class="dq-item">'+
+      '<div class="dq-icon">📋</div>'+
+      '<div class="dq-body">'+
+        '<div class="dq-name">IRA CPA Clearance</div>'+
+        '<div class="dq-desc">CPA sign-off required before IRAs deploy to Fidelity. Cash accumulates in AMEX (IRA Holding) in the meantime. Adam IRA seeds with Alaska residual savings once cruise funds.</div>'+
+        '<div class="dq-deadline">Toggle IRA flag once CPA clears</div>'+
+      '</div>'+
     '</div>'+
-    '<div class="panel card-pad">'+
-      '<div class="panel-title"><h3>Emergency Fund — Lending Club</h3><span class="mini">Structural reserve · untouched all year</span></div>'+
-      '<div class="prog-bar"><div class="prog-fill" style="background:#1d9e75;width:100%"></div></div>'+
-      '<div class="goal-meta" style="margin-top:6px"><span>'+f(w.lc)+' in Lending Club</span><span>6-month cash runway</span></div>'+
-      '<div style="font-size:12px;color:var(--muted);margin-top:10px;line-height:1.7">'+
-        '<p style="margin:0 0 6px"><strong>Original plan</strong> — Restore Lending Club to $24,738.88 by sending $5,250 from checking + $2,750 from savings → LC. Goal: 6-month cash runway.</p>'+
-        '<p style="margin:0 0 6px"><strong>Phase 1 — $3,000 reclassification:</strong> The May AMEX Platinum payoff ($37,482) left checking too thin for July and September rent troughs. $3,000 of the planned checking→LC transfer was reclassified as permanent operating cash — only $2,250 was sent. LC settled at $21,738.88.</p>'+
-        '<p style="margin:0 0 6px"><strong>Phase 2 — $6,000 injection:</strong> Reversed direction entirely. $2,750 Truist Savings → Checking, $1,000 Lending Club → Checking, $2,250 retained in checking (prior LC transfer plan cancelled). Net: +$6,000 to checking. LC at $15,738.88.</p>'+
-        '<p style="margin:0 0 6px"><strong>Phase 3 — $2,250 correction:</strong> Balance audit revealed the "$2,250 retained" component was always in checking — double-counted as new cash. Additional $2,250 Lending Club → Truist Checking corrects the model. LC settles at $13,488.88. Total EF = $137,582.</p>'+
-        '<p style="margin:0"><strong>Remaining EF</strong> — $13,488.88 in Lending Club. Untouched all model year. Not a sweep target. Total improvement vs. original restoration plan: <strong>$11,250 better positioning in checking</strong>.</p>'+
+    '<div class="dq-item">'+
+      '<div class="dq-icon">💳</div>'+
+      '<div class="dq-body">'+
+        '<div class="dq-name">Alaska Card Bill Timing</div>'+
+        '<div class="dq-desc">$7k pulls from Truist Savings → Checking in Cal Wk 37 (Sep 13-19) to cover elevated Gold + Disney Visa cruise bills. Confirm actual bill amounts match estimate before transfer.</div>'+
+        '<div class="dq-deadline">Execute Cal Wk 37 transfer</div>'+
+      '</div>'+
+    '</div>'+
+    '<div class="dq-item">'+
+      '<div class="dq-icon">🗣️</div>'+
+      '<div class="dq-body">'+
+        '<div class="dq-name">Wendy Priority Discussion</div>'+
+        '<div class="dq-desc">Confirm T4-T10 priority order (IRAs → 529s → Bryce Vehicle → Christmas Cruise) with Wendy. Especially: 529 split across three kids vs. Bailey-only focus.</div>'+
+        '<div class="dq-deadline">Before Cal Wk 39 (post-Alaska)</div>'+
+      '</div>'+
+    '</div>'+
+    '<div class="dq-item">'+
+      '<div class="dq-icon">🗺️</div>'+
+      '<div class="dq-body">'+
+        '<div class="dq-name">Phase 5+ Goals Naming</div>'+
+        '<div class="dq-desc">Scenarios tab, retirement dashboard (Coast FI), tax separation, EF bridge, income source refactor, and annual planning tab. Confirm scope and naming before build starts.</div>'+
+        '<div class="dq-deadline">After Phase 4 complete</div>'+
       '</div>'+
     '</div>'+
   '</div>';
-  document.getElementById('goals-content').innerHTML=html;
-  // Re-attach goal input listeners
-  document.getElementById('akGoal').addEventListener('change',function(){var v=Math.max(1,parseFloat((this.value||'').replace(/[^0-9.]/g,''))||7000);goalAk=v;this.value=v;saveGoal('ak_goal',v);renderApp();});
-  document.getElementById('rtGoal').addEventListener('change',function(){var v=Math.max(1,parseFloat((this.value||'').replace(/[^0-9.]/g,''))||7690.98);goalRt=v;this.value=v;saveGoal('rt_goal',v);renderApp();});
+  // Two-column layout: ranked list left, DQ right
+  return'<div style="display:flex;gap:16px;align-items:flex-start">'+
+    '<div style="flex:1;min-width:0">'+listHtml+'</div>'+
+    '<div style="width:300px;flex-shrink:0">'+dqHtml+'</div>'+
+  '</div>';
+}
+
+function _renderGoalsFunding(vm,w){
+  // Build items: one per goal, sorted chronologically by projected completion week
+  var items=GOALS_REGISTRY.map(function(g){
+    var funded=getGoalFunded(g.id,vm);
+    var rem=Math.max(0,Math.round((g.target-funded)*100)/100);
+    var pct=g.complete?100:Math.min(100,funded>0?Math.round(funded/g.target*100):0);
+    var comp=(vm.goalCompletion&&vm.goalCompletion[g.id])||null;
+    var isFunded=pct>=100||g.complete;
+    var isLocked=!!(g.needsFlag&&!goalFlags[g.needsFlag]);
+    var tier=PRIORITY_TIERS.find(function(t){return t.goals.indexOf(g.id)>=0;});
+    // sortKey: adam_401k pinned first (-2), funded goals next (-1), then by completion week, then tier
+    var sortKey=g.id==='adam_401k'?-2:isFunded?-1:(comp&&comp.num>0?comp.num:999);
+    return{g:g,funded:funded,rem:rem,pct:pct,comp:comp,isFunded:isFunded,isLocked:isLocked,tier:tier,sortKey:sortKey};
+  });
+  items.sort(function(a,b){
+    if(a.isFunded!==b.isFunded)return a.isFunded?-1:1;
+    if(a.sortKey!==b.sortKey)return a.sortKey-b.sortKey;
+    return(a.tier?a.tier.num:99)-(b.tier?b.tier.num:99);
+  });
+  // Overall progress summary (TOP)
+  var nonStretch=GOALS_REGISTRY.filter(function(g){return!g.stretch;});
+  var totalTarget=nonStretch.reduce(function(s,g){return s+g.target;},0);
+  var totalFunded=nonStretch.reduce(function(s,g){return s+getGoalFunded(g.id,vm);},0);
+  var totalPct=Math.min(100,Math.round(totalFunded/totalTarget*100));
+  var fc3=_gProgCls(totalPct,false,false);
+  var html='<div class="panel" style="padding:14px 16px;margin-bottom:12px">'+
+    '<div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap">'+
+    '<span style="font-size:13px;font-weight:600;color:var(--ink)">Overall 2026 Progress</span>'+
+    '<div class="goal-tbl-bar" style="flex:1;min-width:100px"><div class="goal-tbl-fill '+fc3+'" style="width:'+totalPct+'%"></div></div>'+
+    '<span style="font-size:14px;font-weight:700;color:var(--green)">'+totalPct+'%</span>'+
+    '<span style="font-size:11px;color:var(--muted)">'+f(totalFunded)+' of '+f(totalTarget)+'</span>'+
+    '</div>'+
+  '</div>';
+  // ── Funding Timeline (under progress bar, before goal table) ──────────────
+  var _tlGoals2=['alaska','wewe_rccl','wewe_dcl','adam_ira','wendy_ira','bailey_529','bryce_529','preston_529','bryce_vehicle','christmas_cruise'];
+  var _sweepMap2={};_tlGoals2.forEach(function(id){_sweepMap2[id]=[];});
+  var _prevGS3={};var _tlWeeks2=[];
+  if(vm.weeks&&vm.weeks.forEach){vm.weeks.forEach(function(w){_tlWeeks2.push(w);});}
+  else{for(var _ti2=0;_ti2<31;_ti2++){if(vm[_ti2])_tlWeeks2.push(vm[_ti2]);}}
+  _tlWeeks2.forEach(function(w){
+    var gs=w.goalSaved||{};
+    _tlGoals2.forEach(function(id){
+      var d=r((gs[id]||0)-(_prevGS3[id]||0));
+      if(d>0.01)_sweepMap2[id].push({num:w.num,calWk:22+w.num,amount:d});
+    });
+    _prevGS3=Object.assign({},gs);
+  });
+  var _numWks2=31,_cellW2=Math.floor(100/_numWks2);
+  html+='<div class="panel" style="margin-bottom:12px;padding:14px 16px">'+
+    '<div style="font-size:14px;font-weight:700;color:var(--ink);margin-bottom:4px">Funding Timeline · Cal Wk 23 – 53</div>'+
+    '<div style="font-size:11px;color:var(--muted);margin-bottom:12px">Bars show waterfall sweep amount per week per goal · fill tracks cumulative progress toward target</div>'+
+    '<div style="display:grid;grid-template-columns:140px 1fr 60px;gap:0;margin-bottom:4px">'+
+      '<div></div>'+
+      '<div style="position:relative;height:18px">'+
+        Array.from({length:_numWks2},function(_,i){var cw=23+i;return(i%4===0)?'<div style="position:absolute;left:'+((i/_numWks2)*100)+'%;font-size:9px;color:var(--muted);font-weight:600;transform:translateX(-50%)">Wk '+cw+'</div>':'';}).join('')+
+      '</div><div></div>'+
+    '</div>'+
+    '<div style="display:grid;grid-template-columns:140px 1fr 60px;gap:0;margin-bottom:6px">'+
+      '<div></div>'+
+      '<div style="position:relative;height:12px">'+
+        (function(){var nowIdx2=Math.max(0,Math.min(_numWks2-1,currentW-23));return'<div style="position:absolute;left:'+((nowIdx2/_numWks2)*100)+'%;width:'+(_cellW2)+'%;background:rgba(3,105,161,0.15);height:100%;border-left:2px solid var(--blue);"></div><div style="position:absolute;left:'+((nowIdx2/_numWks2)*100)+'%;font-size:9px;color:var(--blue);font-weight:700;transform:translateX(-50%);top:-1px;white-space:nowrap">now</div>';})()+'</div><div></div>'+
+    '</div>'+
+    _tlGoals2.map(function(id){
+      var g2=GOALS_REGISTRY.find(function(x){return x.id===id;});if(!g2)return'';
+      var tier2=PRIORITY_TIERS.find(function(t){return t.goals.indexOf(id)>=0;});
+      var tc=tier2?tier2.color:'#64748b';
+      var lastW2=_tlWeeks2[_tlWeeks2.length-1]||{goalSaved:{}};
+      var tfn=r((lastW2.goalSaved||{})[id]||0);
+      var pct2=Math.min(100,tfn>0?Math.round(tfn/g2.target*100):0);
+      var byWk2={};_sweepMap2[id].forEach(function(s){byWk2[s.num]=s.amount;});
+      var maxS=Math.max(1,Math.max.apply(null,_sweepMap2[id].map(function(s){return s.amount;}).concat([1])));
+      var nowIdx3=Math.max(0,Math.min(_numWks2-1,currentW-23));
+      return'<div style="display:grid;grid-template-columns:140px 1fr 60px;gap:0;margin-bottom:4px;align-items:center">'+
+        '<div style="font-size:11px;font-weight:600;color:'+tc+';padding-right:8px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis" title="'+g2.name+'">'+g2.name+'</div>'+
+        '<div style="position:relative;height:22px;background:var(--bg);border:1px solid var(--border);border-radius:4px;overflow:hidden">'+
+          '<div style="position:absolute;left:0;top:0;height:100%;width:'+pct2+'%;background:'+tc+'18;pointer-events:none"></div>'+
+          '<div style="position:absolute;left:'+((nowIdx3/_numWks2)*100)+'%;width:'+(_cellW2)+'%;background:rgba(3,105,161,0.08);height:100%;pointer-events:none;border-left:1px solid rgba(3,105,161,0.3)"></div>'+
+          Array.from({length:_numWks2},function(_,i){var wn=i+1;var sa=byWk2[wn]||0;if(sa<0.01)return'';var bh=Math.max(30,Math.round((sa/maxS)*100));return'<div title="Cal Wk '+(22+wn)+': +'+f(sa)+'" style="position:absolute;left:'+((i/_numWks2)*100)+'%;width:'+Math.max(_cellW2,1)+'%;bottom:0;height:'+bh+'%;background:'+tc+';opacity:0.85;border-radius:1px 1px 0 0"></div>';}).join('')+
+        '</div>'+
+        '<div style="font-size:11px;font-weight:700;color:'+(pct2>=100?'var(--green)':pct2>0?tc:'var(--muted)')+';text-align:right;padding-left:8px">'+pct2+'%</div>'+
+      '</div>';
+    }).join('')+
+    '<div style="margin-top:10px;display:flex;align-items:center;gap:16px;flex-wrap:wrap;font-size:10px;color:var(--muted)">'+
+      '<span><span style="display:inline-block;width:12px;height:8px;background:rgba(3,105,161,0.15);border:1px solid #93c5fd;border-radius:2px;vertical-align:middle;margin-right:3px"></span>Current week</span>'+
+      '<span><span style="display:inline-block;width:12px;height:8px;background:#34d39960;border-radius:2px;vertical-align:middle;margin-right:3px"></span>Sweep received that week</span>'+
+      '<span><span style="display:inline-block;width:12px;height:8px;background:#34d39918;border-radius:2px;vertical-align:middle;margin-right:3px"></span>Cumulative fill</span>'+
+      '<span>Hover bars for Cal Wk + amount</span>'+
+    '</div>'+
+  '</div>';
+  // Goal table
+  html+='<div class="panel" style="padding:0;overflow:hidden;margin-bottom:12px">';
+  html+='<div class="funding-tbl-header"><span>When</span><span>Goal</span><span>Progress</span><span style="text-align:right">Remaining</span><span>Route</span></div>';
+  items.forEach(function(item){
+    var g=item.g;var tier=item.tier;
+    // When column
+    var whenTxt,whenCls;
+    if(item.isFunded){whenTxt='✅ Funded';whenCls='ft-when funded';}
+    else if(item.isLocked){
+      whenTxt='🔒 Awaiting CPA';
+      whenCls='ft-when locked';
+    }
+    else if(g.auto){
+      whenTxt=item.comp&&item.comp.num>0?'Auto · Cal Wk '+getCalWeek(item.comp.num):'Auto · Payroll';
+      whenCls='ft-when auto';
+    }else if(g.stretch){whenTxt='2027 restart';whenCls='ft-when stretch';}
+    else if(item.comp&&item.comp.num>0){
+      whenTxt='Cal Wk '+getCalWeek(item.comp.num)+'<br><span style="font-size:9px;color:var(--muted);font-weight:400">'+item.comp.dates+'</span>';
+      whenCls='ft-when projected';
+    }else if(item.funded>0){
+      // Active in waterfall, has partial progress, but won't complete this year
+      whenTxt='In Progress<br><span style="font-size:9px;font-weight:400;color:var(--amber)">Continues in 2027</span>';
+      whenCls='ft-when pending';
+    }else{whenTxt='Beyond 2026';whenCls='ft-when pending';}
+    // Progress
+    var fc2=_gProgCls(item.pct,item.isLocked,g.stretch);
+    var progHtml='<div class="ft-prog-wrap"><div class="goal-tbl-bar" style="flex:1"><div class="goal-tbl-fill '+fc2+'" style="width:'+item.pct+'%"></div></div><span class="ft-pct">'+item.pct+'%</span></div>';
+    // Route
+    var routeHtml='';
+    if(g.src&&g.dest){
+      routeHtml='<div class="ft-route">'+
+        '<span class="route-acct">'+g.src+'</span>'+
+        '<span class="ft-route-arrow">→</span>'+
+        '<span class="route-acct">'+g.dest+'</span>'+
+      '</div>';
+    }
+    // Name cell
+    var tierBadge=tier?'<span class="ft-tier" style="background:'+tier.color+'20;color:'+tier.color+'">T'+tier.num+'</span>':'';
+    // Note / milestone text
+    var _noteTxt=g.notes||'';
+    if(g.id==='christmas_cruise'&&g.milestone&&!item.isFunded){
+      var _msPct=Math.min(100,Math.round((item.funded/(g.milestone||1))*100));
+      _noteTxt=(_noteTxt?_noteTxt+' · ':'')+'Interim milestone '+f(g.milestone)+': '+_msPct+'%';
+    }
+    var prefix=g.complete?'✓ ':g.auto?'⚙️ ':item.isLocked?'🔒 ':'';
+    var liveBadge=(!g.auto&&!g.complete&&!g.stretch)?'<span class="ft-live">Live</span>':'';
+    var statusBadge2=g.status?'<span style="font-size:9px;font-weight:600;background:var(--surface3);color:var(--muted2);border:1px solid var(--line2);border-radius:4px;padding:1px 5px;margin-left:4px;text-transform:capitalize">'+g.status+'</span>':'';
+    var nameHtml='<div class="ft-name-row">'+tierBadge+'<span class="ft-name">'+prefix+g.name+liveBadge+statusBadge2+'</span></div>'+
+      (_noteTxt?'<div class="ft-sub">'+_noteTxt+'</div>':'');
+    var rowCls='ft-row'+(item.isFunded?' ft-funded-row':'')+(item.isLocked?' ft-locked-row':'')+(g.stretch?' ft-stretch-row':'');
+    html+='<div class="'+rowCls+'">'+
+      '<div class="'+whenCls+'">'+whenTxt+'</div>'+
+      '<div class="ft-name-cell">'+nameHtml+'</div>'+
+      progHtml+
+      '<div class="ft-rem" style="'+(item.rem===0?'color:var(--green)':'')+'">'+f(item.rem)+'</div>'+
+      '<div>'+routeHtml+'</div>'+
+    '</div>';
+  });
+  html+='</div>';
+
+  return html;
+}
+
+function _renderEngineOutput(steps){
+  if(!steps||!steps.length)return'';
+  var total=0;
+  var html='<div class="engine-output"><div class="engine-output-title">Allocation sequence</div>';
+  steps.forEach(function(s){
+    if(s.type==='info'){
+      html+='<div class="engine-step">'+
+        '<div class="engine-step-num" style="background:var(--blueSoft);color:var(--blue);font-size:13px">→</div>'+
+        '<div class="engine-step-body"><div class="engine-step-label" style="font-size:12px;color:var(--muted)">'+s.label+'</div><div class="engine-step-note">'+s.note+'</div></div>'+
+        '<div class="engine-step-amt dim">'+f(s.amt)+'</div>'+
+      '</div>';
+      return;
+    }
+    total+=s.amt;
+    var numCls=s.type==='tax'?'tax':s.type==='hold'?'hold':s.type==='surplus'?'surplus':'';
+    var amtCls=s.type==='tax'?'tax':s.type==='hold'?'hold':'';
+    html+='<div class="engine-step">'+
+      '<div class="engine-step-num '+numCls+'">'+(typeof s.num==='number'?s.num:'→')+'</div>'+
+      '<div class="engine-step-body">'+
+        '<div class="engine-step-label">'+s.label+'</div>'+
+        '<div class="engine-step-note">'+s.note+'</div>'+
+      '</div>'+
+      '<div class="engine-step-amt '+amtCls+'">'+f(s.amt)+'</div>'+
+    '</div>';
+  });
+  html+='<div class="engine-total-row"><span>Total allocated</span><span style="color:var(--green)">'+f(total)+'</span></div></div>';
+  return html;
+}
+
+function _renderGoalsEngine(vm,w){
+  var akFunded=w.akRem<=0.01;
+  var irasCleared=goalFlags.ira_cpa_cleared;
+  // ── Section 1: Waterfall Calculator ──────────────────────────────────────
+  var calcHeader='<div style="display:flex;align-items:center;gap:10px;margin-bottom:10px">'+
+    '<span style="font-size:16px">🧮</span>'+
+    '<div>'+
+      '<div style="font-size:13px;font-weight:700;color:var(--ink)">Waterfall Calculator</div>'+
+      '<div style="font-size:11.5px;color:var(--muted)">See exactly where a dollar amount goes through the priority waterfall. Read-only — nothing is saved.</div>'+
+    '</div>'+
+  '</div>';
+  var hasAmt=parseFloat(engineAmt)>0;
+  var formHtml='<div class="engine-form">'+
+    '<span class="engine-label">Amount available</span>'+
+    '<div class="engine-amount-row">'+
+      '<span class="engine-dollar">$</span>'+
+      '<input class="engine-inp" id="engine-amt-inp" type="number" min="0" step="100" placeholder="0.00" value="'+(engineAmt||'')+'">'+
+    '</div>'+
+    '<span class="engine-label">Income type</span>'+
+    '<div class="engine-type-row">'+
+      '<button class="engine-type-btn'+(engineType==='variable'?' sel':'')+'" onclick="engineType=\'variable\';engineResult=null;renderApp()">'+
+        '💰 Variable Income<br><span style="font-size:10px;font-weight:400">Commission, bonus — 40/60 split applies</span>'+
+      '</button>'+
+      '<button class="engine-type-btn'+(engineType==='regular'?' sel':'')+'" onclick="engineType=\'regular\';engineResult=null;renderApp()">'+
+        '📋 Regular Surplus<br><span style="font-size:10px;font-weight:400">Paycheck overage, extra cash</span>'+
+      '</button>'+
+    '</div>'+
+    '<span class="engine-label" style="margin-bottom:4px">Current flags (live)</span>'+
+    '<div class="engine-flags">'+
+      '<div class="engine-flag-row">'+
+        '<span class="engine-flag-lbl">IRA CPA Clearance</span>'+
+        '<span class="engine-flag-val '+(irasCleared?'cleared':'blocked')+'">'+(irasCleared?'✓ Cleared — IRAs in waterfall':'🔒 Pending — IRAs parking in AMEX')+'</span>'+
+      '</div>'+
+      '<div class="engine-flag-row">'+
+        '<span class="engine-flag-lbl">Alaska Cruise Fund</span>'+
+        '<span class="engine-flag-val '+(akFunded?'cleared':'blocked')+'">'+(akFunded?'✅ Fully funded':'◯ '+f(w.akRem)+' remaining')+'</span>'+
+      '</div>'+
+      '<div style="font-size:10px;color:var(--muted);margin-top:2px">Toggle flags in the Savings Goals tab</div>'+
+    '</div>'+
+    '<button class="engine-run" id="engine-run-btn" '+(hasAmt?'':'disabled')+' onclick="engineAmt=document.getElementById(\'engine-amt-inp\').value;runEngine(vm_snapshot)">'+
+      'Calculate allocation →'+
+    '</button>'+
+  '</div>';
+  var outputHtml=engineResult
+    ?_renderEngineOutput(engineResult)
+    :'<div class="engine-empty">Enter an amount above and click Calculate to see the full allocation sequence — tax reserve, IRA gating, and every goal in priority order.</div>';
+  var calcSection='<div class="panel card-pad" style="margin-bottom:20px">'+calcHeader+'<div class="goals-two-col">'+formHtml+'<div>'+outputHtml+'</div></div></div>';
+  // ── Section 2: Scenario Builder ───────────────────────────────────────────
+  var sbHeader='<div style="display:flex;align-items:center;gap:10px;margin-bottom:14px">'+
+    '<span style="font-size:16px">🔭</span>'+
+    '<div>'+
+      '<div style="font-size:13px;font-weight:700;color:var(--ink)">Scenario Builder</div>'+
+      '<div style="font-size:11.5px;color:var(--muted);line-height:1.5">Recalculates the <em>entire 31-week model</em> with a hypothetical change — commission income, a one-time expense, an inflow, or adjusted goal targets. The whole dashboard updates in preview mode. Nothing writes to Supabase until you explicitly commit.</div>'+
+    '</div>'+
+  '</div>'+
+  '<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:8px;background:var(--surface2);border-radius:8px;padding:8px;margin-bottom:4px;font-size:10.5px;color:var(--muted)">'+
+    '<div style="text-align:center;padding:4px">① Pick a scenario type</div>'+
+    '<div style="text-align:center;padding:4px">② Fill in the details</div>'+
+    '<div style="text-align:center;padding:4px">③ Click Preview impact</div>'+
+    '<div style="text-align:center;padding:4px">④ Review, then Commit or Cancel</div>'+
+  '</div>';
+  var scenarioSection='<div class="panel card-pad">'+sbHeader+_renderScenariosInline(vm)+'</div>';
+  return calcSection+scenarioSection;
+}
+
+function renderGoals(vm){
+  var el=document.getElementById('goals-content');if(!el)return;
+  vm_snapshot=vm; // store for engine button onclick
+  var w=vm.weeks.find(function(x){return x.num===currentW;})||vm.weeks[0];
+  // Auto-detect alaska funded
+  if(w.akRem<=0.01&&!goalFlags.alaska_funded)goalFlags.alaska_funded=true;
+  var subnav='<div class="goals-subnav">'+
+    [['savings','Savings Goals'],['priorities','Priorities'],['funding','Funding Plan'],['engine','What-If / Scenarios']].map(function(pair){
+      return'<button class="goals-pill'+(goalsSubTab===pair[0]?' active':'')+'" onclick="setGoalsSubTab(\''+pair[0]+'\')">'+pair[1]+'</button>';
+    }).join('')+
+  '</div>';
+  var body='';
+  if(goalsSubTab==='savings')body=_renderGoalsSavings(vm);
+  else if(goalsSubTab==='priorities')body=_renderGoalsPriorities(vm);
+  else if(goalsSubTab==='funding')body=_renderGoalsFunding(vm,w);
+  else if(goalsSubTab==='engine')body=_renderGoalsEngine(vm,w);
+  el.innerHTML=subnav+body;
+  // Wire engine amount input live
+  if(goalsSubTab==='engine'){
+    var inp=document.getElementById('engine-amt-inp');
+    if(inp){
+      inp.addEventListener('input',function(){engineAmt=this.value;engineResult=null;var btn=document.getElementById('engine-run-btn');if(btn)btn.disabled=!(parseFloat(this.value)>0);});
+    }
+  }
 }
 
 // ── renderRoadmap (Wishlist) — Phase 2 static version REMOVED; Phase 3 CRUD version below ──
@@ -1415,7 +2394,7 @@ function _DEAD_renderRoadmap_phase2(){
     {title:'Dynamic goal registry',notes:'Add / edit / pause / archive / reprioritize goals',phase:'Phase 4',status:'planned'},
     {title:'Goal dependency chain',notes:'Start a goal after another goal completes',phase:'Phase 4',status:'planned'},
     {title:'Goal progress from actions',notes:'Progress gated on checked required actions, not model projection alone',phase:'Phase 4',status:'planned'},
-    {title:'Goal funding source & destination account',notes:'Per-goal: which account funds it, start week, target account',phase:'Phase 4',status:'planned'},
+    {title:'Goal funding source & destination account',notes:'Per-goal src/dest account + startsAfter dependency — display layer complete. Full CRUD editing deferred to dynamic registry.',phase:'Phase 4',status:'done'},
     {title:'Authentication',notes:'Lock dashboard behind login — required before account connections can work',phase:'Phase 5',status:'planned'},
     {title:'Account connections (OAuth)',notes:'Connect Truist, AMEX, and other accounts using a bank data aggregator',phase:'Phase 6',status:'planned'},
     {title:'Auto balance pre-fill',notes:'Pull current balance automatically when opening reconciliation drawer',phase:'Phase 6',status:'planned'},
@@ -1539,8 +2518,9 @@ function renderAssumptions(){
       '<p><strong>Phase 3 — $2,250 correction:</strong> A Cal Wk 23 balance audit revealed the "$2,250 retained" component of the Phase 2 injection was double-counted — those funds were always in checking and were not new cash. Net real injection from Phase 2 was $3,750, not $6,000. An additional $2,250 Lending Club → Truist Checking transfer corrects the model. LC settles at $13,488.88. Total EF = $137,582. Total improvement vs. original restoration plan: $11,250.</p>'+
     '</div>'+
     '<div class="panel assumption-card"><h3>Floor Rules</h3>'+
-      '<p><code>OP_FL = $6,500</code> — Single operating floor. All weeks use this floor before sweeping surplus to goals. No trough, holdFloor, or per-week overrides.</p>'+
+      '<p><code>OP_FL = $6,500</code> — Hard operating floor. The model never sweeps surplus to goals unless checking would remain at or above this level after the transfer. This is a strict block — not a preference.</p>'+
       '<p><code>MIN_XFR = $100</code> — Transfers below $100 are suppressed, except for final goal-completion sweeps which bypass this threshold.</p>'+
+      '<p><strong>Three-tier display floors (advisory only — no model logic):</strong> $6,500 emergency floor (hard block) · $10,000 warning threshold (cautionary) · $12,000 target buffer (healthy). The $10k and $12k levels are display indicators on the Weekly tab only.</p>'+
     '</div>'+
     '<div class="panel assumption-card"><h3>Commission Tax Split</h3>'+
       '<p>When Wendy or Adam has a commission or BK bonus inflow (taxable), the model routes: <strong>40% → Vio Bank - Tax Reserve</strong> and <strong>60% → current savings goal</strong>.</p>'+
@@ -1548,24 +2528,37 @@ function renderAssumptions(){
       '<p>If a commission week has no surplus above the floor, both transfers defer to the next eligible week via <code>taxTodo</code>.</p>'+
     '</div>'+
     '<div class="panel assumption-card"><h3>Calendar Notes</h3>'+
-      '<p>Five weeks are flagged as structurally thin — bill-heavy or cruise-expense weeks. Checking stays positive throughout but discretionary spending must be avoided.</p>'+
+      '<p>Three weeks are structurally thin — bill-heavy weeks with limited inflow. Checking stays above $0 throughout (EF backstop prevents negatives) but discretionary spending should be avoided.</p>'+
       '<ul style="margin:8px 0 0 16px;font-size:13px;line-height:1.9">'+
-      '<li><strong>Cal Wk 35 / Aug 30 (model Wk 13)</strong> — $5,300 bills, no inflow. CHK dips to $2,189.</li>'+
-      '<li><strong>Cal Wk 39 / Sep 27 (model Wk 17)</strong> — $5,300 rent week after Alaska cruise. Model minimum: <strong>$437</strong>.</li>'+
-      '<li><strong>Cal Wk 48 / Nov 29 (model Wk 26)</strong> — $5,300 bills, no inflow. CHK dips to <strong>$778</strong>.</li>'+
-      '<li><strong>Cal Wk 34 / Aug 23 (model Wk 12)</strong> — Alaska cruise week 1 · $1,500 trip cost from savings.</li>'+
-      '<li><strong>Cal Wk 38 / Sep 20 (model Wk 16)</strong> — Alaska cruise week 2 · $5,500 trip cost + $2,500 savings drawdown.</li>'+
+      '<li><strong>Cal Wk 29 / Jul 13 (model Wk 6)</strong> — Commission week with heavy AMEX Gold; commission transfers defer one week. CHK ~$5,000.</li>'+
+      '<li><strong>Cal Wk 31 / Jul 27 (model Wk 8)</strong> — Rent + AMEX Gold, limited inflow. CHK ~$4,961.</li>'+
+      '<li><strong>Cal Wk 35 / Aug 24 (model Wk 13)</strong> — $5,300 rent week, no Wendy paycheck. CHK ~$4,908. Structural trough.</li>'+
       '</ul>'+
+      '<p style="font-size:12px;color:var(--muted)">All other weeks remain above the $6,500 floor. The Alaska cruise (Cal Wk 34-38, model Wk 12-16) has no spending drawdowns modeled — trip costs are pre-funded in the Alaska goal bucket.</p>'+
     '</div>'+
-    '<div class="panel assumption-card"><h3>Goal Funding Order</h3>'+
-      '<p>1. Base income tax reserve (Checking → Vio Bank - Tax Reserve) — fires model Wk 1 (checking has surplus immediately).<br>'+
-      '2. Commission tax split (40% → Tax Reserve, 60% → Truist Savings) — when Wk 6 commission arrives.<br>'+
-      '3. Alaska fund (Checking → Truist Savings) — surplus sweeps each eligible week · completes model Wk 5 (cal Wk 27, Jul 5-11).<br>'+
-      '4. Retirement savings seed ($3,772.74 Truist Savings → AMEX) — one-time transfer immediately after Alaska funded.<br>'+
-      '5. Retirement rebuild (Checking → AMEX) — starts model Wk 5 · completes model Wk 10 (cal Wk 32, Aug 9-15).<br>'+
-      '6. Future Goals Bucket — excess above $6,500 floor tracked as a virtual accumulator (<code>surplusSwept</code>). Funds stay in Truist Checking but are earmarked for transfer to AMEX Savings when a Phase 4 goal is created.</p>'+
-      '<p>All transfers respect the $6,500 operating floor. No EF transfers — LC balance is static all year at $15,738.88.</p>'+
-      '<p><strong>Phase 4 note:</strong> The goal queue is hard-coded for Phase 3 (Alaska → Retirement). Phase 4 will introduce a dynamic goal priority queue with configurable goals, funding sources, start weeks, and target amounts. The surplus accumulation behavior (step 6) is designed as the Phase 4 entry point — no architectural changes required to add new goals.</p>'+
+    '<div class="panel assumption-card"><h3>Goal Funding Order (Phase 4 Direct Waterfall)</h3>'+
+      '<p>The model uses a <strong>10-goal direct waterfall</strong>. Each goal must be fully funded before surplus flows to the next. No pooling — each goal draws directly from Truist Checking surplus.</p>'+
+      '<ol style="margin:10px 0 10px 18px;font-size:13px;line-height:2">'+
+        '<li><strong>T1 — Alaska Cruise</strong> ($7,000) → Truist Savings. Completes model Wk 5 (Cal Wk 27). AK_START gate: no contributions before Wk 5. Savings seed of $3,772.74 fires to AMEX immediately after.</li>'+
+        '<li><strong>T2 — Wewe RCCL</strong> ($600) → RCCL cruise payment. Starts after Alaska funded. Due Cal Wk 30 (end of July).</li>'+
+        '<li><strong>T3 — Wewe DCL</strong> ($500) → DCL cruise payment. Starts after Alaska funded. Due Cal Wk 41 (first week of October).</li>'+
+        '<li><strong>T4 — Adam IRA</strong> ($7,000) → AMEX Savings (IRA Holding). Starts after DCL funded. 🔒 <strong>Gated: breaks waterfall</strong> until <code>ira_cpa_cleared</code> is set. Seeded with $103.64 from starting AMEX balance.</li>'+
+        '<li><strong>T5 — Wendy IRA</strong> ($7,000) → AMEX Savings (IRA Holding). 🔒 Same CPA gate — will not fund until Adam IRA is cleared and funded.</li>'+
+        '<li><strong>T6 — Bailey 529</strong> ($3,500) → AMEX Savings (529 Holding). Decision pending — see Decision Queue.</li>'+
+        '<li><strong>T7 — Bryce 529</strong> ($1,500) → AMEX Savings (529 Holding). Decision pending.</li>'+
+        '<li><strong>T8 — Preston 529</strong> ($1,000) → AMEX Savings (529 Holding). Decision pending.</li>'+
+        '<li><strong>T9 — Bryce Vehicle</strong> ($8,000) → Truist Checking hold. September 2026 decision point.</li>'+
+        '<li><strong>T10 — Christmas Cruise</strong> ($2,500) → Truist Savings (earmarked). Decision pending post-Alaska.</li>'+
+      '</ol>'+
+      '<p style="font-size:12px;color:var(--muted)">Not in waterfall: Taxable ETF ($4,999.79) — Stretch/Phase 5 only. No contributions until all T1-T10 goals are funded. Pre-waterfall: base tax ($521.36 → Vio) fires Week 1. Commission tax (40% → Vio / 60% → Alaska) fires on commission weeks. All transfers respect the $6,500 hard floor.</p>'+
+    '</div>'+
+    '<div class="panel assumption-card"><h3>IRA/529 Holding Account Architecture</h3>'+
+      '<p>IRA and 529 contributions do not go directly to Fidelity. They route to <strong>AMEX Savings as a holding account</strong> until CPA clearance is received. This is a two-step process:</p>'+
+      '<ol style="margin:8px 0 10px 18px;font-size:13px;line-height:1.9">'+
+        '<li><strong>Hold phase:</strong> Checking → AMEX Savings (labeled "IRA/529 Holding — Pending CPA"). The model tracks accumulation here. Waterfall is blocked at Adam IRA until <code>ira_cpa_cleared</code> flag is toggled on.</li>'+
+        '<li><strong>Deploy phase:</strong> Once CPA clears, AMEX Savings → Fidelity IRA (or 529 custodian). This is a manual transfer — not automated by the model.</li>'+
+      '</ol>'+
+      '<p>The <code>ira_cpa_cleared</code> flag is toggled in the Goals tab flag bar. When cleared, the waterfall gate lifts and IRA funding begins. When locked, the waterfall stops at T4 (Adam IRA) and remaining checking surplus accumulates until CPA clears.</p>'+
     '</div>'+
     '<div class="panel assumption-card"><h3>Jabian Business Expense Float</h3>'+
       '<p>Jabian business expenses and reimbursements are intentionally excluded from weekly projections because they are highly reliable, self-funding, and typically reimburse within one payroll cycle.</p>'+
@@ -1578,19 +2571,21 @@ function renderAssumptions(){
       '<p><strong>Week overrides:</strong> Editing a week creates an entry in <code>overrideData</code>. The model reads <code>overrideData[num]</code> when building the effective week list. Overrides never mutate <code>WD</code>. Deleting an override restores the base week definition.</p>'+
       '<p><strong>Custom weeks:</strong> Weeks 32+ are created as <code>is_custom: true</code> overrides. They are sorted by <code>week_num</code> and appended after Week 31. Custom weeks persist through Supabase.</p>'+
     '</div>'+
-    '<div class="panel assumption-card"><h3>How Surplus Sweeps Work + Why Sweeps Stop After Wk 32</h3>'+
+    '<div class="panel assumption-card"><h3>How Surplus Sweeps Work</h3>'+
       '<p><strong>The sweep rule:</strong> Each week, after inflows and bills are applied, if checking exceeds the $6,500 operating floor, the model sweeps surplus to the highest-priority open goal. No manual action required.</p>'+
-      '<p><strong>Priority order (simplified architecture):</strong></p>'+
+      '<p><strong>Priority order (Phase 4 architecture):</strong></p>'+
       '<ol style="margin:6px 0 10px 18px;font-size:13px;line-height:1.9">'+
-        '<li>Base income tax reserve → Vio Bank — fires model Wk 1 (cal Wk 23, checking has immediate surplus)</li>'+
+        '<li>Base income tax reserve ($521.36 → Vio Bank) — fires model Wk 1</li>'+
         '<li>Commission 40% → Tax Reserve, 60% → Alaska — triggers on Wk 6 commission income</li>'+
-        '<li>Alaska fund → Truist Savings — sweeps each eligible week · <strong>completes model Wk 5 (cal Wk 27, Jul 5-11) in one large sweep</strong></li>'+
-        '<li>Retirement savings seed — $3,772.74 one-time Truist Savings → AMEX, fires immediately after Alaska funded</li>'+
-        '<li>Retirement rebuild → AMEX — <strong>completes model Wk 10 (cal Wk 32, Aug 9-15)</strong></li>'+
-        '<li>No active goal → <strong>Cumulative Surplus Available After Goals</strong> (display-only virtual tracker — cash stays in Truist Checking until a Phase 4 named goal is created)</li>'+
+        '<li>Alaska fund → Truist Savings — sweeps each eligible week · <strong>completes model Wk 5 (Cal Wk 27, Jul 5-11)</strong></li>'+
+        '<li>Savings seed — $3,772.74 one-time Truist Savings → AMEX, fires immediately after Alaska funded</li>'+
+        '<li>RCCL → payment · DCL → payment (small, fast)</li>'+
+        '<li>Adam IRA → AMEX Savings (holding) — gated until <code>ira_cpa_cleared</code> · breaks waterfall when locked</li>'+
+        '<li>Wendy IRA, 529s, Bryce Vehicle, Christmas Cruise — follow in sequence once IRA gate clears</li>'+
+        '<li>No active goal → surplus accumulates in Truist Checking as structural float</li>'+
       '</ol>'+
-      '<p><strong>Why sweeps stop after Cal Wk 32:</strong> All defined goal buckets are funded. No cash actually leaves checking — the <strong>Cumulative Surplus Available After Goals</strong> display on the Goals page is a running virtual total showing how much could be deployed once a Phase 4 goal is named. The money remains in Truist Checking as structural float. Once you create a named goal, the model routes surplus there at step 6.</p>'+
-      '<p><strong>Commission income:</strong> When Adam or Wendy earns a commission or BK bonus, the model auto-routes 40% → Vio Bank - Tax Reserve and 60% → current open goal. If the commission week is below floor (e.g. heavy AMEX statement same week), both amounts defer via <code>taxTodo</code> to the next eligible week.</p>'+
+      '<p><strong>When the IRA gate is locked:</strong> Surplus above $6,500 accumulates in Truist Checking rather than moving to AMEX Savings. The Goals tab shows the theoretical IRA allocation that would occur once CPA clears. No funds leave checking automatically — all IRA/529 transfers are manual.</p>'+
+      '<p><strong>Commission income:</strong> When Adam or Wendy earns a commission or BK bonus, the model auto-routes 40% → Vio Bank - Tax Reserve and 60% → current open goal. If the commission week is below floor, both amounts defer via <code>taxTodo</code> to the next eligible week.</p>'+
       '<p><strong>Adding extra income:</strong> Use Edit Week to add one-time inflows. Check "Tax?" for taxable income — the 40/60 split fires automatically and accelerates whichever goal is currently open.</p>'+
     '</div>'+
   '</div>';
@@ -1829,7 +2824,7 @@ function applyScenario(){
     scenarioState.previewGoal={ak:parseFloat(p.ak)||goalAk,rt:parseFloat(p.rt)||goalRt};
   }
   scenarioState.active=true;
-  setSection('scenarios');renderApp();
+  setSection('goals');activeGoalsTab='engine';renderApp();
 }
 
 // ── Scenario: clear ────────────────────────────────────────────────────────
@@ -1872,14 +2867,43 @@ function renderScenarioModal(){
   else if(type==='inflow')summary='Add inflow "'+((p.label||'One-time inflow'))+'" of '+f(parseFloat(p.amount)||0)+' to <strong>Week '+getCalWeek(wn)+' ('+getWeekDate(wn)+')</strong>'+(p.taxable?' (taxable — splits applied).':'.');
   else if(type==='goal')summary='Update goal targets: Alaska to '+f(parseFloat(p.ak)||goalAk)+', Retirement to '+f(parseFloat(p.rt)||goalRt)+'.';
   el.innerHTML='<div class="sc-modal-overlay"><div class="sc-modal">'+
-    '<div class="sc-modal-title">Commit scenario?</div>'+
-    '<div class="sc-modal-body">'+summary+'</div>'+
-    '<div class="sc-modal-note">This will save to Supabase and update your plan. This cannot be undone automatically — use the Edit Week drawer to reverse week changes, or adjust goal inputs to reverse goal changes.</div>'+
+    '<div class="sc-modal-title">⚠️ Commit to Live Model?</div>'+
+    '<div class="sc-modal-body" style="margin-bottom:10px"><strong>You are about to make this permanent:</strong><br><br>'+summary+'</div>'+
+    '<div class="sc-modal-note" style="background:#fff7ed;border-color:#f59e0b;color:#92400e">'+
+      '<strong>This writes to Supabase.</strong> The scenario will be saved as a real week override or goal change in your live plan. '+
+      'To undo: use <strong>Edit Week → restore defaults</strong> for week changes, or adjust goal targets for goal changes. '+
+      'There is no single-click undo.'+
+    '</div>'+
     '<div class="sc-modal-btns">'+
-      '<button class="sc-modal-cancel" onclick="closeScenarioCommit()">Cancel</button>'+
-      '<button class="sc-modal-confirm" onclick="commitScenario()">Commit</button>'+
+      '<button class="sc-modal-cancel" onclick="closeScenarioCommit()">Back — keep previewing</button>'+
+      '<button class="sc-modal-confirm" onclick="commitScenario()" style="background:#dc2626">Commit to live model</button>'+
     '</div>'+
   '</div></div>';
+}
+
+// ── _renderScenariosInline — embeds scenario builder inside Goals What-If tab ─
+function _renderScenariosInline(vm){
+  var html='';
+  if(scenarioState.active){
+    var typeLabel={commission:'Commission',expense:'Add Expense',inflow:'Add Inflow',goal:'Change Goals'}[scenarioState.type]||scenarioState.type;
+    var wkLabel=scenarioState.type!=='goal'?' · Wk '+getCalWeek(scenarioState.weekNum)+' ('+getWeekDate(scenarioState.weekNum)+')':'';
+    html+='<div class="scenario-banner">'+
+      '<span class="scenario-banner-lbl">Preview mode'+wkLabel+'</span>'+
+      '<span class="scenario-banner-type">'+typeLabel+'</span>'+
+      '<div style="display:flex;gap:7px;margin-left:10px">'+
+        '<button class="scenario-cancel-btn" onclick="clearScenario()">✕ Cancel</button>'+
+        '<button class="scenario-commit-btn" onclick="openScenarioCommit()">Commit →</button>'+
+      '</div>'+
+    '</div>';
+  }
+  html+='<div class="scenario-type-grid">'+
+    _stc('commission','💰','Commission','Add commission income with 40/60 tax/Alaska split')+
+    _stc('expense','💸','Add Expense','One-time expense in a specific week')+
+    _stc('inflow','📥','Add Inflow','One-time income or transfer in')+
+    _stc('goal','🎯','Change Goal Targets','Adjust Alaska or Retirement savings targets')+
+  '</div>';
+  if(scenarioState.type){html+=_renderScenarioForm(vm);}
+  return html;
 }
 
 // ── renderScenarios ────────────────────────────────────────────────────────
@@ -1991,11 +3015,13 @@ function _updateScenarioPreview(){renderApp();}
 
 // ── Wishlist CRUD ──────────────────────────────────────────────────────────
 var WISHLIST_SEED=[
+  // Phase 1 — done
   {title:'App shell & navigation',notes:'New sidebar, CSS design system, section routing',phase:'Phase 1',status:'done'},
   {title:'Overview page',notes:'Health cards, compact timeline, goal forecast rail',phase:'Phase 1',status:'done'},
   {title:'Weekly Model layout',notes:'Transfers, actions, balances per week',phase:'Phase 1',status:'done'},
   {title:'Goals page',notes:'Editable Alaska & Retirement savings targets',phase:'Phase 1',status:'done'},
   {title:'History & Assumptions pages',notes:'Mobile layout, filter bar, assumption cards',phase:'Phase 1',status:'done'},
+  // Phase 2 — done
   {title:'Required actions with checkboxes',notes:'Persistent via Supabase, sourced from realActs only',phase:'Phase 2',status:'done'},
   {title:'Floor health panel',notes:'Beginning → Inflows − Outflows = Ending, two-row layout',phase:'Phase 2',status:'done'},
   {title:'Reconciliation drawer',notes:'Save / error / delete states, variance labels',phase:'Phase 2',status:'done'},
@@ -2005,22 +3031,51 @@ var WISHLIST_SEED=[
   {title:'Supabase live writes',notes:'All data persists across sessions and devices',phase:'Phase 2',status:'done'},
   {title:'Sync dot wired to connection state',notes:'Gray on load, green after successful connection',phase:'Phase 2',status:'done'},
   {title:'Feature wishlist page',notes:'This page — Supabase-backed CRUD',phase:'Phase 2',status:'done'},
+  // Phase 3 — done
   {title:'Scenario preview sandbox',notes:'Architecture that never writes to Supabase until explicitly committed',phase:'Phase 3',status:'done'},
   {title:'Commission scenario',notes:'Week, gross amount, taxable toggle, 40/60 split preview',phase:'Phase 3',status:'done'},
   {title:'Expense & Inflow scenarios',notes:'Add Expense, Add Inflow, Change Goal Target',phase:'Phase 3',status:'done'},
   {title:'Exact calendar dates on cash flows',notes:'Every transfer and action shows its calendar date',phase:'Phase 3',status:'done'},
   {title:'Wishlist full CRUD',notes:'Add ideas, edit cards, assign phases, move Planned → Done, synced via Supabase',phase:'Phase 3',status:'done'},
   {title:'AI Q&A (read-only)',notes:'Ask plain-English questions about the model and get answers',phase:'Phase 3',status:'done'},
-  {title:'Dynamic goal registry',notes:'Add / edit / pause / archive / reprioritize goals',phase:'Phase 4',status:'planned'},
-  {title:'Goal dependency chain',notes:'Start a goal after another goal completes',phase:'Phase 4',status:'planned'},
-  {title:'Goal progress from actions',notes:'Progress gated on checked required actions, not model projection alone',phase:'Phase 4',status:'planned'},
-  {title:'Goal funding source & destination account',notes:'Per-goal: which account funds it, start week, target account',phase:'Phase 4',status:'planned'},
-  {title:'Authentication',notes:'Lock dashboard behind login — required before account connections',phase:'Phase 5',status:'planned'},
+  {title:'13-goal waterfall-integrated GOALS_REGISTRY',notes:'Full 11-tier PRIORITY_TIERS with direct IRA/529 waterfall. All 13 goals modeled end-to-end in runModel.',phase:'Phase 3',status:'done'},
+  {title:'Priorities tab with tier view',notes:'Per-tier status, progress bars, Cal Wk completion badges, locked/complete/in-progress states.',phase:'Phase 3',status:'done'},
+  {title:'Funding Plan tab with chronological timeline',notes:'Goal table sorted by projected completion, Overall 2026 Progress at top, IRA locked state + AMEX Savings holding route.',phase:'Phase 3',status:'done'},
+  {title:'What-If / Scenarios merged into Goals tab',notes:'Scenario Builder (commission/expense/inflow/goal target) collapsed into Goals → What-If tab alongside the allocation engine.',phase:'Phase 3',status:'done'},
+  {title:'Monthly Vio→LC APR boost prompts',notes:'Recommended action fires first week of each month. Quarterly LC→Vio return prompt on W14 (Sep) and W27 (Dec).',phase:'Phase 3',status:'done'},
+  {title:'Custom required actions',notes:'Add task to any week via + Add action button. Persisted via localStorage. Toggle complete, delete. Shown alongside model-generated tasks.',phase:'Phase 3',status:'done'},
+  {title:'CC confirmed vs estimate differentiation',notes:'Outflow events with ~ in label show amber Est. badge in cash flow panel. Tilde stripped from display label.',phase:'Phase 3',status:'done'},
+  // Phase 4 — current build
+  {title:'Bug fix: Wendy paycheck Wk 44 and Wk 48',notes:'Missing $2,152.50 paychecks added to Nov 6 and Dec 4. Corrects $4,305 income gap in model.',phase:'Phase 4',status:'done'},
+  {title:'Bug fix: Alaska expense double-count removed',notes:'Removed duplicate WD bills ($1,500 Wk 12, $5,500 Wk 16) and old mvS() calls. Replaced with single $7k savings pull in Cal Wk 37.',phase:'Phase 4',status:'done'},
+  {title:'Retirement Pool removal — direct waterfall',notes:'retirement_rebuild removed. IRA/529 goals now fund directly from checking via 10-goal waterfall. AMEX Savings is IRA/529 holding account.',phase:'Phase 4',status:'done'},
+  {title:'Goal lifecycle status field',notes:'status field on all GOALS_REGISTRY entries: planned/funding/funded/approved/executed/cancelled. Displayed in Priorities and Funding Plan tabs.',phase:'Phase 4',status:'done'},
+  {title:'Priorities tab redesign — ranked list',notes:'Flat ranked table (T1-T11) with target, funded, progress bar, lifecycle badge, and Cal Wk ETA per goal. Decision Queue updated for Phase 4 context.',phase:'Phase 4',status:'done'},
+  {title:'Three-tier floor visual indicators',notes:'$6,500 emergency (red) / $10,000 warning (amber) / $12,000 target (green) tier legend in Priorities tab. Display only — $6,500 hard gate unchanged.',phase:'Phase 4',status:'done'},
+  {title:'Decision Queue — Phase 4 items',notes:'CPA clearance, Alaska card bill timing, Wendy priority discussion, Phase 5+ goals naming.',phase:'Phase 4',status:'done'},
+  {title:'Goal funding source & destination account',notes:'Per-goal src/dest account + startsAfter dependency. IRA/529 dest updated to AMEX Savings (holding). poolSource architecture removed.',phase:'Phase 4',status:'done'},
+  {title:'Dynamic goal registry (CRUD)',notes:'Add / edit / pause / archive / reprioritize goals via UI',phase:'Phase 4',status:'planned'},
+  // Phase 5 — planned
+  {title:'Ask Claude API key security — backend proxy',notes:'Move Anthropic API calls behind a Supabase Edge Function. Browser sends question + model context; Edge Function holds ANTHROPIC_API_KEY as env secret and calls Anthropic server-side. Removes user-entered key from browser and Supabase storage. Not blocking for local-only use (Wendy + Adam, $5 credit, no auto-renew) but required before any wider access.',phase:'Phase 5',status:'planned'},
+  {title:'Playwright end-to-end smoke tests',notes:'e2e.js written and ready. Install: npm install playwright && npx playwright install chromium. Run: node e2e.js. Sections: A) tab smoke, B) console errors, C) Decision Engine locked/cleared, D) IRA flag toggle, E) edit week, F) reconciliation, G) wishlist, H) XSS injection, I) Supabase offline, J) mobile viewport. Mirrors what test_regression.js does for model logic, but for the browser UI. Activate when promotions become more frequent or a second user is added.',phase:'Phase 5',status:'planned'},
+  {title:'Scenario preview: commit to Supabase',notes:'Scenario Builder write-back — commit scenario as override week with single click.',phase:'Phase 5',status:'planned'},
+  {title:'Retirement dashboard (Coast FI view)',notes:'Show Coast FI target vs. current trajectory. Age-indexed. IRA/401k/SEP balances vs. Coast FI number.',phase:'Phase 5',status:'planned'},
+  {title:'Coast FI calculator',notes:'Inputs: current age, retirement age, expected return, current balances. Outputs: Coast FI number and gap.',phase:'Phase 5',status:'planned'},
+  {title:'Tax separation (personal vs. Wendy SE)',notes:'Split tax reserve into personal income tax vs. Wendy SE tax. Separate tracking for each bucket.',phase:'Phase 5',status:'planned'},
+  {title:'EF bridge logic',notes:'Model when and how to move emergency fund from AMEX/Vio into operational accounts during trough weeks. Decision-tree recommendation.',phase:'Phase 5',status:'planned'},
+  {title:'Income source refactor',notes:'Tag each inflow with source (salary, commission, SE, reimbursement). Separate reporting by source.',phase:'Phase 5',status:'planned'},
+  {title:'Annual planning tab',notes:'Full-year view with YTD actuals, projected vs. actual per category, and tax year close checklist.',phase:'Phase 5',status:'planned'},
+  // Phase 6 — planned
+  {title:'Authentication',notes:'Lock dashboard behind login — required before account connections',phase:'Phase 6',status:'planned'},
   {title:'Account connections (OAuth)',notes:'Connect Truist, AMEX, and other accounts',phase:'Phase 6',status:'planned'},
   {title:'Auto balance pre-fill',notes:'Pull current balance automatically when opening reconciliation drawer',phase:'Phase 6',status:'planned'},
   {title:'Last synced badge per account',notes:'Shows when each account balance was last pulled',phase:'Phase 6',status:'planned'},
-  {title:'Account reconciliation breakdown',notes:'Per-account composition: allocated buckets vs free cash',phase:'Phase 7',status:'planned'},
-  {title:'"What is this balance?" view',notes:'Answers what exactly makes up this $X in Truist Savings',phase:'Phase 7',status:'planned'},
+  {title:'Account reconciliation breakdown',notes:'Per-account composition: allocated buckets vs free cash',phase:'Phase 6',status:'planned'},
+  {title:'"What is this balance?" view',notes:'Answers what exactly makes up this $X in Truist Savings',phase:'Phase 6',status:'planned'},
+  {title:'Multi-year architecture',notes:'Extend model horizon beyond 2026. Carry-forward balances, annual goal reset, 2027+ planning.',phase:'Phase 6',status:'planned'},
+  {title:'Date-based model internals',notes:'Replace week-number model with actual date math. Enables irregular paycheck timing and real calendar alignment.',phase:'Phase 6',status:'planned'},
+  {title:'Full tax forecasting',notes:'W-2 + SE income projections, estimated quarterly payments, year-end true-up.',phase:'Phase 6',status:'planned'},
+  {title:'Net worth dashboard',notes:'All accounts, balances, debts. Monthly snapshot tracking. Total net worth trend line.',phase:'Phase 6',status:'planned'},
 ];
 
 async function loadWishlist(){
@@ -2030,9 +3085,20 @@ async function loadWishlist(){
       wishlistData=await r.json();
       wishlistLoaded=true;
       if(wishlistData.length===0)await seedWishlist();
-      else renderApp();
+      else{await mergeSeedWishlist();renderApp();}
     }
   }catch(e){console.error('loadWishlist:',e);}
+}
+async function mergeSeedWishlist(){
+  // Add any WISHLIST_SEED items not already present (matched by title)
+  var existing=wishlistData.map(function(x){return x.title;});
+  var missing=WISHLIST_SEED.filter(function(s){return existing.indexOf(s.title)<0;});
+  if(!missing.length)return;
+  try{
+    var rows=missing.map(function(item){return{title:item.title,notes:item.notes,phase:item.phase,status:item.status,priority:0};});
+    var r=await fetch(SUPA_URL+'/rest/v1/wishlist_items',{method:'POST',headers:Object.assign({},SUPA_H,{'Prefer':'return=representation'}),body:JSON.stringify(rows)});
+    if(r.ok){var added=await r.json();wishlistData=wishlistData.concat(added);console.log('Wishlist: merged '+added.length+' new seed items.');}
+  }catch(e){console.warn('mergeSeedWishlist:',e);}
 }
 async function seedWishlist(){
   try{
@@ -2082,8 +3148,8 @@ function renderRoadmap(){
     if(!wishlistLoaded)loadWishlist();
     return;
   }
-  var PHASES=['Backlog','Phase 3','Phase 4','Phase 5','Phase 6','Phase 7'];
-  function phaseColor(p){var m={'Phase 1':'#64748b','Phase 2':'#2563eb','Phase 3':'#7c3aed','Phase 4':'#db2777','Phase 5':'#ea580c','Phase 6':'#0d9488','Phase 7':'#65a30d','Backlog':'#94a3b8'};return m[p]||'#94a3b8';}
+  var PHASES=['Backlog','Phase 3','Phase 4','Phase 5','Phase 6'];
+  function phaseColor(p){var m={'Phase 1':'#64748b','Phase 2':'#2563eb','Phase 3':'#7c3aed','Phase 4':'#db2777','Phase 5':'#ea580c','Phase 6':'#0d9488','Backlog':'#94a3b8'};return m[p]||'#94a3b8';}
   function card(item,canEdit){
     var c=phaseColor(item.phase);
     var isEditing=wishlistEditId===item.id;
@@ -2128,6 +3194,34 @@ function renderRoadmap(){
   var ideas=wishlistData.filter(function(i){return i.status==='idea';});
   var planned=wishlistData.filter(function(i){return i.status==='planned';});
   var done=wishlistData.filter(function(i){return i.status==='done';});
+  // Determine current and next phase from done items
+  var donePhaseNums=done.map(function(i){return parseInt((i.phase||'').replace('Phase ',''))||0;});
+  var currentPhaseNum=donePhaseNums.length?Math.max.apply(null,donePhaseNums):4;
+  var nextPhaseLabel='Phase '+(currentPhaseNum+1);
+  function plannedCol(items){
+    // Group by phase, sorted by phase number
+    var phaseNums={};
+    items.forEach(function(it){phaseNums[it.phase||'Backlog']=parseInt((it.phase||'').replace('Phase ',''))||99;});
+    var phases=[...new Set(items.map(function(i){return i.phase||'Backlog';}))].sort(function(a,b){return(phaseNums[a]||99)-(phaseNums[b]||99);});
+    var body='';
+    if(wishlistAddOpen)body+=addForm();
+    if(!items.length){body+='<div class="wl-empty">Nothing planned yet</div>';}
+    phases.forEach(function(ph){
+      var phItems=items.filter(function(i){return(i.phase||'Backlog')===ph;});
+      if(!phItems.length)return;
+      var c=phaseColor(ph);
+      var isNext=ph===nextPhaseLabel;
+      var pill=isNext
+        ?'<span style="background:'+c+'22;color:'+c+';border:1px solid '+c+'66;border-radius:99px;font-size:10px;font-weight:700;letter-spacing:.04em;padding:2px 9px">'+ph+' — Next ▶</span>'
+        :'<span style="background:'+c+'18;color:'+c+';border:1px solid '+c+'44;border-radius:99px;font-size:10px;font-weight:700;letter-spacing:.04em;padding:2px 9px">'+ph+'</span>';
+      body+='<div style="display:flex;align-items:center;gap:8px;margin:'+(body?'14px':'0')+'0 6px;'+(body?'border-top:1px solid var(--border);padding-top:12px':'')+'">'+pill+'<span style="flex:1;height:1px;background:var(--border)"></span><span style="font-size:10px;color:var(--muted)">'+phItems.length+' item'+(phItems.length!==1?'s':'')+'</span></div>';
+      body+=phItems.map(function(it){return card(it,true);}).join('');
+    });
+    return'<div class="wl-col">'+
+      '<div class="wl-col-header"><span class="wl-col-title">Planned</span><span class="wl-col-count">'+items.length+'</span>'+
+      '<button class="wl-add-btn" onclick="wishlistAddOpen='+(wishlistAddOpen?'false':'true')+';wishlistEditId=null;renderApp()">'+(wishlistAddOpen?'✕':'+ Add')+'</button>'+
+      '</div><div class="wl-col-body">'+body+'</div></div>';
+  }
   function col(title,items,showAdd,canEdit,emptyMsg){
     return'<div class="wl-col">'+
       '<div class="wl-col-header"><span class="wl-col-title">'+title+'</span><span class="wl-col-count">'+items.length+'</span>'+
@@ -2142,7 +3236,7 @@ function renderRoadmap(){
   var html='<div class="wl-header-bar"><div class="wl-page-title">Feature Wishlist</div><div class="wl-page-sub">Source of truth for what has been built, what is coming, and what is on your mind. Claude reads this list for phase planning.</div></div>'+
   '<div class="wl-board">'+
     col('Ideas',ideas,true,true,'No ideas yet — click Add to capture one')+
-    col('Planned',planned,false,true,'Nothing planned yet')+
+    plannedCol(planned)+
     col('Done',done,false,false,'Nothing done yet')+
   '</div>';
   el.innerHTML=html;
