@@ -3105,23 +3105,33 @@ async function mergeSeedWishlist(){
   renderApp();
 }
 async function phaseMigrateWishlist(){
-  // Patches stale phase assignments in Supabase. Safe to run on every load — only
-  // fires a PATCH when the stored phase differs from the target. Keeps the seed
-  // authoritative for phase assignments after a re-phase decision.
+  // 1. Bulk-move ALL remaining Phase 4 planned items to Phase 5.
+  //    Catches any items added by the user or seeded before the re-phase decision.
+  var phase4planned=wishlistData.filter(function(x){return x.phase==='Phase 4'&&x.status==='planned';});
+  for(var i=0;i<phase4planned.length;i++){
+    var item=phase4planned[i];
+    try{
+      await fetch(SUPA_URL+'/rest/v1/wishlist_items?id=eq.'+item.id,{method:'PATCH',headers:Object.assign({},SUPA_H,{'Prefer':'return=minimal'}),body:JSON.stringify({phase:'Phase 5'})});
+      item.phase='Phase 5';
+      console.log('Wishlist phase migration: "'+item.title+'" Phase 4 planned → Phase 5');
+    }catch(e){console.warn('phaseMigrate error:',e);}
+  }
+  // 2. Title-based corrections for items seeded with wrong phases from older code.
   var corrections=[
     {title:'Dynamic goal registry',          phase:'Phase 5'},
     {title:'Dynamic goal registry (CRUD)',    phase:'Phase 5'},
     {title:'Goal dependency chain',           phase:'Phase 5'},
     {title:'Goal progress from actions',      phase:'Phase 5'},
+    {title:'Authentication',                  phase:'Phase 6'},
   ];
-  for(var i=0;i<corrections.length;i++){
-    var c=corrections[i];
-    var item=wishlistData.find(function(x){return x.title===c.title;});
-    if(item&&item.phase!==c.phase){
+  for(var j=0;j<corrections.length;j++){
+    var c=corrections[j];
+    var match=wishlistData.find(function(x){return x.title===c.title;});
+    if(match&&match.phase!==c.phase){
       try{
-        await fetch(SUPA_URL+'/rest/v1/wishlist_items?id=eq.'+item.id,{method:'PATCH',headers:Object.assign({},SUPA_H,{'Prefer':'return=minimal'}),body:JSON.stringify({phase:c.phase})});
-        item.phase=c.phase;
-        console.log('Wishlist phase migration: "'+item.title+'" → '+c.phase);
+        await fetch(SUPA_URL+'/rest/v1/wishlist_items?id=eq.'+match.id,{method:'PATCH',headers:Object.assign({},SUPA_H,{'Prefer':'return=minimal'}),body:JSON.stringify({phase:c.phase})});
+        match.phase=c.phase;
+        console.log('Wishlist phase migration: "'+match.title+'" → '+c.phase);
       }catch(e){console.warn('phaseMigrate error:',e);}
     }
   }
