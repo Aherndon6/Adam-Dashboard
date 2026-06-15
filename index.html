@@ -2745,6 +2745,7 @@ async function loadAll(){
       if(row.key==='ak_goal'){goalAk=Math.max(1,parseFloat(row.value)||7000);}
       if(row.key==='rt_goal'){goalRt=Math.max(1,parseFloat(row.value)||7690.98);}
       if(row.key==='anthropic_key'){anthropicKey=row.value||'';}
+      if(row.key==='custom_tasks'){try{var ct=JSON.parse(row.value);if(ct&&typeof ct==='object'){customTaskData=ct;try{localStorage.setItem('hfos_custom_tasks',row.value);}catch(e){}}}catch(e){}}
     });}
     if(customTasksR.ok){
       var ctRows=await customTasksR.json();
