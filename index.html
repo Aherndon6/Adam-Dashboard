@@ -763,11 +763,16 @@ var engineType='regular';
 var engineResult=null;
 var vm_snapshot=null;
 
-// ── Custom task state (localStorage-backed) ────────────────────────────────
+// ── Custom task state (Supabase-backed, localStorage fallback) ─────────────
 var customTaskData={};  // weekNum → [{id, label, completed}]
 var customTaskState=null;  // {addingWeek: N} when add form is open
 (function(){try{var s=localStorage.getItem('hfos_custom_tasks');if(s)customTaskData=JSON.parse(s);}catch(e){}})();
-function _saveCustomTasks(){try{localStorage.setItem('hfos_custom_tasks',JSON.stringify(customTaskData));}catch(e){}}
+function _saveCustomTasks(){
+  // Persist locally for instant reads
+  try{localStorage.setItem('hfos_custom_tasks',JSON.stringify(customTaskData));}catch(e){}
+  // Sync to Supabase so mobile picks it up
+  try{fetch(SUPA_URL+'/rest/v1/goals',{method:'POST',headers:Object.assign({},SUPA_H,{'Prefer':'resolution=merge-duplicates,return=minimal'}),body:JSON.stringify({key:'custom_tasks',value:JSON.stringify(customTaskData)})}).catch(function(e){console.error('_saveCustomTasks:',e);});}catch(e){}
+}
 function saveCustomTask(weekNum){
   var inp=document.getElementById('ct-inp-'+weekNum);
   var label=inp?inp.value.trim():'';
@@ -1923,7 +1928,7 @@ function _renderGoalsSavings(vm){
       _farrow('route')+
       _fbox('Waterfall Goals','Priority order:<br>Alaska→RCCL→DCL→Ret.','var(--blue)','var(--blueSoft)')+
       _farrow('funded')+
-      _fbox('Goal Buckets','Sav · AMEX · Fidelity<br>Available to pull','var(--green)','var(--greenSoft)')+
+      _fbox('Goal Buckets','Sav · AMEX · T Rowe / P2C<br>Available to pull','var(--green)','var(--greenSoft)')+
     '</div>'+
     // Key mechanic: look-ahead floor
     '<div style="background:#fef3c7;border:1px solid #f59e0b;border-radius:6px;padding:8px 10px;margin-bottom:12px;font-size:12px">'+
@@ -1968,7 +1973,7 @@ function _renderGoalsSavings(vm){
     // "Available to pull" concept
     '<div style="background:var(--bg);border:1px solid var(--border);border-radius:6px;padding:8px 10px;font-size:12px">'+
       '<span style="font-weight:700;color:var(--ink)">What "funded" means: </span>'+
-      '<span style="color:var(--ink)">Once a goal reaches 100%, its balance is held in the destination account (Truist Savings, AMEX Savings, or Fidelity) and can be pulled at any time. Funded goals in Savings are liquid. IRA and 529 goals are held in AMEX Savings as a holding account pending CPA clearance before transfer to Fidelity.</span>'+
+      '<span style="color:var(--ink)">Once a goal reaches 100%, its balance is held in the destination account (Truist Savings, AMEX Savings, T Rowe, or Path 2 College) and can be pulled at any time. Funded goals in Savings are liquid. IRA and 529 goals are held in AMEX Savings as a holding account pending CPA clearance before transfer to T Rowe (IRAs) or Path 2 College (529s).</span>'+
     '</div>'+
   '</div>';
 
@@ -2054,7 +2059,7 @@ function _renderGoalsPriorities(vm){
       '<div class="dq-icon">📋</div>'+
       '<div class="dq-body">'+
         '<div class="dq-name">IRA CPA Clearance</div>'+
-        '<div class="dq-desc">CPA sign-off required before IRAs deploy to Fidelity. Cash accumulates in AMEX (IRA Holding) in the meantime. Adam IRA seeds with Alaska residual savings once cruise funds.</div>'+
+        '<div class="dq-desc">CPA sign-off required before IRAs deploy to T Rowe. Cash accumulates in AMEX (IRA Holding) in the meantime. Adam IRA seeds with Alaska residual savings once cruise funds.</div>'+
         '<div class="dq-deadline">Toggle IRA flag once CPA clears</div>'+
       '</div>'+
     '</div>'+
@@ -2552,10 +2557,10 @@ function renderAssumptions(){
       '<p style="font-size:12px;color:var(--muted)">Not in waterfall: Taxable ETF ($4,999.79) — Stretch/Phase 5 only. No contributions until all T1-T10 goals are funded. Pre-waterfall: base tax ($521.36 → Vio) fires Week 1. Commission tax (40% → Vio / 60% → Alaska) fires on commission weeks. All transfers respect the $6,500 hard floor.</p>'+
     '</div>'+
     '<div class="panel assumption-card"><h3>IRA/529 Holding Account Architecture</h3>'+
-      '<p>IRA and 529 contributions do not go directly to Fidelity. They route to <strong>AMEX Savings as a holding account</strong> until CPA clearance is received. This is a two-step process:</p>'+
+      '<p>IRA and 529 contributions do not go directly to their custodians (T Rowe for IRAs, Path 2 College for 529s). They route to <strong>AMEX Savings as a holding account</strong> until CPA clearance is received. This is a two-step process:</p>'+
       '<ol style="margin:8px 0 10px 18px;font-size:13px;line-height:1.9">'+
         '<li><strong>Hold phase:</strong> Checking → AMEX Savings (labeled "IRA/529 Holding — Pending CPA"). The model tracks accumulation here. Waterfall is blocked at Adam IRA until <code>ira_cpa_cleared</code> flag is toggled on.</li>'+
-        '<li><strong>Deploy phase:</strong> Once CPA clears, AMEX Savings → Fidelity IRA (or 529 custodian). This is a manual transfer — not automated by the model.</li>'+
+        '<li><strong>Deploy phase:</strong> Once CPA clears, AMEX Savings → T Rowe (IRA) or Path 2 College (529). This is a manual transfer — not automated by the model.</li>'+
       '</ol>'+
       '<p>The <code>ira_cpa_cleared</code> flag is toggled in the Goals tab flag bar. When cleared, the waterfall gate lifts and IRA funding begins. When locked, the waterfall stops at T4 (Adam IRA) and remaining checking surplus accumulates until CPA clears.</p>'+
     '</div>'+
@@ -2742,6 +2747,7 @@ async function loadAll(){
       if(row.key==='ak_goal'){goalAk=Math.max(1,parseFloat(row.value)||7000);}
       if(row.key==='rt_goal'){goalRt=Math.max(1,parseFloat(row.value)||7690.98);}
       if(row.key==='anthropic_key'){anthropicKey=row.value||'';}
+      if(row.key==='custom_tasks'){try{var ct=JSON.parse(row.value);if(ct&&typeof ct==='object'){customTaskData=ct;try{localStorage.setItem('hfos_custom_tasks',row.value);}catch(e){}}}catch(e){}}
     });}
     if(wishlistR.ok){
       var wl=await wishlistR.json();
@@ -3146,11 +3152,11 @@ async function seedWishlist(){
 async function saveWishlistItem(item){
   try{
     if(item.id){
-      await fetch(SUPA_URL+'/rest/v1/wishlist_items?id=eq.'+item.id,{method:'PATCH',headers:Object.assign({},SUPA_H,{'Prefer':'return=minimal'}),body:JSON.stringify({title:item.title,notes:item.notes,phase:item.phase,status:item.status,updated_at:new Date().toISOString()})});
+      await fetch(SUPA_URL+'/rest/v1/wishlist_items?id=eq.'+item.id,{method:'PATCH',headers:Object.assign({},SUPA_H,{'Prefer':'return=minimal'}),body:JSON.stringify({title:item.title,notes:item.notes,phase:item.phase,status:item.status,item_type:item.item_type||'feature',updated_at:new Date().toISOString()})});
       var idx=wishlistData.findIndex(function(x){return x.id===item.id;});
       if(idx>=0)wishlistData[idx]=Object.assign({},wishlistData[idx],item);
     }else{
-      var r=await fetch(SUPA_URL+'/rest/v1/wishlist_items',{method:'POST',headers:Object.assign({},SUPA_H,{'Prefer':'return=representation'}),body:JSON.stringify({title:item.title,notes:item.notes||'',phase:item.phase||'Backlog',status:'idea',priority:0})});
+      var r=await fetch(SUPA_URL+'/rest/v1/wishlist_items',{method:'POST',headers:Object.assign({},SUPA_H,{'Prefer':'return=representation'}),body:JSON.stringify({title:item.title,notes:item.notes||'',phase:item.phase||'Backlog',status:'idea',item_type:item.item_type||'feature',priority:0})});
       if(r.ok){var created=await r.json();wishlistData=wishlistData.concat(created);}
     }
     wishlistAddOpen=false;wishlistEditId=null;renderApp();
@@ -3190,8 +3196,10 @@ function renderRoadmap(){
     var c=phaseColor(item.phase);
     var isEditing=wishlistEditId===item.id;
     if(isEditing)return editForm(item);
+    var isBug=item.item_type==='bug';
+    var typeBadge=isBug?'<span style="background:#fee2e2;color:#dc2626;border:1px solid #fca5a5;border-radius:99px;font-size:10px;font-weight:700;letter-spacing:.04em;padding:1px 7px;margin-left:5px">Bug</span>':'';
     return'<div class="wl-card">'+
-      '<div class="wl-card-title">'+_esc(item.title)+'</div>'+
+      '<div class="wl-card-title">'+_esc(item.title)+typeBadge+'</div>'+
       (item.notes?'<div class="wl-card-notes">'+_esc(item.notes)+'</div>':'')+
       '<div class="wl-card-footer"><span class="wl-phase-tag" style="background:'+c+'18;color:'+c+';border-color:'+c+'44">'+(item.phase||'Backlog')+'</span></div>'+
       (canEdit?'<div class="wl-card-actions">'+
@@ -3203,11 +3211,13 @@ function renderRoadmap(){
   }
   function editForm(item){
     var pOpts=PHASES.map(function(ph){return'<option value="'+ph+'"'+(item.phase===ph?' selected':'')+'>'+ph+'</option>';}).join('');
+    var tOpts='<option value="feature"'+(item.item_type!=='bug'?' selected':'')+'>Feature</option><option value="bug"'+(item.item_type==='bug'?' selected':'')+'>Bug / Defect</option>';
     return'<div class="wl-add-form">'+
       '<div class="wl-add-form-title">Edit item</div>'+
       '<input id="wl-edit-title" type="text" placeholder="Title" value="'+_esc(item.title||'')+'" style="margin-bottom:5px">'+
       '<textarea id="wl-edit-notes" placeholder="Notes (optional)" style="margin-bottom:5px">'+_esc(item.notes||'')+'</textarea>'+
-      '<select id="wl-edit-phase">'+pOpts+'</select>'+
+      '<select id="wl-edit-phase" style="margin-bottom:5px">'+pOpts+'</select>'+
+      '<select id="wl-edit-type">'+tOpts+'</select>'+
       '<div class="wl-form-btns">'+
         '<button class="wl-save-btn" onclick="_saveEditForm('+item.id+')">Save</button>'+
         '<button class="wl-cancel-btn" onclick="wishlistEditId=null;renderApp()">Cancel</button>'+
@@ -3220,7 +3230,8 @@ function renderRoadmap(){
       '<div class="wl-add-form-title">New idea</div>'+
       '<input id="wl-new-title" type="text" placeholder="Title *">'+
       '<textarea id="wl-new-notes" placeholder="Notes (optional)"></textarea>'+
-      '<select id="wl-new-phase">'+pOpts+'</select>'+
+      '<select id="wl-new-phase" style="margin-bottom:5px">'+pOpts+'</select>'+
+      '<select id="wl-new-type"><option value="feature">Feature</option><option value="bug">Bug / Defect</option></select>'+
       '<div class="wl-form-btns">'+
         '<button class="wl-save-btn" onclick="_saveAddForm()">Add</button>'+
         '<button class="wl-cancel-btn" onclick="wishlistAddOpen=false;renderApp()">Cancel</button>'+
@@ -3279,16 +3290,16 @@ function renderRoadmap(){
 }
 function _esc(s){return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');}
 function _saveAddForm(){
-  var t=document.getElementById('wl-new-title');var n=document.getElementById('wl-new-notes');var p=document.getElementById('wl-new-phase');
+  var t=document.getElementById('wl-new-title');var n=document.getElementById('wl-new-notes');var p=document.getElementById('wl-new-phase');var tp=document.getElementById('wl-new-type');
   if(!t||!t.value.trim())return;
-  saveWishlistItem({title:t.value.trim(),notes:n?n.value.trim():'',phase:p?p.value:'Backlog'});
+  saveWishlistItem({title:t.value.trim(),notes:n?n.value.trim():'',phase:p?p.value:'Backlog',item_type:tp?tp.value:'feature'});
 }
 function _saveEditForm(id){
-  var t=document.getElementById('wl-edit-title');var n=document.getElementById('wl-edit-notes');var p=document.getElementById('wl-edit-phase');
+  var t=document.getElementById('wl-edit-title');var n=document.getElementById('wl-edit-notes');var p=document.getElementById('wl-edit-phase');var tp=document.getElementById('wl-edit-type');
   if(!t||!t.value.trim())return;
   var item=wishlistData.find(function(x){return x.id===id;});
   if(!item)return;
-  saveWishlistItem(Object.assign({},item,{title:t.value.trim(),notes:n?n.value.trim():item.notes,phase:p?p.value:item.phase}));
+  saveWishlistItem(Object.assign({},item,{title:t.value.trim(),notes:n?n.value.trim():item.notes,phase:p?p.value:item.phase,item_type:tp?tp.value:(item.item_type||'feature')}));
 }
 
 // ── AI Q&A ─────────────────────────────────────────────────────────────────
