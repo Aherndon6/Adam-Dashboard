@@ -1038,7 +1038,7 @@ function runModel(akGoal,rtGoal,flags){
       }
       recActs.push('📌 MONTHLY LC BOOST — Transfer $250 Vio Bank - Tax Reserve → Lending Club (first of month, maintains LC APR rate tier).');
     }
-    if([5,9,14,18,22,27,31].indexOf(num)>=0){
+    if([7,11,16,20,24,29].indexOf(num)>=0){
       recActs.push('Review Jabian reimbursements — compare expected vs. received. If a large or unusual amount is pending or recently arrived, add it as a one-time inflow via Edit Week. No action needed if reimbursements are on schedule.');}
     // Snapshot goal savings for this week (deep copy)
     var gSnap={};Object.keys(goalSaved).forEach(function(k){gSnap[k]=goalSaved[k];});
@@ -1369,7 +1369,7 @@ function renderGoalRail(vm){
       '<div class="goal-meta"><span>'+akForecast+'</span><span>'+akPct.toFixed(0)+'%</span></div>'+
     '</div>'+
     '<div class="progress-goal">'+
-      '<div class="goal-top"><span class="name">Retirement rebuild</span><span class="value">'+f(_grw.amx)+' / '+f(vm.goals.rt)+'</span></div>'+
+      '<div class="goal-top"><span class="name">AMEX Savings — IRA + 529s</span><span class="value">'+f(_grw.amx)+' / '+f(vm.goals.rt)+'</span></div>'+
       '<div class="prog-bar"><div class="prog-fill" style="background:var(--violet);width:'+rtPct+'%"></div></div>'+
       '<div class="goal-meta"><span>'+rtForecast+'</span><span>'+rtPct.toFixed(0)+'%</span></div>'+
     '</div>'+
@@ -1420,7 +1420,7 @@ function renderOverview(vm){
       '</div>'+
     '</div>'+
   '</div>';
-  html+='<div class="health-grid">'+'<div class="health-card"><div class="health-label">Checking (Wk '+getCalWeek(currentW)+')</div><div class="health-value '+chkCls+'">'+f(w.chk)+'</div><div class="health-hint '+cCls2+'">Cushion: '+(cushion>=0?'+':'')+f(Math.abs(cushion))+' vs $6,500 floor</div></div>'+'<div class="health-card"><div class="health-label">Truist Savings</div><div class="health-value good">'+f(w.sav)+'</div><div class="health-hint good">Alaska fund + float</div></div>'+'<div class="health-card"><div class="health-label">Tax Reserve (Vio)</div><div class="health-value '+(w.tax>0?'good':'warn')+'">'+f(w.tax)+'</div><div class="health-hint">Income tax set aside</div></div>'+'<div class="health-card"><div class="health-label">AMEX Savings</div><div class="health-value '+(w.amx>=7690.98?'good':w.amx>99.75?'warn':'risk')+'">'+f(w.amx)+'</div><div class="health-hint">Retirement rebuild</div></div>'+'</div>';
+  html+='<div class="health-grid">'+'<div class="health-card"><div class="health-label">Checking (Wk '+getCalWeek(currentW)+')</div><div class="health-value '+chkCls+'">'+f(w.chk)+'</div><div class="health-hint '+cCls2+'">Cushion: '+(cushion>=0?'+':'')+f(Math.abs(cushion))+' vs $6,500 floor</div></div>'+'<div class="health-card"><div class="health-label">Truist Savings</div><div class="health-value good">'+f(w.sav)+'</div><div class="health-hint good">Alaska fund + float</div></div>'+'<div class="health-card"><div class="health-label">Tax Reserve (Vio)</div><div class="health-value '+(w.tax>0?'good':'warn')+'">'+f(w.tax)+'</div><div class="health-hint">Income tax set aside</div></div>'+'<div class="health-card"><div class="health-label">AMEX Savings</div><div class="health-value '+(w.amx>=7690.98?'good':w.amx>99.75?'warn':'risk')+'">'+f(w.amx)+'</div><div class="health-hint">IRA + 529 holding</div></div>'+'</div>';
   html+='<div class="timelineForecastPanel">'+
     '<div class="panel timelineCard"><div class="timeline-header"><h3>31-Week Timeline</h3><span>Click to highlight · scroll to see all · use Weekly Model to drill in</span></div>'+
     renderTimeline(vm,'weekly')+'</div>'+
@@ -2564,7 +2564,7 @@ function renderAssumptions(){
       '<p>Jabian business expenses and reimbursements are intentionally excluded from weekly projections because they are highly reliable, self-funding, and typically reimburse within one payroll cycle.</p>'+
       '<p><strong>Spending pattern:</strong> ~80% of Jabian expenses land on AMEX Gold · ~20% on Disney Visa / Costco Visa. Total ~$9,500–$10,000/year (~$800–$1,000/month).</p>'+
       '<p><strong>When to intervene:</strong> Large or unusual Jabian expenses or reimbursements should be added manually through Edit Week when they materially affect a paycheck, AMEX Gold bill, or Disney/Costco bill.</p>'+
-      '<p><strong>Monthly review:</strong> A recommended action appears in the first Adam-paycheck week of each month (around the 7th). Review outstanding Jabian expenses and expected reimbursements at that time.</p>'+
+      '<p><strong>Monthly review:</strong> A recommended action appears in the Adam-paycheck week closest to the 22nd of each month. Review outstanding Jabian expenses and expected reimbursements at that time — reimbursements arrive with the 22nd paycheck.</p>'+
     '</div>'+
     '<div class="panel assumption-card"><h3>Reconciliation &amp; Overrides</h3>'+
       '<p><strong>Reconciliation roll-forward:</strong> When you enter actual balances for a week, those actuals replace the modeled ending balances as the starting point for the next week. This propagates real-world variances through the forecast.</p>'+
