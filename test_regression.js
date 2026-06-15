@@ -75,7 +75,7 @@ test('f() abs of negative',()=>assert(f(-500)==='$500.00'));
 test('fc() no dollar sign',()=>assert(fc(1000)==='1,000.00'));
 test('getCurrentWeek() 1-31',()=>{ const w=getCurrentWeek(); assert(w>=1&&w<=31,'week='+w); });
 test('getCalWeek(1) = Jun 2026 cal week',()=>{ const cw=getCalWeek(1); assert(cw>=23&&cw<=25,'cw='+cw); });
-test('getCalWeek(31) = Jan 2027 cal week',()=>{ const cw=getCalWeek(31); assert(cw>=1&&cw<=5,'cw='+cw); });
+test('getCalWeek(31) = Cal Wk 53 (fixed 2026-base, no year-rollover bug)',()=>{ const cw=getCalWeek(31); assert(cw===53,'cw='+cw); });
 test('getWeekStartDate(1) = Jun 7 2026',()=>{ const d=getWeekStartDate(1); assert(d.getFullYear()===2026&&d.getMonth()===5&&d.getDate()===7,'d='+d.toDateString()); });
 test('getWeekStartDate(31) = Jan 3 2027',()=>{ const d=getWeekStartDate(31); assert(d.getFullYear()===2027&&d.getMonth()===0&&d.getDate()===3,'d='+d.toDateString()); });
 test('formatWeekRange() non-empty',()=>assert(formatWeekRange('2026-10-18').length>3));

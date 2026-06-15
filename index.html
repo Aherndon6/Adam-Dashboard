@@ -1064,10 +1064,9 @@ function getCurrentWeek(){const s=new Date(2026,5,7);const t=new Date();t.setHou
 const currentW=getCurrentWeek();
 // Returns the calendar week-of-year for a given model week number (1–31)
 function getCalWeek(modelWeekNum){
-  var d=new Date(2026,5,7+(modelWeekNum-1)*7);
-  var yearStart=new Date(d.getFullYear(),0,1);
-  var dayOfYear=Math.ceil((d-yearStart)/864e5)+1;
-  return Math.ceil(dayOfYear/7);
+  // Model wk 1 = Cal Wk 23 (Jun 7, 2026). Use fixed 2026 base to avoid year-rollover
+  // bug on model wk 31 (Jan 3, 2027 = Cal Wk 53, not Cal Wk 1 of 2027).
+  return 22+modelWeekNum;
 }
 function formatWeekRange(ymd){
   const d=new Date(ymd+'T12:00:00');const end=new Date(d);end.setDate(end.getDate()+6);
