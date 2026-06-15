@@ -1360,7 +1360,7 @@ function renderGoalRail(vm){
   var lcPct=Math.min(100,+(_grw.lc/EF_AMT*100).toFixed(1));
   var akForecast=vm.alaskaCompletion?'Completes Wk '+getCalWeek(vm.alaskaCompletion.num)+' · '+vm.alaskaCompletion.dates.split('-')[0].trim():'Not yet scheduled';
   var rtForecast=vm.retirementCompletion?'Completes Wk '+getCalWeek(vm.retirementCompletion.num):'Remaining after Wk '+getCalWeek(31)+': '+f(vm.finalWeek.retRem);
-  var surplusForecast=vm.surplusCompletion?'Begins Cal Wk '+getCalWeek(vm.surplusCompletion.num)+' · '+f(vm.finalWeek.surplusSwept)+' virtual total by Cal Wk 53':'Starts after retirement funded';
+  var surplusForecast=vm.surplusCompletion?'Begins Cal Wk '+getCalWeek(vm.surplusCompletion.num)+' · '+f(vm.finalWeek.surplusSwept)+' virtual total by Cal Wk 53':'Starts after AMEX Savings target reached';
   var surplusPct=Math.min(100,vm.finalWeek.surplusSwept>0?Math.round((_grw.surplusSwept/vm.finalWeek.surplusSwept)*100):0);
   return '<div class="goal-forecast-rail panel"><h3>Goal forecast</h3>'+
     '<div class="progress-goal">'+
@@ -1416,7 +1416,7 @@ function renderOverview(vm){
       '<div class="risk-item">'+
         '<div class="risk-icon '+(vm.alaskaCompletion&&vm.retirementCompletion?'green':'violet')+'">'+(vm.alaskaCompletion&&vm.retirementCompletion?'✓':'◎')+'</div>'+
         '<div><div class="risk-title">'+(vm.alaskaCompletion&&vm.retirementCompletion?'Both goals funded':'Goals in progress')+'</div>'+
-        '<div class="risk-meta">'+(vm.alaskaCompletion&&vm.retirementCompletion?'Alaska ✓ · Retirement ✓ · Surplus accumulating in CHK':vm.alaskaCompletion?'Alaska ✓ · Retirement by Wk '+getCalWeek(vm.retirementCompletion?vm.retirementCompletion.num:10):'Alaska by Wk '+(vm.alaskaCompletion?getCalWeek(vm.alaskaCompletion.num):'TBD'))+' · '+(lastReconW?'Reconciled thru Wk '+getCalWeek(lastReconNum):'Not reconciled')+'</div></div>'+
+        '<div class="risk-meta">'+(vm.alaskaCompletion&&vm.retirementCompletion?'Alaska ✓ · AMEX target ✓ · Surplus accumulating in CHK':vm.alaskaCompletion?'Alaska ✓ · AMEX target by Wk '+getCalWeek(vm.retirementCompletion?vm.retirementCompletion.num:10):'Alaska by Wk '+(vm.alaskaCompletion?getCalWeek(vm.alaskaCompletion.num):'TBD'))+' · '+(lastReconW?'Reconciled thru Wk '+getCalWeek(lastReconNum):'Not reconciled')+'</div></div>'+
       '</div>'+
     '</div>'+
   '</div>';
