@@ -3053,8 +3053,10 @@ var WISHLIST_SEED=[
   {title:'Three-tier floor visual indicators',notes:'$6,500 emergency (red) / $10,000 warning (amber) / $12,000 target (green) tier legend in Priorities tab. Display only — $6,500 hard gate unchanged.',phase:'Phase 4',status:'done'},
   {title:'Decision Queue — Phase 4 items',notes:'CPA clearance, Alaska card bill timing, Wendy priority discussion, Phase 5+ goals naming.',phase:'Phase 4',status:'done'},
   {title:'Goal funding source & destination account',notes:'Per-goal src/dest account + startsAfter dependency. IRA/529 dest updated to AMEX Savings (holding). poolSource architecture removed.',phase:'Phase 4',status:'done'},
-  {title:'Dynamic goal registry (CRUD)',notes:'Add / edit / pause / archive / reprioritize goals via UI',phase:'Phase 4',status:'planned'},
   // Phase 5 — planned
+  {title:'Dynamic goal registry (CRUD)',notes:'Add / edit / pause / archive / reprioritize goals via UI. Deferred from Phase 4.',phase:'Phase 5',status:'planned'},
+  {title:'Goal dependency chain',notes:'Start a goal after another goal completes (startsAfter). Display layer exists; full UI deferred from Phase 4.',phase:'Phase 5',status:'planned'},
+  {title:'Goal progress from actions',notes:'Progress gated on checked required actions, not model projection alone. Deferred from Phase 4.',phase:'Phase 5',status:'planned'},
   {title:'Ask Claude API key security — backend proxy',notes:'Move Anthropic API calls behind a Supabase Edge Function. Browser sends question + model context; Edge Function holds ANTHROPIC_API_KEY as env secret and calls Anthropic server-side. Removes user-entered key from browser and Supabase storage. Not blocking for local-only use (Wendy + Adam, $5 credit, no auto-renew) but required before any wider access.',phase:'Phase 5',status:'planned'},
   {title:'Playwright end-to-end smoke tests',notes:'e2e.js written and ready. Install: npm install playwright && npx playwright install chromium. Run: node e2e.js. Sections: A) tab smoke, B) console errors, C) Decision Engine locked/cleared, D) IRA flag toggle, E) edit week, F) reconciliation, G) wishlist, H) XSS injection, I) Supabase offline, J) mobile viewport. Mirrors what test_regression.js does for model logic, but for the browser UI. Activate when promotions become more frequent or a second user is added.',phase:'Phase 5',status:'planned'},
   {title:'Scenario preview: commit to Supabase',notes:'Scenario Builder write-back — commit scenario as override week with single click.',phase:'Phase 5',status:'planned'},
@@ -3084,7 +3086,7 @@ async function loadWishlist(){
       wishlistData=await r.json();
       wishlistLoaded=true;
       if(wishlistData.length===0)await seedWishlist();
-      else{await mergeSeedWishlist();renderApp();}
+      else await mergeSeedWishlist();
     }
   }catch(e){console.error('loadWishlist:',e);}
 }
@@ -3092,12 +3094,37 @@ async function mergeSeedWishlist(){
   // Add any WISHLIST_SEED items not already present (matched by title)
   var existing=wishlistData.map(function(x){return x.title;});
   var missing=WISHLIST_SEED.filter(function(s){return existing.indexOf(s.title)<0;});
-  if(!missing.length)return;
-  try{
-    var rows=missing.map(function(item){return{title:item.title,notes:item.notes,phase:item.phase,status:item.status,priority:0};});
-    var r=await fetch(SUPA_URL+'/rest/v1/wishlist_items',{method:'POST',headers:Object.assign({},SUPA_H,{'Prefer':'return=representation'}),body:JSON.stringify(rows)});
-    if(r.ok){var added=await r.json();wishlistData=wishlistData.concat(added);console.log('Wishlist: merged '+added.length+' new seed items.');}
-  }catch(e){console.warn('mergeSeedWishlist:',e);}
+  if(missing.length){
+    try{
+      var rows=missing.map(function(item){return{title:item.title,notes:item.notes,phase:item.phase,status:item.status,priority:0};});
+      var r=await fetch(SUPA_URL+'/rest/v1/wishlist_items',{method:'POST',headers:Object.assign({},SUPA_H,{'Prefer':'return=representation'}),body:JSON.stringify(rows)});
+      if(r.ok){var added=await r.json();wishlistData=wishlistData.concat(added);console.log('Wishlist: merged '+added.length+' new seed items.');}
+    }catch(e){console.warn('mergeSeedWishlist:',e);}
+  }
+  await phaseMigrateWishlist();
+  renderApp();
+}
+async function phaseMigrateWishlist(){
+  // Patches stale phase assignments in Supabase. Safe to run on every load — only
+  // fires a PATCH when the stored phase differs from the target. Keeps the seed
+  // authoritative for phase assignments after a re-phase decision.
+  var corrections=[
+    {title:'Dynamic goal registry',          phase:'Phase 5'},
+    {title:'Dynamic goal registry (CRUD)',    phase:'Phase 5'},
+    {title:'Goal dependency chain',           phase:'Phase 5'},
+    {title:'Goal progress from actions',      phase:'Phase 5'},
+  ];
+  for(var i=0;i<corrections.length;i++){
+    var c=corrections[i];
+    var item=wishlistData.find(function(x){return x.title===c.title;});
+    if(item&&item.phase!==c.phase){
+      try{
+        await fetch(SUPA_URL+'/rest/v1/wishlist_items?id=eq.'+item.id,{method:'PATCH',headers:Object.assign({},SUPA_H,{'Prefer':'return=minimal'}),body:JSON.stringify({phase:c.phase})});
+        item.phase=c.phase;
+        console.log('Wishlist phase migration: "'+item.title+'" → '+c.phase);
+      }catch(e){console.warn('phaseMigrate error:',e);}
+    }
+  }
 }
 async function seedWishlist(){
   try{
