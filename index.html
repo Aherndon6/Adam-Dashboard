@@ -920,8 +920,8 @@ function runModel(akGoal,rtGoal,flags){
     }
     // ── Commission tax deduction ──────────────────────────────────────────
     if(ct>0){const m=mv(ct,'tax');if(m>0){tr.push({l:'Commission 40% $'+fc(ct)+' Checking → Vio Bank - Tax Reserve',r:'done',rsn:'Post $'+fc(chk)+' ≥ '+fn});ac.push('Transfer $'+fc(ct)+' from Truist Checking to Vio Bank - Tax Reserve (commission 40%)');}else{taxTodo=r(taxTodo+ct);tr.push({l:'Commission 40% $'+fc(ct)+' deferred → tax pending',r:'defer',rsn:'No surplus above '+fn+' — picks up next eligible week'});}}
-    // ── Tax backlog (non-commission weeks) ────────────────────────────────
-    if(taxTodo>0&&ct===0){const m=mv(taxTodo,'tax');if(m>0){taxTodo=r(taxTodo-m);const remT=taxTodo>0?' — $'+fc(taxTodo)+' carries forward':'';tr.push({l:'Tax $'+fc(m)+' Checking → Vio Bank - Tax Reserve'+remT,r:'done',rsn:'Post $'+fc(chk)+' ≥ '+fn});ac.push('Transfer $'+fc(m)+' from Truist Checking to Vio Bank - Tax Reserve');}else tr.push({l:'Tax $'+fc(taxTodo)+' Checking → Vio Bank - Tax Reserve',r:'defer',rsn:'Post-obligations $'+fc(chk)+' — no surplus above '+fn});}
+    // ── Tax backlog (non-commission weeks; skip Wk 1 — Vio Bank not yet active) ─
+    if(taxTodo>0&&(ct===0||num===2)&&num!==1){const m=mv(taxTodo,'tax');if(m>0){taxTodo=r(taxTodo-m);const remT=taxTodo>0?' — $'+fc(taxTodo)+' carries forward':'';tr.push({l:'Tax $'+fc(m)+' Checking → Vio Bank - Tax Reserve'+remT,r:'done',rsn:'Post $'+fc(chk)+' ≥ '+fn});ac.push('Transfer $'+fc(m)+' from Truist Checking to Vio Bank - Tax Reserve');}else tr.push({l:'Tax $'+fc(taxTodo)+' Checking → Vio Bank - Tax Reserve',r:'defer',rsn:'Post-obligations $'+fc(chk)+' — no surplus above '+fn});}
     // ── Retirement Rebuild savings sweep (one-time when Alaska completes) ─
     // Runs after waterfall so Alaska can complete this same week before sweep triggers
     // ── Goal waterfall ────────────────────────────────────────────────────
@@ -2551,7 +2551,7 @@ function renderAssumptions(){
         '<li><strong>T9 — Bryce Vehicle</strong> ($8,000) → Truist Checking hold. September 2026 decision point.</li>'+
         '<li><strong>T10 — Christmas Cruise</strong> ($2,500) → Truist Savings (earmarked). Decision pending post-Alaska.</li>'+
       '</ol>'+
-      '<p style="font-size:12px;color:var(--muted)">Not in waterfall: Taxable ETF ($4,999.79) — Stretch/Phase 5 only. No contributions until all T1-T10 goals are funded. Pre-waterfall: base tax ($521.36 → Vio) fires Week 1. Commission tax (40% → Vio / 60% → Alaska) fires on commission weeks. All transfers respect the $6,500 hard floor.</p>'+
+      '<p style="font-size:12px;color:var(--muted)">Not in waterfall: Taxable ETF ($4,999.79) — Stretch/Phase 5 only. No contributions until all T1-T10 goals are funded. Pre-waterfall: base tax ($521.36 → Vio) fires Week 2 (Vio Bank account setup deferred from Wk 1). Commission tax (40% → Vio / 60% → Alaska) fires on commission weeks. All transfers respect the $6,500 hard floor.</p>'+
     '</div>'+
     '<div class="panel assumption-card"><h3>IRA/529 Holding Account Architecture</h3>'+
       '<p>IRA and 529 contributions do not go directly to their custodians (T Rowe for IRAs, Path 2 College for 529s). They route to <strong>AMEX Savings as a holding account</strong> until CPA clearance is received. This is a two-step process:</p>'+
@@ -2576,7 +2576,7 @@ function renderAssumptions(){
       '<p><strong>The sweep rule:</strong> Each week, after inflows and bills are applied, if checking exceeds the $6,500 operating floor, the model sweeps surplus to the highest-priority open goal. No manual action required.</p>'+
       '<p><strong>Priority order (Phase 4 architecture):</strong></p>'+
       '<ol style="margin:6px 0 10px 18px;font-size:13px;line-height:1.9">'+
-        '<li>Base income tax reserve ($521.36 → Vio Bank) — fires model Wk 1</li>'+
+        '<li>Base income tax reserve ($521.36 → Vio Bank) — fires model Wk 2 (Vio account setup deferred from Wk 1)</li>'+
         '<li>Commission 40% → Tax Reserve, 60% → Alaska — triggers on Wk 6 commission income</li>'+
         '<li>Alaska fund → Truist Savings — sweeps each eligible week · <strong>completes model Wk 5 (Cal Wk 27, Jul 5-11)</strong></li>'+
         '<li>Savings seed — $3,772.74 one-time Truist Savings → AMEX, fires immediately after Alaska funded</li>'+
