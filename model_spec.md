@@ -2,7 +2,7 @@
 
 **Version:** Phase 4 production  
 **Date:** Cal Wk 24 (Jun 14, 2026)  
-**Test status:** 270 tests passing, 0 failing (`node test_regression.js`)
+**Test status:** 310 tests passing, 0 failing (`node test_regression.js`)
 
 ---
 
@@ -311,7 +311,7 @@ All data persisted to Supabase REST API.
 
 **File:** `test_regression.js`  
 **Run:** `node test_regression.js` (or `HFOS_INDEX=/path/to/index.html node test_regression.js`)  
-**Count:** 270 tests, 0 failing
+**Count:** 310 tests, 0 failing
 
 | Section | Coverage |
 |---|---|
@@ -343,8 +343,72 @@ All data persisted to Supabase REST API.
 | Backend | Supabase (PostgreSQL + REST API) |
 | Persisted | Reconciliation, overrides, task completion, notes, wishlist |
 | Computed | All model projections (recomputed each render) |
-| Unit tests | `test_regression.js` — Node.js, 270 tests |
+| Unit tests | `test_regression.js` — Node.js, 310 tests |
 | E2E tests | `e2e.js` — Playwright (Phase 5) |
+
+---
+
+---
+
+## 22. Action Override System
+
+### Overview
+
+Model-generated required actions (tax_base, commission_tax, alaska_draw, costco_visa) are hardcoded into runModel() logic. The override system lets users move, relabel, or delete these actions without rewriting model code. Overrides are stored in `localStorage` under the key `hfos_action_overrides`.
+
+### Action Keys
+
+| Key | Default Week | Moveable | Deleteable | Notes |
+|---|---|---|---|---|
+| `tax_base` | 2 | Yes | No | Base $521.36 tax → Vio. Default week 2 because Vio Bank not active in week 1. |
+| `commission_tax` | 6 | Yes | No | 40% of commission → Vio. If moved, uses `commTaxPending` carry-forward. |
+| `alaska_draw` | 15 | Yes | No | $7,000 Savings → Checking for cruise card bills. |
+| `costco_visa` | 1 | Yes | Yes | Informational reminder only — no financial impact. |
+
+Setup actions (`setup_sav_2750`, `setup_lc_1000`, `setup_lc_2250`) are locked and appear in `LOCKED_MODEL_ACTIONS`. They cannot be moved or deleted.
+
+### Override Object Shape
+
+```json
+{
+  "tax_base": { "week_num": 3, "label": "Optional custom label" },
+  "costco_visa": { "deleted": true }
+}
+```
+
+### Helper Functions (global scope)
+
+- `aoW(key)` — returns effective model week (override or default)
+- `aoLabel(key, fallback)` — returns override label or fallback string
+- `aoDeleted(key)` — returns true if action is deleted via override
+
+### Commission Tax Carry-Forward
+
+When `commission_tax` is moved to a different week:
+- On the commission income week: `commTaxPending += ct` (new defer path, labeled "scheduled override")
+- On the target week (or first eligible week after): `commTaxPending` fires via `mv(commTaxPending,'tax')`
+
+When commission fires but the floor blocks it (default model behavior): amount adds to `taxTodo`, picked up by the tax backlog loop.
+
+### Warning / Validation
+
+`validateActionOverride(id, proposedOverride)` simulates the model with the proposed change and returns `{errors:[], warnings:[], info:[]}`:
+
+- **errors**: negative checking, reconciled-week target
+- **warnings**: floor violation (< $6,500)
+- **info**: Alaska completion date shift
+
+### Test Coverage
+
+Section 22 of `test_regression.js` — 31 tests covering:
+- `aoW/aoLabel/aoDeleted` helper functions
+- `ACTION_KEYS`, `DELETEABLE_MODEL_ACTIONS`, `LOCKED_MODEL_ACTIONS` constants
+- `tax_base` move changes balances correctly
+- `commission_tax` carry-forward (default defer vs. schedule-override defer)
+- `alaska_draw` move changes week 15/16 balances
+- `costco_visa` delete and move
+- `acKeys` / `realActKeys` parallel arrays
+- `isWeekReconciled` correctness
 
 ---
 

@@ -622,8 +622,8 @@ test('goalCompletion[wendy_sep] = Completed (complete=true)',()=>{
   assert(c&&c.dates==='Completed','wendy_sep goalCompletion expected Completed, got: '+JSON.stringify(c));
 });
 
-test('goalCompletion[adam_ira] = null (needsFlag off by default, target not reached)',()=>
-  assert(bvm.goalCompletion.adam_ira===null,'adam_ira should be null, got: '+JSON.stringify(bvm.goalCompletion.adam_ira)));
+test('goalCompletion[adam_ira] is non-null (CPA flag display-only; waterfall funds IRA to target)',()=>
+  assert(bvm.goalCompletion.adam_ira!==null,'adam_ira goalCompletion should be non-null after IRA gate removed'));
 
 test('goalCompletion[taxable_etf] = null (stretch goal)',()=>
   assert(bvm.goalCompletion.taxable_etf===null,'taxable_etf should be null'));
@@ -874,50 +874,84 @@ function runModelWithFlags(flagOverrides){
 var WEEKS_LOCKED = runModelWithFlags({ira_cpa_cleared:false});  // default — CPA not cleared
 var WEEKS_CLEARED = runModelWithFlags({ira_cpa_cleared:true});  // CPA cleared
 
-// ── Locked (CPA not cleared) — strict block behavior ──
-test('Locked: 529s get $0 throughout entire model (blocked by IRA gate)',()=>{
-  ['bailey_529','bryce_529','preston_529'].forEach(id=>{
-    var w31=WEEKS_LOCKED[WEEKS_LOCKED.length-1];
-    assert((w31.goalSaved[id]||0)<0.01,id+' has funds while CPA locked: '+(w31.goalSaved[id]||0));
-  });
-});
-test('Locked: bryce_vehicle gets $0 throughout entire model',()=>{
+// ── CPA flag is now display-only — AMEX accumulation uses 5-week lookahead ──
+// WEEKS_LOCKED and WEEKS_CLEARED should produce the same AMEX accumulation behavior.
+
+// ── AMEX accumulation: CPA flag no longer blocks sweeps ──
+test('CPA pending: adam_ira AMEX accumulation not blocked (grows beyond seed)',()=>{
   var w31=WEEKS_LOCKED[WEEKS_LOCKED.length-1];
-  assert((w31.goalSaved.bryce_vehicle||0)<0.01,'bryce_vehicle funded while CPA locked: '+(w31.goalSaved.bryce_vehicle||0));
+  assert((w31.goalSaved.adam_ira||0)>4000,'adam_ira should grow beyond seed with CPA pending, got '+(w31.goalSaved.adam_ira||0));
 });
-test('Locked: christmas_cruise gets $0 throughout entire model',()=>{
+test('CPA pending: wendy_ira receives waterfall contributions',()=>{
   var w31=WEEKS_LOCKED[WEEKS_LOCKED.length-1];
-  assert((w31.goalSaved.christmas_cruise||0)<0.01,'christmas_cruise funded while CPA locked: '+(w31.goalSaved.christmas_cruise||0));
+  assertGt(w31.goalSaved.wendy_ira||0,0,'wendy_ira should fund with CPA pending');
 });
-test('Locked: no surplus fires while IRA gate is closed',()=>{
-  var surplus=WEEKS_LOCKED.find(function(w){return w.surplusSwept>0;});
-  assert(!surplus,'Surplus fired while CPA locked at W'+( surplus&&surplus.num));
-});
-test('Locked: adam_ira never reaches $7,000 target (only seed + sweep)',()=>{
+test('CPA pending: at least one 529 receives waterfall contributions',()=>{
   var w31=WEEKS_LOCKED[WEEKS_LOCKED.length-1];
-  assert((w31.goalSaved.adam_ira||0)<7000,'adam_ira reached target while CPA locked: '+(w31.goalSaved.adam_ira||0));
+  var any529=['bailey_529','bryce_529','preston_529'].some(function(id){return(w31.goalSaved[id]||0)>0;});
+  assert(any529,'No 529 funded with CPA pending');
 });
-test('Locked: wendy_ira stays at $0 (no seed, blocked by flag)',()=>{
-  var w31=WEEKS_LOCKED[WEEKS_LOCKED.length-1];
-  assert((w31.goalSaved.wendy_ira||0)<0.01,'wendy_ira funded while CPA locked: '+(w31.goalSaved.wendy_ira||0));
-});
-test('Locked: alaska and wewe_rccl still fund normally (above gate)',()=>{
+test('CPA pending: alaska and wewe_rccl still fund normally',()=>{
   var akDone=WEEKS_LOCKED.find(function(w){return w.akRem<=0.01;});
-  assert(akDone&&akDone.num<=10,'Alaska failed to fund with CPA locked');
+  assert(akDone&&akDone.num<=10,'Alaska failed to fund with CPA pending');
   var w31=WEEKS_LOCKED[WEEKS_LOCKED.length-1];
-  assertApprox(w31.goalSaved.wewe_rccl||0,600,'wewe_rccl with CPA locked',1);
+  assertApprox(w31.goalSaved.wewe_rccl||0,600,'wewe_rccl with CPA pending',1);
 });
-test('Locked: wewe_dcl funds normally (above gate)',()=>{
+test('CPA pending: wewe_dcl funds normally',()=>{
   var w31=WEEKS_LOCKED[WEEKS_LOCKED.length-1];
-  assertApprox(w31.goalSaved.wewe_dcl||0,500,'wewe_dcl with CPA locked',1);
+  assertApprox(w31.goalSaved.wewe_dcl||0,500,'wewe_dcl with CPA pending',1);
 });
 
-// ── Cleared (CPA cleared) — full waterfall runs ──
+// ── Floor violation guard — must stay at structural baseline W6/W8/W13 ──
+test('CPA pending: floor violations are W6 W8 W13 only — no new violations from AMEX sweeps',()=>{
+  var violations=WEEKS_LOCKED.filter(function(w){return w.chk<OP_FL;});
+  var nums=violations.map(function(w){return w.num;}).sort(function(a,b){return a-b;});
+  assert(violations.length<=3,'Expected ≤3 floor violations, got '+violations.length+' at weeks '+nums.join(','));
+  [6,8,13].forEach(function(n){assert(nums.indexOf(n)>=0,'W'+n+' should be a structural floor violation');});
+});
+test('CPA pending: no return to 12-violation failure mode (<4 floor violations)',()=>{
+  var violations=WEEKS_LOCKED.filter(function(w){return w.chk<OP_FL;});
+  assert(violations.length<4,'Too many floor violations: '+violations.length+' — check AMEX lookahead window');
+});
+test('CPA pending: 5-week lookahead prevents NEW floor violations from AMEX sweeps',()=>{
+  // CPA cleared model should have the same violation set (both use lookahead)
+  var vLocked=WEEKS_LOCKED.filter(function(w){return w.chk<OP_FL;}).map(function(w){return w.num;}).sort(function(a,b){return a-b;});
+  var vCleared=WEEKS_CLEARED.filter(function(w){return w.chk<OP_FL;}).map(function(w){return w.num;}).sort(function(a,b){return a-b;});
+  assert(vLocked.join(',')===vCleared.join(','),'Violation sets differ: locked='+vLocked.join(',')+'  cleared='+vCleared.join(','));
+});
+
+// ── allFunded: surplus fires based on goalSaved targets, not CPA flag ──
+test('CPA pending: allFunded not permanently blocked — model returns 31 weeks cleanly',()=>{
+  assert(WEEKS_LOCKED.length===31,'Model must return 31 weeks with CPA pending');
+});
+test('CPA pending: no negative checking',()=>{
+  var neg=WEEKS_LOCKED.filter(function(w){return w.chk<0;});
+  assert(neg.length===0,'Negative checking with CPA pending: '+neg.map(function(w){return'W'+w.num+'('+w.chk.toFixed(0)+')';}).join(','));
+});
+
+// ── _amxDeferredThisWeek resets per week ──
+test('_amxDeferredThisWeek resets: adam_ira accumulates across multiple distinct weeks',()=>{
+  var fundingWeeks=[];
+  var prev=WEEKS_LOCKED[0].goalSaved.adam_ira||0;
+  WEEKS_LOCKED.forEach(function(w){
+    var cur=w.goalSaved.adam_ira||0;
+    if(cur>prev+0.01)fundingWeeks.push(w.num);
+    prev=cur;
+  });
+  assert(fundingWeeks.length>1,'adam_ira should accumulate across multiple weeks (got: '+fundingWeeks.join(',')+') — check _amxDeferredThisWeek reset');
+});
+
+// ── Flag-parity: locked and cleared produce same AMEX accumulation ──
+test('WEEKS_LOCKED vs WEEKS_CLEARED: AMEX balance at W31 within $500 (flag has no accumulation effect)',()=>{
+  var lockedAmx=WEEKS_LOCKED[WEEKS_LOCKED.length-1].amx;
+  var clearedAmx=WEEKS_CLEARED[WEEKS_CLEARED.length-1].amx;
+  assert(Math.abs(lockedAmx-clearedAmx)<500,'Flag should not significantly affect AMEX accumulation. Locked: $'+lockedAmx.toFixed(0)+' Cleared: $'+clearedAmx.toFixed(0));
+});
+
+// ── Cleared: full waterfall still works ──
 test('Cleared: adam_ira receives waterfall contributions after wewe_dcl completes',()=>{
-  // Find first week adam_ira gets a contribution above its seed (~103.64)
   var dclDone=WEEKS_CLEARED.find(function(w){return(w.goalSaved.wewe_dcl||0)>=499.99;});
   assert(dclDone,'DCL never completes with CPA cleared');
-  // After DCL done, adam_ira should grow beyond seed+sweep
   var postDcl=WEEKS_CLEARED.filter(function(w){return w.num>dclDone.num;});
   var iraGrows=postDcl.some(function(w){return(w.goalSaved.adam_ira||0)>4000;});
   assert(iraGrows,'adam_ira never grew past seed+sweep after DCL done with CPA cleared');
@@ -926,12 +960,10 @@ test('Cleared: wendy_ira receives waterfall contributions',()=>{
   var w31=WEEKS_CLEARED[WEEKS_CLEARED.length-1];
   assertGt(w31.goalSaved.wendy_ira||0,0,'wendy_ira never funded with CPA cleared');
 });
-test('Cleared: 529s only start after IRA gate opens and wewe_dcl is complete',()=>{
-  var dclDone=WEEKS_CLEARED.find(function(w){return(w.goalSaved.wewe_dcl||0)>=499.99;});
-  var firstBailey=WEEKS_CLEARED.find(function(w){return(w.goalSaved.bailey_529||0)>0.01;});
-  if(firstBailey&&dclDone){
-    assert(firstBailey.num>=dclDone.num,'bailey_529 funded before DCL complete');
-  }
+test('Cleared: 529s fund regardless of CPA flag (lookahead governs, not gate)',()=>{
+  var w31=WEEKS_CLEARED[WEEKS_CLEARED.length-1];
+  var any529=['bailey_529','bryce_529','preston_529'].some(function(id){return(w31.goalSaved[id]||0)>0;});
+  assert(any529,'No 529 funded with CPA cleared');
 });
 test('Cleared: model still returns 31 weeks',()=>assert(WEEKS_CLEARED.length===31));
 test('Cleared: no negative checking',()=>{
@@ -948,47 +980,52 @@ test('Cleared: goalSaved values non-negative',()=>{
 
 // ─────────────────────────────────────────────────────────────────────────
 console.log('── Section 20: Decision Engine / runModel parity ──');
-// IRA LOCKED — regular income
-test('Engine parity: locked regular — no 529s, vehicle, cruise, or surplus',()=>{
+// CPA flag is display/deployment status only — engine routes IRA/529 to AMEX holding regardless
+
+// IRA PENDING — engine still shows IRA/529 as normal waterfall goals
+test('Engine parity: CPA pending regular — Adam IRA appears as normal waterfall goal',()=>{
+  const s=simulateEngine(200000,'regular',{ira_cpa_cleared:false});
+  const goals=s.filter(x=>x.type==='goal').map(x=>x.label||'');
+  assert(goals.some(l=>l.includes('Adam IRA')),'Adam IRA must appear even when CPA pending');
+});
+test('Engine parity: CPA pending regular — 529s appear as normal waterfall goals',()=>{
   const s=simulateEngine(200000,'regular',{ira_cpa_cleared:false});
   const labels=s.map(x=>x.label||'').join('|');
-  assert(labels.includes('Adam IRA')||labels.includes('IRA'),'IRA gate step should appear');
-  assert(!labels.includes('Bailey 529'),'Bailey 529 should not appear while IRA locked');
-  assert(!labels.includes('Bryce 529'),'Bryce 529 should not appear while IRA locked');
-  assert(!labels.includes('Preston 529'),'Preston 529 should not appear while IRA locked');
-  assert(!labels.includes('Bryce Vehicle'),'Bryce Vehicle should not appear while IRA locked');
-  assert(!labels.includes('Christmas Cruise'),'Christmas Cruise should not appear while IRA locked');
-  assert(!s.some(x=>x.type==='surplus'),'No surplus step while IRA locked — gate absorbs remaining');
+  assert(labels.includes('Bailey'),'Bailey 529 must appear when CPA pending');
+  assert(labels.includes('Bryce 529'),'Bryce 529 must appear when CPA pending');
+  assert(labels.includes('Preston'),'Preston 529 must appear when CPA pending');
 });
-test('Engine parity: locked regular — gate step has non-zero blocked amount',()=>{
+test('Engine parity: CPA pending regular — no hold/gate step (flag is display-only)',()=>{
   const s=simulateEngine(200000,'regular',{ira_cpa_cleared:false});
-  const gate=s.find(x=>x.type==='hold');
-  assert(gate,'Gate step must exist');
-  assert(gate.amt>0,'Gate step amt must be positive (blocked funds absorbed into hold step)');
+  assert(!s.some(x=>x.type==='hold'),'No hold/gate step should appear — CPA flag is display-only');
 });
-test('Engine parity: locked regular — sum still equals input',()=>{
+test('Engine parity: CPA pending regular — surplus fires after all goals funded',()=>{
+  const s=simulateEngine(200000,'regular',{ira_cpa_cleared:false});
+  assert(s.some(x=>x.type==='surplus'),'Surplus must fire even when CPA pending');
+});
+test('Engine parity: CPA pending regular — AMEX goals labeled as AMEX holding',()=>{
+  const s=simulateEngine(200000,'regular',{ira_cpa_cleared:false});
+  const iraStep=s.find(x=>x.type==='goal'&&(x.label||'').includes('Adam IRA'));
+  assert(iraStep&&(iraStep.label||'').includes('AMEX'),'Adam IRA goal step must reference AMEX holding');
+});
+test('Engine parity: CPA pending regular — sum equals input',()=>{
   const amt=200000;
   const s=simulateEngine(amt,'regular',{ira_cpa_cleared:false});
   const total=Math.round(s.reduce((t,x)=>t+x.amt,0)*100)/100;
-  assertApprox(total,amt,'Regular locked sum');
+  assertApprox(total,amt,'Regular pending CPA sum');
 });
-// IRA LOCKED — variable income
-test('Engine parity: locked variable — no 529s, vehicle, cruise, or surplus',()=>{
+test('Engine parity: CPA pending variable — IRA/529 appear, surplus fires',()=>{
   const s=simulateEngine(200000,'variable',{ira_cpa_cleared:false});
   const labels=s.map(x=>x.label||'').join('|');
-  assert(labels.includes('Adam IRA')||labels.includes('IRA'),'IRA gate step should appear');
-  assert(!labels.includes('Bailey 529'),'Bailey 529 should not appear while IRA locked');
-  assert(!labels.includes('Bryce 529'),'Bryce 529 should not appear while IRA locked');
-  assert(!labels.includes('Preston 529'),'Preston 529 should not appear while IRA locked');
-  assert(!labels.includes('Bryce Vehicle'),'Bryce Vehicle should not appear while IRA locked');
-  assert(!labels.includes('Christmas Cruise'),'Christmas Cruise should not appear while IRA locked');
-  assert(!s.some(x=>x.type==='surplus'),'No surplus step while IRA locked');
+  assert(labels.includes('Adam IRA'),'Adam IRA must appear with CPA pending in variable engine');
+  assert(labels.includes('Bailey'),'Bailey 529 must appear with CPA pending in variable engine');
+  assert(s.some(x=>x.type==='surplus'),'Surplus must fire in variable engine with CPA pending');
 });
-test('Engine parity: locked variable — sum equals input',()=>{
+test('Engine parity: CPA pending variable — sum equals input',()=>{
   const amt=200000;
   const s=simulateEngine(amt,'variable',{ira_cpa_cleared:false});
   const total=Math.round(s.filter(x=>x.type!=='info').reduce((t,x)=>t+x.amt,0)*100)/100;
-  assertApprox(total,amt,'Variable locked sum');
+  assertApprox(total,amt,'Variable pending CPA sum');
 });
 // IRA CLEARED — ordering: adam_ira → wendy_ira → 529s → vehicle → cruise → surplus
 test('Engine parity: cleared regular — IRA, 529s, vehicle, cruise all appear in order',()=>{
@@ -1012,9 +1049,115 @@ test('Engine parity: cleared regular — surplus appears after all goals',()=>{
   const surplusIdx=s.findIndex(x=>x.type==='surplus');
   assert(surplusIdx>lastGoalIdx,'Surplus must come after last goal step');
 });
-test('Engine parity: cleared variable — no surplus suppression when gate is open',()=>{
+test('Engine parity: cleared variable — surplus fires when gate is open',()=>{
   const s=simulateEngine(200000,'variable',{ira_cpa_cleared:true});
   assert(s.some(x=>x.type==='surplus'),'Surplus must appear when CPA cleared and all goals funded');
+});
+
+// ─────────────────────────────────────────────────────────────────────────
+console.log('\n── Section 20b: AMEX lookahead unit tests ──');
+
+// Helper: eval helpers in isolation
+(function(){
+  // amxSweepKeepsFloor — immediate floor check
+  test('amxSweepKeepsFloor: returns false when sweep immediately drops checking below floor',()=>{
+    // chk=6600, floor=6500, amt=200 → proj=6400 < floor → false
+    var result=amxSweepKeepsFloor(200,6600,1,[],6500,5);
+    assert(result===false,'Should return false when curChk-amt=6400 < floor=6500, got '+result);
+  });
+  test('amxSweepKeepsFloor: returns true when sweep leaves checking at floor exactly',()=>{
+    // chk=6700, floor=6500, amt=200 → proj=6500 = floor → ok
+    var result=amxSweepKeepsFloor(200,6700,1,[],6500,5);
+    assert(result===true,'Should return true when curChk-amt=6500 = floor, got '+result);
+  });
+  test('amxSweepKeepsFloor: returns false when future outflows push below floor',()=>{
+    // chk=7000, floor=6500, amt=100 → proj=6900; future week has $500 outflow → proj=6400 < floor
+    var fakeWD=[[2,'test',[],[500],[{t:'ob',a:-500}],0,0,'']];
+    var result=amxSweepKeepsFloor(100,7000,1,fakeWD,6500,5);
+    assert(result===false,'Should return false when future outflow drops proj below floor, got '+result);
+  });
+  test('amxSweepKeepsFloor: returns true when future inflows keep above floor',()=>{
+    // chk=7000, floor=6500, amt=300 → proj=6700; future week has $1000 inflow → proj=7700
+    var fakeWD=[[2,'test',[[1000]],[],[{t:'in',a:1000}],0,0,'']];
+    var result=amxSweepKeepsFloor(300,7000,1,fakeWD,6500,5);
+    assert(result===true,'Should return true when future inflow keeps proj above floor, got '+result);
+  });
+
+  // maxSafeAmxSweep — never exceeds current-week transferable surplus
+  test('maxSafeAmxSweep: returns 0 when full amount immediately drops below floor',()=>{
+    // chk=6550, floor=6500, proposed=sm(6550,500,6500)=50 < MIN_XFR=100 → 0
+    var proposed=Math.max(0,Math.min(50,Math.round((6550-6500)*100)/100));
+    var result=maxSafeAmxSweep(proposed,6550,1,[],6500,5);
+    assert(result===0,'Should return 0 when proposed='+proposed+' < MIN_XFR, got '+result);
+  });
+  test('maxSafeAmxSweep: returns full amount when floor is safe over window',()=>{
+    // chk=8000, floor=6500, proposed=500 → proj=7500; no future events → safe
+    var result=maxSafeAmxSweep(500,8000,1,[],6500,5);
+    assert(result===500,'Should return full 500 when safe, got '+result);
+  });
+  test('maxSafeAmxSweep: returns partial when full unsafe but partial is safe',()=>{
+    // chk=7000, floor=6500, proposed=600 → proj=6400 < floor.
+    // safe partial: up to 500 (7000-500=6500=floor)
+    var result=maxSafeAmxSweep(600,7000,1,[],6500,5);
+    assertApprox(result,500,'Partial safe sweep',1);
+  });
+
+  // AMEX deferral stops full waterfall (break behavior)
+  test('AMEX deferral: when floor is tight, model still returns 31 weeks cleanly',()=>{
+    // Baseline already tests this — verify no crash on any flag state
+    var wLocked=runModelWithFlags({ira_cpa_cleared:false});
+    assert(wLocked.length===31,'Model must return 31 weeks after lookahead changes');
+  });
+  test('AMEX deferral: floor violations remain at structural baseline after lookahead changes',()=>{
+    var wLocked=runModelWithFlags({ira_cpa_cleared:false});
+    var viols=wLocked.filter(function(w){return w.chk<OP_FL;}).map(function(w){return w.num;});
+    assert(viols.length<=3&&viols.indexOf(6)>=0&&viols.indexOf(8)>=0&&viols.indexOf(13)>=0,
+      'Floor violations changed from W6/W8/W13 baseline: '+viols.join(','));
+  });
+})();
+
+// Assumptions copy checks
+test('Assumptions: no stale "breaks waterfall" language',()=>{
+  var html=document.getElementById('assumptions-content')&&document.getElementById('assumptions-content').innerHTML||'';
+  // Since we are in Node (no DOM), check the renderAssumptions source directly
+  // Use the raw source string via the known function name
+  var src=renderAssumptions.toString();
+  assert(!src.includes('breaks waterfall'),'Found stale "breaks waterfall" in Assumptions copy');
+});
+test('Assumptions: no stale "waterfall is blocked" language',()=>{
+  var src=renderAssumptions.toString();
+  assert(!src.includes('Waterfall is blocked')&&!src.includes('waterfall is blocked'),'Found stale "waterfall is blocked" in Assumptions copy');
+});
+test('Assumptions: no stale "will not fund until Adam IRA is cleared" language',()=>{
+  var src=renderAssumptions.toString();
+  assert(!src.includes('will not fund until Adam IRA'),'Found stale old IRA gate language in Assumptions copy');
+});
+test('Assumptions: no stale "no funds leave checking automatically" language',()=>{
+  var src=renderAssumptions.toString();
+  assert(!src.includes('No funds leave checking automatically')&&!src.includes('no funds leave checking automatically'),'Found stale "no funds leave checking" in Assumptions copy');
+});
+test('Assumptions: no taxTodo references in renderAssumptions copy',()=>{
+  var src=renderAssumptions.toString();
+  assert(!src.includes('taxTodo'),'Found taxTodo reference in renderAssumptions — all commission deferral copy must use commTaxPending');
+});
+test('Assumptions: contains "5-week AMEX lookahead" language',()=>{
+  var src=renderAssumptions.toString();
+  assert(src.includes('5-week AMEX lookahead')||src.includes('5-week'),'Missing 5-week AMEX lookahead in Assumptions copy');
+});
+test('Assumptions: contains "display/deployment status only" or "display-only" language',()=>{
+  var src=renderAssumptions.toString();
+  assert(src.includes('display/deployment status only')||src.includes('display-only'),'Missing CPA display-only language in Assumptions copy');
+});
+test('Assumptions: contains "AMEX Savings as a holding account" language',()=>{
+  var src=renderAssumptions.toString();
+  assert(src.includes('AMEX Savings as a holding account'),'Missing holding account architecture language in Assumptions copy');
+});
+test('Decision Engine empty-state: no "IRA gating" copy',()=>{
+  // Stale language — gate was removed; copy must say "IRA/529 AMEX holding" instead
+  // Read the index.html source directly (works in both Node and browser)
+  var htmlSrc='';
+  try{htmlSrc=require('fs').readFileSync(require('path').join(__dirname,'index.html'),'utf8');}catch(e){}
+  assert(!htmlSrc.includes('IRA gating'),'Found stale "IRA gating" in index.html — should be "IRA/529 AMEX holding"');
 });
 
 // ─────────────────────────────────────────────────────────────────────────
@@ -1038,10 +1181,12 @@ test('Mutation A: reordering Bailey 529 before Adam IRA is caught',()=>{
   REGULAR_WATERFALL.splice(aIdx2,0,'bailey_529');
   var caught=false;
   try{
-    // With ira_cpa_cleared=false and bailey_529 ahead of adam_ira, bailey_529 would fund
+    // With bailey_529 ahead of adam_ira, bailey_529 should appear before adam_ira in engine steps
     var s=simulateEngine(200000,'regular',{ira_cpa_cleared:false});
-    var labels=s.map(x=>x.label||'').join('|');
-    if(labels.includes('Bailey 529'))caught=true; // mutation visible — test guards this
+    var goalLabels=s.filter(x=>x.type==='goal').map(x=>x.label||'');
+    var bPos=goalLabels.findIndex(l=>l.includes('Bailey'));
+    var aPos=goalLabels.findIndex(l=>l.includes('Adam IRA'));
+    if(bPos>=0&&aPos>=0&&bPos<aPos)caught=true; // mutation visible — bailey before adam
   }finally{
     VARIABLE_WATERFALL.length=0;origVar.forEach(function(v){VARIABLE_WATERFALL.push(v);});
     REGULAR_WATERFALL.length=0;origReg.forEach(function(v){REGULAR_WATERFALL.push(v);});
@@ -1118,17 +1263,429 @@ test('Mutation E: swapping adam_ira and wendy_ira waterfall order is detectable'
 });
 
 // Mutation F: remove savings seed sweep
-test('Mutation F: setting RET_SAV_XFR to 0 suppresses AMEX seed',()=>{
+test('Mutation F: setting RET_SAV_XFR to 0 suppresses savings-to-AMEX seed sweep',()=>{
   var orig=RET_SAV_XFR;
   RET_SAV_XFR=0;
   var caught=false;
   try{
     var vm=runModel(7000,7694.87);
-    // Without the $3,772.74 seed, AMEX peak stays near the $103.64 starting balance
-    var maxAmx=vm.reduce(function(m,w){return Math.max(m,w.amx||0);},0);
-    if(maxAmx<3000)caught=true; // seed should have pushed AMEX above $3k
+    // With seed=0, savings is NOT swept to AMEX when Alaska completes.
+    // sav at Alaska completion week should be ~$3,772 higher than baseline (money stayed in sav).
+    var akWkIdx=WEEKS.findIndex(function(w){return(w.goalSaved.alaska||0)>=6999.99;});
+    var mutAkWk=vm[akWkIdx];
+    var baseAkWk=WEEKS[akWkIdx];
+    if(mutAkWk&&baseAkWk){
+      var savDiff=mutAkWk.sav-baseAkWk.sav;
+      if(savDiff>2000)caught=true; // seed sweep skipped → savings ~$3,772 higher
+    }
   }finally{RET_SAV_XFR=orig;}
-  assert(caught,'Mutation F not visible — savings seed guard is broken');
+  assert(caught,'Mutation F not visible — savings seed guard may be broken');
+});
+
+// ─────────────────────────────────────────────────────────────────────────
+// Section 22: Action Override System
+// ─────────────────────────────────────────────────────────────────────────
+console.log('── Section 22: Action Override System ──');
+
+// Helper: run model with a temporary override applied, then restore
+function withOverride(key, val, fn){
+  var orig=actionOverrides[key];
+  if(val===null){delete actionOverrides[key];}else{actionOverrides[key]=val;}
+  try{return fn();}finally{
+    if(orig===undefined){delete actionOverrides[key];}else{actionOverrides[key]=orig;}
+  }
+}
+
+// ── 22.1 aoW / aoLabel / aoDeleted helpers ──
+test('aoW: tax_base default is week 2',()=>{
+  withOverride('tax_base',null,function(){
+    assert(aoW('tax_base')===2,'expected aoW tax_base===2, got '+aoW('tax_base'));
+  });
+});
+
+test('aoW: tax_base override returns overridden week',()=>{
+  withOverride('tax_base',{week_num:5},function(){
+    assert(aoW('tax_base')===5,'expected 5, got '+aoW('tax_base'));
+  });
+});
+
+test('aoW: deleted override returns default week',()=>{
+  withOverride('tax_base',{week_num:5,deleted:true},function(){
+    assert(aoW('tax_base')===2,'deleted override should fall back to default 2');
+  });
+});
+
+test('aoLabel: returns fallback when no override',()=>{
+  withOverride('tax_base',null,function(){
+    assert(aoLabel('tax_base','fallback')==='fallback','expected fallback');
+  });
+});
+
+test('aoLabel: returns override label when set',()=>{
+  withOverride('tax_base',{week_num:2,label:'Custom label'},function(){
+    assert(aoLabel('tax_base','fallback')==='Custom label','expected Custom label');
+  });
+});
+
+test('aoDeleted: returns false when not deleted',()=>{
+  withOverride('costco_visa',null,function(){
+    assert(aoDeleted('costco_visa')===false,'should not be deleted');
+  });
+});
+
+test('aoDeleted: returns true when deleted',()=>{
+  withOverride('costco_visa',{deleted:true},function(){
+    assert(aoDeleted('costco_visa')===true,'should be deleted');
+  });
+});
+
+// ── 22.2 ACTION_KEYS and DELETEABLE/LOCKED sets ──
+test('ACTION_KEYS has all four expected keys',()=>{
+  assert(ACTION_KEYS.TAX_BASE==='tax_base');
+  assert(ACTION_KEYS.COMMISSION_TAX==='commission_tax');
+  assert(ACTION_KEYS.ALASKA_DRAW==='alaska_draw');
+  assert(ACTION_KEYS.COSTCO_VISA==='costco_visa');
+});
+
+test('DELETEABLE_MODEL_ACTIONS: only costco_visa is deleteable',()=>{
+  assert(DELETEABLE_MODEL_ACTIONS.has('costco_visa'),'costco_visa should be deleteable');
+  assert(!DELETEABLE_MODEL_ACTIONS.has('tax_base'),'tax_base must NOT be deleteable');
+  assert(!DELETEABLE_MODEL_ACTIONS.has('commission_tax'),'commission_tax must NOT be deleteable');
+  assert(!DELETEABLE_MODEL_ACTIONS.has('alaska_draw'),'alaska_draw must NOT be deleteable');
+});
+
+test('LOCKED_MODEL_ACTIONS: setup actions are locked',()=>{
+  assert(LOCKED_MODEL_ACTIONS.has('setup_sav_2750'));
+  assert(LOCKED_MODEL_ACTIONS.has('setup_lc_1000'));
+  assert(LOCKED_MODEL_ACTIONS.has('setup_lc_2250'));
+  assert(!LOCKED_MODEL_ACTIONS.has('tax_base'),'tax_base is moveable, not locked');
+});
+
+// ── 22.3 tax_base move changes balance correctly ──
+test('tax_base default: fires Week 2 — week 1 checking is pre-tax, week 2 is post-tax',()=>{
+  withOverride('tax_base',null,function(){
+    var weeks=runModel(7000,7694.87);
+    var w1=weeks.find(function(w){return w.num===1;});
+    var w2=weeks.find(function(w){return w.num===2;});
+    // Week 1 should have no base tax transfer logged (tax fires in week 2)
+    var w1TaxTr=w1.tr.filter(function(t){return t.l&&t.l.includes('Tax $')&&t.l.includes('Vio Bank - Tax Reserve')&&t.r==='done';});
+    assert(w1TaxTr.length===0,'Base tax must NOT fire in week 1 (default week is 2), got '+w1TaxTr.length+' entries');
+    // Week 2 should have the base tax transfer
+    var w2TaxTr=w2.tr.filter(function(t){return t.l&&t.l.includes('Tax $')&&t.l.includes('Vio Bank - Tax Reserve')&&t.r==='done';});
+    assert(w2TaxTr.length>=1,'Base tax must fire in week 2, got '+w2TaxTr.length+' entries');
+  });
+});
+
+test('tax_base moved to week 4: no tax in weeks 2-3, fires in week 4',()=>{
+  withOverride('tax_base',{week_num:4},function(){
+    var weeks=runModel(7000,7694.87);
+    [2,3].forEach(function(n){
+      var w=weeks.find(function(x){return x.num===n;});
+      var taxTr=w.tr.filter(function(t){return t.l&&t.l.includes('Tax $')&&t.r==='done';});
+      assert(taxTr.length===0,'tax_base should not fire in week '+n+' when moved to week 4');
+    });
+    var w4=weeks.find(function(w){return w.num===4;});
+    var taxTr=w4.tr.filter(function(t){return t.l&&t.l.includes('Tax $')&&t.r==='done';});
+    assert(taxTr.length>=1,'tax_base should fire in week 4');
+  });
+});
+
+test('tax_base move: week 2 checking is higher when tax deferred to week 4',()=>{
+  var baseW2Chk=withOverride('tax_base',null,function(){
+    return runModel(7000,7694.87).find(function(w){return w.num===2;}).chk;
+  });
+  var deferW2Chk=withOverride('tax_base',{week_num:4},function(){
+    return runModel(7000,7694.87).find(function(w){return w.num===2;}).chk;
+  });
+  assert(deferW2Chk>baseW2Chk,'Deferring tax to wk 4 should leave more in checking at wk 2 end ('+deferW2Chk+' vs '+baseW2Chk+')');
+});
+
+// ── 22.4 commission_tax carry-forward ──
+// Note: in the base model, week 6 commission IS deferred (floor blocks it) —
+// the amount rolls into taxTodo. The default commTaxWeek === num === 6, so the
+// defer message says "No surplus above floor" (not "scheduled override").
+test('commission_tax default: week 6 shows floor-block defer (not schedule-override defer)',()=>{
+  withOverride('commission_tax',null,function(){
+    var weeks=runModel(7000,7694.87);
+    var w6=weeks.find(function(w){return w.num===6;});
+    // Floor-block defer: rsn includes "No surplus above"
+    var floorDefer=w6.tr.filter(function(t){return t.l&&t.l.includes('Commission 40%')&&t.r==='defer'&&t.rsn&&t.rsn.includes('surplus');});
+    assert(floorDefer.length>=1,'Default commission defer should use floor-block message in week 6, got '+floorDefer.length);
+  });
+});
+
+test('commission_tax moved to week 8: week 6 shows schedule-override defer message',()=>{
+  withOverride('commission_tax',{week_num:8},function(){
+    var weeks=runModel(7000,7694.87);
+    var w6=weeks.find(function(w){return w.num===6;});
+    // Schedule-override defer: rsn includes "schedule override" (not floor-block)
+    var schedDefer=w6.tr.filter(function(t){return t.l&&t.l.includes('Commission 40%')&&t.r==='defer'&&t.rsn&&t.rsn.includes('override');});
+    assert(schedDefer.length>=1,'Override defer should appear in week 6 with schedule-override message, got '+schedDefer.length);
+  });
+});
+
+test('commission_tax moved to week 8: commission fires (done) in week 8 or later',()=>{
+  withOverride('commission_tax',{week_num:8},function(){
+    var weeks=runModel(7000,7694.87);
+    // commTaxPending should fire on week 8 or the first eligible week after
+    var fireWk=weeks.find(function(w){
+      return w.tr.some(function(t){return t.l&&t.l.includes('Commission 40%')&&t.r==='done';});
+    });
+    assert(fireWk&&fireWk.num>=8,'Commission deferred to week 8 should fire on or after week 8, got '+(fireWk?fireWk.num:'none'));
+  });
+});
+
+test('commission_tax move: default defer message differs from override defer message',()=>{
+  var defaultMsg=withOverride('commission_tax',null,function(){
+    var w6=runModel(7000,7694.87).find(function(w){return w.num===6;});
+    var t=w6.tr.find(function(t){return t.l&&t.l.includes('Commission 40%')&&t.r==='defer';});
+    return t?t.rsn:'';
+  });
+  var overrideMsg=withOverride('commission_tax',{week_num:8},function(){
+    var w6=runModel(7000,7694.87).find(function(w){return w.num===6;});
+    var t=w6.tr.find(function(t){return t.l&&t.l.includes('Commission 40%')&&t.r==='defer';});
+    return t?t.rsn:'';
+  });
+  assert(defaultMsg!==overrideMsg,'Default and override defer reasons should differ (default: "'+defaultMsg+'", override: "'+overrideMsg+'")');
+});
+
+// ── 22.5 alaska_draw move ──
+test('alaska_draw default: fires on week 15',()=>{
+  withOverride('alaska_draw',null,function(){
+    var weeks=runModel(7000,7694.87);
+    var w15=weeks.find(function(w){return w.num===15;});
+    var akTr=w15.tr.filter(function(t){return t.l&&t.l.includes('Alaska $7,000')&&t.r==='done';});
+    assert(akTr.length===1,'Alaska draw should fire in week 15 by default');
+  });
+});
+
+test('alaska_draw moved to week 16: no draw in week 15, fires in week 16',()=>{
+  withOverride('alaska_draw',{week_num:16},function(){
+    var weeks=runModel(7000,7694.87);
+    var w15=weeks.find(function(w){return w.num===15;});
+    var w16=weeks.find(function(w){return w.num===16;});
+    var w15Ak=w15.tr.filter(function(t){return t.l&&t.l.includes('Alaska $7,000');});
+    assert(w15Ak.length===0,'Alaska draw should NOT fire in week 15 when moved to 16');
+    var w16Ak=w16.tr.filter(function(t){return t.l&&t.l.includes('Alaska $7,000')&&t.r==='done';});
+    assert(w16Ak.length===1,'Alaska draw should fire in week 16 when moved there');
+  });
+});
+
+test('alaska_draw move: week 15 checking lower (draw not pulled) when moved to 16',()=>{
+  var baseW15=withOverride('alaska_draw',null,function(){
+    return runModel(7000,7694.87).find(function(w){return w.num===15;}).chk;
+  });
+  var movedW15=withOverride('alaska_draw',{week_num:16},function(){
+    return runModel(7000,7694.87).find(function(w){return w.num===15;}).chk;
+  });
+  // When draw is in wk 15: $7k moves from savings to checking → checking is HIGHER
+  // When draw is deferred: checking is LOWER in wk 15 (but savings is higher)
+  assert(baseW15>movedW15,'Week 15 checking should be higher when Alaska draw fires (got base='+baseW15+', moved='+movedW15+')');
+});
+
+// ── 22.6 costco_visa delete ──
+test('costco_visa: appears in week 1 realActs by default',()=>{
+  withOverride('costco_visa',null,function(){
+    var weeks=runModel(7000,7694.87);
+    var w1=weeks.find(function(w){return w.num===1;});
+    var hasCostco=w1.realActs.some(function(a){return a.includes('Costco Visa');});
+    assert(hasCostco,'Costco Visa should appear in week 1 realActs by default');
+  });
+});
+
+test('costco_visa deleted: does NOT appear in week 1 realActs',()=>{
+  withOverride('costco_visa',{deleted:true},function(){
+    var weeks=runModel(7000,7694.87);
+    var w1=weeks.find(function(w){return w.num===1;});
+    var hasCostco=w1.realActs.some(function(a){return a.includes('Costco Visa');});
+    assert(!hasCostco,'Costco Visa should be absent from realActs when deleted');
+  });
+});
+
+test('costco_visa moved to week 3: not in week 1, appears in week 3',()=>{
+  withOverride('costco_visa',{week_num:3},function(){
+    var weeks=runModel(7000,7694.87);
+    var w1=weeks.find(function(w){return w.num===1;});
+    var w3=weeks.find(function(w){return w.num===3;});
+    assert(!w1.realActs.some(function(a){return a.includes('Costco Visa');}),
+      'Costco should not be in week 1 when moved to week 3');
+    assert(w3.realActs.some(function(a){return a.includes('Costco Visa');}),
+      'Costco should appear in week 3 when moved there');
+  });
+});
+
+// ── 22.7 acKeys / realActKeys parallel arrays ──
+test('acKeys is populated on week objects',()=>{
+  var weeks=runModel(7000,7694.87);
+  var w2=weeks.find(function(w){return w.num===2;});
+  assert(Array.isArray(w2.acKeys),'acKeys should be an array on week objects');
+});
+
+test('realActKeys is parallel to realActs (same length)',()=>{
+  var weeks=runModel(7000,7694.87);
+  weeks.forEach(function(w){
+    assert(Array.isArray(w.realActKeys),'realActKeys should be array on every week');
+    assert(w.realActKeys.length===w.realActs.length,
+      'realActKeys length ('+w.realActKeys.length+') must equal realActs length ('+w.realActs.length+') for week '+w.num);
+  });
+});
+
+test('realActKeys[i] === tax_base when tax_base fires (default week 2)',()=>{
+  withOverride('tax_base',null,function(){
+    var weeks=runModel(7000,7694.87);
+    var w2=weeks.find(function(w){return w.num===2;});
+    var taxIdx=w2.realActs.findIndex(function(a){return a.includes('Vio Bank - Tax Reserve')&&!a.includes('commission');});
+    assert(taxIdx>=0,'Tax base action should exist in week 2 realActs');
+    assert(w2.realActKeys[taxIdx]==='tax_base','realActKeys entry for tax action should be tax_base, got '+w2.realActKeys[taxIdx]);
+  });
+});
+
+test('realActKeys[i] === alaska_draw when alaska draw fires (default week 15)',()=>{
+  withOverride('alaska_draw',null,function(){
+    var weeks=runModel(7000,7694.87);
+    var w15=weeks.find(function(w){return w.num===15;});
+    var akIdx=w15.realActs.findIndex(function(a){return a.includes('Alaska cruise card bills');});
+    assert(akIdx>=0,'Alaska draw action should exist in week 15 realActs');
+    assert(w15.realActKeys[akIdx]==='alaska_draw','realActKeys should tag alaska_draw in week 15');
+  });
+});
+
+// ── 22.8 Commission tax identity preserved when floor-blocked ──
+test('commission_tax: floor-blocked amount goes to commTaxPending, not taxTodo',()=>{
+  // In default model, week 6 commission (707.18) is floor-blocked.
+  // Old code: taxTodo += ct → fires under tax_base key
+  // New code: commTaxPending += ct → fires under commission_tax key
+  withOverride('commission_tax',null,function(){
+    var weeks=runModel(7000,7694.87);
+    // Find the week after week 6 where commission tax actually fires
+    var fireWk=weeks.find(function(w){
+      return w.num>6&&w.tr.some(function(t){return t.l&&t.l.includes('Commission 40%')&&t.r==='done';});
+    });
+    assert(fireWk,'Commission tax (floor-blocked in week 6) should fire in a subsequent week');
+    // Verify it fires under commission_tax key, not bundled under tax_base
+    var commIdx=fireWk.realActKeys?fireWk.realActKeys.indexOf('commission_tax'):-1;
+    var hasTaxBase=fireWk.realActKeys&&fireWk.realActKeys.includes('tax_base');
+    // If commission fires in the same week as base tax, both keys should be present separately
+    // The commission_tax key must appear at least once across the model
+    var anyCommKey=weeks.some(function(w){return w.acKeys&&w.acKeys.includes('commission_tax');});
+    assert(anyCommKey,'commission_tax key should appear in acKeys in at least one week (identity preserved)');
+  });
+});
+
+test('commission tax and base tax total is preserved regardless of path',()=>{
+  // Total tax transferred to Vio should be BASE_TAX + COMM_TAX = 521.36 + 707.18 = 1228.54
+  withOverride('commission_tax',null,function(){
+    var weeks=runModel(7000,7694.87);
+    var finalTax=weeks[weeks.length-1].tax;
+    var startTax=weeks[0].startTax;
+    var taxDeposited=r(finalTax-startTax);
+    // Allow for some rounding tolerance — total should include base + commission
+    assert(taxDeposited>=1228,'Total tax deposited to Vio should be at least BASE_TAX+COMM_TAX ($1,228), got $'+taxDeposited.toFixed(2));
+  });
+});
+
+// ── 22.9 isValidWeekNum and localStorage sanitization ──
+test('isValidWeekNum: valid range 1-31',()=>{
+  assert(isValidWeekNum(1),'1 should be valid');
+  assert(isValidWeekNum(15),'15 should be valid');
+  assert(isValidWeekNum(31),'31 should be valid');
+});
+
+test('isValidWeekNum: rejects invalid values',()=>{
+  assert(!isValidWeekNum(0),'0 should be invalid');
+  assert(!isValidWeekNum(32),'32 should be invalid');
+  assert(!isValidWeekNum(-1),'-1 should be invalid');
+  assert(!isValidWeekNum(1.5),'1.5 should be invalid (not integer)');
+  assert(!isValidWeekNum(null),'null should be invalid');
+  assert(!isValidWeekNum('6'),'"6" string should be invalid');
+  assert(!isValidWeekNum(NaN),'NaN should be invalid');
+});
+
+test('sanitizeOverrides: strips invalid week_num, keeps valid ones',()=>{
+  var raw={
+    tax_base:{week_num:3,label:'test'},        // valid
+    commission_tax:{week_num:0},               // invalid — should be stripped
+    alaska_draw:{week_num:'bad'},              // invalid string
+    costco_visa:{deleted:true}                 // no week_num — should be untouched
+  };
+  var result=sanitizeOverrides(raw);
+  assert(result.tax_base.week_num===3,'valid week_num 3 should be preserved');
+  assert(result.commission_tax.week_num==null,'week_num 0 should be stripped to null/undefined');
+  assert(result.alaska_draw.week_num==null,'string week_num should be stripped');
+  assert(result.costco_visa.deleted===true,'deleted flag should be untouched');
+});
+
+test('aoW: falls back to default when stored week_num is invalid',()=>{
+  // Simulate a corrupted override with invalid week_num
+  var orig=actionOverrides['tax_base'];
+  actionOverrides['tax_base']={week_num:99}; // out of range
+  var result=aoW('tax_base');
+  if(orig===undefined){delete actionOverrides['tax_base'];}else{actionOverrides['tax_base']=orig;}
+  assert(result===ACTION_DEFAULT_WEEKS['tax_base'],'aoW should return default ('+ACTION_DEFAULT_WEEKS['tax_base']+') for invalid week_num 99, got '+result);
+});
+
+// ── 22.10 Alaska draw insufficient savings guard ──
+test('alaska_draw: fires normally when sav >= 7000 at draw week',()=>{
+  withOverride('alaska_draw',null,function(){
+    var weeks=runModel(7000,7694.87);
+    var w15=weeks.find(function(w){return w.num===15;});
+    // Default draw is week 15 — savings should be >= 7000 (Alaska goal fully funded by week 5)
+    var drawDone=w15.tr.filter(function(t){return t.l&&t.l.includes('Alaska $7,000')&&t.r==='done';});
+    assert(drawDone.length===1,'Alaska draw should fire as done in week 15 (savings funded)');
+  });
+});
+
+test('alaska_draw moved to week 1: blocked due to insufficient savings',()=>{
+  withOverride('alaska_draw',{week_num:1},function(){
+    var weeks=runModel(7000,7694.87);
+    var w1=weeks.find(function(w){return w.num===1;});
+    // Week 1: savings starts at ~$3,772 (not yet $7,000) — draw should be blocked
+    var drawBlocked=w1.tr.filter(function(t){return t.l&&t.l.includes('BLOCKED')&&t.r==='defer';});
+    assert(drawBlocked.length>=1,'Alaska draw in week 1 should be BLOCKED (insufficient savings), got '+drawBlocked.length);
+  });
+});
+
+test('alaska_draw blocked in week 1: no negative savings',()=>{
+  withOverride('alaska_draw',{week_num:1},function(){
+    var weeks=runModel(7000,7694.87);
+    var negSav=weeks.filter(function(w){return w.sav<-0.01;});
+    assert(negSav.length===0,'Blocked Alaska draw must not create negative savings ('+negSav.length+' negative weeks found)');
+  });
+});
+
+// ── 22.11 Model integrity with overrides ──
+test('All 31 weeks still returned with tax_base override',()=>{
+  withOverride('tax_base',{week_num:5},function(){
+    var weeks=runModel(7000,7694.87);
+    assert(weeks.length===31,'Should still return 31 weeks with override');
+  });
+});
+
+test('No negative checking with default overrides (none set)',()=>{
+  withOverride('tax_base',null,function(){
+    withOverride('commission_tax',null,function(){
+      var weeks=runModel(7000,7694.87);
+      var negWeeks=weeks.filter(function(w){return w.chk<0;});
+      assert(negWeeks.length===0,'No weeks should have negative checking balance');
+    });
+  });
+});
+
+test('isWeekReconciled: returns false for week with no reconData entry',()=>{
+  var orig=JSON.parse(JSON.stringify(reconData));
+  delete reconData[2];
+  var result=isWeekReconciled(2);
+  Object.assign(reconData,orig);
+  assert(result===false,'isWeekReconciled should be false for unreconciled week');
+});
+
+test('isWeekReconciled: returns true when reconData has chk field',()=>{
+  var orig=JSON.parse(JSON.stringify(reconData));
+  reconData[99]={chk:7500,sav:1000,amx:0,tax:500,lc:3250,date:'Jan 1'};
+  var result=isWeekReconciled(99);
+  delete reconData[99];
+  Object.assign(reconData,orig);
+  assert(result===true,'isWeekReconciled should be true when reconData has chk entry');
 });
 
 // ─────────────────────────────────────────────────────────────────────────

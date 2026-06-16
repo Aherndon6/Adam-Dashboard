@@ -223,11 +223,56 @@ body{background:var(--bg);color:var(--ink);font-family:Inter,ui-sans-serif,syste
 .act-hdr{font-size:10px;font-weight:700;color:var(--muted2);text-transform:uppercase;letter-spacing:.07em;margin-bottom:8px;display:flex;align-items:center;gap:8px}
 .act-progress{font-size:10px;font-weight:400;font-style:italic;color:var(--muted2)}
 .act-progress.all-done{color:var(--green)}.act-progress.partial{color:var(--amber)}
-.task-row{display:flex;gap:9px;align-items:flex-start;padding:7px 9px;border:1px solid var(--line);border-radius:9px;margin-bottom:5px;background:var(--surface2)}
+.task-row{display:flex;gap:9px;align-items:flex-start;padding:7px 9px;border:1px solid var(--line);border-radius:9px;margin-bottom:5px;background:var(--surface2);position:relative}
 .task-row:last-child{margin-bottom:0}
+.task-row:hover .task-edit-btn{opacity:1}
 .task-check{width:18px;height:18px;flex-shrink:0;cursor:pointer;accent-color:var(--green);margin-top:2px}
 .task-text{flex:1;font-size:12.5px;color:var(--ink);line-height:1.4}
-.task-text.done{text-decoration:line-through;color:var(--muted2)}.rec-row{display:flex;gap:9px;align-items:flex-start;padding:7px 9px;border:1px dashed var(--line);border-radius:9px;margin-bottom:5px;background:var(--bg);opacity:.9}.rec-row:last-child{margin-bottom:0}.rec-icon{font-size:13px;flex-shrink:0;margin-top:1px}.rec-text{flex:1;font-size:12px;color:var(--muted2);line-height:1.4}
+.task-text.done{text-decoration:line-through;color:var(--muted2)}
+/* Action edit controls */
+.task-edit-btn{opacity:0;flex-shrink:0;background:none;border:1px solid var(--line2);border-radius:6px;color:var(--muted);cursor:pointer;font-size:11px;padding:2px 7px;transition:opacity .12s,color .1s,border-color .1s;margin-top:1px}
+.task-edit-btn:hover{color:var(--blue);border-color:var(--blue)}
+.task-row.locked .task-edit-btn{display:none}
+/* Action type badge */
+.act-type-badge{font-size:9px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;border-radius:4px;padding:1px 5px;margin-right:5px;display:inline-block;vertical-align:middle}
+.act-type-badge.model{background:var(--blueSoft);color:var(--blue)}
+.act-type-badge.custom{background:var(--surface);color:var(--muted2);border:1px solid var(--line2)}
+/* Inline action edit panel */
+.act-edit-panel{background:var(--surface);border:1px solid var(--blue);border-radius:10px;padding:12px 14px;margin-top:6px;margin-bottom:4px}
+.act-edit-row{display:flex;gap:8px;align-items:center;margin-bottom:8px;flex-wrap:wrap}
+.act-edit-row:last-child{margin-bottom:0}
+.act-edit-label{font-size:10px;font-weight:700;color:var(--muted2);text-transform:uppercase;letter-spacing:.06em;width:52px;flex-shrink:0}
+.act-edit-input{flex:1;font-size:12.5px;padding:5px 9px;border:1px solid var(--line2);border-radius:7px;font-family:inherit;color:var(--ink);background:var(--bg);min-width:120px}
+.act-edit-input:focus{outline:none;border-color:var(--blue)}
+.act-edit-select{font-size:12px;padding:5px 8px;border:1px solid var(--line2);border-radius:7px;font-family:inherit;color:var(--ink);background:var(--bg);cursor:pointer}
+.act-edit-select:focus{outline:none;border-color:var(--blue)}
+.act-edit-btns{display:flex;gap:6px;flex-wrap:wrap;margin-top:4px}
+.act-save-btn{font-size:12px;padding:5px 13px;border:none;border-radius:7px;background:var(--blue);color:#fff;cursor:pointer;font-weight:600;font-family:inherit}
+.act-save-btn:hover{opacity:.88}
+.act-save-btn:disabled{opacity:.45;cursor:not-allowed}
+.act-cancel-btn{font-size:12px;padding:5px 11px;border:1px solid var(--line2);border-radius:7px;background:none;color:var(--muted);cursor:pointer;font-family:inherit}
+.act-del-btn{font-size:12px;padding:5px 11px;border:1px solid var(--red);border-radius:7px;background:none;color:var(--red);cursor:pointer;font-family:inherit;margin-left:auto}
+.act-del-btn:hover{background:var(--red);color:#fff}
+/* Warnings in edit panel */
+.act-warnings{margin-top:8px}
+.act-warn-item{font-size:11.5px;padding:5px 9px;border-radius:6px;margin-bottom:4px;display:flex;gap:6px;align-items:flex-start}
+.act-warn-item.error{background:#fef2f2;color:#b91c1c;border:1px solid #fecaca}
+.act-warn-item.warn{background:#fffbeb;color:#92400e;border:1px solid #fde68a}
+.act-warn-item.info{background:var(--blueSoft);color:var(--blue);border:1px solid #bfdbfe}
+.act-warn-item.locked{background:#f3f4f6;color:var(--muted2);border:1px solid var(--line)}
+/* Action row controls (hover-revealed) */
+.act-row-controls{display:flex;gap:5px;align-items:center;flex-wrap:wrap;flex-shrink:0}
+.task-row:hover .act-row-controls .task-edit-btn,.task-row.edited .act-row-controls .task-edit-btn{opacity:1}
+.task-edit-btn.danger{color:var(--red);border-color:var(--red)}
+.task-edit-btn.danger:hover{background:var(--red);color:#fff}
+.task-edit-btn.muted{color:var(--muted)}
+.act-override-note{margin-top:3px;font-size:11px;color:var(--muted2);font-style:italic}
+.act-edit-help{font-size:11px;color:var(--muted2);width:100%;margin-top:4px}
+.act-warning-confirm{margin-top:8px}
+.act-delete-confirm{font-size:13px;font-weight:600;color:var(--ink);margin-bottom:10px}
+@media(max-width:700px){.act-row-controls .task-edit-btn{opacity:1}.task-row{flex-wrap:wrap}.act-edit-row{flex-direction:column;align-items:stretch}.act-edit-label{width:auto}.act-edit-input{width:100%}}
+/* Reconciled lock indicator */
+.act-locked-msg{font-size:11.5px;color:var(--muted2);padding:4px 8px;background:var(--surface);border-radius:6px;border:1px solid var(--line);display:inline-block;margin-top:4px}.rec-row{display:flex;gap:9px;align-items:flex-start;padding:7px 9px;border:1px dashed var(--line);border-radius:9px;margin-bottom:5px;background:var(--bg);opacity:.9}.rec-row:last-child{margin-bottom:0}.rec-icon{font-size:13px;flex-shrink:0;margin-top:1px}.rec-text{flex:1;font-size:12px;color:var(--muted2);line-height:1.4}
 /* Notes */
 .notes-hdr{font-size:10px;font-weight:700;color:var(--muted2);text-transform:uppercase;letter-spacing:.07em;margin-bottom:6px}
 .notes-area{width:100%;padding:9px 11px;border:1px solid var(--line2);border-radius:9px;font-size:13px;font-family:inherit;color:var(--ink);background:var(--surface);resize:vertical;min-height:60px;line-height:1.5;display:block}
@@ -696,6 +741,7 @@ const EF_AMT=13488.88; // LC/EF balance — static this model year (no transfers
 const BASE_TAX=521.36,RET_SAV_XFR=3772.74;
 const COMM_TAX=707.18,COMM_AK=1060.76;
 const OP_FL=6500,MIN_XFR=100,AK_START=5;
+const AMX_SWEEP_LOOKAHEAD_WEEKS=5; // weeks ahead to project before allowing AMEX sweep
 const VAR_THRESHOLD=250;
 
 // ── Week definitions (unchanged) ───────────────────────────────────────────
@@ -741,6 +787,339 @@ var taskData={};
 var noteData={};
 var overrideData={};
 var reconOpen=null;
+
+// ── Action override system ─────────────────────────────────────────────────
+// Action keys for model-generated actions
+var ACTION_KEYS={
+  TAX_BASE:'tax_base',           // $521.36 base tax → Vio (moveable, no delete)
+  COMMISSION_TAX:'commission_tax',// Commission 40% → Vio (moveable, no delete)
+  ALASKA_DRAW:'alaska_draw',     // $7k Savings → Checking W15 (moveable, no delete)
+  COSTCO_VISA:'costco_visa'      // Costco Visa reminder (moveable + deleteable)
+};
+// Which model actions can be deleted vs only moved
+var DELETEABLE_MODEL_ACTIONS=new Set([ACTION_KEYS.COSTCO_VISA]);
+// Which model actions are locked (historical, already executed)
+var LOCKED_MODEL_ACTIONS=new Set(['setup_sav_2750','setup_lc_1000','setup_lc_cancel','setup_lc_2250']);
+// Default weeks for model actions (used for override validation)
+var ACTION_DEFAULT_WEEKS={tax_base:2,commission_tax:6,alaska_draw:15,costco_visa:1}; // tax_base:2 = Cal Wk 24 (Vio Bank not active Wk 1)
+
+// actionOverrides: { [action_key]: { week_num, label, deleted } }
+// Stored in localStorage — no live data yet
+function isValidWeekNum(n){return Number.isInteger(n)&&n>=1&&n<=31;}
+function sanitizeOverrides(raw){
+  // Strip invalid week_num values — corrupted localStorage must not crash the model
+  if(!raw||typeof raw!=='object')return{};
+  Object.keys(raw).forEach(function(k){
+    var ov=raw[k];
+    if(ov&&ov.week_num!=null&&!isValidWeekNum(ov.week_num))delete ov.week_num;
+  });
+  return raw;
+}
+var actionOverrides=(function(){
+  try{var s=localStorage.getItem('hfos_action_overrides');return s?sanitizeOverrides(JSON.parse(s)):{};}catch(e){return{};}
+})();
+
+function persistActionOverrides(){
+  try{localStorage.setItem('hfos_action_overrides',JSON.stringify(actionOverrides));}catch(e){}
+}
+// aoW(key): effective model week — override week if valid + not deleted, else default.
+// Returns ACTION_DEFAULT_WEEKS[key]. Throws for unknown keys so typos surface at call-time.
+function aoW(key){
+  if(!(key in ACTION_DEFAULT_WEEKS))throw new Error('aoW: unknown action key "'+key+'"');
+  var ov=actionOverrides[key];
+  if(!ov||ov.deleted)return ACTION_DEFAULT_WEEKS[key];
+  var wn=ov.week_num;
+  return isValidWeekNum(wn)?wn:ACTION_DEFAULT_WEEKS[key]; // corrupted entry falls back to default
+}
+// aoLabel(key, fallback): display label from override or fallback string
+function aoLabel(key,fb){return(actionOverrides[key]&&actionOverrides[key].label)?actionOverrides[key].label:fb;}
+// aoDeleted(key): true if the action has been deleted via override
+function aoDeleted(key){return!!(actionOverrides[key]&&actionOverrides[key].deleted);}
+
+// ── Action CRUD ───────────────────────────────────────────────────────────────
+// Helper: is a model week num reconciled?
+function isWeekReconciled(weekNum){return !!(reconData[weekNum]&&reconData[weekNum].chk!==undefined);}
+
+// Simulate model with proposed override and return warnings before saving.
+// Returns {errors:[], warnings:[], info:[]}
+function validateActionOverride(id, proposedOverride){
+  var result={errors:[],warnings:[],info:[]};
+  // Clone current overrides, apply proposed change
+  var testOverrides=JSON.parse(JSON.stringify(actionOverrides));
+  if(proposedOverride===null){delete testOverrides[id];}else{testOverrides[id]=proposedOverride;}
+  // Temporarily swap overrides, run model, always restore via finally
+  var savedOverrides=actionOverrides;
+  actionOverrides=testOverrides;
+  var testWeeks;
+  try{var g=getGoals();testWeeks=runModel(g.ak,g.rt);}
+  catch(e){result.errors.push('Model error: '+e.message);return result;}
+  finally{actionOverrides=savedOverrides;} // always restore — even if runModel throws
+  // Check for negative checking or floor violations
+  testWeeks.forEach(function(w){
+    if(w.chk<0)result.errors.push('Cal Wk '+getCalWeek(w.num)+' ('+w.dates+'): Checking goes negative ($'+fc(Math.abs(w.chk))+' short)');
+    else if(w.chk<6500)result.warnings.push('Cal Wk '+getCalWeek(w.num)+' ('+w.dates+'): Checking dips below $6,500 floor ($'+fc(w.chk)+' remaining)');
+  });
+  // Check if target week is already reconciled
+  if(proposedOverride&&proposedOverride.week_num){
+    var targetWk=proposedOverride.week_num;
+    if(isWeekReconciled(targetWk))result.errors.push('Cal Wk '+getCalWeek(targetWk)+' is already reconciled — cannot schedule actions there');
+  }
+  // Alaska draw: block if savings won't be at $7,000 before the draw week
+  if(id==='alaska_draw'&&proposedOverride&&proposedOverride.week_num){
+    var drawWk=proposedOverride.week_num;
+    var drawWkData=testWeeks.find(function(w){return w.num===drawWk;});
+    if(drawWkData&&drawWkData.startSav<7000){
+      result.errors.push('Alaska draw cannot be scheduled in Cal Wk '+getCalWeek(drawWk)+' — Alaska savings has only $'+fc(drawWkData.startSav)+' available (need $7,000). Move to a later week.');
+    }
+  }
+  // Check goal timeline shift vs current model
+  var curWeeks;
+  try{var gc=getGoals();curWeeks=runModel(gc.ak,gc.rt);}catch(e){curWeeks=[];}
+  var curAkWk=(curWeeks.find(function(w){return w.akRem<=0.01;})||{}).num||0;
+  var newAkWk=(testWeeks.find(function(w){return w.akRem<=0.01;})||{}).num||0;
+  if(curAkWk&&newAkWk&&newAkWk!==curAkWk){
+    var delta=newAkWk-curAkWk;
+    result.info.push('Alaska completion shifts '+(delta>0?'+':'')+delta+' week'+(Math.abs(delta)!==1?'s':'')+(delta>0?' (later)':' (earlier)'));
+  }
+  return result;
+}
+
+// Open inline edit panel for a model action or custom task
+// mode: 'move'|'label'|'delete'|'edit' (default 'edit' = legacy combined panel)
+function openActionEdit(type, id, weekNum, mode){
+  actionEditState={type:type,id:id,weekNum:weekNum,mode:mode||'edit',saving:false,warnings:{errors:[],warnings:[],info:[]}};
+  renderApp();
+}
+function closeActionEdit(){
+  actionEditState=null;
+  renderApp();
+}
+
+// Save override for a model-generated action key
+// props: {week_num?, label?, deleted?}
+function saveActionOverride(id, props){
+  if(!id||typeof props!=='object')return;
+  // Reconciled-week guard: block if EITHER the effective week OR the original default week is reconciled.
+  // This prevents editing an action that was previously moved away from a reconciled week.
+  var effectiveWeek=aoW(id);
+  var defaultWeek=ACTION_DEFAULT_WEEKS[id]||effectiveWeek;
+  if(isWeekReconciled(effectiveWeek)||isWeekReconciled(defaultWeek)){
+    var reconWk=isWeekReconciled(effectiveWeek)?effectiveWeek:defaultWeek;
+    alert('This action touches reconciled Week '+getCalWeek(reconWk)+' and cannot be changed.');return;
+  }
+  // Block delete on financial actions
+  if(props.deleted&&!DELETEABLE_MODEL_ACTIONS.has(id)){
+    alert('Financial actions (tax, commission, Alaska draw) cannot be deleted — use move or edit label.');return;
+  }
+  // Block edits on locked setup actions
+  if(LOCKED_MODEL_ACTIONS.has(id)){
+    alert('Setup actions are locked and cannot be changed.');return;
+  }
+  // Validate week_num if provided
+  if(props.week_num!=null&&!isValidWeekNum(props.week_num)){
+    alert('Invalid week number: must be an integer between 1 and 31.');return;
+  }
+  var existing=actionOverrides[id]||{};
+  actionOverrides[id]=Object.assign({},existing,props);
+  persistActionOverrides();
+  actionEditState=null;
+  renderApp();
+}
+
+// deleteActionOverride: RESET to model default — removes the override object entirely.
+// Distinct from saveActionOverride({deleted:true}) which SUPPRESSES a deleteable action
+// while preserving the override record (so it stays gone until explicitly restored).
+// UI: "Reset to default" calls this. "Delete action" (costco_visa only) calls saveActionOverride({deleted:true}).
+function deleteActionOverride(id){
+  delete actionOverrides[id];
+  persistActionOverrides();
+  actionEditState=null;
+  renderApp();
+}
+
+// ── Action override helpers ───────────────────────────────────────────────────
+function hasActionOverride(id){return !!(id&&actionOverrides&&actionOverrides[id]);}
+function getActionOverrideNote(id){
+  if(!hasActionOverride(id))return'';
+  var o=actionOverrides[id];
+  if(o.deleted)return'Removed';
+  var notes=[];
+  if(typeof o.week_num==='number')notes.push('moved to Cal Wk '+getCalWeek(o.week_num));
+  if(o.label)notes.push('relabeled');
+  return notes.join(' \xb7 ');
+}
+// HTML-escape helper — used in action row rendering
+function esc(s){return String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');}
+
+// ── Action UI handlers ────────────────────────────────────────────────────────
+function saveMoveOverride(id){
+  var el=document.getElementById('act-move-week-'+id);
+  if(!el)return;
+  var n=parseInt(el.value,10);
+  if(!isValidWeekNum(n)){var box=document.getElementById('act-validation-'+id);if(box)box.innerHTML='<div class="act-warn-item error">⛔ Week must be 1–31.</div>';return;}
+  var proposed=Object.assign({},actionOverrides[id]||{},{week_num:n});
+  var v=validateActionOverride(id,proposed);
+  renderActionValidation(id,v);
+  if(v.errors&&v.errors.length)return;
+  if(v.warnings&&v.warnings.length){var c=document.getElementById('act-confirm-warnings-'+id);if(c)c.style.display='block';return;}
+  saveActionOverride(id,{week_num:n});
+}
+function forceSaveMoveOverride(id){
+  var el=document.getElementById('act-move-week-'+id);
+  if(!el)return;
+  saveActionOverride(id,{week_num:parseInt(el.value,10)});
+}
+function saveLabelOverride(id){
+  var el=document.getElementById('act-label-'+id);
+  if(!el)return;
+  var txt=(el.value||'').trim().slice(0,80);
+  if(!txt)return;
+  saveActionOverride(id,{label:txt});
+}
+function suppressActionOverride(id){saveActionOverride(id,{deleted:true});}
+function previewMoveOverride(id){
+  var el=document.getElementById('act-move-week-'+id);
+  if(!el)return;
+  var n=parseInt(el.value,10);
+  var proposed=Object.assign({},actionOverrides[id]||{},{week_num:n});
+  var v=validateActionOverride(id,proposed);
+  renderActionValidation(id,v);
+  var c=document.getElementById('act-confirm-warnings-'+id);
+  if(c)c.style.display='none';
+}
+function renderActionValidation(id,v){
+  var box=document.getElementById('act-validation-'+id);
+  if(!box)return;
+  var html='';
+  (v.errors||[]).forEach(function(x){html+='<div class="act-warn-item error">⛔ '+esc(x)+'</div>';});
+  (v.warnings||[]).forEach(function(x){html+='<div class="act-warn-item warn">⚠️ '+esc(x)+'</div>';});
+  (v.info||[]).forEach(function(x){html+='<div class="act-warn-item info">ℹ️ '+esc(x)+'</div>';});
+  box.innerHTML=html;
+}
+
+// renderActionEditPanel: builds the inline panel that opens below an action row.
+// id: action key, currentLabel: display label for pre-fill, weekNum: the week this row lives in.
+function renderActionEditPanel(id, currentLabel, weekNum){
+  if(!actionEditState||actionEditState.type!=='model'||actionEditState.id!==id||actionEditState.weekNum!==weekNum)return'';
+  var mode=actionEditState.mode||'edit';
+  var o=actionOverrides[id]||{};
+  var curWeek=aoW(id);
+  var curLabel=o.label||currentLabel||'';
+  if(mode==='move'){
+    var moveOpts='';
+    for(var mwn=1;mwn<=31;mwn++){
+      var wkStart=new Date(2026,5,7+(mwn-1)*7);
+      var wkEnd=new Date(wkStart);wkEnd.setDate(wkEnd.getDate()+6);
+      var mo=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+      var wkLbl='Cal Wk '+(22+mwn)+' \xb7 '+mo[wkStart.getMonth()]+' '+wkStart.getDate()+'–'+mo[wkEnd.getMonth()]+' '+wkEnd.getDate();
+      moveOpts+='<option value="'+mwn+'"'+(curWeek===mwn?' selected':'')+'>'+wkLbl+'</option>';
+    }
+    return'<div class="act-edit-panel">'+
+      '<div class="act-edit-row"><label class="act-edit-label">Move to</label>'+
+      '<select id="act-move-week-'+id+'" class="act-edit-select" onchange="previewMoveOverride(\''+id+'\')">'+moveOpts+'</select></div>'+
+      '<div id="act-validation-'+id+'" class="act-warnings"></div>'+
+      '<div id="act-confirm-warnings-'+id+'" class="act-warning-confirm" style="display:none">'+
+        '<button class="act-save-btn" onclick="forceSaveMoveOverride(\''+id+'\')">Save despite warnings</button>'+
+      '</div>'+
+      '<div class="act-edit-btns">'+
+        '<button class="act-save-btn" onclick="saveMoveOverride(\''+id+'\')">Save</button>'+
+        '<button class="act-cancel-btn" onclick="closeActionEdit()">Cancel</button>'+
+      '</div>'+
+    '</div>';
+  }
+  if(mode==='label'){
+    return'<div class="act-edit-panel">'+
+      '<div class="act-edit-row"><label class="act-edit-label">Label</label>'+
+      '<input id="act-label-'+id+'" class="act-edit-input" type="text" maxlength="80" value="'+esc(curLabel)+'"></div>'+
+      '<div class="act-edit-btns">'+
+        '<button class="act-save-btn" onclick="saveLabelOverride(\''+id+'\')">Save</button>'+
+        '<button class="act-cancel-btn" onclick="closeActionEdit()">Cancel</button>'+
+      '</div>'+
+    '</div>';
+  }
+  if(mode==='delete'){
+    return'<div class="act-edit-panel">'+
+      '<div class="act-delete-confirm">Remove this action?</div>'+
+      '<div class="act-edit-btns">'+
+        '<button class="act-del-btn" onclick="suppressActionOverride(\''+id+'\')">Yes, remove</button>'+
+        '<button class="act-cancel-btn" onclick="closeActionEdit()">Cancel</button>'+
+      '</div>'+
+    '</div>';
+  }
+  // Legacy combined edit panel (mode==='edit')
+  var wkOpts='';for(var wn=1;wn<=31;wn++){wkOpts+='<option value="'+wn+'"'+(curWeek===wn?' selected':'')+'>Cal Wk '+getCalWeek(wn)+'</option>';}
+  var warns=actionEditState.warnings||{errors:[],warnings:[],info:[]};
+  var warnHtml=warns.errors.map(function(e){return'<div class="act-warn-item error">⛔ '+esc(e)+'</div>';}).join('')+
+    warns.warnings.map(function(e){return'<div class="act-warn-item warn">⚠️ '+esc(e)+'</div>';}).join('')+
+    warns.info.map(function(e){return'<div class="act-warn-item info">ℹ️ '+esc(e)+'</div>';}).join('');
+  var canDel=DELETEABLE_MODEL_ACTIONS.has(id);
+  return'<div class="act-edit-panel">'+
+    '<div class="act-edit-row"><label class="act-edit-label">Label</label><input class="act-edit-input" id="ae-label-'+id+'" type="text" value="'+esc(curLabel)+'" maxlength="300"></div>'+
+    '<div class="act-edit-row"><label class="act-edit-label">Week</label><select class="act-edit-select" id="ae-week-'+id+'">'+wkOpts+'</select></div>'+
+    (warnHtml?'<div class="act-warn-box">'+warnHtml+'</div>':'')+
+    '<div class="act-edit-row" style="gap:8px;justify-content:flex-end">'+
+      '<button class="act-cancel-btn" onclick="closeActionEdit()">Cancel</button>'+
+      (canDel?'<button class="act-del-btn" onclick="suppressActionOverride(\''+id+'\')">Delete</button>':'')+
+      '<button class="act-save-btn" onclick="(function(){'+
+        'var lbl=document.getElementById(\'ae-label-'+id+'\').value;'+
+        'var wkn=parseInt(document.getElementById(\'ae-week-'+id+'\').value);'+
+        'var v=validateActionOverride(\''+id+'\',{week_num:wkn,label:lbl});'+
+        'actionEditState.warnings=v;'+
+        'if(v.errors.length){renderApp();return;}'+
+        'saveActionOverride(\''+id+'\',{week_num:wkn,label:lbl});'+
+      '})()">Save</button>'+
+    '</div>'+
+  '</div>';
+}
+
+// Reset all action overrides to model defaults
+function resetAllActionOverrides(){
+  if(!confirm('Reset all action schedule changes to model defaults?'))return;
+  actionOverrides={};
+  persistActionOverrides();
+  renderApp();
+}
+
+// Custom task CRUD (localStorage-backed until Supabase wired)
+// Note: deleteCustomTask is already defined for Supabase custom tasks (line below);
+// these functions extend with move/date/label editing capabilities.
+function moveCustomTask(id, toWeekNum){
+  if(!id||!toWeekNum)return;
+  // Block move from/to reconciled weeks via Supabase custom task data
+  var fromEntry=null;
+  Object.keys(customTaskData).forEach(function(wk){
+    customTaskData[wk].forEach(function(ct){if(ct.id===id)fromEntry={wk:parseInt(wk),ct:ct};});
+  });
+  if(!fromEntry)return;
+  if(isWeekReconciled(fromEntry.wk)||isWeekReconciled(toWeekNum)){
+    alert('Cannot move a task into or out of a reconciled week.');return;
+  }
+  // Update Supabase custom_tasks table
+  supabase.from('custom_tasks').update({week_num:toWeekNum}).eq('id',id).then(function(res){
+    if(res.error){alert('Move failed: '+res.error.message);return;}
+    // Refresh custom task data
+    loadCustomTasks().then(renderApp);
+  });
+}
+
+function editCustomTaskLabel(id, newLabel){
+  if(!id||!newLabel)return;
+  supabase.from('custom_tasks').update({label:newLabel.trim()}).eq('id',id).then(function(res){
+    if(res.error){alert('Edit failed: '+res.error.message);return;}
+    loadCustomTasks().then(renderApp);
+  });
+}
+
+function editCustomTaskDate(id, date){
+  if(!id)return;
+  supabase.from('custom_tasks').update({due_date:date||null}).eq('id',id).then(function(res){
+    if(res.error){alert('Date update failed: '+res.error.message);return;}
+    loadCustomTasks().then(renderApp);
+  });
+}
+
+// actionEditState: {type:'model'|'custom', id, weekNum, saving, warnings} | null
+var actionEditState=null;
 var editOpen=null;
 // Phase 2 state
 var reconDeleteConfirm=false;
@@ -839,6 +1218,40 @@ const PRIORITY_TIERS=[
 const VARIABLE_WATERFALL=['alaska','wewe_rccl','wewe_dcl','adam_ira','wendy_ira','bailey_529','bryce_529','preston_529','bryce_vehicle','christmas_cruise'];
 const REGULAR_WATERFALL=['alaska','wewe_rccl','wewe_dcl','adam_ira','wendy_ira','bailey_529','bryce_529','preston_529','bryce_vehicle','christmas_cruise'];
 
+// ── AMEX lookahead helpers ─────────────────────────────────────────────────
+// Projects checking forward `ahead` weeks using scheduled inflows and outflows only
+// (no future waterfall sweeps modeled — optimistic by design; each week re-runs the check).
+// Returns true if checking stays >= floor throughout the projection window.
+function amxSweepKeepsFloor(amt,curChk,weekNum,ewd,floor,ahead){
+  var proj=Math.round((curChk-amt)*100)/100;
+  if(proj<floor)return false; // immediate check: sweep itself drops current checking below floor
+  var found=0;
+  for(var i=0;i<ewd.length&&found<ahead;i++){
+    var w=ewd[i];
+    if(w[0]<=weekNum)continue;
+    found++;
+    var inflows=w[2]||[];
+    var obs=w[3]||[];
+    for(var j=0;j<inflows.length;j++)proj=Math.round((proj+inflows[j])*100)/100;
+    for(var j=0;j<obs.length;j++)proj=Math.round((proj-obs[j])*100)/100;
+    if(proj<floor)return false;
+  }
+  return true;
+}
+// Binary search for the maximum safe partial AMEX sweep amount.
+// Returns 0 if no amount >= MIN_XFR is safe; otherwise returns floor-safe amount.
+function maxSafeAmxSweep(proposedAmt,curChk,weekNum,ewd,floor,ahead){
+  if(amxSweepKeepsFloor(proposedAmt,curChk,weekNum,ewd,floor,ahead))return proposedAmt>=MIN_XFR?proposedAmt:0;
+  var lo=0,hi=proposedAmt,best=0;
+  for(var iter=0;iter<20;iter++){
+    var mid=(lo+hi)/2;
+    if(amxSweepKeepsFloor(mid,curChk,weekNum,ewd,floor,ahead)){best=mid;lo=mid;}
+    else hi=mid;
+  }
+  best=Math.floor(best*100)/100;
+  return best>=MIN_XFR?best:0;
+}
+
 // ── runModel — full waterfall-integrated model ─────────────────────────────
 function runModel(akGoal,rtGoal,flags){
   flags=flags||goalFlags;
@@ -862,6 +1275,8 @@ function runModel(akGoal,rtGoal,flags){
   var chk=START_CHK,sav=START_SAV,amx=START_AMX,tax=START_TAX,lc=START_LC;
   var taxTodo=BASE_TAX;
   var surplusSwept=0,surplusStart=null;
+  // Track whether commission tax has been deferred to a later week
+  var commTaxPending=0; // carries forward commission amount if commission_tax is moved
   var weeks=[];
   function r(n){return Math.round(n*100)/100}
   function sm(b,a,f){return Math.max(0,Math.min(r(a),r(r(b)-r(f))))}
@@ -884,18 +1299,22 @@ function runModel(akGoal,rtGoal,flags){
     const effFl=OP_FL;
     for(const a of inflows)chk=r(chk+a);
     for(const a of obs)chk=r(chk-a);
-    const tr=[],ac=[],recActs=[];
+    const tr=[],ac=[],acKeys=[],recActs=[];
     const fn='$'+effFl.toLocaleString('en-US');
-    // ── Week 1 setup (unchanged) ──────────────────────────────────────────
+    // ── Week 1 setup (historical — locked, cannot be moved or deleted) ────
     if(num===1){
       tr.push({l:'SETUP ✔ Move $2,750 — Truist Savings → Truist Checking',r:'done',rsn:'EF injection: redirect savings to checking (do before other transfers)'});
       tr.push({l:'SETUP ✔ Move $1,000 — Lending Club → Truist Checking',r:'done',rsn:'EF injection: partial LC drawdown for operating capital'});
       tr.push({l:'SETUP ✔ Cancel prior $2,250 Checking→LC plan — keep in checking',r:'info',rsn:'EF injection: funds stay in checking, no LC transfer needed'});
       tr.push({l:'SETUP ✔ Move $2,250 — Lending Club → Truist Checking',r:'done',rsn:'Option 1 correction: aligns model with actual balances — $3,250 total drawn from LC'});
-      ac.push('Move $2,750 Truist Savings → Truist Checking (EF injection — do first)');
-      ac.push('Move $1,000 Lending Club → Truist Checking (EF injection — do first)');
-      ac.push('Move $2,250 Lending Club → Truist Checking (Option 1 correction — do with other SETUP transfers)');
-      ac.push('[PENDING #20] Costco Visa — Confirm closing date, due date, and card transition timing (provide date to Claude to complete)');
+      ac.push('Move $2,750 Truist Savings → Truist Checking (EF injection — do first)');acKeys.push('setup_sav_2750');
+      ac.push('Move $1,000 Lending Club → Truist Checking (EF injection — do first)');acKeys.push('setup_lc_1000');
+      ac.push('Move $2,250 Lending Club → Truist Checking (Option 1 correction — do with other SETUP transfers)');acKeys.push('setup_lc_2250');
+    }
+    // ── Costco Visa reminder (overrideable: move week or delete) ─────────
+    if(!aoDeleted(ACTION_KEYS.COSTCO_VISA)&&num===aoW(ACTION_KEYS.COSTCO_VISA)){
+      var costcoLabel=aoLabel(ACTION_KEYS.COSTCO_VISA,'[PENDING #20] Costco Visa — Confirm closing date, due date, and card transition timing (provide date to Claude to complete)');
+      ac.push(costcoLabel);acKeys.push(ACTION_KEYS.COSTCO_VISA);
     }
     // ── Transfer helpers ──────────────────────────────────────────────────
     function mv(amt,dst,allowFinal){
@@ -910,18 +1329,69 @@ function runModel(akGoal,rtGoal,flags){
       return m;
     }
     function mvS(amt,dst){const m=r(amt);sav=r(sav-m);if(dst==='lc')lc=r(lc+m);else if(dst==='amx')amx=r(amx+m);else if(dst==='chk')chk=r(chk+m);return m;}
-    // ── Alaska savings draw (single $7k pull — funds elevated Sep cruise card bills) ──
-    if(num===15){mvS(7000,'chk');tr.push({l:'Alaska $7,000 Truist Savings → Truist Checking',r:'done',a:7000,rsn:'Fund elevated September cruise card bills (Gold + Disney Visa) from Alaska savings'});ac.push('Transfer $7,000 from Truist Savings to Truist Checking (Alaska cruise card bills — Sep Gold & Disney Visa)');}
+    // ── Alaska savings draw (override-aware week) ─────────────────────────
+    // Runtime guard: only draw if savings has the full $7,000. mvS() has no floor check,
+    // so we must enforce here. If moved too early, block rather than partial-draw.
+    if(num===aoW(ACTION_KEYS.ALASKA_DRAW)){
+      var akDrawLabel=aoLabel(ACTION_KEYS.ALASKA_DRAW,'Transfer $7,000 from Truist Savings to Truist Checking (Alaska cruise card bills — Sep Gold & Disney Visa)');
+      if(sav>=7000){
+        mvS(7000,'chk');
+        tr.push({l:'Alaska $7,000 Truist Savings → Truist Checking',r:'done',a:7000,rsn:'Fund elevated September cruise card bills (Gold + Disney Visa) from Alaska savings'});
+        ac.push(akDrawLabel);acKeys.push(ACTION_KEYS.ALASKA_DRAW);
+      } else {
+        // Savings not yet at $7,000 — block draw to prevent negative savings
+        tr.push({l:'Alaska draw $7,000 BLOCKED — savings only $'+fc(sav),r:'defer',rsn:'Insufficient savings ($'+fc(sav)+' available, $7,000 needed) — move draw to a later week'});
+        ac.push('⚠️ Alaska draw blocked — savings insufficient ($'+fc(sav)+' available). Reschedule to a later week.');
+        acKeys.push(ACTION_KEYS.ALASKA_DRAW);
+      }
+    }
     // ── 401(k) auto-contribution — payroll deduction, no checking impact ──
     if(PAYCHECK_WKS.indexOf(num)>=0){
       var k401Target=(GOALS_REGISTRY.find(function(g){return g.id==='adam_401k';})||{}).target||24500;
       var contrib=r(Math.min(PAY_401K,Math.max(0,k401Target-(goalSaved['adam_401k']||0))));
       if(contrib>0){goalSaved['adam_401k']=r((goalSaved['adam_401k']||0)+contrib);tr.push({l:'401(k) $'+fc(contrib)+' auto-deducted payroll (Empower)',r:'info',rsn:'Pre-tax payroll deduction — no checking impact'});}
     }
-    // ── Commission tax deduction ──────────────────────────────────────────
-    if(ct>0){const m=mv(ct,'tax');if(m>0){tr.push({l:'Commission 40% $'+fc(ct)+' Checking → Vio Bank - Tax Reserve',r:'done',rsn:'Post $'+fc(chk)+' ≥ '+fn});ac.push('Transfer $'+fc(ct)+' from Truist Checking to Vio Bank - Tax Reserve (commission 40%)');}else{taxTodo=r(taxTodo+ct);tr.push({l:'Commission 40% $'+fc(ct)+' deferred → tax pending',r:'defer',rsn:'No surplus above '+fn+' — picks up next eligible week'});}}
-    // ── Tax backlog (non-commission weeks; skip Wk 1 — Vio Bank not yet active) ─
-    if(taxTodo>0&&(ct===0||num===2)&&num!==1){const m=mv(taxTodo,'tax');if(m>0){taxTodo=r(taxTodo-m);const remT=taxTodo>0?' — $'+fc(taxTodo)+' carries forward':'';tr.push({l:'Tax $'+fc(m)+' Checking → Vio Bank - Tax Reserve'+remT,r:'done',rsn:'Post $'+fc(chk)+' ≥ '+fn});ac.push('Transfer $'+fc(m)+' from Truist Checking to Vio Bank - Tax Reserve');}else tr.push({l:'Tax $'+fc(taxTodo)+' Checking → Vio Bank - Tax Reserve',r:'defer',rsn:'Post-obligations $'+fc(chk)+' — no surplus above '+fn});}
+    // ── Commission tax deduction (override-aware: always preserves commission_tax identity) ──
+    // Priority when base tax + commission tax both fire same week: commission fires first (checked here),
+    // then base tax fires below. This ordering is intentional — document, do not change without rechecking.
+    var commTaxWeek=aoW(ACTION_KEYS.COMMISSION_TAX);
+    if(ct>0){
+      if(commTaxWeek===num){
+        // Default: fire on commission income week
+        const m=mv(ct,'tax');
+        if(m>0){
+          // mv() may return a partial amount — log only what actually moved, carry remainder as commission_tax
+          const rem=r(ct-m);
+          const remT=rem>0?' — $'+fc(rem)+' carries forward':'';
+          tr.push({l:'Commission 40% $'+fc(m)+' Checking → Vio Bank - Tax Reserve'+remT,r:'done',rsn:'Post $'+fc(chk)+' ≥ '+fn});
+          ac.push('Transfer $'+fc(m)+' from Truist Checking to Vio Bank - Tax Reserve (commission 40%)');
+          acKeys.push(ACTION_KEYS.COMMISSION_TAX);
+          if(rem>0)commTaxPending=r(commTaxPending+rem); // partial: carry remainder under commission_tax identity
+        } else {
+          // Floor fully blocked — preserve commission_tax identity via commTaxPending (not taxTodo)
+          // This ensures deferred commission fires as commission_tax, not as part of tax_base backlog
+          commTaxPending=r(commTaxPending+ct);
+          tr.push({l:'Commission 40% $'+fc(ct)+' deferred → Tax Reserve',r:'defer',rsn:'No surplus above '+fn+' — fires as commission_tax next eligible week'});
+        }
+      } else {
+        // Moved to different week — accumulate in commTaxPending
+        commTaxPending=r(commTaxPending+ct);
+        tr.push({l:'Commission 40% $'+fc(ct)+' scheduled → Tax Reserve (Cal Wk '+getCalWeek(commTaxWeek)+')',r:'defer',rsn:'Commission tax moved to Week '+getCalWeek(commTaxWeek)+' by schedule override'});
+      }
+    }
+    // Fire commTaxPending on designated week or any ct===0 week after (carries forward if floor blocks)
+    if(commTaxPending>0&&ct===0&&num>=commTaxWeek){
+      const m=mv(commTaxPending,'tax');
+      if(m>0){commTaxPending=r(commTaxPending-m);const remT=commTaxPending>0?' — $'+fc(commTaxPending)+' carries forward':'';tr.push({l:'Commission 40% $'+fc(m)+' Checking → Vio Bank - Tax Reserve'+remT,r:'done',rsn:'Deferred commission tax'});ac.push('Transfer $'+fc(m)+' from Truist Checking to Vio Bank - Tax Reserve (deferred commission 40%)');acKeys.push(ACTION_KEYS.COMMISSION_TAX);}
+      else tr.push({l:'Commission 40% $'+fc(commTaxPending)+' Checking → Vio Bank - Tax Reserve',r:'defer',rsn:'No surplus above '+fn+' — carries forward'});
+    }
+    // ── Tax backlog: fires on designated week; carries forward on ct===0 weeks after ─
+    var taxBaseWeek=aoW(ACTION_KEYS.TAX_BASE);
+    if(taxTodo>0&&(num===taxBaseWeek||(ct===0&&num>taxBaseWeek))){
+      const m=mv(taxTodo,'tax');
+      if(m>0){taxTodo=r(taxTodo-m);const remT=taxTodo>0?' — $'+fc(taxTodo)+' carries forward':'';tr.push({l:'Tax $'+fc(m)+' Checking → Vio Bank - Tax Reserve'+remT,r:'done',rsn:'Post $'+fc(chk)+' ≥ '+fn});ac.push('Transfer $'+fc(m)+' from Truist Checking to Vio Bank - Tax Reserve');acKeys.push(ACTION_KEYS.TAX_BASE);}
+      else tr.push({l:'Tax $'+fc(taxTodo)+' Checking → Vio Bank - Tax Reserve',r:'defer',rsn:'Post-obligations $'+fc(chk)+' — no surplus above '+fn});
+    }
     // ── Retirement Rebuild savings sweep (one-time when Alaska completes) ─
     // Runs after waterfall so Alaska can complete this same week before sweep triggers
     // ── Goal waterfall ────────────────────────────────────────────────────
@@ -958,8 +1428,11 @@ function runModel(akGoal,rtGoal,flags){
           :(depG?depG.target:999999);
         if((goalSaved[gdef.startsAfter]||0)<depTgt-0.01)continue;
       }
-      // Gate: flag — if prereq IS met but flag not cleared, BLOCK (don't skip to lower goals)
-      if(gdef.needsFlag&&!flags[gdef.needsFlag])break;
+      // Gate: AMEX-destined goals use 5-week lookahead (needsFlag is display-only for these).
+      // Non-AMEX gated goals still use needsFlag.
+      // When any AMEX goal defers, break stops the full waterfall — vehicle/cruise implicitly blocked.
+      var _amxHold=['adam_ira','wendy_ira','bailey_529','bryce_529','preston_529'];
+      if(_amxHold.indexOf(goalId)<0&&gdef.needsFlag&&!flags[gdef.needsFlag])break;
       // Gate: No waterfall allocations until setup settles (AK_START weeks)
       if(num<AK_START)continue;
       var gTgt=goalId==='alaska'?akTarget:gdef.target;
@@ -967,8 +1440,19 @@ function runModel(akGoal,rtGoal,flags){
       var rem0=r(Math.max(0,gTgt-funded0));
       if(rem0<0.005)continue;
       // IRA/529 goals accumulate in AMEX Savings (holding); cruise/vehicle goals are external
-      var _amxGoals=['adam_ira','wendy_ira','bailey_529','bryce_529','preston_529'];
-      var dst=goalId==='alaska'?'sav':(_amxGoals.indexOf(goalId)>=0?'amx':'goal');
+      var dst=goalId==='alaska'?'sav':(_amxHold.indexOf(goalId)>=0?'amx':'goal');
+      // AMEX goals: check 5-week lookahead before sweeping; partial safe sweep if full is unsafe.
+      // Pass sm() as proposed upper bound — never ask for more than current-week transferable surplus.
+      if(_amxHold.indexOf(goalId)>=0){
+        var proposed=sm(chk,rem0,effFl);
+        var safeAmt=maxSafeAmxSweep(proposed,chk,num,effectiveWD,effFl,AMX_SWEEP_LOOKAHEAD_WEEKS);
+        if(safeAmt<=0){
+          _amxDeferredThisWeek=true;
+          tr.push({l:gdef.name+' deferred — '+AMX_SWEEP_LOOKAHEAD_WEEKS+'-wk lookahead: floor risk',r:'defer',rsn:'Projected checking <$'+effFl.toLocaleString('en-US')+' within '+AMX_SWEEP_LOOKAHEAD_WEEKS+' weeks'});
+          break;
+        }
+        rem0=r(safeAmt);
+      }
       var allowFin=rem0<MIN_XFR*2; // allow tiny final contribution to complete goal
       var m=mv(rem0,dst,allowFin);
       if(m>0){
@@ -1009,7 +1493,7 @@ function runModel(akGoal,rtGoal,flags){
     var allFunded=regWF.every(function(id){
       var gd=GOALS_REGISTRY.find(function(x){return x.id===id;});
       if(!gd)return true;
-      if(gd.needsFlag&&!flags[gd.needsFlag])return false; // gated — counts as unfunded; blocks surplus
+      // needsFlag is display-only — surplus is based solely on whether goalSaved has reached target
       var gt=id==='alaska'?akTarget:gd.target;
       return(goalSaved[id]||0)>=gt-0.01;
     });
@@ -1028,7 +1512,12 @@ function runModel(akGoal,rtGoal,flags){
       variance={chk:r(mChk-rec.chk),sav:r(mSav-rec.sav),amx:r(mAmx-rec.amx),tax:r(mTax-rec.tax),lc:r(mLc-rec.lc)};
       chk=rec.chk;sav=rec.sav;amx=rec.amx;tax=rec.tax;lc=rec.lc;
     }
+    // NOTE: ac[] includes the "No transfers" sentinel on quiet weeks; acKeys[] does not.
+    // ac.length !== acKeys.length on those weeks — this is intentional.
+    // Always use realActs/realActKeys (the filtered pair) for UI rendering and key lookups.
     const realActs=ac.filter(function(a){return!a.includes('No transfers');});
+    // realActKeys: parallel array of action keys for each realActs entry (null if not keyed)
+    const realActKeys=(function(){var keys=[];var ki=0;ac.forEach(function(a,i){if(!a.includes('No transfers')){keys.push(acKeys[i]||null);}});return keys;})();
     const totalTasks=realActs.length;
     let doneTasks=0;
     for(var ti=0;ti<totalTasks;ti++){if(taskData[num+'_'+ti]&&taskData[num+'_'+ti].completed)doneTasks++;}
@@ -1044,7 +1533,7 @@ function runModel(akGoal,rtGoal,flags){
       recActs.push('Review Jabian reimbursements — compare expected vs. received. If a large or unusual amount is pending or recently arrived, add it as a one-time inflow via Edit Week. No action needed if reimbursements are on schedule.');}
     // Snapshot goal savings for this week (deep copy)
     var gSnap={};Object.keys(goalSaved).forEach(function(k){gSnap[k]=goalSaved[k];});
-    weeks.push({num,dates,trough:false,managed:false,calNote,evs,tr,ac,recActs,realActs,totalTasks,doneTasks,
+    weeks.push({num,dates,trough:false,managed:false,calNote,evs,tr,ac,acKeys,recActs,realActs,realActKeys,totalTasks,doneTasks,
       chk:r(chk),sav:r(sav),amx:r(amx),tax:r(tax),lc:r(lc),
       mChk,mSav,mAmx,mTax,mLc,
       goalSaved:gSnap,
@@ -1611,9 +2100,40 @@ function renderWeekDetail(w,weeks){
       '<div class="act-hdr">Required actions this week <span class="act-progress '+(totalAll>0?progCls:'')+'">'+progTxt+'</span></div>'+
       (w.realActs.length?w.realActs.map(function(a,i){
         var done=taskData[w.num+'_'+i]&&taskData[w.num+'_'+i].completed;
-        return'<div class="task-row"><input type="checkbox" class="task-check" '+(done?'checked':'')+' onchange="toggleTask('+w.num+','+i+',this.checked)"><div class="task-text'+(done?' done':'')+'">'+a+'<span class="task-date">'+getWeekDate(w.num)+'</span></div></div>';
+        var actionKey=w.realActKeys?w.realActKeys[i]:null;
+        var isModelAct=!!actionKey;
+        var isLocked=actionKey&&LOCKED_MODEL_ACTIONS.has(actionKey);
+        var canDelete=actionKey&&DELETEABLE_MODEL_ACTIONS.has(actionKey);
+        var hasOv=actionKey&&hasActionOverride(actionKey);
+        var note=actionKey?getActionOverrideNote(actionKey):'';
+        var weekIsRecon=isWeekReconciled(w.num);
+        // Type badge
+        var badge=isLocked?'<span class="act-type-badge locked">Locked</span>':isModelAct?'<span class="act-type-badge model">Model</span>':'';
+        // Override note
+        var noteHtml=note?'<div class="act-override-note">'+esc(note)+'</div>':'';
+        // Controls: Move / Relabel / Delete / Reset — hidden until hover (or always visible when edited)
+        var controls='';
+        if(isModelAct&&!isLocked&&!weekIsRecon){
+          controls='<div class="act-row-controls">'+
+            '<button class="task-edit-btn" onclick="openActionEdit(\'model\',\''+actionKey+'\','+w.num+',\'move\')">Move</button>'+
+            '<button class="task-edit-btn" onclick="openActionEdit(\'model\',\''+actionKey+'\','+w.num+',\'label\')">Relabel</button>'+
+            (canDelete?'<button class="task-edit-btn danger" onclick="openActionEdit(\'model\',\''+actionKey+'\','+w.num+',\'delete\')">Delete</button>':'')+
+            (hasOv?'<button class="task-edit-btn muted" onclick="deleteActionOverride(\''+actionKey+'\')">Reset</button>':'')+
+          '</div>';
+        }
+        return'<div class="task-row'+(hasOv?' edited':'')+'">'+
+          '<input type="checkbox" class="task-check" '+(done?'checked':'')+' onchange="toggleTask('+w.num+','+i+',this.checked)">'+
+          '<div class="task-text'+(done?' done':'')+'">'+badge+esc(a)+'<span class="task-date">'+getWeekDate(w.num)+'</span>'+noteHtml+'</div>'+
+          controls+
+        '</div>'+
+        (actionKey?renderActionEditPanel(actionKey,a,w.num):'');
       }).join(''):'')+(customTasks.length?customTasks.map(function(ct,ci){
-        return'<div class="task-row"><input type="checkbox" class="task-check" '+(ct.completed?'checked':'')+' onchange="toggleCustomTask('+w.num+',\''+ct.id+'\',this.checked)"><div class="task-text'+(ct.completed?' done':'')+'">'+ct.label+'<span class="task-date">Custom</span></div><button class="custom-task-del" onclick="deleteCustomTask('+w.num+',\''+ct.id+'\')" title="Remove">✕</button></div>';
+        var ctIsRecon=isWeekReconciled(w.num);
+        return'<div class="task-row">'+
+          '<input type="checkbox" class="task-check" '+(ct.completed?'checked':'')+' onchange="toggleCustomTask('+w.num+',\''+ct.id+'\',this.checked)">'+
+          '<div class="task-text'+(ct.completed?' done':'')+'"><span class="act-type-badge" style="background:var(--surface);border:1px solid var(--line2)">Custom</span>'+ct.label+(ct.due_date?'<span class="task-date">'+ct.due_date+'</span>':'<span class="task-date">Custom</span>')+'</div>'+
+          (!ctIsRecon?'<button class="custom-task-del" onclick="deleteCustomTask('+w.num+',\''+ct.id+'\')" title="Remove">✕</button>':'')+
+        '</div>';
       }).join(''):'')+(addingCustom?
         '<div class="custom-task-form"><input class="custom-task-input" id="ct-inp-'+w.num+'" type="text" placeholder="Describe the action..." maxlength="200"><button class="custom-task-save-btn" onclick="saveCustomTask('+w.num+')">Add</button><button class="custom-task-add-btn" onclick="customTaskState=null;renderApp()">Cancel</button></div>':
         '<button class="custom-task-add-btn" onclick="customTaskState={addingWeek:'+w.num+'};renderApp()">+ Add action</button>')+
@@ -1752,7 +2272,7 @@ function runEngine(vm){
   var waterfall=engineType==='variable'?VARIABLE_WATERFALL:REGULAR_WATERFALL;
   var stepNum=1;
   var justFunded={}; // track same-run allocations so startsAfter works within one deposit
-  var hitGate=false; // true when a needsFlag gate blocks the waterfall
+  var _engineAmxHold=['adam_ira','wendy_ira','bailey_529','bryce_529','preston_529'];
   for(var wi=0;wi<waterfall.length;wi++){
     if(remaining<0.005)break;
     var id=waterfall[wi];
@@ -1768,22 +2288,20 @@ function runEngine(vm){
     var funded=getGoalFunded(id,vm)+(justFunded[id]||0);
     var rem=Math.max(0,Math.round((gdef.target-funded)*100)/100);
     if(rem<0.005)continue; // already funded — skip silently
-    // Gate: flag — strict block matching runModel behavior; absorbs remaining, no surplus step fires
-    if(gdef.needsFlag&&!goalFlags[gdef.needsFlag]){
-      steps.push({type:'hold',num:stepNum++,label:'🔒 '+gdef.name+' — CPA clearance pending',amt:remaining,note:'IRA gate not cleared. All '+f(remaining)+' stays in Truist Checking. Toggle "IRA CPA Cleared" in the Goals tab once your CPA approves. No lower-priority goals will fund until this gate lifts.'});
-      hitGate=true;
-      break;
-    }
+    // needsFlag is display/deployment status only — does NOT block engine allocation
     var toAllocate=Math.min(remaining,rem);
     toAllocate=Math.round(toAllocate*100)/100;
+    var isAmxGoal=_engineAmxHold.indexOf(id)>=0;
+    var dest=isAmxGoal?'AMEX Savings (holding)':gdef.dest||gdef.name;
+    var cpaNote=isAmxGoal&&!goalFlags.ira_cpa_cleared?' — staged in AMEX; deploy to custodian after CPA clears':'';
     var afterNote=rem>toAllocate?f(rem-toAllocate)+' still remaining after this':'Fully funded!';
     if(id==='alaska')afterNote='Alaska Cruise Fund: '+(rem>toAllocate?f(rem-toAllocate)+' still remaining':'Fully funded!');
     if(id==='adam_ira')afterNote='Adam IRA (AMEX holding): '+(rem>toAllocate?f(rem-toAllocate)+' still remaining':'Fully funded!');
-    steps.push({type:'goal',num:stepNum++,label:gdef.name+' ('+gdef.tier+')',amt:toAllocate,note:afterNote});
+    steps.push({type:'goal',num:stepNum++,label:gdef.name+' → '+dest+cpaNote,amt:toAllocate,note:afterNote});
     justFunded[id]=(justFunded[id]||0)+toAllocate;
     remaining=Math.round((remaining-toAllocate)*100)/100;
   }
-  if(!hitGate&&remaining>0.005){
+  if(remaining>0.005){
     steps.push({type:'surplus',num:stepNum,label:'Surplus — stays in Truist Checking',amt:remaining,note:'All active goals funded. Cash accumulates in Truist Checking until next Phase 4 goal queue review.'});
   }
   engineResult=steps;
@@ -2318,7 +2836,7 @@ function _renderGoalsEngine(vm,w){
   '</div>';
   var outputHtml=engineResult
     ?_renderEngineOutput(engineResult)
-    :'<div class="engine-empty">Enter an amount above and click Calculate to see the full allocation sequence — tax reserve, IRA gating, and every goal in priority order.</div>';
+    :'<div class="engine-empty">Enter an amount above and click Calculate to see the full allocation sequence — tax reserve, IRA/529 AMEX holding, and every goal in priority order.</div>';
   var calcSection='<div class="panel card-pad" style="margin-bottom:20px">'+calcHeader+'<div class="goals-two-col">'+formHtml+'<div>'+outputHtml+'</div></div></div>';
   // ── Section 2: Scenario Builder ───────────────────────────────────────────
   var sbHeader='<div style="display:flex;align-items:center;gap:10px;margin-bottom:14px">'+
@@ -2526,7 +3044,7 @@ function renderAssumptions(){
     '<div class="panel assumption-card"><h3>Commission Tax Split</h3>'+
       '<p>When Wendy or Adam has a commission or BK bonus inflow (taxable), the model routes: <strong>40% → Vio Bank - Tax Reserve</strong> and <strong>60% → current savings goal</strong>.</p>'+
       '<p><code>COMM_TAX = $707.18</code> (40% of commission gross) and <code>COMM_AK = $1,060.76</code> (60%) are defined as constants. Week 6 commission is deferred because checking is below floor after obligations — both transfers pick up the following week.</p>'+
-      '<p>If a commission week has no surplus above the floor, both transfers defer to the next eligible week via <code>taxTodo</code>.</p>'+
+      '<p>When a commission week has no surplus above the floor, the 40% commission tax transfer defers under the commission_tax action identity through commTaxPending. The 60% goal allocation is also deferred until the waterfall can safely fund it.</p>'+
     '</div>'+
     '<div class="panel assumption-card"><h3>Calendar Notes</h3>'+
       '<p>Three weeks are structurally thin — bill-heavy weeks with limited inflow. Checking stays above $0 throughout (EF backstop prevents negatives) but discretionary spending should be avoided.</p>'+
@@ -2543,23 +3061,21 @@ function renderAssumptions(){
         '<li><strong>T1 — Alaska Cruise</strong> ($7,000) → Truist Savings. Completes model Wk 5 (Cal Wk 27). AK_START gate: no contributions before Wk 5. Savings seed of $3,772.74 fires to AMEX immediately after.</li>'+
         '<li><strong>T2 — Wewe RCCL</strong> ($600) → RCCL cruise payment. Starts after Alaska funded. Due Cal Wk 30 (end of July).</li>'+
         '<li><strong>T3 — Wewe DCL</strong> ($500) → DCL cruise payment. Starts after Alaska funded. Due Cal Wk 41 (first week of October).</li>'+
-        '<li><strong>T4 — Adam IRA</strong> ($7,000) → AMEX Savings (IRA Holding). Starts after DCL funded. 🔒 <strong>Gated: breaks waterfall</strong> until <code>ira_cpa_cleared</code> is set. Seeded with $103.64 from starting AMEX balance.</li>'+
-        '<li><strong>T5 — Wendy IRA</strong> ($7,000) → AMEX Savings (IRA Holding). 🔒 Same CPA gate — will not fund until Adam IRA is cleared and funded.</li>'+
-        '<li><strong>T6 — Bailey 529</strong> ($3,500) → AMEX Savings (529 Holding). Decision pending — see Decision Queue.</li>'+
-        '<li><strong>T7 — Bryce 529</strong> ($1,500) → AMEX Savings (529 Holding). Decision pending.</li>'+
-        '<li><strong>T8 — Preston 529</strong> ($1,000) → AMEX Savings (529 Holding). Decision pending.</li>'+
+        '<li><strong>T4 — Adam IRA</strong> ($7,000) → AMEX Savings (IRA Holding). Starts after DCL funded. Funds when the 5-week AMEX lookahead confirms checking remains above the $6,500 floor. Seeded with $103.64 from starting AMEX balance.</li>'+
+        '<li><strong>T5 — Wendy IRA</strong> ($7,000) → AMEX Savings (IRA Holding). Funds after Adam IRA, also protected by the 5-week AMEX lookahead.</li>'+
+        '<li><strong>T6–T8 — Bailey/Bryce/Preston 529s</strong> → AMEX Savings (529 Holding). Fund sequentially after IRAs, also protected by the 5-week AMEX lookahead.</li>'+
         '<li><strong>T9 — Bryce Vehicle</strong> ($8,000) → Truist Checking hold. September 2026 decision point.</li>'+
         '<li><strong>T10 — Christmas Cruise</strong> ($2,500) → Truist Savings (earmarked). Decision pending post-Alaska.</li>'+
       '</ol>'+
       '<p style="font-size:12px;color:var(--muted)">Not in waterfall: Taxable ETF ($4,999.79) — Stretch/Phase 5 only. No contributions until all T1-T10 goals are funded. Pre-waterfall: base tax ($521.36 → Vio) fires Week 2 (Vio Bank account setup deferred from Wk 1). Commission tax (40% → Vio / 60% → Alaska) fires on commission weeks. All transfers respect the $6,500 hard floor.</p>'+
     '</div>'+
     '<div class="panel assumption-card"><h3>IRA/529 Holding Account Architecture</h3>'+
-      '<p>IRA and 529 contributions do not go directly to their custodians (T Rowe for IRAs, Path 2 College for 529s). They route to <strong>AMEX Savings as a holding account</strong> until CPA clearance is received. This is a two-step process:</p>'+
+      '<p>IRA and 529 contributions do not go directly to their custodians. They route first to <strong>AMEX Savings as a holding account</strong>. The model can stage funds in AMEX while CPA clearance is pending, as long as the 5-week AMEX lookahead confirms the sweep is cash-safe.</p>'+
       '<ol style="margin:8px 0 10px 18px;font-size:13px;line-height:1.9">'+
-        '<li><strong>Hold phase:</strong> Checking → AMEX Savings (labeled "IRA/529 Holding — Pending CPA"). The model tracks accumulation here. Waterfall is blocked at Adam IRA until <code>ira_cpa_cleared</code> flag is toggled on.</li>'+
-        '<li><strong>Deploy phase:</strong> Once CPA clears, AMEX Savings → T Rowe (IRA) or Path 2 College (529). This is a manual transfer — not automated by the model.</li>'+
+        '<li><strong>Hold phase:</strong> Checking → AMEX Savings, labeled as IRA/529 holding. This is model-driven and protected by the 5-week lookahead.</li>'+
+        '<li><strong>Deploy phase:</strong> AMEX Savings → T Rowe for IRAs or Path 2 College for 529s. This is a manual transfer and should wait for CPA clearance.</li>'+
       '</ol>'+
-      '<p>The <code>ira_cpa_cleared</code> flag is toggled in the Goals tab flag bar. When cleared, the waterfall gate lifts and IRA funding begins. When locked, the waterfall stops at T4 (Adam IRA) and remaining checking surplus accumulates until CPA clears.</p>'+
+      '<p>The <code>ira_cpa_cleared</code> flag is display/deployment status only. It does not block checking → AMEX accumulation.</p>'+
     '</div>'+
     '<div class="panel assumption-card"><h3>Jabian Business Expense Float</h3>'+
       '<p>Jabian business expenses and reimbursements are intentionally excluded from weekly projections because they are highly reliable, self-funding, and typically reimburse within one payroll cycle.</p>'+
@@ -2581,12 +3097,14 @@ function renderAssumptions(){
         '<li>Alaska fund → Truist Savings — sweeps each eligible week · <strong>completes model Wk 5 (Cal Wk 27, Jul 5-11)</strong></li>'+
         '<li>Savings seed — $3,772.74 one-time Truist Savings → AMEX, fires immediately after Alaska funded</li>'+
         '<li>RCCL → payment · DCL → payment (small, fast)</li>'+
-        '<li>Adam IRA → AMEX Savings (holding) — gated until <code>ira_cpa_cleared</code> · breaks waterfall when locked</li>'+
-        '<li>Wendy IRA, 529s, Bryce Vehicle, Christmas Cruise — follow in sequence once IRA gate clears</li>'+
+        '<li>Adam IRA → AMEX Savings holding — funds when 5-week AMEX lookahead confirms checking remains above floor</li>'+
+        '<li>Wendy IRA and 529s → AMEX Savings holding — follow in sequence, also protected by the AMEX lookahead</li>'+
+        '<li>Bryce Vehicle and Christmas Cruise — lower-priority goals; blocked in any week where an AMEX goal defers for lookahead floor risk</li>'+
         '<li>No active goal → surplus accumulates in Truist Checking as structural float</li>'+
       '</ol>'+
-      '<p><strong>When the IRA gate is locked:</strong> Surplus above $6,500 accumulates in Truist Checking rather than moving to AMEX Savings. The Goals tab shows the theoretical IRA allocation that would occur once CPA clears. No funds leave checking automatically — all IRA/529 transfers are manual.</p>'+
-      '<p><strong>Commission income:</strong> When Adam or Wendy earns a commission or BK bonus, the model auto-routes 40% → Vio Bank - Tax Reserve and 60% → current open goal. If the commission week is below floor, both amounts defer via <code>taxTodo</code> to the next eligible week.</p>'+
+      '<p><strong>CPA status:</strong> The <code>ira_cpa_cleared</code> flag is display-only for deployment readiness. It does not block checking → AMEX accumulation. IRA and 529 funds can stage in AMEX Savings when the 5-week lookahead confirms the sweep is cash-safe. Actual AMEX → T Rowe / 529 custodian deployment remains manual after CPA clearance.</p>'+
+      '<p><strong>AMEX lookahead:</strong> Before sweeping checking into AMEX-held IRA/529 goals, the model projects scheduled inflows and bills forward 5 weeks. If the sweep would cause checking to fall below the $6,500 floor in that window, the AMEX goal defers and lower-priority goals are blocked for that week.</p>'+
+      '<p><strong>Commission income:</strong> When Adam or Wendy earns a commission or BK bonus, the model auto-routes 40% → Vio Bank Tax Reserve and 60% → the current open goal. Commission tax preserves its own <code>commission_tax</code> identity and carries forward through <code>commTaxPending</code> if floor-blocked.</p>'+
       '<p><strong>Adding extra income:</strong> Use Edit Week to add one-time inflows. Check "Tax?" for taxable income — the 40/60 split fires automatically and accelerates whichever goal is currently open.</p>'+
     '</div>'+
   '</div>';
@@ -3082,6 +3600,8 @@ var WISHLIST_SEED=[
   {title:'Three-tier floor visual indicators',notes:'$6,500 emergency (red) / $10,000 warning (amber) / $12,000 target (green) tier legend in Priorities tab. Display only — $6,500 hard gate unchanged.',phase:'Phase 4',status:'done'},
   {title:'Decision Queue — Phase 4 items',notes:'CPA clearance, Alaska card bill timing, Wendy priority discussion, Phase 5+ goals naming.',phase:'Phase 4',status:'done'},
   {title:'Goal funding source & destination account',notes:'Per-goal src/dest account + startsAfter dependency. IRA/529 dest updated to AMEX Savings (holding). poolSource architecture removed.',phase:'Phase 4',status:'done'},
+  {title:'Required action override system',notes:'Model-generated required actions can now be moved, relabeled, reset, or deleted where allowed, with validation, localStorage persistence, and full model recalculation.',phase:'Phase 4',status:'done'},
+  {title:'IRA/529 AMEX 5-week lookahead',notes:'Checking → AMEX holding sweeps for IRA/529 goals use a 5-week scheduled cash-flow lookahead and max-safe-sweep binary search to prevent new floor violations. CPA flag is display/deployment status only and no longer gates accumulation.',phase:'Phase 4',status:'done'},
   // Phase 5 — planned
   {title:'Dynamic goal registry (CRUD)',notes:'Add / edit / pause / archive / reprioritize goals via UI. Deferred from Phase 4.',phase:'Phase 5',status:'planned'},
   {title:'Goal dependency chain',notes:'Start a goal after another goal completes (startsAfter). Display layer exists; full UI deferred from Phase 4.',phase:'Phase 5',status:'planned'},
