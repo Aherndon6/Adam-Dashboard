@@ -272,7 +272,7 @@ body{background:var(--bg);color:var(--ink);font-family:Inter,ui-sans-serif,syste
 .act-delete-confirm{font-size:13px;font-weight:600;color:var(--ink);margin-bottom:10px}
 @media(max-width:700px){.act-row-controls .task-edit-btn{opacity:1}.task-row{flex-wrap:wrap}.act-edit-row{flex-direction:column;align-items:stretch}.act-edit-label{width:auto}.act-edit-input{width:100%}}
 /* Reconciled lock indicator */
-.act-locked-msg{font-size:11.5px;color:var(--muted2);padding:4px 8px;background:var(--surface);border-radius:6px;border:1px solid var(--line);display:inline-block;margin-top:4px}.rec-row{display:flex;gap:9px;align-items:flex-start;padding:7px 9px;border:1px dashed var(--line);border-radius:9px;margin-bottom:5px;background:var(--bg);opacity:.9}.rec-row:last-child{margin-bottom:0}.rec-icon{font-size:13px;flex-shrink:0;margin-top:1px}.rec-text{flex:1;font-size:12px;color:var(--muted2);line-height:1.4}
+.act-locked-msg{font-size:11.5px;color:var(--muted2);padding:4px 8px;background:var(--surface);border-radius:6px;border:1px solid var(--line);display:inline-block;margin-top:4px}.rec-row{display:flex;gap:9px;align-items:flex-start;padding:7px 9px;border:1px dashed var(--line);border-radius:9px;margin-bottom:5px;background:var(--bg);opacity:.9}.rec-row:last-child{margin-bottom:0}.rec-icon{font-size:13px;flex-shrink:0;margin-top:1px}.rec-text{flex:1;font-size:12px;color:var(--muted2);line-height:1.4}.rec-row-check{background:var(--amberSoft);border-color:#fcd34d;opacity:1}.rec-row-done{opacity:.6;background:var(--greenSoft);border-color:#a7f3d0}.rec-cb{width:15px;height:15px;cursor:pointer;flex-shrink:0;margin-top:2px;accent-color:var(--green)}
 /* Notes */
 .notes-hdr{font-size:10px;font-weight:700;color:var(--muted2);text-transform:uppercase;letter-spacing:.07em;margin-bottom:6px}
 .notes-area{width:100%;padding:9px 11px;border:1px solid var(--line2);border-radius:9px;font-size:13px;font-family:inherit;color:var(--ink);background:var(--surface);resize:vertical;min-height:60px;line-height:1.5;display:block}
@@ -447,7 +447,7 @@ body{background:var(--bg);color:var(--ink);font-family:Inter,ui-sans-serif,syste
 .wl-loading{color:var(--muted2);font-size:12px;text-align:center;padding:16px;font-style:italic}
 /* Drawer (preserved from original) */
 .drawer-backdrop{position:fixed;inset:0;background:rgba(0,0,0,.4);z-index:399;display:none}
-.drawer{position:fixed;top:0;right:0;height:100vh;width:420px;background:var(--surface);box-shadow:-4px 0 24px rgba(0,0,0,.18);z-index:400;overflow:hidden;transform:translateX(100%);transition:transform .22s ease;display:flex;flex-direction:column}
+.drawer{position:fixed;top:0;right:0;height:100vh;width:560px;background:var(--surface);box-shadow:-4px 0 24px rgba(0,0,0,.18);z-index:400;overflow:hidden;transform:translateX(100%);transition:transform .22s ease;display:flex;flex-direction:column}
 .drawer.open{transform:translateX(0)}
 .drawer-hdr{display:flex;align-items:flex-start;justify-content:space-between;padding:20px 20px 0;flex-shrink:0}
 .drawer-title-wrap{flex:1}.drawer-title{font-size:16px;font-weight:700;color:var(--ink)}.drawer-sub{font-size:12px;color:var(--muted);margin-top:3px;font-style:italic}
@@ -768,7 +768,7 @@ const WD=[
   [18,'Oct 4-10',[5816.5,2152.5],[791],[{l:'Adam paycheck (10/7)',t:'in',a:5816.5},{l:'Kia payment (10/7)',t:'ob',a:-791},{l:'Wendy paycheck (10/9)',t:'in',a:2152.5}],0,0,''],
   [19,'Oct 11-17',[],[5500],[{l:'AMEX Gold ~$5,500 due ~10/16',t:'ob',a:-5500}],0,0,''],
   [20,'Oct 18-24',[5816.5,2552.5],[3500],[{l:'Adam paycheck (10/22)',t:'in',a:5816.5},{l:'Disney Visa ~$3,500 due ~10/23',t:'ob',a:-3500},{l:'Wendy paycheck + extra $400 (10/23)',t:'in',a:2552.5}],0,0,''],
-  [21,'Oct 25-31',[],[2000],[{l:'Rent $2,000 — Zelle to Tiffany Dye (11/1)',t:'ob',a:-2000}],0,0,''],
+  [21,'Oct 25-31',[],[2000],[{l:'Rent $2,000 — Zelle to Tiffany Dye (sent 10/31, due 11/1)',t:'ob',a:-2000}],0,0,''],
   [22,'Nov 1-7',[5816.5,2152.5],[2000,1300,791],[{l:'Rent $2,000 — Zelle to Tiffany Dye (11/2)',t:'ob',a:-2000},{l:'Rent $1,300 — Zelle to Tiffany Dye (11/3)',t:'ob',a:-1300},{l:'Adam paycheck (11/6)',t:'in',a:5816.5},{l:'Wendy paycheck (11/6)',t:'in',a:2152.5},{l:'Kia payment (11/7)',t:'ob',a:-791}],0,0,''],
   [23,'Nov 8-14',[],[],[],0,0,''],
   [24,'Nov 15-21',[5816.5,2552.5],[5500],[{l:'AMEX Gold ~$5,500 due ~11/17',t:'ob',a:-5500},{l:'Adam paycheck (11/20)',t:'in',a:5816.5},{l:'Wendy paycheck + extra $400 (11/20)',t:'in',a:2552.5}],0,0,''],
@@ -2144,6 +2144,15 @@ function renderWeekDetail(w,weeks){
     html+='<div class="panel card-pad"><div class="acts">'+
       '<div class="act-hdr">Recommended review this week</div>'+
       w.recActs.map(function(a){
+        if(a.startsWith('📌')){
+          var rk='recCheck_'+w.num+'_'+(a.includes('LC BOOST')?'lcboost':'lcreturn');
+          var done=localStorage.getItem(rk)==='1';
+          return'<div class="rec-row rec-row-check'+(done?' rec-row-done':'')+'" id="'+rk+'_row">'+
+            '<input type="checkbox" class="rec-cb"'+(done?' checked':'')+
+            ' onchange="(function(cb){var k=\''+rk+'\';localStorage.setItem(k,cb.checked?\'1\':\'\');var row=document.getElementById(\''+rk+'_row\');if(row){row.classList.toggle(\'rec-row-done\',cb.checked);row.querySelector(\'.rec-text\').style.textDecoration=cb.checked?\'line-through\':\'\'}})(this)">'+
+            '<span class="rec-text" style="flex:1;font-size:12px;color:var(--muted2);line-height:1.4;'+(done?'text-decoration:line-through':'')+'">'+a+'</span>'+
+          '</div>';
+        }
         return'<div class="rec-row"><span class="rec-icon">💡</span><span class="rec-text">'+a+'</span></div>';
       }).join('')+
     '</div></div>';
@@ -3136,7 +3145,7 @@ function renderEditDrawer(){
         '<button class="ev-del-btn" onclick="this.closest(\'.ev-edit-row\').remove()" title="Remove">&#10005;</button>'+
       '</div>';
     });
-    var drawerTitle=isNew?'Add Custom Week':'Edit Week '+editOpen;
+    var drawerTitle=isNew?'Add Custom Week':'Edit Cal Wk '+getCalWeek(editOpen);
     var drawerSub=isNew?'Extend model past Week 31 (Jan 9, 2027)':'Modify events for '+(wdEntry?wdEntry[1]:('Week '+editOpen));
     drawer.innerHTML=
       '<div class="drawer-hdr">'+
