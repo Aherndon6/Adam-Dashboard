@@ -55,6 +55,47 @@ body{background:var(--bg);color:var(--ink);font-family:Inter,ui-sans-serif,syste
 .panel-title .mini{font-size:11px;color:var(--muted)}
 /* Overview */
 .ov-hero{display:grid;grid-template-columns:1.2fr .9fr;gap:15px;margin-bottom:15px}
+/* Overview v2 */
+.ov2-hero{background:linear-gradient(135deg,var(--navy),#0b2d52);border-radius:var(--radius);padding:22px 24px;margin-bottom:14px;color:#fff;display:flex;align-items:flex-start;justify-content:space-between;gap:16px;flex-wrap:wrap}
+.ov2-week-lbl{font-size:11px;text-transform:uppercase;letter-spacing:.1em;color:rgba(255,255,255,.5);margin-bottom:6px}
+.ov2-chk-big{font-size:32px;font-weight:800;letter-spacing:-.02em;margin-bottom:4px}
+.ov2-cushion{font-size:13px;font-weight:600}
+.ov2-cushion.good{color:#6ee7b7}.ov2-cushion.warn{color:#fcd34d}.ov2-cushion.risk{color:#fca5a5}
+.ov2-meta-chips{display:flex;gap:8px;flex-wrap:wrap;margin-top:12px}
+.ov2-chip{display:inline-flex;align-items:center;gap:5px;font-size:11px;padding:4px 10px;border-radius:99px;background:rgba(255,255,255,.1);color:rgba(255,255,255,.8);border:1px solid rgba(255,255,255,.15)}
+.ov2-chip.live{background:rgba(16,185,129,.15);border-color:rgba(16,185,129,.35);color:#6ee7b7}
+.ov2-acts-panel{margin-bottom:14px}
+.ov2-acts-hdr{display:flex;align-items:center;gap:8px;margin-bottom:10px}
+.ov2-acts-title{font-size:13px;font-weight:700;color:var(--ink)}
+.ov2-acts-prog{font-size:11px;color:var(--muted);background:var(--surface3);border-radius:99px;padding:2px 8px}
+.ov2-act-row{display:flex;align-items:flex-start;gap:9px;padding:7px 9px;border-radius:8px;margin-bottom:5px;border:1px solid var(--line);background:var(--surface2)}
+.ov2-act-row.done{opacity:.55;background:var(--greenSoft);border-color:#a7f3d0}
+.ov2-act-cb{width:15px;height:15px;cursor:pointer;flex-shrink:0;margin-top:2px;accent-color:var(--green)}
+.ov2-act-badge{font-size:9px;font-weight:700;padding:2px 5px;border-radius:4px;flex-shrink:0;margin-top:1px;text-transform:uppercase;letter-spacing:.04em}
+.ov2-act-badge.model{background:var(--blueSoft);color:var(--blue)}.ov2-act-badge.custom{background:var(--violetSoft);color:var(--violet)}
+.ov2-act-text{font-size:12px;color:var(--ink);line-height:1.4;flex:1}
+.ov2-act-text.done-txt{text-decoration:line-through;color:var(--muted2)}
+.ov2-act-view{display:inline-block;margin-top:8px;font-size:12px;color:var(--blue);cursor:pointer;font-weight:600;background:none;border:none;padding:0;font-family:inherit}
+.ov2-act-view:hover{text-decoration:underline}
+.ov2-bal-grid{display:grid;grid-template-columns:repeat(5,1fr);gap:10px;margin-bottom:14px}
+.ov2-bal-card{background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:12px;box-shadow:var(--shadow)}
+.ov2-bal-label{font-size:10px;text-transform:uppercase;letter-spacing:.07em;color:var(--muted);margin-bottom:5px}
+.ov2-bal-val{font-size:16px;font-weight:800}
+.ov2-bal-hint{font-size:10px;color:var(--muted2);margin-top:2px}
+.ov2-kpi-row{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:14px}
+.ov2-kpi{background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:12px 14px;box-shadow:var(--shadow)}
+.ov2-kpi-lbl{font-size:10px;text-transform:uppercase;letter-spacing:.07em;color:var(--muted);margin-bottom:4px}
+.ov2-kpi-val{font-size:14px;font-weight:800}.ov2-kpi-sub{font-size:11px;color:var(--muted);margin-top:2px}
+.ov2-goals-hdr{font-size:13px;font-weight:700;color:var(--ink);margin-bottom:10px}
+.ov2-goal-row{display:grid;grid-template-columns:32px 1fr 80px 60px;gap:8px;align-items:center;padding:7px 0;border-bottom:1px solid var(--line)}
+.ov2-goal-row:last-child{border-bottom:none}
+.ov2-goal-rank{font-size:11px;font-weight:800;text-align:center;border-radius:4px;padding:2px 0}
+.ov2-goal-name{font-size:12px;font-weight:600;color:var(--ink)}.ov2-goal-note{font-size:10px;color:var(--muted);margin-top:1px}
+.ov2-goal-bar-wrap{display:flex;align-items:center;gap:5px}
+.ov2-goal-bar{flex:1;height:5px;border-radius:99px;background:var(--line)}
+.ov2-goal-fill{height:100%;border-radius:99px}
+.ov2-goal-pct{font-size:10px;color:var(--muted);width:24px;text-align:right}
+.ov2-goal-eta{font-size:10px;text-align:right;font-weight:600}
 .sys-panel{padding:20px}
 .status-badge{display:inline-flex;align-items:center;gap:7px;background:var(--greenSoft);color:var(--green);border:1px solid #a7f3d0;padding:5px 11px;border-radius:99px;font-weight:700;font-size:11px;letter-spacing:.04em}
 .sys-panel h3{font-size:20px;line-height:1.2;margin:9px 0 6px;font-weight:700}
@@ -1354,10 +1395,14 @@ function runModel(akGoal,rtGoal,flags){
     // ── Commission tax deduction (override-aware: always preserves commission_tax identity) ──
     // Priority when base tax + commission tax both fire same week: commission fires first (checked here),
     // then base tax fires below. This ordering is intentional — document, do not change without rechecking.
+    // commTaxMoved: true only when user explicitly moved commission_tax via the override UI.
+    // Default week (ACTION_DEFAULT_WEEKS.commission_tax=6) does NOT count as a user override.
+    // This ensures commission tax fires in the week commission income arrives, not just week 6.
     var commTaxWeek=aoW(ACTION_KEYS.COMMISSION_TAX);
+    var commTaxMoved=!!(actionOverrides[ACTION_KEYS.COMMISSION_TAX]&&!actionOverrides[ACTION_KEYS.COMMISSION_TAX].deleted&&actionOverrides[ACTION_KEYS.COMMISSION_TAX].week_num);
     if(ct>0){
-      if(commTaxWeek===num){
-        // Default: fire on commission income week
+      if(!commTaxMoved||commTaxWeek===num){
+        // Fire on commission income week (default behavior, or this IS the override-scheduled week)
         const m=mv(ct,'tax');
         if(m>0){
           // mv() may return a partial amount — log only what actually moved, carry remainder as commission_tax
@@ -1374,9 +1419,9 @@ function runModel(akGoal,rtGoal,flags){
           tr.push({l:'Commission 40% $'+fc(ct)+' deferred → Tax Reserve',r:'defer',rsn:'No surplus above '+fn+' — fires as commission_tax next eligible week'});
         }
       } else {
-        // Moved to different week — accumulate in commTaxPending
+        // User explicitly moved commission_tax to a different week via override UI — defer
         commTaxPending=r(commTaxPending+ct);
-        tr.push({l:'Commission 40% $'+fc(ct)+' scheduled → Tax Reserve (Cal Wk '+getCalWeek(commTaxWeek)+')',r:'defer',rsn:'Commission tax moved to Week '+getCalWeek(commTaxWeek)+' by schedule override'});
+        tr.push({l:'Commission 40% $'+fc(ct)+' scheduled → Tax Reserve (Cal Wk '+getCalWeek(commTaxWeek)+')',r:'defer',rsn:'Commission tax override: moved to Cal Wk '+getCalWeek(commTaxWeek)});
       }
     }
     // Fire commTaxPending on designated week or any ct===0 week after (carries forward if floor blocks)
@@ -1531,6 +1576,14 @@ function runModel(akGoal,rtGoal,flags){
     }
     if([7,11,16,20,24,29].indexOf(num)>=0){
       recActs.push('Review Jabian reimbursements — compare expected vs. received. If a large or unusual amount is pending or recently arrived, add it as a one-time inflow via Edit Week. No action needed if reimbursements are on schedule.');}
+    // ── Credit card statement close review prompts ─────────────────────────
+    // Fire the week BEFORE each CC bill is due so you can verify and update via Edit Week
+    var _amexGoldBillWks=[6,11,15,19,24,28];
+    var _disneyVisaBillWks=[7,11,16,20,25,29];
+    if(_amexGoldBillWks.indexOf(num+1)>=0){
+      recActs.push('💳 AMEX Gold statement closes this week — confirm actual bill amount due next week (~$5,500 estimated). Open Edit Week on next week and update if actual differs by more than $25.');}
+    if(_disneyVisaBillWks.indexOf(num+1)>=0){
+      recActs.push('💳 Disney Visa statement closes this week — confirm actual bill amount due next week (~$3,500 estimated). Open Edit Week on next week and update if actual differs by more than $25.');}
     // Snapshot goal savings for this week (deep copy)
     var gSnap={};Object.keys(goalSaved).forEach(function(k){gSnap[k]=goalSaved[k];});
     weeks.push({num,dates,trough:false,managed:false,calNote,evs,tr,ac,acKeys,recActs,realActs,realActKeys,totalTasks,doneTasks,
@@ -1735,7 +1788,7 @@ function updateReconLabel(weeks){
       '<button class="topbar-action-btn" onclick="setSection(&quot;weekly&quot;);activeW=currentW;renderApp()">Go to Wk '+getCalWeek(currentW)+' →</button>';
   } else if(activeSection==='weekly'){
     const isRecon=reconData[activeW]&&reconData[activeW].chk!==undefined;
-    right.innerHTML='<div class="sync-badge"><div class="sync-dot" id="sync-dot" style="background:'+(_supaConnected?'var(--green)':'#94a3b8')+'"></div><span id="lastReconLabel">Wk '+getCalWeek(activeW)+'</span></div>'+
+    right.innerHTML='<div class="sync-badge"><div class="sync-dot" id="sync-dot" style="background:'+(_supaConnected?'var(--green)':'#94a3b8')+'"></div><span id="lastReconLabel">'+(_supaConnected?'Live':'Offline')+'</span></div>'+
       '<button class="topbar-action-btn" onclick="openEdit('+activeW+')">Edit week</button>'+
       (activeW<=currentW?'<button class="topbar-action-btn primary" onclick="openRecon('+activeW+')">'+(isRecon?'Update actuals':'Reconcile')+'</button>':'');
   } else if(activeSection==='goals'){
@@ -1871,51 +1924,123 @@ function renderGoalRail(vm){
   '</div>';
 }
 
-// ── renderOverview ─────────────────────────────────────────────────────────
+// ── renderOverview v2 ──────────────────────────────────────────────────────
 function renderOverview(vm){
   var w=vm.weeks.find(function(x){return x.num===currentW;})||vm.weeks[0];
-  var chkCls=w.chk<0?'risk':w.chk<OP_FL?'warn':'good';
-  var nextRisk=vm.weeks.find(function(x){return x.num>=currentW&&!!x.calNote;});
+  var cushion=Math.round((w.chk-OP_FL)*100)/100;
+  var cCls=cushion<0?'risk':cushion<1000?'warn':'good';
+  var nextRisk=vm.weeks.find(function(x){return x.num>currentW&&!!x.calNote;});
   var reconKeys=Object.keys(reconData).map(Number).filter(function(n){return reconData[n]&&reconData[n].chk!==undefined;});
   var lastReconNum=reconKeys.length?Math.max.apply(null,reconKeys):0;
-  var lastReconW=lastReconNum?vm.weeks.find(function(x){return x.num===lastReconNum;}):null;
-  var cushion=Math.round((w.chk-OP_FL)*100)/100;
-  var cCls2=cushion<0?'risk':cushion<500?'warn':'good';
-  var html='<div class="ov-hero">'+
-    '<div class="panel sys-panel">'+
-      '<div class="status-badge">● System active</div>'+
-      '<h3>Wk '+getCalWeek(currentW)+' — '+w.dates+'</h3>'+
-      '<div class="sub">31-week cash-flow optimization · '+vm.reconciledWeeks.length+' weeks reconciled · '+vm.openActions.length+' open action'+(vm.openActions.length!==1?'s':'')+' · Alaska '+
-        (vm.alaskaCompletion?'completes Wk '+getCalWeek(vm.alaskaCompletion.num):'in progress')+
+  // ── Hero panel ────────────────────────────────────────────────────────────
+  var html='<div class="ov2-hero">'+
+    '<div>'+
+      '<div class="ov2-week-lbl">Wk '+getCalWeek(currentW)+' · '+w.dates+'</div>'+
+      '<div class="ov2-chk-big">'+f(w.chk)+'</div>'+
+      '<div class="ov2-cushion '+cCls+'">'+(cushion>=0?'↑ +':' ')+f(Math.abs(cushion))+' above $6,500 floor</div>'+
+      '<div class="ov2-meta-chips">'+
+        '<span class="ov2-chip live">● Model live</span>'+
+        '<span class="ov2-chip">'+vm.reconciledWeeks.length+' wk'+(vm.reconciledWeeks.length!==1?'s':'')+' reconciled</span>'+
+        '<span class="ov2-chip">'+vm.openActions.length+' open action'+(vm.openActions.length!==1?'s':'')+' this week</span>'+
+        (nextRisk?'<span class="ov2-chip">⚠️ Next thin: Wk '+getCalWeek(nextRisk.num)+'</span>':
+          '<span class="ov2-chip">✓ No thin weeks ahead</span>')+
       '</div>'+
     '</div>'+
-    '<div class="panel alert-panel"><h4>Key indicators</h4>'+
-      '<div class="risk-item">'+
-        '<div class="risk-icon '+(cushion<0?'risk':cushion<500?'warn':'blue')+'">'+(cushion>=0?'+':'')+Math.round(cushion).toLocaleString()+'</div>'+
-        '<div>'+
-          '<div class="risk-title">Checking cushion</div>'+
-          '<div class="risk-meta" style="margin-top:2px">Wk '+getCalWeek(currentW)+' · '+f(w.chk)+' balance · $6,500 floor</div>'+
-          '<div class="risk-meta" style="margin-top:1px;opacity:.85">'+(nextRisk?'Next thin: Wk '+getCalWeek(nextRisk.num)+' · '+f(nextRisk.chk)+' projected':'No thin weeks remaining ✓')+'</div>'+
-        '</div>'+
-      '</div>'+
-      (nextRisk?'<div class="risk-item">'+
-        '<div class="risk-icon '+(nextRisk.chk<1500?'risk':'warn')+'">⚠️</div>'+
-        '<div><div class="risk-title">Thin week: Wk '+getCalWeek(nextRisk.num)+' · '+nextRisk.dates+'</div>'+
-        '<div class="risk-meta">'+(nextRisk.num-currentW)+' week'+(nextRisk.num-currentW!==1?'s':'')+' away · '+f(nextRisk.chk)+' projected · '+(nextRisk.calNote||'low-liquidity week')+'</div></div>'+
-      '</div>':'')+
-      '<div class="risk-item">'+
-        '<div class="risk-icon '+(vm.alaskaCompletion&&vm.retirementCompletion?'green':'violet')+'">'+(vm.alaskaCompletion&&vm.retirementCompletion?'✓':'◎')+'</div>'+
-        '<div><div class="risk-title">'+(vm.alaskaCompletion&&vm.retirementCompletion?'Both goals funded':'Goals in progress')+'</div>'+
-        '<div class="risk-meta">'+(vm.alaskaCompletion&&vm.retirementCompletion?'Alaska ✓ · AMEX target ✓ · Surplus accumulating in CHK':vm.alaskaCompletion?'Alaska ✓ · AMEX target by Wk '+getCalWeek(vm.retirementCompletion?vm.retirementCompletion.num:10):'Alaska by Wk '+(vm.alaskaCompletion?getCalWeek(vm.alaskaCompletion.num):'TBD'))+' · '+(lastReconW?'Reconciled thru Wk '+getCalWeek(lastReconNum):'Not reconciled')+'</div></div>'+
-      '</div>'+
+    '<div style="text-align:right;flex-shrink:0">'+
+      '<div style="font-size:11px;color:rgba(255,255,255,.4);margin-bottom:4px">Tax Reserve</div>'+
+      '<div style="font-size:20px;font-weight:800;color:#fff">'+f(w.tax)+'</div>'+
+      '<div style="font-size:11px;color:rgba(255,255,255,.4);margin-top:10px;margin-bottom:4px">AMEX Savings</div>'+
+      '<div style="font-size:20px;font-weight:800;color:#fff">'+f(w.amx)+'</div>'+
     '</div>'+
   '</div>';
-  html+='<div class="health-grid">'+'<div class="health-card"><div class="health-label">Checking (Wk '+getCalWeek(currentW)+')</div><div class="health-value '+chkCls+'">'+f(w.chk)+'</div><div class="health-hint '+cCls2+'">Cushion: '+(cushion>=0?'+':'')+f(Math.abs(cushion))+' vs $6,500 floor</div></div>'+'<div class="health-card"><div class="health-label">Truist Savings</div><div class="health-value good">'+f(w.sav)+'</div><div class="health-hint good">Alaska fund + float</div></div>'+'<div class="health-card"><div class="health-label">Tax Reserve (Vio)</div><div class="health-value '+(w.tax>0?'good':'warn')+'">'+f(w.tax)+'</div><div class="health-hint">Income tax set aside</div></div>'+'<div class="health-card"><div class="health-label">AMEX Savings</div><div class="health-value '+(w.amx>=7690.98?'good':w.amx>99.75?'warn':'risk')+'">'+f(w.amx)+'</div><div class="health-hint">IRA + 529 holding</div></div>'+'</div>';
-  html+='<div class="timelineForecastPanel">'+
-    '<div class="panel timelineCard"><div class="timeline-header"><h3>31-Week Timeline</h3><span>Click to highlight · scroll to see all · use Weekly Model to drill in</span></div>'+
-    renderTimeline(vm,'weekly')+'</div>'+
-    renderGoalRail(vm)+
+  // ── Required actions ──────────────────────────────────────────────────────
+  var cwActs=w.realActs||[];var cwKeys=w.realActKeys||[];
+  var cwDone=0;for(var ti=0;ti<cwActs.length;ti++){if(taskData[w.num+'_'+ti]&&taskData[w.num+'_'+ti].completed)cwDone++;}
+  if(cwActs.length>0){
+    html+='<div class="panel card-pad ov2-acts-panel">'+
+      '<div class="ov2-acts-hdr">'+
+        '<span class="ov2-acts-title">Required actions this week</span>'+
+        '<span class="ov2-acts-prog">'+cwDone+'/'+cwActs.length+' done</span>'+
+      '</div>';
+    cwActs.forEach(function(act,i){
+      var key=cwKeys[i];
+      if(key&&aoDeleted(key))return;
+      var label=key?aoLabel(key,act):act;
+      var isModel=!key||key.startsWith('tax')||key.startsWith('comm')||key.startsWith('amx')||key.startsWith('ira');
+      var isDone=taskData[w.num+'_'+i]&&taskData[w.num+'_'+i].completed;
+      html+='<div class="ov2-act-row'+(isDone?' done':'')+'">'+
+        '<input type="checkbox" class="ov2-act-cb"'+(isDone?' checked':'')+
+        ' onchange="toggleTask('+w.num+','+i+',this.checked)" onclick="event.stopPropagation()">'+
+        '<span class="ov2-act-badge '+(isModel?'model':'custom')+'">'+(isModel?'Model':'Custom')+'</span>'+
+        '<span class="ov2-act-text'+(isDone?' done-txt':'')+'">'+label+'</span>'+
+      '</div>';
+    });
+    html+='<button class="ov2-act-view" onclick="setSection(\'weekly\');activeW=currentW;renderApp()">View full week →</button>'+
+    '</div>';
+  }else{
+    html+='<div class="panel card-pad ov2-acts-panel" style="display:flex;align-items:center;gap:10px">'+
+      '<span style="font-size:18px">✅</span>'+
+      '<div><div style="font-size:13px;font-weight:700">No required actions this week</div>'+
+      '<div style="font-size:11px;color:var(--muted);margin-top:2px">'+
+        '<button class="ov2-act-view" onclick="setSection(\'weekly\');activeW=currentW;renderApp()">View weekly model →</button>'+
+      '</div></div>'+
+    '</div>';
+  }
+  // ── Balance cards ─────────────────────────────────────────────────────────
+  html+='<div class="ov2-bal-grid">'+
+    '<div class="ov2-bal-card"><div class="ov2-bal-label">Truist Checking</div><div class="ov2-bal-val" style="color:'+(cushion<0?'var(--red)':cushion<1000?'var(--amber)':'var(--ink)')+'">'+f(w.chk)+'</div><div class="ov2-bal-hint">$6,500 floor · '+(cushion>=0?'+':'')+f(Math.abs(cushion))+' cushion</div></div>'+
+    '<div class="ov2-bal-card"><div class="ov2-bal-label">Truist Savings</div><div class="ov2-bal-val">'+f(w.sav)+'</div><div class="ov2-bal-hint">Alaska + float</div></div>'+
+    '<div class="ov2-bal-card"><div class="ov2-bal-label">AMEX Savings</div><div class="ov2-bal-val">'+f(w.amx)+'</div><div class="ov2-bal-hint">IRA + 529 holding</div></div>'+
+    '<div class="ov2-bal-card"><div class="ov2-bal-label">Vio — Tax Reserve</div><div class="ov2-bal-val" style="color:'+(w.tax>0?'var(--green)':'var(--amber)')+'">'+f(w.tax)+'</div><div class="ov2-bal-hint">Income tax set aside</div></div>'+
+    '<div class="ov2-bal-card"><div class="ov2-bal-label">Lending Club (EF)</div><div class="ov2-bal-val">'+f(w.lc)+'</div><div class="ov2-bal-hint">Emergency fund</div></div>'+
   '</div>';
+  // ── KPI row ───────────────────────────────────────────────────────────────
+  html+='<div class="ov2-kpi-row">'+
+    '<div class="ov2-kpi">'+
+      '<div class="ov2-kpi-lbl">Next risk week</div>'+
+      (nextRisk?
+        '<div class="ov2-kpi-val" style="color:var(--amber)">Wk '+getCalWeek(nextRisk.num)+'</div>'+
+        '<div class="ov2-kpi-sub">'+nextRisk.dates+' · '+f(nextRisk.chk)+' projected · '+(nextRisk.num-currentW)+' wks away</div>':
+        '<div class="ov2-kpi-val" style="color:var(--green)">None</div>'+
+        '<div class="ov2-kpi-sub">No low-liquidity weeks remaining</div>')+
+    '</div>'+
+    '<div class="ov2-kpi">'+
+      '<div class="ov2-kpi-lbl">Open actions this week</div>'+
+      '<div class="ov2-kpi-val">'+(cwActs.length-cwDone)+'</div>'+
+      '<div class="ov2-kpi-sub">'+cwDone+' of '+cwActs.length+' completed · <span style="cursor:pointer;color:var(--blue)" onclick="setSection(\'weekly\');activeW=currentW;renderApp()">view →</span></div>'+
+    '</div>'+
+    '<div class="ov2-kpi">'+
+      '<div class="ov2-kpi-lbl">Reconciliation</div>'+
+      '<div class="ov2-kpi-val">'+vm.reconciledWeeks.length+' / '+(currentW-1>0?currentW-1:0)+'</div>'+
+      '<div class="ov2-kpi-sub">'+(lastReconNum?'Last: Wk '+getCalWeek(lastReconNum):'Not started')+(reconKeys.length<currentW-1?' · <span style="cursor:pointer;color:var(--blue)" onclick="setSection(\'history\');renderApp()">history →</span>':' ✓')+
+    '</div>'+
+    '</div>'+
+  '</div>';
+  // ── Goal progress ─────────────────────────────────────────────────────────
+  html+='<div class="panel card-pad">'+
+    '<div class="ov2-goals-hdr">Goal Progress</div>';
+  PRIORITY_TIERS.forEach(function(tier){
+    var g=GOALS_REGISTRY.find(function(x){return x.id===tier.goals[0];});
+    if(!g)return;
+    var funded=getGoalFunded(g.id,vm);
+    var pct=g.complete?100:Math.min(100,funded>0?Math.round(funded/g.target*100):0);
+    var comp=vm.goalCompletion?vm.goalCompletion[g.id]:null;
+    var gLocked=!!(g.needsFlag&&!goalFlags[g.needsFlag]);
+    var etaTxt=g.complete?'Done':gLocked?'Pending CPA':(comp&&comp.num>0?'Wk '+getCalWeek(comp.num):funded>0?'2027+':'Queued');
+    var etaColor=g.complete||pct>=100?'var(--green)':gLocked?'var(--muted2)':comp&&comp.num>0?'var(--blue)':'var(--muted2)';
+    html+='<div class="ov2-goal-row">'+
+      '<div class="ov2-goal-rank" style="color:'+tier.color+';background:'+tier.color+'18">T'+tier.num+'</div>'+
+      '<div><div class="ov2-goal-name">'+(pct>=100?'✅ ':gLocked?'🔒 ':'')+g.name+'</div>'+
+        (g.notes?'<div class="ov2-goal-note">'+g.notes+'</div>':'')+
+      '</div>'+
+      '<div class="ov2-goal-bar-wrap">'+
+        '<div class="ov2-goal-bar"><div class="ov2-goal-fill" style="width:'+pct+'%;background:'+tier.color+'"></div></div>'+
+        '<span class="ov2-goal-pct">'+pct+'%</span>'+
+      '</div>'+
+      '<div class="ov2-goal-eta" style="color:'+etaColor+'">'+etaTxt+'</div>'+
+    '</div>';
+  });
+  html+='</div>';
   document.getElementById('overview-content').innerHTML=html;
 }
 
@@ -2144,8 +2269,9 @@ function renderWeekDetail(w,weeks){
     html+='<div class="panel card-pad"><div class="acts">'+
       '<div class="act-hdr">Recommended review this week</div>'+
       w.recActs.map(function(a){
-        if(a.startsWith('📌')){
-          var rk='recCheck_'+w.num+'_'+(a.includes('LC BOOST')?'lcboost':'lcreturn');
+        if(a.startsWith('📌')||a.startsWith('💳')){
+          var rkKey=a.includes('LC BOOST')?'lcboost':a.includes('LC RETURN')?'lcreturn':a.includes('AMEX Gold')?'amexgold':'disvisa';
+          var rk='recCheck_'+w.num+'_'+rkKey;
           var done=localStorage.getItem(rk)==='1';
           return'<div class="rec-row rec-row-check'+(done?' rec-row-done':'')+'" id="'+rk+'_row">'+
             '<input type="checkbox" class="rec-cb"'+(done?' checked':'')+
@@ -2573,50 +2699,35 @@ function _renderGoalsPriorities(vm){
       '<div style="display:flex;align-items:center;gap:5px"><div style="width:10px;height:10px;border-radius:2px;background:#16a34a"></div><span style="font-size:11px;color:var(--muted)">$12,000 — Target floor</span></div>'+
     '</div>'+
   '</div>';
-  // Right column: Decision Queue
-  var dqHtml='<div style="font-size:11px;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);font-weight:700;margin-bottom:10px;display:flex;align-items:center;gap:8px">'+
-    '⚖️ Decision Queue'+
-    '<span style="font-weight:400;color:var(--muted);font-size:10px;text-transform:none;letter-spacing:0">Pending capital decisions</span>'+
-  '</div>'+
-  '<div class="panel card-pad" style="padding:12px 14px">'+
-    '<div class="dq-item">'+
-      '<div class="dq-icon">📋</div>'+
-      '<div class="dq-body">'+
-        '<div class="dq-name">IRA CPA Clearance</div>'+
-        '<div class="dq-desc">CPA sign-off required before IRAs deploy to T Rowe. Cash accumulates in AMEX (IRA Holding) in the meantime. Adam IRA seeds with Alaska residual savings once cruise funds.</div>'+
-        '<div class="dq-deadline">Toggle IRA flag once CPA clears</div>'+
-      '</div>'+
+  // Decision Queue — full-width at top
+  var dqItems=[
+    {icon:'📋',name:'IRA CPA Clearance',desc:'CPA sign-off required before IRAs deploy to T Rowe. Cash accumulates in AMEX (IRA Holding) in the meantime. Adam IRA seeds with Alaska residual savings once cruise funds.',deadline:'Toggle IRA flag once CPA clears'},
+    {icon:'💳',name:'Alaska Card Bill Timing',desc:'$7k pulls from Truist Savings → Checking in Cal Wk 37 (Sep 13-19) to cover elevated Gold + Disney Visa cruise bills. Confirm actual bill amounts match estimate before transfer.',deadline:'Execute Cal Wk 37 transfer'},
+    {icon:'🗣️',name:'Wendy Priority Discussion',desc:'Confirm T4-T10 priority order (IRAs → 529s → Bryce Vehicle → Christmas Cruise) with Wendy. Especially: 529 split across three kids vs. Bailey-only focus.',deadline:'Before Cal Wk 39 (post-Alaska)'},
+    {icon:'🗺️',name:'Phase 5+ Goals Naming',desc:'Scenarios tab, retirement dashboard (Coast FI), tax separation, EF bridge, income source refactor, and annual planning tab. Confirm scope and naming before build starts.',deadline:'After Phase 4 complete'},
+  ];
+  var dqHtml='<div class="panel card-pad" style="margin-bottom:14px">'+
+    '<div style="display:flex;align-items:center;gap:8px;margin-bottom:12px">'+
+      '<span style="font-size:13px;font-weight:700;color:var(--ink)">⚖️ Decision Queue</span>'+
+      '<span style="font-size:11px;color:var(--muted);background:var(--amberSoft);border:1px solid #fde68a;padding:2px 8px;border-radius:99px">'+dqItems.length+' pending capital decisions</span>'+
     '</div>'+
-    '<div class="dq-item">'+
-      '<div class="dq-icon">💳</div>'+
-      '<div class="dq-body">'+
-        '<div class="dq-name">Alaska Card Bill Timing</div>'+
-        '<div class="dq-desc">$7k pulls from Truist Savings → Checking in Cal Wk 37 (Sep 13-19) to cover elevated Gold + Disney Visa cruise bills. Confirm actual bill amounts match estimate before transfer.</div>'+
-        '<div class="dq-deadline">Execute Cal Wk 37 transfer</div>'+
-      '</div>'+
-    '</div>'+
-    '<div class="dq-item">'+
-      '<div class="dq-icon">🗣️</div>'+
-      '<div class="dq-body">'+
-        '<div class="dq-name">Wendy Priority Discussion</div>'+
-        '<div class="dq-desc">Confirm T4-T10 priority order (IRAs → 529s → Bryce Vehicle → Christmas Cruise) with Wendy. Especially: 529 split across three kids vs. Bailey-only focus.</div>'+
-        '<div class="dq-deadline">Before Cal Wk 39 (post-Alaska)</div>'+
-      '</div>'+
-    '</div>'+
-    '<div class="dq-item">'+
-      '<div class="dq-icon">🗺️</div>'+
-      '<div class="dq-body">'+
-        '<div class="dq-name">Phase 5+ Goals Naming</div>'+
-        '<div class="dq-desc">Scenarios tab, retirement dashboard (Coast FI), tax separation, EF bridge, income source refactor, and annual planning tab. Confirm scope and naming before build starts.</div>'+
-        '<div class="dq-deadline">After Phase 4 complete</div>'+
-      '</div>'+
+    '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:10px">'+
+    dqItems.map(function(item){
+      return'<div class="dq-item" style="background:var(--surface2);border-radius:10px;padding:10px 12px;border:1px solid var(--line)">'+
+        '<div style="display:flex;gap:8px;align-items:flex-start">'+
+          '<span style="font-size:16px;flex-shrink:0">'+item.icon+'</span>'+
+          '<div>'+
+            '<div class="dq-name">'+item.name+'</div>'+
+            '<div class="dq-desc">'+item.desc+'</div>'+
+            '<div class="dq-deadline">'+item.deadline+'</div>'+
+          '</div>'+
+        '</div>'+
+      '</div>';
+    }).join('')+
     '</div>'+
   '</div>';
-  // Two-column layout: ranked list left, DQ right
-  return'<div style="display:flex;gap:16px;align-items:flex-start">'+
-    '<div style="flex:1;min-width:0">'+listHtml+'</div>'+
-    '<div style="width:300px;flex-shrink:0">'+dqHtml+'</div>'+
-  '</div>';
+  // Priority table below Decision Queue
+  return dqHtml+'<div>'+listHtml+'</div>';
 }
 
 function _renderGoalsFunding(vm,w){
@@ -3624,6 +3735,12 @@ var WISHLIST_SEED=[
   {title:'EF bridge logic',notes:'Model when and how to move emergency fund from AMEX/Vio into operational accounts during trough weeks. Decision-tree recommendation.',phase:'Phase 5',status:'planned'},
   {title:'Income source refactor',notes:'Tag each inflow with source (salary, commission, SE, reimbursement). Separate reporting by source.',phase:'Phase 5',status:'planned'},
   {title:'Annual planning tab',notes:'Full-year view with YTD actuals, projected vs. actual per category, and tax year close checklist.',phase:'Phase 5',status:'planned'},
+  {title:'Waterfall Calculator with expected date',notes:'Enter an amount and an expected receipt date. Model projects which waterfall week absorbs the cash and shows downstream impact on all goal ETAs.',phase:'Phase 5',status:'planned'},
+  {title:'CC statement close review actions',notes:'Auto-generated recommended action fires the week before each AMEX Gold and Disney Visa bill is due. Prompts to verify actual amount vs. estimate and update via Edit Week. Checkable via localStorage.',phase:'Phase 4',status:'done'},
+  {title:'Overview page redesign',notes:'Hero panel with checking + cushion status light, current week required actions, 5-account balance grid, KPI row (next risk / open actions / reconciliation), compact goal progress using PRIORITIES_TIERS. Removed stale 31-week timeline and goal rail.',phase:'Phase 4',status:'done'},
+  {title:'Priorities tab — Decision Queue at top',notes:'Decision Queue moved to full-width panel above the ranked goal table. Grid layout adapts to viewport width.',phase:'Phase 4',status:'done'},
+  {title:'LC Boost and Quarterly LC Return checkable',notes:'Recommended actions with 📌 prefix now render with checkboxes. Completion state persists in localStorage per week.',phase:'Phase 4',status:'done'},
+  {title:'Be able to move, update, delete a required action and have that update the weekly model and logic',notes:'Model-generated required actions can now be moved, relabeled, reset, or deleted where allowed, with validation, localStorage persistence, and full model recalculation.',phase:'Phase 4',status:'done'},
   // Phase 6 — planned
   {title:'Authentication',notes:'Lock dashboard behind login — required before account connections',phase:'Phase 6',status:'planned'},
   {title:'Account connections (OAuth)',notes:'Connect Truist, AMEX, and other accounts',phase:'Phase 6',status:'planned'},

@@ -1689,6 +1689,55 @@ test('isWeekReconciled: returns true when reconData has chk field',()=>{
 });
 
 // ─────────────────────────────────────────────────────────────────────────
+console.log('\n── Section 22: Commission tax fires in commission-income week (Phase 4.5) ──');
+
+// The commission tax for a commission added via Edit Week override (model week 2)
+// must fire in week 2, not get deferred to the default ACTION_DEFAULT_WEEKS.commission_tax=6.
+// Bug: before fix, commTaxWeek=6 (default) !== num (2) → else branch → deferred.
+// Fix: commTaxMoved=false (no user override) → fire immediately.
+test('Commission tax W2: fires in week 2 when ct>0 and no user override',()=>{
+  // Run model with a temporary overrideData entry for week 2 that adds a commission
+  var origOverride=JSON.parse(JSON.stringify(overrideData));
+  overrideData[2]={events_json:[{l:'Test Commission',t:'in',a:939.19,tax:true}],ct:375.68,ak:0,notes:''};
+  // Also ensure no actionOverrides for commission_tax
+  var origAO=JSON.parse(JSON.stringify(actionOverrides));
+  delete actionOverrides[ACTION_KEYS.COMMISSION_TAX];
+  var testWeeks;
+  try{ testWeeks=runModel(7000,7694.87); }
+  finally{ overrideData[2]=origOverride[2]; Object.keys(origOverride).forEach(k=>{overrideData[k]=origOverride[k];}); Object.keys(overrideData).forEach(k=>{if(!(k in origOverride))delete overrideData[k];}); Object.assign(actionOverrides,origAO); }
+  var w2=testWeeks.find(x=>x.num===2);
+  var commTaxDone=w2&&w2.tr.find(t=>t.l&&t.l.includes('Commission 40%')&&t.r==='done');
+  assert(commTaxDone,'W2 commission tax must fire as done in week 2, not be deferred');
+});
+
+test('Commission tax W2: NOT deferred to week 6 when no user override',()=>{
+  var origOverride=JSON.parse(JSON.stringify(overrideData));
+  overrideData[2]={events_json:[{l:'Test Commission',t:'in',a:939.19,tax:true}],ct:375.68,ak:0,notes:''};
+  var origAO=JSON.parse(JSON.stringify(actionOverrides));
+  delete actionOverrides[ACTION_KEYS.COMMISSION_TAX];
+  var testWeeks;
+  try{ testWeeks=runModel(7000,7694.87); }
+  finally{ overrideData[2]=origOverride[2]; Object.keys(origOverride).forEach(k=>{overrideData[k]=origOverride[k];}); Object.keys(overrideData).forEach(k=>{if(!(k in origOverride))delete overrideData[k];}); Object.assign(actionOverrides,origAO); }
+  var w2=testWeeks.find(x=>x.num===2);
+  var deferredInW2=w2&&w2.tr.find(t=>t.l&&t.l.includes('Commission 40%')&&t.r==='defer'&&t.rsn&&t.rsn.includes('Cal Wk'));
+  assert(!deferredInW2,'W2 commission tax must NOT show "scheduled to Cal Wk X" when no user override exists');
+});
+
+test('Commission tax: user explicit override still defers to chosen week',()=>{
+  // If user moved commission_tax to week 8 via override UI, it should defer
+  var origAO=JSON.parse(JSON.stringify(actionOverrides));
+  actionOverrides[ACTION_KEYS.COMMISSION_TAX]={week_num:8,label:'Commission tax (moved)'};
+  var origOverride=JSON.parse(JSON.stringify(overrideData));
+  overrideData[2]={events_json:[{l:'Test Commission',t:'in',a:939.19,tax:true}],ct:375.68,ak:0,notes:''};
+  var testWeeks;
+  try{ testWeeks=runModel(7000,7694.87); }
+  finally{ Object.assign(actionOverrides,origAO); Object.keys(actionOverrides).forEach(k=>{if(!(k in origAO))delete actionOverrides[k];}); overrideData[2]=origOverride[2]; Object.keys(origOverride).forEach(k=>{overrideData[k]=origOverride[k];}); Object.keys(overrideData).forEach(k=>{if(!(k in origOverride))delete overrideData[k];}); }
+  var w2=testWeeks.find(x=>x.num===2);
+  var deferred=w2&&w2.tr.find(t=>t.l&&t.l.includes('Commission 40%')&&t.r==='defer');
+  assert(deferred,'W2 commission tax should defer when user explicitly overrode to week 8');
+});
+
+// ─────────────────────────────────────────────────────────────────────────
 // RESULTS
 // ─────────────────────────────────────────────────────────────────────────
 console.log('\n╔══════════════════════════════════════════════════════════════╗');
