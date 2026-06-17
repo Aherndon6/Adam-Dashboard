@@ -841,10 +841,11 @@ test('Ph4 Wishlist: all WISHLIST_SEED items have title, phase, status',()=>{
 });
 
 // ── Model accuracy ──
-// Phase 4 model produces exactly 3 floor violations: W6, W8, W13
-// (rent-heavy / bill-heavy weeks with thin income). Look-ahead floor protects transfers.
-test('Ph4 model: floor violations are exactly W6, W8, W13',()=>{
-  const expectedViolationWeeks=[6,8,13];
+// Phase 4.5 fix: W8 (Cal Wk 30) rent was misplaced — 8/2 rent moved to W9.
+// Model now produces exactly 2 structural floor violations: W6, W13
+// (commission+bill week and triple-rent week). Look-ahead floor protects transfers.
+test('Ph4 model: floor violations are exactly W6 and W13 (W8 resolved by rent fix)',()=>{
+  const expectedViolationWeeks=[6,13];
   const actualViolationWeeks=WEEKS.filter(w=>w.chk<6500).map(w=>w.num);
   assert(JSON.stringify(actualViolationWeeks)===JSON.stringify(expectedViolationWeeks),
     'Unexpected floor violations: '+JSON.stringify(actualViolationWeeks));
@@ -902,12 +903,12 @@ test('CPA pending: wewe_dcl funds normally',()=>{
   assertApprox(w31.goalSaved.wewe_dcl||0,500,'wewe_dcl with CPA pending',1);
 });
 
-// ── Floor violation guard — must stay at structural baseline W6/W8/W13 ──
-test('CPA pending: floor violations are W6 W8 W13 only — no new violations from AMEX sweeps',()=>{
+// ── Floor violation guard — must stay at structural baseline W6/W13 ──
+test('CPA pending: floor violations are W6 W13 only — no new violations from AMEX sweeps',()=>{
   var violations=WEEKS_LOCKED.filter(function(w){return w.chk<OP_FL;});
   var nums=violations.map(function(w){return w.num;}).sort(function(a,b){return a-b;});
-  assert(violations.length<=3,'Expected ≤3 floor violations, got '+violations.length+' at weeks '+nums.join(','));
-  [6,8,13].forEach(function(n){assert(nums.indexOf(n)>=0,'W'+n+' should be a structural floor violation');});
+  assert(violations.length<=2,'Expected ≤2 floor violations, got '+violations.length+' at weeks '+nums.join(','));
+  [6,13].forEach(function(n){assert(nums.indexOf(n)>=0,'W'+n+' should be a structural floor violation');});
 });
 test('CPA pending: no return to 12-violation failure mode (<4 floor violations)',()=>{
   var violations=WEEKS_LOCKED.filter(function(w){return w.chk<OP_FL;});
@@ -1111,8 +1112,8 @@ console.log('\n── Section 20b: AMEX lookahead unit tests ──');
   test('AMEX deferral: floor violations remain at structural baseline after lookahead changes',()=>{
     var wLocked=runModelWithFlags({ira_cpa_cleared:false});
     var viols=wLocked.filter(function(w){return w.chk<OP_FL;}).map(function(w){return w.num;});
-    assert(viols.length<=3&&viols.indexOf(6)>=0&&viols.indexOf(8)>=0&&viols.indexOf(13)>=0,
-      'Floor violations changed from W6/W8/W13 baseline: '+viols.join(','));
+    assert(viols.length<=2&&viols.indexOf(6)>=0&&viols.indexOf(13)>=0,
+      'Floor violations changed from W6/W13 baseline: '+viols.join(','));
   });
 })();
 
@@ -1216,8 +1217,8 @@ test('Mutation C: raising OP_FL to $8,000 changes floor violation set',()=>{
   try{
     var vm=runModel(7000,7694.87);
     var viols=vm.filter(function(w){return w.chk<8000;}).map(function(w){return w.num;});
-    // At $8k floor there are more violations than the baseline [6,8,13]
-    if(JSON.stringify(viols)!==JSON.stringify([6,8,13]))caught=true;
+    // At $8k floor there are more violations than the baseline [6,13]
+    if(JSON.stringify(viols)!==JSON.stringify([6,13]))caught=true;
   }finally{OP_FL=orig;}
   assert(caught,'Mutation C not visible — OP_FL floor guard is broken');
 });
@@ -1735,6 +1736,83 @@ test('Commission tax: user explicit override still defers to chosen week',()=>{
   var w2=testWeeks.find(x=>x.num===2);
   var deferred=w2&&w2.tr.find(t=>t.l&&t.l.includes('Commission 40%')&&t.r==='defer');
   assert(deferred,'W2 commission tax should defer when user explicitly overrode to week 8');
+});
+
+// ─────────────────────────────────────────────────────────────────────────
+console.log('\n── Section 23: Rent placement + CC close date fixes (Phase 4.5) ──');
+
+// Rent audit: no rent entry should have a date outside its week's range
+test('Rent audit: W8 has no 8/2 rent (moved to W9)',()=>{
+  const w8=WD.find(([n])=>n===8);
+  const evs=w8&&w8[4]||[];
+  assert(!evs.some(e=>e.l&&e.l.includes('8/2')&&e.a===-2000),'W8 still has 8/2 rent entry');
+});
+test('Rent audit: W9 has 8/2 rent entry',()=>{
+  const w9=WD.find(([n])=>n===9);
+  const evs=w9&&w9[4]||[];
+  assert(evs.some(e=>e.l&&e.l.includes('8/2')&&e.a===-2000),'W9 missing 8/2 rent entry');
+});
+test('Rent audit: W9 has all three August rent entries (8/2, 8/3)',()=>{
+  const w9=WD.find(([n])=>n===9);
+  const evs=w9&&w9[4]||[];
+  assert(evs.some(e=>e.l&&e.l.includes('8/2')&&e.a===-2000),'W9 missing 8/2 rent');
+  assert(evs.some(e=>e.l&&e.l.includes('8/3')&&e.a===-1300),'W9 missing 8/3 rent');
+});
+test('Rent audit: W30 has no 1/3 rent (moved to W31)',()=>{
+  const w30=WD.find(([n])=>n===30);
+  const evs=w30&&w30[4]||[];
+  assert(!evs.some(e=>e.l&&e.l.includes('1/3')&&e.a===-1300),'W30 still has 1/3 rent entry');
+});
+test('Rent audit: W31 has 1/3 rent entry',()=>{
+  const w31=WD.find(([n])=>n===31);
+  const evs=w31&&w31[4]||[];
+  assert(evs.some(e=>e.l&&e.l.includes('1/3')&&e.a===-1300),'W31 missing 1/3 rent entry');
+});
+
+// CC close date actions: should fire on close week, not week before bill
+test('CC close actions: AMEX Gold fires on close week 3 (Jun 21-27)',()=>{
+  const w3=WEEKS.find(x=>x.num===3);
+  assert(w3&&w3.recActs.some(a=>a.includes('AMEX Gold')&&a.includes('23rd')),'W3 missing AMEX Gold close action');
+});
+test('CC close actions: AMEX Gold does NOT fire week before bill (old behavior)',()=>{
+  // Old logic fired on weeks 5,10,14... — verify week 5 has no Gold action
+  const w5=WEEKS.find(x=>x.num===5);
+  assert(w5&&!w5.recActs.some(a=>a.includes('AMEX Gold')),'W5 should NOT have AMEX Gold close action');
+});
+test('CC close actions: Disney Visa fires on close week 8 (Jul 26-Aug 1)',()=>{
+  const w8=WEEKS.find(x=>x.num===8);
+  assert(w8&&w8.recActs.some(a=>a.includes('Disney Visa')&&a.includes('26th')),'W8 missing Disney Visa close action');
+});
+test('CC close actions: AMEX Platinum fires on close week 4 (Jun 28-Jul 4)',()=>{
+  const w4=WEEKS.find(x=>x.num===4);
+  assert(w4&&w4.recActs.some(a=>a.includes('AMEX Platinum')&&a.includes('2nd')),'W4 missing AMEX Platinum close action');
+});
+test('CC close actions: AMEX Gold references correct bill Cal Wk in message',()=>{
+  const w3=WEEKS.find(x=>x.num===3);
+  const act=w3&&w3.recActs.find(a=>a.includes('AMEX Gold'));
+  // Close week 3 → bill week 6 → Cal Wk 28
+  assert(act&&act.includes('Cal Wk 28'),'AMEX Gold close action should reference Cal Wk 28 bill week');
+});
+
+// LOW-LIQ badge: should fire on chk < OP_FL, not just calNote
+test('LOW-LIQ: W6 (floor violation, no calNote) has chk < OP_FL',()=>{
+  const w6=WEEKS.find(x=>x.num===6);
+  assert(w6&&w6.chk<OP_FL,'W6 should be below floor');
+  assert(w6&&!w6.calNote,'W6 should have no calNote (badge driven by chk, not note)');
+});
+test('LOW-LIQ: W13 (floor violation, has calNote) has chk < OP_FL',()=>{
+  const w13=WEEKS.find(x=>x.num===13);
+  assert(w13&&w13.chk<OP_FL,'W13 should be below floor');
+  assert(w13&&w13.calNote,'W13 should have a calNote');
+});
+test('LOW-LIQ: W15 Alaska draw note does NOT cause floor violation',()=>{
+  const w15=WEEKS.find(x=>x.num===15);
+  assert(w15&&w15.calNote,'W15 should have calNote (Alaska draw info)');
+  assert(w15&&w15.chk>=OP_FL,'W15 should be above floor — calNote is informational, not low-liq');
+});
+test('LOW-LIQ: W8 is now above floor after rent fix',()=>{
+  const w8=WEEKS.find(x=>x.num===8);
+  assert(w8&&w8.chk>=OP_FL,'W8 should be above floor after moving 8/2 rent to W9');
 });
 
 // ─────────────────────────────────────────────────────────────────────────
