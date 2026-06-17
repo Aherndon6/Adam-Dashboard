@@ -720,6 +720,28 @@ button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-vis
   .goal-tbl-rem,.goal-tbl-prog{display:none}
   .goals-two-col{grid-template-columns:1fr}
 }
+/* Overview 2.0 — Command Center */
+.cmd-chip{display:inline-flex;align-items:center;gap:4px;font-size:11px;padding:3px 9px;border-radius:99px;background:rgba(255,255,255,.08);color:rgba(255,255,255,.65);border:1px solid rgba(255,255,255,.12)}
+.cmd-chip strong{color:#fff;font-weight:700}
+.cmd-chip.chip-green{background:rgba(16,185,129,.15);border-color:rgba(16,185,129,.3);color:#6ee7b7}.cmd-chip.chip-green strong{color:#6ee7b7}
+.cmd-chip.chip-amber{background:rgba(245,158,11,.15);border-color:rgba(245,158,11,.3);color:#fcd34d}.cmd-chip.chip-amber strong{color:#fcd34d}
+.cmd-chip.chip-red{background:rgba(239,68,68,.15);border-color:rgba(239,68,68,.3);color:#fca5a5}.cmd-chip.chip-red strong{color:#fca5a5}
+.ov3-sect-title{font-size:13px;font-weight:700;margin-bottom:3px}
+.ov3-sect-sub{font-size:11px;color:var(--muted);margin-bottom:14px}
+.ov3-formula{background:var(--surface3);border-radius:9px;padding:10px 14px;display:flex;align-items:center;justify-content:space-between;margin-top:12px;gap:12px;flex-wrap:wrap}
+.ov3-formula-lhs{font-size:12px;color:var(--muted)}
+.ov3-formula-lhs strong{color:var(--ink)}
+.ov3-formula-rec{font-size:12px;font-weight:600;color:var(--blue)}
+.ov3-acct-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-bottom:0}
+.ov3-acct{background:var(--surface2);border:1px solid var(--line);border-radius:10px;padding:10px 11px}
+.ov3-acct-lbl{font-size:9px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);margin-bottom:4px}
+.ov3-acct-val{font-size:15px;font-weight:800}
+.ov3-acct-hint{font-size:9px;color:var(--muted2);margin-top:3px;line-height:1.3}
+.ov3-collision-row{display:grid;grid-template-columns:80px 1fr 130px;gap:12px;align-items:start;padding:12px;border:1px solid #fde68a;background:var(--amberSoft);border-radius:11px;margin-bottom:8px}
+.ov3-collision-row:last-child{margin-bottom:0}
+.ov3-alloc-hdr{display:grid;grid-template-columns:36px 1fr 90px 72px 72px;gap:8px;align-items:center;padding:0 6px 8px;border-bottom:1px solid var(--line);margin-bottom:4px}
+.ov3-alloc-row{display:grid;grid-template-columns:36px 1fr 90px 72px 72px;gap:8px;align-items:center;padding:8px 6px;border-bottom:1px solid var(--line)}
+.ov3-alloc-row:last-child{border-bottom:none}
 </style>
 </head>
 <body>
@@ -1935,123 +1957,290 @@ function renderGoalRail(vm){
   '</div>';
 }
 
-// ── renderOverview v2 ──────────────────────────────────────────────────────
+// ── renderOverview 3.0 — Financial Command Center ──────────────────────────
 function renderOverview(vm){
   var w=vm.weeks.find(function(x){return x.num===currentW;})||vm.weeks[0];
-  var cushion=Math.round((w.chk-OP_FL)*100)/100;
-  var cCls=cushion<0?'risk':cushion<1000?'warn':'good';
+  var cushion=r(w.chk-OP_FL);
+
+  // Risk weeks
+  var nearTermRisk=vm.weeks.find(function(x){return x.num>currentW&&x.num<=currentW+4&&x.chk<OP_FL;});
   var nextRisk=vm.weeks.find(function(x){return x.num>currentW&&x.chk<OP_FL;});
+  var allRiskWeeks=vm.weeks.filter(function(x){return x.num>currentW&&x.chk<OP_FL;});
+
+  // Current week actions
+  var cwActs=w.realActs||[];var cwKeys=w.realActKeys||[];
+  var cwDone=0;for(var _ti=0;_ti<cwActs.length;_ti++){if(taskData[w.num+'_'+_ti]&&taskData[w.num+'_'+_ti].completed)cwDone++;}
+  var openActsCount=cwActs.length-cwDone;
+
+  // Status
+  var status=cushion<0?'RED':(nearTermRisk||openActsCount>0||cushion<1000)?'YELLOW':'GREEN';
+
+  // Interpretation sentence
+  var interp;
+  if(status==='RED'){
+    interp='Checking is '+f(Math.abs(cushion))+' below the operating floor — immediate action required.';
+  }else if(nearTermRisk){
+    var gapAmt=r(OP_FL-nearTermRisk.chk);
+    interp='Wk '+getCalWeek(nearTermRisk.num)+' ('+nearTermRisk.dates+') projects '+f(nearTermRisk.chk)+' — '+f(gapAmt)+' below floor. Review collision map.';
+  }else if(openActsCount>0){
+    interp=openActsCount+' open action'+(openActsCount!==1?'s':'')+' pending this week — check the weekly model before close.';
+  }else if(cushion<1000){
+    interp='Cushion is thin at '+f(cushion)+' — hold discretionary spending until next income week.';
+  }else if(nextRisk){
+    interp='Operating normally. Next projected thin week: Wk '+getCalWeek(nextRisk.num)+' ('+nextRisk.dates.split('-')[0].trim()+').';
+  }else{
+    interp='System healthy — '+f(cushion)+' above floor with no risk weeks remaining in the 31-week model.';
+  }
+
+  // Reconciliation state
   var reconKeys=Object.keys(reconData).map(Number).filter(function(n){return reconData[n]&&reconData[n].chk!==undefined;});
   var lastReconNum=reconKeys.length?Math.max.apply(null,reconKeys):0;
-  // ── Hero panel ────────────────────────────────────────────────────────────
-  var html='<div class="ov2-hero">'+
-    '<div>'+
-      '<div class="ov2-week-lbl">Wk '+getCalWeek(currentW)+' · '+w.dates+'</div>'+
-      '<div class="ov2-chk-big">'+f(w.chk)+'</div>'+
-      '<div class="ov2-cushion '+cCls+'">'+(cushion>=0?'↑ +':' ')+f(Math.abs(cushion))+' above $6,500 floor</div>'+
-      '<div class="ov2-meta-chips">'+
-        '<span class="ov2-chip live">● Model live</span>'+
-        '<span class="ov2-chip">'+vm.reconciledWeeks.length+' wk'+(vm.reconciledWeeks.length!==1?'s':'')+' reconciled</span>'+
-        '<span class="ov2-chip">'+vm.openActions.length+' open action'+(vm.openActions.length!==1?'s':'')+' this week</span>'+
-        (nextRisk?'<span class="ov2-chip">⚠️ Next thin: Wk '+getCalWeek(nextRisk.num)+'</span>':
-          '<span class="ov2-chip">✓ No thin weeks ahead</span>')+
-      '</div>'+
-    '</div>'+
-    '<div style="text-align:right;flex-shrink:0">'+
-      '<div style="font-size:11px;color:rgba(255,255,255,.4);margin-bottom:4px">Tax Reserve</div>'+
-      '<div style="font-size:20px;font-weight:800;color:#fff">'+f(w.tax)+'</div>'+
-      '<div style="font-size:11px;color:rgba(255,255,255,.4);margin-top:10px;margin-bottom:4px">AMEX Savings</div>'+
-      '<div style="font-size:20px;font-weight:800;color:#fff">'+f(w.amx)+'</div>'+
-    '</div>'+
-  '</div>';
-  // ── Required actions ──────────────────────────────────────────────────────
-  var cwActs=w.realActs||[];var cwKeys=w.realActKeys||[];
-  var cwDone=0;for(var ti=0;ti<cwActs.length;ti++){if(taskData[w.num+'_'+ti]&&taskData[w.num+'_'+ti].completed)cwDone++;}
-  if(cwActs.length>0){
-    html+='<div class="panel card-pad ov2-acts-panel">'+
-      '<div class="ov2-acts-hdr">'+
-        '<span class="ov2-acts-title">Required actions this week</span>'+
-        '<span class="ov2-acts-prog">'+cwDone+'/'+cwActs.length+' done</span>'+
-      '</div>';
-    cwActs.forEach(function(act,i){
-      var key=cwKeys[i];
-      if(key&&aoDeleted(key))return;
-      var label=key?aoLabel(key,act):act;
-      var isModel=!key||key.startsWith('tax')||key.startsWith('comm')||key.startsWith('amx')||key.startsWith('ira');
-      var isDone=taskData[w.num+'_'+i]&&taskData[w.num+'_'+i].completed;
-      html+='<div class="ov2-act-row'+(isDone?' done':'')+'">'+
-        '<input type="checkbox" class="ov2-act-cb"'+(isDone?' checked':'')+
-        ' onchange="toggleTask('+w.num+','+i+',this.checked)" onclick="event.stopPropagation()">'+
-        '<span class="ov2-act-badge '+(isModel?'model':'custom')+'">'+(isModel?'Model':'Custom')+'</span>'+
-        '<span class="ov2-act-text'+(isDone?' done-txt':'')+'">'+label+'</span>'+
-      '</div>';
-    });
-    html+='<button class="ov2-act-view" onclick="setSection(\'weekly\');activeW=currentW;renderApp()">View full week →</button>'+
-    '</div>';
+  var pastWeeksCount=Math.max(0,currentW-1);
+
+  // Next Dollar Recommendation
+  var nextDollarRec;
+  if(nearTermRisk){
+    nextDollarRec='Retain — collision window in Wk '+getCalWeek(nearTermRisk.num)+' ('+nearTermRisk.dates.split('-')[0].trim()+')';
   }else{
-    html+='<div class="panel card-pad ov2-acts-panel" style="display:flex;align-items:center;gap:10px">'+
-      '<span style="font-size:18px">✅</span>'+
-      '<div><div style="font-size:13px;font-weight:700">No required actions this week</div>'+
-      '<div style="font-size:11px;color:var(--muted);margin-top:2px">'+
-        '<button class="ov2-act-view" onclick="setSection(\'weekly\');activeW=currentW;renderApp()">View weekly model →</button>'+
-      '</div></div>'+
-    '</div>';
+    var _ndGoal=null;
+    for(var _ndi=0;_ndi<PRIORITY_TIERS.length;_ndi++){
+      var _ndTier=PRIORITY_TIERS[_ndi];
+      var _ndG=GOALS_REGISTRY.find(function(x){return x.id===_ndTier.goals[0];});
+      if(!_ndG||_ndG.complete)continue;
+      var _ndFunded=getGoalFunded(_ndG.id,vm);
+      if(_ndFunded<_ndG.target-0.01){_ndGoal=_ndG;break;}
+    }
+    if(_ndGoal){
+      var _ndRem=r(Math.max(0,_ndGoal.target-getGoalFunded(_ndGoal.id,vm)));
+      var _ndLocked=!!((_ndGoal.needsFlag)&&!goalFlags[_ndGoal.needsFlag]);
+      nextDollarRec=_ndLocked?'Fund next queue item: '+_ndGoal.name+' — pending CPA clearance':'Fund next queue item: '+_ndGoal.name+' ('+f(_ndRem)+' remaining)';
+    }else{
+      nextDollarRec='All priority goals funded — hold pending next strategic decision';
+    }
   }
-  // ── Balance cards ─────────────────────────────────────────────────────────
-  html+='<div class="ov2-bal-grid">'+
-    '<div class="ov2-bal-card"><div class="ov2-bal-label">Truist Checking</div><div class="ov2-bal-val" style="color:'+(cushion<0?'var(--red)':cushion<1000?'var(--amber)':'var(--ink)')+'">'+f(w.chk)+'</div><div class="ov2-bal-hint">$6,500 floor · '+(cushion>=0?'+':'')+f(Math.abs(cushion))+' cushion</div></div>'+
-    '<div class="ov2-bal-card"><div class="ov2-bal-label">Truist Savings</div><div class="ov2-bal-val">'+f(w.sav)+'</div><div class="ov2-bal-hint">Alaska + float</div></div>'+
-    '<div class="ov2-bal-card"><div class="ov2-bal-label">AMEX Savings</div><div class="ov2-bal-val">'+f(w.amx)+'</div><div class="ov2-bal-hint">IRA + 529 holding</div></div>'+
-    '<div class="ov2-bal-card"><div class="ov2-bal-label">Vio — Tax Reserve</div><div class="ov2-bal-val" style="color:'+(w.tax>0?'var(--green)':'var(--amber)')+'">'+f(w.tax)+'</div><div class="ov2-bal-hint">Income tax set aside</div></div>'+
-    '<div class="ov2-bal-card"><div class="ov2-bal-label">Lending Club (EF)</div><div class="ov2-bal-val">'+f(w.lc)+'</div><div class="ov2-bal-hint">Emergency fund</div></div>'+
-  '</div>';
-  // ── KPI row ───────────────────────────────────────────────────────────────
-  html+='<div class="ov2-kpi-row">'+
-    '<div class="ov2-kpi">'+
-      '<div class="ov2-kpi-lbl">Next risk week</div>'+
-      (nextRisk?
-        '<div class="ov2-kpi-val" style="color:var(--amber)">Wk '+getCalWeek(nextRisk.num)+'</div>'+
-        '<div class="ov2-kpi-sub">'+nextRisk.dates+' · '+f(nextRisk.chk)+' projected · '+(nextRisk.num-currentW)+' wks away</div>':
-        '<div class="ov2-kpi-val" style="color:var(--green)">None</div>'+
-        '<div class="ov2-kpi-sub">No low-liquidity weeks remaining</div>')+
-    '</div>'+
-    '<div class="ov2-kpi">'+
-      '<div class="ov2-kpi-lbl">Open actions this week</div>'+
-      '<div class="ov2-kpi-val">'+(cwActs.length-cwDone)+'</div>'+
-      '<div class="ov2-kpi-sub">'+cwDone+' of '+cwActs.length+' completed · <span style="cursor:pointer;color:var(--blue)" onclick="setSection(\'weekly\');activeW=currentW;renderApp()">view →</span></div>'+
-    '</div>'+
-    '<div class="ov2-kpi">'+
-      '<div class="ov2-kpi-lbl">Reconciliation</div>'+
-      '<div class="ov2-kpi-val">'+vm.reconciledWeeks.length+' / '+(currentW-1>0?currentW-1:0)+'</div>'+
-      '<div class="ov2-kpi-sub">'+(lastReconNum?'Last: Wk '+getCalWeek(lastReconNum):'Not started')+(reconKeys.length<currentW-1?' · <span style="cursor:pointer;color:var(--blue)" onclick="setSection(\'history\');renderApp()">history →</span>':' ✓')+
-    '</div>'+
-    '</div>'+
-  '</div>';
-  // ── Goal progress ─────────────────────────────────────────────────────────
-  html+='<div class="panel card-pad">'+
-    '<div class="ov2-goals-hdr">Goal Progress</div>';
+
+  // Confidence Score (0–100)
+  var reconScore=Math.min(40,pastWeeksCount===0?40:Math.round((vm.reconciledWeeks.length/pastWeeksCount)*40));
+  var pastActs=vm.allActions.filter(function(a){return a.weekNum<currentW;});
+  var actScore=Math.min(30,pastActs.length===0?30:Math.round((pastActs.filter(function(a){return a.completed;}).length/pastActs.length)*30));
+  // Freshness: days since last recon (model start = Jun 7 2026 = week 1)
+  var _recentReconDate=lastReconNum>0?new Date(2026,5,7+(lastReconNum-1)*7):null;
+  var daysSinceRecon=_recentReconDate?Math.max(0,Math.round((new Date()-_recentReconDate)/864e5)):99;
+  var freshScore=Math.max(0,30-Math.round(Math.min(daysSinceRecon,7)*30/7));
+  var confScore=reconScore+actScore+freshScore;
+  var confColor=confScore>=80?'var(--green)':confScore>=60?'var(--amber)':'var(--red)';
+  var confDrag=[];
+  if(reconScore<30&&pastWeeksCount>0)confDrag.push((pastWeeksCount-vm.reconciledWeeks.length)+' past week'+(pastWeeksCount-vm.reconciledWeeks.length!==1?'s':'')+' unreconciled');
+  if(actScore<20&&pastActs.length>0)confDrag.push('open past actions');
+  if(freshScore<15&&lastReconNum>0)confDrag.push('last recon '+daysSinceRecon+' day'+(daysSinceRecon!==1?'s':'')+' ago');
+  var confExpl=confDrag.length?'Dragging: '+confDrag.join(' · '):'All systems current';
+
+  // True Deployable Surplus
+  var deployable=cushion;
+
+  // ── STATUS COLORS ──────────────────────────────────────────────────────────
+  var scBg=status==='RED'?'#1e0000':status==='YELLOW'?'#1c1400':'#022c22';
+  var scAccent=status==='RED'?'#ef4444':status==='YELLOW'?'#f59e0b':'#10b981';
+  var scText=status==='RED'?'#fca5a5':status==='YELLOW'?'#fcd34d':'#6ee7b7';
+
+  var html='';
+
+  // ══════════════════════════════════════════════════════════════════════════
+  // S1 — WEEKLY COMMAND VERDICT
+  // ══════════════════════════════════════════════════════════════════════════
+  html+='<div style="background:linear-gradient(135deg,'+scBg+',#0f2742);border-radius:var(--radius);padding:24px;margin-bottom:14px;border:1px solid '+scAccent+'44">';
+
+  // Row 1: badge + interpretation + chips
+  html+='<div style="display:flex;align-items:flex-start;gap:16px;margin-bottom:16px">';
+  html+='<div style="display:flex;flex-direction:column;align-items:center;gap:5px;flex-shrink:0;padding-top:2px">';
+  html+='<div style="background:'+scAccent+';color:#fff;font-size:11px;font-weight:800;letter-spacing:.12em;padding:5px 16px;border-radius:99px">'+status+'</div>';
+  html+='<div style="font-size:10px;color:'+scText+';opacity:.65;white-space:nowrap">Wk '+getCalWeek(currentW)+'</div>';
+  html+='</div>';
+  html+='<div style="flex:1;min-width:0">';
+  html+='<div style="font-size:15px;font-weight:700;color:#fff;line-height:1.4;margin-bottom:11px">'+interp+'</div>';
+  html+='<div style="display:flex;flex-wrap:wrap;gap:6px">';
+  html+='<span class="cmd-chip">Cash <strong>'+f(w.chk)+'</strong></span>';
+  html+='<span class="cmd-chip">Floor <strong>'+f(OP_FL)+'</strong></span>';
+  html+='<span class="cmd-chip '+(cushion<0?'chip-red':cushion<1000?'chip-amber':'chip-green')+'">Cushion <strong>'+(cushion>=0?'+':'')+f(Math.abs(cushion))+'</strong></span>';
+  html+='<span class="cmd-chip">Reconciled through <strong>'+(lastReconNum?'Wk '+getCalWeek(lastReconNum):'—')+'</strong></span>';
+  html+='<span class="cmd-chip '+(nextRisk?'chip-amber':'chip-green')+'">Next risk <strong>'+(nextRisk?'Wk '+getCalWeek(nextRisk.num):'None')+'</strong></span>';
+  html+='<span class="cmd-chip '+(openActsCount>0?'chip-amber':'chip-green')+'">Actions <strong>'+(openActsCount>0?openActsCount+' open':'All done')+'</strong></span>';
+  html+='</div>';
+  html+='</div>';
+  html+='</div>'; // end row 1
+
+  // Row 2: Next Dollar + Confidence (side by side)
+  html+='<div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">';
+
+  // Next Dollar
+  html+='<div style="background:rgba(255,255,255,.07);border:1px solid rgba(255,255,255,.12);border-radius:11px;padding:12px 14px">';
+  html+='<div style="font-size:10px;text-transform:uppercase;letter-spacing:.08em;color:rgba(255,255,255,.38);margin-bottom:6px;font-weight:700">Next Dollar</div>';
+  html+='<div style="font-size:13px;font-weight:600;color:'+scText+';line-height:1.4">'+nextDollarRec+'</div>';
+  html+='</div>';
+
+  // Confidence Score
+  html+='<div style="background:rgba(255,255,255,.07);border:1px solid rgba(255,255,255,.12);border-radius:11px;padding:12px 14px">';
+  html+='<div style="font-size:10px;text-transform:uppercase;letter-spacing:.08em;color:rgba(255,255,255,.38);margin-bottom:6px;font-weight:700">Model Confidence</div>';
+  html+='<div style="display:flex;align-items:center;gap:10px;margin-bottom:5px">';
+  html+='<div style="font-size:22px;font-weight:800;color:'+confColor+'">'+confScore+'<span style="font-size:11px;font-weight:400;color:rgba(255,255,255,.35)">/100</span></div>';
+  html+='<div style="flex:1;height:5px;background:rgba(255,255,255,.1);border-radius:99px"><div style="height:100%;width:'+confScore+'%;background:'+confColor+';border-radius:99px;transition:width .5s ease"></div></div>';
+  html+='</div>';
+  html+='<div style="font-size:11px;color:rgba(255,255,255,.45)">'+confExpl+'</div>';
+  html+='</div>';
+
+  html+='</div>'; // end row 2
+  html+='</div>'; // end S1
+
+  // ══════════════════════════════════════════════════════════════════════════
+  // S2 — TRUE DEPLOYABLE SURPLUS
+  // ══════════════════════════════════════════════════════════════════════════
+  html+='<div class="panel card-pad" style="margin-bottom:14px">';
+  html+='<div style="display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:14px;gap:12px">';
+  html+='<div>';
+  html+='<div class="ov3-sect-title">True Deployable Surplus</div>';
+  html+='<div class="ov3-sect-sub">Visible cash minus locked obligations — the only number that matters for the next decision</div>';
+  html+='</div>';
+  html+='<div style="text-align:right;flex-shrink:0">';
+  html+='<div style="font-size:26px;font-weight:800;color:'+(deployable<0?'var(--red)':deployable<1000?'var(--amber)':'var(--green)')+'">'+f(deployable)+'</div>';
+  html+='<div style="font-size:10px;color:var(--muted);margin-top:2px">above $6,500 floor</div>';
+  html+='</div>';
+  html+='</div>';
+
+  // 4 locked/earmarked accounts
+  html+='<div class="ov3-acct-grid">';
+  html+='<div class="ov3-acct"><div class="ov3-acct-lbl">Truist Savings</div><div class="ov3-acct-val">'+f(w.sav)+'</div><div class="ov3-acct-hint">🔒 Alaska goal funding</div></div>';
+  html+='<div class="ov3-acct"><div class="ov3-acct-lbl">AMEX Savings</div><div class="ov3-acct-val">'+f(w.amx)+'</div><div class="ov3-acct-hint">🔒 IRA + 529 staging</div></div>';
+  html+='<div class="ov3-acct"><div class="ov3-acct-lbl">Vio — Tax Reserve</div><div class="ov3-acct-val" style="color:'+(w.tax>0?'var(--green)':'var(--amber)')+'">'+f(w.tax)+'</div><div class="ov3-acct-hint">🔒 Income tax — do not touch</div></div>';
+  html+='<div class="ov3-acct"><div class="ov3-acct-lbl">Lending Club (EF)</div><div class="ov3-acct-val">'+f(w.lc)+'</div><div class="ov3-acct-hint">🔒 Emergency fund</div></div>';
+  html+='</div>';
+
+  // Formula + recommendation
+  var _surplusRec;
+  if(deployable<0){
+    _surplusRec='Below floor — do not deploy. Address deficit first.';
+  }else if(nearTermRisk){
+    _surplusRec='Retain — collision window approaching in Wk '+getCalWeek(nearTermRisk.num)+'.';
+  }else if(deployable<500){
+    _surplusRec='Cushion thin — hold until next income week.';
+  }else{
+    var _srGoal=null;
+    for(var _sri=0;_sri<PRIORITY_TIERS.length;_sri++){
+      var _srG=GOALS_REGISTRY.find(function(x){return x.id===PRIORITY_TIERS[_sri].goals[0];});
+      if(!_srG||_srG.complete)continue;
+      if(getGoalFunded(_srG.id,vm)<_srG.target-0.01){_srGoal=_srG;break;}
+    }
+    _surplusRec=_srGoal?'Fund next queue item: '+_srGoal.name+'.':'All priority goals funded — hold pending next decision.';
+  }
+  html+='<div class="ov3-formula">';
+  html+='<div class="ov3-formula-lhs">'+f(w.chk)+' checking &minus; '+f(OP_FL)+' floor = <strong>'+f(deployable)+' deployable</strong></div>';
+  html+='<div class="ov3-formula-rec">→ '+_surplusRec+'</div>';
+  html+='</div>';
+  html+='</div>'; // end S2
+
+  // ══════════════════════════════════════════════════════════════════════════
+  // S3 — COLLISION MAP (only if risk weeks exist)
+  // ══════════════════════════════════════════════════════════════════════════
+  if(allRiskWeeks.length>0){
+    html+='<div class="panel card-pad" style="margin-bottom:14px">';
+    html+='<div class="ov3-sect-title">Collision Map</div>';
+    html+='<div class="ov3-sect-sub">Projected stress points — before they become problems</div>';
+
+    allRiskWeeks.forEach(function(rw){
+      var rwGap=r(rw.chk-OP_FL); // negative = below floor
+      var rwWeeksAway=rw.num-currentW;
+      // Primary drivers from events
+      var rwDrivers=[];
+      if(rw.calNote)rwDrivers.push(rw.calNote);
+      if(rw.evs&&rw.evs.length){
+        rw.evs.filter(function(e){return e.t==='ob';}).slice(0,3).forEach(function(e){if(rwDrivers.length<3)rwDrivers.push(e.l);});
+      }
+      // Response copy
+      var rwResponse;
+      if(rwGap<-2000)rwResponse='Major shortfall — review income timing and defer all discretionary funding.';
+      else if(rwGap<-500)rwResponse='Defer discretionary spending until Wk '+getCalWeek(rw.num+1)+'.';
+      else rwResponse='Monitor — margin is thin. Avoid non-essential transfers this cycle.';
+
+      html+='<div class="ov3-collision-row">';
+      // Left: week info
+      html+='<div>';
+      html+='<div style="font-size:20px;font-weight:800;color:var(--amber)">Wk '+getCalWeek(rw.num)+'</div>';
+      html+='<div style="font-size:10px;color:var(--muted);margin-top:2px;line-height:1.4">'+rw.dates+'</div>';
+      html+='<div style="font-size:10px;color:var(--muted);margin-top:2px">'+rwWeeksAway+' wk'+(rwWeeksAway!==1?'s':'')+' out</div>';
+      html+='</div>';
+      // Middle: projections + drivers
+      html+='<div>';
+      html+='<div style="display:flex;align-items:baseline;gap:10px;margin-bottom:7px;flex-wrap:wrap">';
+      html+='<span style="font-size:14px;font-weight:800;color:var(--red)">'+f(rw.chk)+' projected</span>';
+      html+='<span style="font-size:11px;color:var(--muted)">floor '+f(OP_FL)+'</span>';
+      html+='<span style="font-size:12px;font-weight:700;color:var(--red)">gap: '+f(rwGap)+'</span>';
+      html+='</div>';
+      if(rwDrivers.length){
+        html+='<div style="font-size:9px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);margin-bottom:4px;font-weight:700">Drivers</div>';
+        rwDrivers.forEach(function(d){html+='<div style="font-size:11px;color:var(--ink);line-height:1.5">· '+d+'</div>';});
+      }
+      html+='</div>';
+      // Right: response
+      html+='<div style="background:rgba(180,83,9,.1);border-radius:8px;padding:10px 11px">';
+      html+='<div style="font-size:9px;text-transform:uppercase;letter-spacing:.07em;color:var(--amber);margin-bottom:5px;font-weight:700">Suggested Response</div>';
+      html+='<div style="font-size:11px;color:var(--amber);line-height:1.5;font-weight:600">'+rwResponse+'</div>';
+      html+='</div>';
+      html+='</div>'; // end collision row
+    });
+
+    html+='</div>'; // end S3
+  }
+
+  // ══════════════════════════════════════════════════════════════════════════
+  // S4 — CAPITAL ALLOCATION QUEUE
+  // ══════════════════════════════════════════════════════════════════════════
+  html+='<div class="panel card-pad">';
+  html+='<div class="ov3-sect-title">Capital Allocation Queue</div>';
+  html+='<div class="ov3-sect-sub">If another dollar becomes available, where does it go?</div>';
+
+  // Header row
+  html+='<div class="ov3-alloc-hdr">';
+  ['#','Goal','Remaining','Due','Status'].forEach(function(h){
+    html+='<div style="font-size:9px;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);font-weight:700">'+h+'</div>';
+  });
+  html+='</div>';
+
+  // Determine which tiers have all predecessors done (for "Active" vs "Queued")
+  var _cumDone=true;
   PRIORITY_TIERS.forEach(function(tier){
     var g=GOALS_REGISTRY.find(function(x){return x.id===tier.goals[0];});
     if(!g)return;
     var funded=getGoalFunded(g.id,vm);
     var pct=g.complete?100:Math.min(100,funded>0?Math.round(funded/g.target*100):0);
+    var rem=g.complete?0:Math.max(0,r(g.target-funded));
     var comp=vm.goalCompletion?vm.goalCompletion[g.id]:null;
     var gLocked=!!(g.needsFlag&&!goalFlags[g.needsFlag]);
-    var etaTxt=g.complete?'Done':gLocked?'Pending CPA':(comp&&comp.num>0?'Wk '+getCalWeek(comp.num):funded>0?'2027+':'Queued');
-    var etaColor=g.complete||pct>=100?'var(--green)':gLocked?'var(--muted2)':comp&&comp.num>0?'var(--blue)':'var(--muted2)';
-    html+='<div class="ov2-goal-row">'+
-      '<div class="ov2-goal-rank" style="color:'+tier.color+';background:'+tier.color+'18">T'+tier.num+'</div>'+
-      '<div><div class="ov2-goal-name">'+(pct>=100?'✅ ':gLocked?'🔒 ':'')+g.name+'</div>'+
-        (g.notes?'<div class="ov2-goal-note">'+g.notes+'</div>':'')+
-      '</div>'+
-      '<div class="ov2-goal-bar-wrap">'+
-        '<div class="ov2-goal-bar"><div class="ov2-goal-fill" style="width:'+pct+'%;background:'+tier.color+'"></div></div>'+
-        '<span class="ov2-goal-pct">'+pct+'%</span>'+
-      '</div>'+
-      '<div class="ov2-goal-eta" style="color:'+etaColor+'">'+etaTxt+'</div>'+
-    '</div>';
+    var isDone=g.complete||pct>=100;
+
+    var statusLabel,statusColor;
+    if(isDone){statusLabel='Done';statusColor='var(--green)';}
+    else if(_cumDone&&!gLocked){statusLabel='Active';statusColor='var(--blue)';}
+    else if(gLocked){statusLabel='Pending CPA';statusColor='var(--muted)';}
+    else{statusLabel='Queued';statusColor='var(--muted2)';}
+
+    if(isDone){_cumDone=true;}else{_cumDone=false;}
+
+    var dueTxt=isDone?'—':gLocked?'TBD':(comp&&comp.num>0?'Wk '+getCalWeek(comp.num):'2027+');
+
+    html+='<div class="ov3-alloc-row">';
+    html+='<div style="font-size:12px;font-weight:800;color:'+tier.color+';background:'+tier.color+'18;border-radius:5px;text-align:center;padding:3px 0">T'+tier.num+'</div>';
+    html+='<div>';
+    html+='<div style="font-size:12px;font-weight:600;color:var(--ink)">'+(isDone?'✅ ':gLocked?'🔒 ':statusLabel==='Active'?'<span style="color:var(--blue)">→</span> ':'')+g.name+'</div>';
+    if(g.notes)html+='<div style="font-size:10px;color:var(--muted);margin-top:1px">'+g.notes+'</div>';
+    if(!isDone)html+='<div style="margin-top:4px;height:3px;background:var(--line);border-radius:99px"><div style="height:100%;width:'+pct+'%;background:'+tier.color+';border-radius:99px"></div></div>';
+    html+='</div>';
+    html+='<div style="font-size:13px;font-weight:700;color:'+(rem===0?'var(--green)':'var(--ink)')+'">'+( rem===0?'—':f(rem))+'</div>';
+    html+='<div style="font-size:11px;color:var(--muted)">'+dueTxt+'</div>';
+    html+='<div style="font-size:10px;font-weight:700;color:'+statusColor+';background:'+statusColor+'1a;padding:3px 7px;border-radius:5px;text-align:center;white-space:nowrap">'+statusLabel+'</div>';
+    html+='</div>'; // end alloc row
   });
-  html+='</div>';
+
+  html+='</div>'; // end S4
+
   document.getElementById('overview-content').innerHTML=html;
 }
 

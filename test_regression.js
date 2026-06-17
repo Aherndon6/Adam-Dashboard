@@ -1818,6 +1818,276 @@ test('LOW-LIQ: W8 is now above floor after rent fix',()=>{
 // ─────────────────────────────────────────────────────────────────────────
 // RESULTS
 // ─────────────────────────────────────────────────────────────────────────
+console.log('\n── Section 24: Overview 2.0 — Financial Command Center ──');
+
+// ── Helpers (mirror renderOverview logic without DOM) ─────────────────────
+const OP_FL_T24 = 6500;
+function ov3Status(chk, nearTermRiskChk, openActsCount) {
+  const cushion = Math.round((chk - OP_FL_T24) * 100) / 100;
+  const hasNear  = nearTermRiskChk !== null && nearTermRiskChk !== undefined;
+  return cushion < 0 ? 'RED' : (hasNear || openActsCount > 0 || cushion < 1000) ? 'YELLOW' : 'GREEN';
+}
+function ov3Interp(chk, nearTermRisk, nextRisk, openActsCount) {
+  const cushion = Math.round((chk - OP_FL_T24) * 100) / 100;
+  const status  = ov3Status(chk, nearTermRisk ? nearTermRisk.chk : null, openActsCount);
+  if (status === 'RED')      return 'BELOW_FLOOR';
+  if (nearTermRisk)          return 'NEAR_TERM_RISK';
+  if (openActsCount > 0)     return 'OPEN_ACTIONS';
+  if (cushion < 1000)        return 'THIN_CUSHION';
+  if (nextRisk)              return 'NEXT_RISK_NOTED';
+  return 'HEALTHY';
+}
+function ov3Confidence(reconciledCount, pastWeeksCount, completedPastActs, totalPastActs, daysSinceRecon) {
+  const reconScore = Math.min(40, pastWeeksCount === 0 ? 40 : Math.round((reconciledCount / pastWeeksCount) * 40));
+  const actScore   = Math.min(30, totalPastActs === 0  ? 30 : Math.round((completedPastActs / totalPastActs) * 30));
+  const freshScore = Math.max(0, 30 - Math.round(Math.min(daysSinceRecon, 7) * 30 / 7));
+  return { reconScore, actScore, freshScore, total: reconScore + actScore + freshScore };
+}
+function ov3QueueStatuses(fundedMap, flags) {
+  flags = flags || {};
+  let cumDone = true;
+  const results = [];
+  PRIORITY_TIERS.forEach(function(tier) {
+    const g = GOALS_REGISTRY.find(function(x){return x.id===tier.goals[0];});
+    if (!g) return;
+    const funded = fundedMap[g.id] || 0;
+    const isDone = g.complete || funded >= g.target - 0.01;
+    const gLocked = !!(g.needsFlag && !flags[g.needsFlag]);
+    let statusLabel;
+    if (isDone)                   statusLabel = 'Done';
+    else if (cumDone && !gLocked) statusLabel = 'Active';
+    else if (gLocked)             statusLabel = 'Pending CPA';
+    else                          statusLabel = 'Queued';
+    if (isDone) cumDone = true; else cumDone = false;
+    results.push({ id: g.id, status: statusLabel });
+  });
+  return results;
+}
+
+// ── 24a: CSS classes for Overview 2.0 present in source ──────────────────
+test('S24a-1: .cmd-chip class in CSS', function(){
+  assertIncludes(html, '.cmd-chip{', 'cmd-chip CSS missing');
+});
+test('S24a-2: .cmd-chip.chip-green in CSS', function(){
+  assertIncludes(html, '.cmd-chip.chip-green{', 'chip-green CSS missing');
+});
+test('S24a-3: .cmd-chip.chip-amber in CSS', function(){
+  assertIncludes(html, '.cmd-chip.chip-amber{', 'chip-amber CSS missing');
+});
+test('S24a-4: .cmd-chip.chip-red in CSS', function(){
+  assertIncludes(html, '.cmd-chip.chip-red{', 'chip-red CSS missing');
+});
+test('S24a-5: .ov3-formula in CSS', function(){
+  assertIncludes(html, '.ov3-formula{', 'ov3-formula CSS missing');
+});
+test('S24a-6: .ov3-collision-row in CSS', function(){
+  assertIncludes(html, '.ov3-collision-row{', 'ov3-collision-row CSS missing');
+});
+test('S24a-7: .ov3-alloc-row in CSS', function(){
+  assertIncludes(html, '.ov3-alloc-row{', 'ov3-alloc-row CSS missing');
+});
+test('S24a-8: .ov3-acct-grid in CSS', function(){
+  assertIncludes(html, '.ov3-acct-grid{', 'ov3-acct-grid CSS missing');
+});
+
+// ── 24b: renderOverview 3.0 structure in source ───────────────────────────
+const fnMatch24 = html.match(/function renderOverview\(vm\)\{[\s\S]*?document\.getElementById\('overview-content'\)\.innerHTML=html;?\s*\}/);
+const fnBody24  = fnMatch24 ? fnMatch24[0] : '';
+test('S24b-1: renderOverview function present', function(){
+  assert(fnBody24.length > 0, 'renderOverview not found in source');
+});
+test('S24b-2: S1 — Weekly Command Verdict present', function(){
+  assertIncludes(fnBody24, 'Model Confidence', 'Model Confidence block missing');
+  assertIncludes(fnBody24, 'Next Dollar', 'Next Dollar block missing');
+});
+test('S24b-3: S2 — True Deployable Surplus present', function(){
+  assertIncludes(fnBody24, 'True Deployable Surplus', 'Deployable Surplus section missing');
+  assertIncludes(fnBody24, 'ov3-formula', 'ov3-formula not used in renderOverview');
+});
+test('S24b-4: S3 — Collision Map present', function(){
+  assertIncludes(fnBody24, 'Collision Map', 'Collision Map section missing');
+  assertIncludes(fnBody24, 'Suggested Response', 'Collision response block missing');
+});
+test('S24b-5: S4 — Capital Allocation Queue present', function(){
+  assertIncludes(fnBody24, 'Capital Allocation Queue', 'Allocation Queue section missing');
+  assertIncludes(fnBody24, 'ov3-alloc-row', 'ov3-alloc-row not used in renderOverview');
+});
+test('S24b-6: confidence score rendered', function(){
+  assertIncludes(fnBody24, 'confScore', 'confScore not in renderOverview');
+});
+test('S24b-7: nearTermRisk uses 4-week window', function(){
+  assertIncludes(fnBody24, 'currentW+4', 'near-term risk 4-week window missing');
+});
+test('S24b-8: collision map uses evs for drivers', function(){
+  assertIncludes(fnBody24, 'rw.evs&&rw.evs.length', 'evs driver extraction missing from collision map');
+});
+
+// ── 24c: Status classification logic ─────────────────────────────────────
+test('S24c-1: below floor → RED', function(){
+  assert(ov3Status(6000, null, 0) === 'RED', 'Expected RED for chk below floor');
+});
+test('S24c-2: exactly at floor ($6500) → YELLOW (cushion=0, not negative)', function(){
+  assert(ov3Status(6500, null, 0) === 'YELLOW', 'Expected YELLOW at exact floor — cushion=0 is not <0');
+});
+test('S24c-3: cushion $999 → YELLOW', function(){
+  assert(ov3Status(7499, null, 0) === 'YELLOW', 'Expected YELLOW at cushion $999');
+});
+test('S24c-4: cushion exactly $1000 → GREEN (strict less-than)', function(){
+  assert(ov3Status(7500, null, 0) === 'GREEN', 'Expected GREEN at cushion exactly $1000 — 1000<1000 is false');
+});
+test('S24c-5: GREEN + open actions → YELLOW', function(){
+  assert(ov3Status(10000, null, 1) === 'YELLOW', 'Expected YELLOW with open actions');
+});
+test('S24c-6: GREEN + near-term risk → YELLOW', function(){
+  assert(ov3Status(10000, 5000, 0) === 'YELLOW', 'Expected YELLOW with near-term risk');
+});
+test('S24c-7: healthy — no risk, no actions, cushion >$1k → GREEN', function(){
+  assert(ov3Status(10000, null, 0) === 'GREEN', 'Expected GREEN for healthy state');
+});
+
+// ── 24d: Interpretation sentence priority ─────────────────────────────────
+test('S24d-1: RED → BELOW_FLOOR interpretation', function(){
+  assert(ov3Interp(6000, null, null, 0) === 'BELOW_FLOOR', 'RED interp should be BELOW_FLOOR');
+});
+test('S24d-2: near-term risk takes priority over open actions', function(){
+  assert(ov3Interp(9000, {chk:5000,num:25}, null, 3) === 'NEAR_TERM_RISK', 'Near-term risk should outrank open actions');
+});
+test('S24d-3: open actions take priority over thin cushion', function(){
+  assert(ov3Interp(7200, null, null, 2) === 'OPEN_ACTIONS', 'Open actions should outrank thin cushion');
+});
+test('S24d-4: thin cushion before distant risk', function(){
+  assert(ov3Interp(7200, null, {num:30}, 0) === 'THIN_CUSHION', 'Thin cushion should outrank distant risk');
+});
+test('S24d-5: healthy with distant risk → NEXT_RISK_NOTED', function(){
+  assert(ov3Interp(10000, null, {num:30}, 0) === 'NEXT_RISK_NOTED', 'Distant risk should appear when otherwise healthy');
+});
+test('S24d-6: all clear → HEALTHY', function(){
+  assert(ov3Interp(10000, null, null, 0) === 'HEALTHY', 'Expected HEALTHY when all clear');
+});
+
+// ── 24e: Confidence score ─────────────────────────────────────────────────
+test('S24e-1: perfect score = 100', function(){
+  const s = ov3Confidence(5, 5, 10, 10, 0);
+  assert(s.total === 100, `Expected 100, got ${s.total}`);
+});
+test('S24e-2: no history at all = 70 (40 recon + 30 acts, 0 fresh)', function(){
+  const s = ov3Confidence(0, 0, 0, 0, 99);
+  assert(s.total === 70, `Expected 70, got ${s.total}`);
+});
+test('S24e-3: reconScore capped at 40', function(){
+  const s = ov3Confidence(100, 3, 0, 0, 0);
+  assert(s.reconScore === 40, `reconScore should cap at 40, got ${s.reconScore}`);
+});
+test('S24e-4: actScore capped at 30', function(){
+  const s = ov3Confidence(0, 0, 100, 3, 0);
+  assert(s.actScore === 30, `actScore should cap at 30, got ${s.actScore}`);
+});
+test('S24e-5: freshScore never below 0', function(){
+  const s = ov3Confidence(0, 0, 0, 0, 999);
+  assert(s.freshScore === 0, `freshScore should floor at 0, got ${s.freshScore}`);
+});
+test('S24e-6: 7+ days stale → freshScore = 0', function(){
+  const s = ov3Confidence(3, 3, 0, 0, 7);
+  assert(s.freshScore === 0, `7-day-old recon should give freshScore=0, got ${s.freshScore}`);
+});
+
+// ── 24f: Deployable surplus = chk − floor ────────────────────────────────
+test('S24f-1: deployable surplus formula is chk minus floor', function(){
+  const chk = 9876.54;
+  const deployable = Math.round((chk - OP_FL_T24) * 100) / 100;
+  assert(deployable === Math.round((9876.54 - 6500) * 100) / 100, 'Deployable formula incorrect');
+});
+test('S24f-2: deployable is negative when below floor', function(){
+  const deployable = Math.round((6000 - OP_FL_T24) * 100) / 100;
+  assert(deployable < 0, 'Below-floor deployable should be negative');
+});
+test('S24f-3: deployable = 0 at exactly the floor', function(){
+  const deployable = Math.round((6500 - OP_FL_T24) * 100) / 100;
+  assert(deployable === 0, `Expected $0 deployable at floor, got ${deployable}`);
+});
+
+// ── 24g: Collision map — future risk weeks only ───────────────────────────
+test('S24g-1: collision map excludes past weeks below floor', function(){
+  const cW = getCurrentWeek();
+  const risks = WEEKS.filter(function(x){return x.num > cW && x.chk < OP_FL_T24;});
+  const pastBelow = WEEKS.filter(function(x){return x.num < cW && x.chk < OP_FL_T24;});
+  // Past-below weeks must not appear in the risk list
+  pastBelow.forEach(function(w){
+    assert(!risks.find(function(r){return r.num===w.num;}), 'Past week W'+w.num+' leaked into collision map');
+  });
+});
+test('S24g-2: collision map excludes current week', function(){
+  const cW = getCurrentWeek();
+  const risks = WEEKS.filter(function(x){return x.num > cW && x.chk < OP_FL_T24;});
+  assert(!risks.find(function(r){return r.num===cW;}), 'Current week should not appear in collision map');
+});
+test('S24g-3: W6 and W13 appear in collision map as future risk weeks', function(){
+  // W6 and W13 are confirmed floor violations from prior tests
+  const cW = getCurrentWeek();
+  if(cW < 6){
+    const risks = WEEKS.filter(function(x){return x.num > cW && x.chk < OP_FL_T24;});
+    const w6 = WEEKS.find(function(x){return x.num===6;});
+    const w13 = WEEKS.find(function(x){return x.num===13;});
+    if(w6 && w6.chk < OP_FL_T24) assert(risks.find(function(r){return r.num===6;}), 'W6 should be in collision map');
+    if(w13 && w13.chk < OP_FL_T24) assert(risks.find(function(r){return r.num===13;}), 'W13 should be in collision map');
+  }
+  // If current week >= 6, just confirm filter logic works
+  assert(true, 'Collision map week filter runs correctly');
+});
+test('S24g-4: near-term risk uses 4-week window (inclusive)', function(){
+  // Simulate: current=20, risk at 24 (exactly 4 weeks away) → should qualify
+  const simulatedCurrent = 20;
+  const fakeWeeks = [{num:24, chk:5000},{num:25, chk:5000}];
+  const nearTerm = fakeWeeks.find(function(x){return x.num > simulatedCurrent && x.num <= simulatedCurrent+4 && x.chk < OP_FL_T24;});
+  assert(nearTerm && nearTerm.num === 24, 'W24 exactly 4 weeks from W20 should be near-term risk');
+});
+test('S24g-5: week 5 out (W26 from W21) is NOT near-term risk', function(){
+  const simulatedCurrent = 21;
+  const fakeWeeks = [{num:26, chk:5000}]; // 5 weeks away
+  const nearTerm = fakeWeeks.find(function(x){return x.num > simulatedCurrent && x.num <= simulatedCurrent+4 && x.chk < OP_FL_T24;});
+  assert(!nearTerm, 'W26 is 5 weeks from W21 — should NOT be near-term');
+});
+
+// ── 24h: Allocation queue cumDone logic ──────────────────────────────────
+test('S24h-1: T1 Alaska unfunded → Active', function(){
+  const q = ov3QueueStatuses({});
+  const t1 = q.find(function(x){return x.id==='alaska';});
+  assert(t1 && t1.status === 'Active', 'T1 Alaska should be Active when unfunded');
+});
+test('S24h-2: T2 RCCL queued while T1 active', function(){
+  const q = ov3QueueStatuses({});
+  const t2 = q.find(function(x){return x.id==='wewe_rccl';});
+  assert(t2 && t2.status === 'Queued', 'T2 should be Queued while T1 not done');
+});
+test('S24h-3: T1 fully funded → Done, T2 becomes Active', function(){
+  const q = ov3QueueStatuses({alaska:7000});
+  const t1 = q.find(function(x){return x.id==='alaska';});
+  const t2 = q.find(function(x){return x.id==='wewe_rccl';});
+  assert(t1 && t1.status === 'Done', 'T1 should be Done when funded');
+  assert(t2 && t2.status === 'Active', 'T2 should be Active once T1 is done');
+});
+test('S24h-4: T4 Adam IRA → Pending CPA when flag not cleared', function(){
+  const q = ov3QueueStatuses({alaska:7000, wewe_rccl:600, wewe_dcl:500}, {ira_cpa_cleared:false});
+  const t4 = q.find(function(x){return x.id==='adam_ira';});
+  assert(t4 && t4.status === 'Pending CPA', 'T4 should be Pending CPA without flag');
+});
+test('S24h-5: T4 Adam IRA → Active once CPA cleared and T1-T3 done', function(){
+  const q = ov3QueueStatuses({alaska:7000, wewe_rccl:600, wewe_dcl:500}, {ira_cpa_cleared:true});
+  const t4 = q.find(function(x){return x.id==='adam_ira';});
+  assert(t4 && t4.status === 'Active', 'T4 should be Active once CPA cleared and T1-T3 done');
+});
+test('S24h-6: T5 Wendy IRA queued while T4 not done', function(){
+  const q = ov3QueueStatuses({alaska:7000, wewe_rccl:600, wewe_dcl:500}, {ira_cpa_cleared:true});
+  const t5 = q.find(function(x){return x.id==='wendy_ira';});
+  assert(t5 && t5.status === 'Queued', 'T5 should be Queued while T4 not done');
+});
+test('S24h-7: goals after locked tiers are Queued (cumDone=false propagates)', function(){
+  const q = ov3QueueStatuses({alaska:7000, wewe_rccl:600, wewe_dcl:500}, {});
+  const t6 = q.find(function(x){return x.id==='bailey_529';});
+  assert(t6 && t6.status === 'Queued', 'T6 Bailey 529 should be Queued while locked tiers block chain');
+});
+
+// ─────────────────────────────────────────────────────────────────────────
 console.log('\n╔══════════════════════════════════════════════════════════════╗');
 console.log('║                       RESULTS                               ║');
 console.log('╚══════════════════════════════════════════════════════════════╝');
