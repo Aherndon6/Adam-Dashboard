@@ -1915,8 +1915,8 @@ test('S24b-5: S4 — Capital Allocation Queue present', function(){
 test('S24b-6: confidence score rendered', function(){
   assertIncludes(fnBody24, 'confScore', 'confScore not in renderOverview');
 });
-test('S24b-7: nearTermRisk uses 4-week window', function(){
-  assertIncludes(fnBody24, 'currentW+4', 'near-term risk 4-week window missing');
+test('S24b-7: nearTermRisk uses 2-week window', function(){
+  assertIncludes(fnBody24, 'currentW+2', 'near-term risk 2-week window missing');
 });
 test('S24b-8: collision map uses evs for drivers', function(){
   assertIncludes(fnBody24, 'rw.evs&&rw.evs.length', 'evs driver extraction missing from collision map');
@@ -1990,6 +1990,19 @@ test('S24e-6: 7+ days stale → freshScore = 0', function(){
   const s = ov3Confidence(3, 3, 0, 0, 7);
   assert(s.freshScore === 0, `7-day-old recon should give freshScore=0, got ${s.freshScore}`);
 });
+test('S24e-7: freshness uses END of reconciled week not start (wk1 ends Jun13, not Jun7)', function(){
+  // Model wk 1: start Jun 7, end Jun 13 = new Date(2026,5,6+1*7) = Jun 13
+  const wk1End = new Date(2026,5,6+1*7);
+  const wk1Start = new Date(2026,5,7+(1-1)*7);
+  assert(wk1End.getDate() === 13, `Week 1 end should be Jun 13, got Jun ${wk1End.getDate()}`);
+  assert(wk1Start.getDate() === 7, `Week 1 start is Jun 7 (old wrong formula), got ${wk1Start.getDate()}`);
+  // Verify end is 6 days later than start (avoids the staleness inflation bug)
+  const diffDays = Math.round((wk1End - wk1Start) / 864e5);
+  assert(diffDays === 6, `End should be 6 days after start, got ${diffDays}`);
+});
+test('S24e-8: freshness formula in source uses end-of-week date', function(){
+  assertIncludes(html, '2026,5,6+lastReconNum*7', 'freshness formula should use end-of-week date (6+lastReconNum*7)');
+});
 
 // ── 24f: Deployable surplus = chk − floor ────────────────────────────────
 test('S24f-1: deployable surplus formula is chk minus floor', function(){
@@ -2034,18 +2047,18 @@ test('S24g-3: W6 and W13 appear in collision map as future risk weeks', function
   // If current week >= 6, just confirm filter logic works
   assert(true, 'Collision map week filter runs correctly');
 });
-test('S24g-4: near-term risk uses 4-week window (inclusive)', function(){
-  // Simulate: current=20, risk at 24 (exactly 4 weeks away) → should qualify
+test('S24g-4: near-term risk uses 2-week window (inclusive)', function(){
+  // Simulate: current=20, risk at 22 (exactly 2 weeks away) → should qualify
   const simulatedCurrent = 20;
-  const fakeWeeks = [{num:24, chk:5000},{num:25, chk:5000}];
-  const nearTerm = fakeWeeks.find(function(x){return x.num > simulatedCurrent && x.num <= simulatedCurrent+4 && x.chk < OP_FL_T24;});
-  assert(nearTerm && nearTerm.num === 24, 'W24 exactly 4 weeks from W20 should be near-term risk');
+  const fakeWeeks = [{num:22, chk:5000},{num:23, chk:5000}];
+  const nearTerm = fakeWeeks.find(function(x){return x.num > simulatedCurrent && x.num <= simulatedCurrent+2 && x.chk < OP_FL_T24;});
+  assert(nearTerm && nearTerm.num === 22, 'W22 exactly 2 weeks from W20 should be near-term risk');
 });
-test('S24g-5: week 5 out (W26 from W21) is NOT near-term risk', function(){
+test('S24g-5: week 3 out (W24 from W21) is NOT near-term risk', function(){
   const simulatedCurrent = 21;
-  const fakeWeeks = [{num:26, chk:5000}]; // 5 weeks away
-  const nearTerm = fakeWeeks.find(function(x){return x.num > simulatedCurrent && x.num <= simulatedCurrent+4 && x.chk < OP_FL_T24;});
-  assert(!nearTerm, 'W26 is 5 weeks from W21 — should NOT be near-term');
+  const fakeWeeks = [{num:24, chk:5000}]; // 3 weeks away
+  const nearTerm = fakeWeeks.find(function(x){return x.num > simulatedCurrent && x.num <= simulatedCurrent+2 && x.chk < OP_FL_T24;});
+  assert(!nearTerm, 'W24 is 3 weeks from W21 — should NOT be near-term (only 2-week window)');
 });
 
 // ── 24h: Allocation queue cumDone logic ──────────────────────────────────

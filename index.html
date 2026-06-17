@@ -1963,7 +1963,7 @@ function renderOverview(vm){
   var cushion=r(w.chk-OP_FL);
 
   // Risk weeks
-  var nearTermRisk=vm.weeks.find(function(x){return x.num>currentW&&x.num<=currentW+4&&x.chk<OP_FL;});
+  var nearTermRisk=vm.weeks.find(function(x){return x.num>currentW&&x.num<=currentW+2&&x.chk<OP_FL;});
   var nextRisk=vm.weeks.find(function(x){return x.num>currentW&&x.chk<OP_FL;});
   var allRiskWeeks=vm.weeks.filter(function(x){return x.num>currentW&&x.chk<OP_FL;});
 
@@ -2023,8 +2023,8 @@ function renderOverview(vm){
   var reconScore=Math.min(40,pastWeeksCount===0?40:Math.round((vm.reconciledWeeks.length/pastWeeksCount)*40));
   var pastActs=vm.allActions.filter(function(a){return a.weekNum<currentW;});
   var actScore=Math.min(30,pastActs.length===0?30:Math.round((pastActs.filter(function(a){return a.completed;}).length/pastActs.length)*30));
-  // Freshness: days since last recon (model start = Jun 7 2026 = week 1)
-  var _recentReconDate=lastReconNum>0?new Date(2026,5,7+(lastReconNum-1)*7):null;
+  // Freshness: days since end of last reconciled week (model wk 1 ends Jun 13; wk N ends Jun 6+N*7)
+  var _recentReconDate=lastReconNum>0?new Date(2026,5,6+lastReconNum*7):null;
   var daysSinceRecon=_recentReconDate?Math.max(0,Math.round((new Date()-_recentReconDate)/864e5)):99;
   var freshScore=Math.max(0,30-Math.round(Math.min(daysSinceRecon,7)*30/7));
   var confScore=reconScore+actScore+freshScore;
