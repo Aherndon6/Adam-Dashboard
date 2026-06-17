@@ -2007,7 +2007,7 @@ function buildFlightPathSVG(vm){
   var areaPts=wks.slice(curIdx).map(function(w,i){return xOf(curIdx+i)+','+yOf(cushions[curIdx+i]);}).join(' ')
     +' '+xOf(wks.length-1)+','+floorY+' '+xOf(curIdx)+','+floorY;
 
-  var s='<svg viewBox="0 0 '+svgW+' '+svgH+'" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="31-week projected checking balance with floor risk markers" style="width:100%;height:'+svgH+'px;display:block">';
+  var s='<svg viewBox="0 0 '+svgW+' '+svgH+'" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="31-week projected checking balance with floor risk markers" style="width:100%;height:auto;display:block">';
   s+='<title>Projected checking flight path</title>';
 
   s+='<defs>';
