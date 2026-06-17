@@ -1636,6 +1636,7 @@ function runModel(akGoal,rtGoal,flags){
 // ── Helpers (unchanged) ────────────────────────────────────────────────────
 function r(n){return Math.round(n*100)/100}  // global — also declared inside runModel for local perf
 function f(n){return '$'+Math.abs(n).toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2})}
+function fsigned(n){return(n<0?'−':'')+f(Math.abs(n));}
 function fc(n){return n.toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2})}
 function getCurrentWeek(){const s=new Date(2026,5,7);const t=new Date();t.setHours(0,0,0,0);s.setHours(0,0,0,0);const d=Math.floor((t-s)/864e5);if(d<0)return 1;return Math.min(Math.floor(d/7)+1,31);}
 const currentW=getCurrentWeek();
@@ -1976,6 +1977,51 @@ function getNextDollarRec(vm,deployable,nearTermRisk){
   return'All priority goals funded — hold pending next strategic decision';
 }
 
+// ── buildFlightPathSVG — compact 31-week projected checking sparkline ────────
+function buildFlightPathSVG(vm){
+  var wks=vm.weeks;
+  var svgW=600,svgH=130,padL=10,padR=10,padT=18,padB=20;
+  var plotW=svgW-padL-padR,plotH=svgH-padT-padB;
+  var vals=wks.map(function(w){return w.chk;});
+  var maxV=Math.max.apply(null,vals)*1.08;
+  var minV=Math.min(Math.min.apply(null,vals)*0.88,OP_FL*0.72);
+  function xOf(i){return padL+(i/(wks.length-1))*plotW;}
+  function yOf(v){return padT+plotH-((v-minV)/(maxV-minV))*plotH;}
+  var floorY=r(yOf(OP_FL));
+  var curIdx=currentW-1;
+  var riskWks=wks.filter(function(w){return w.num>currentW&&w.chk<OP_FL;});
+  var pastPts=wks.slice(0,curIdx+1).map(function(w,i){return r(xOf(i))+','+r(yOf(w.chk));}).join(' ');
+  var futurePts=wks.slice(curIdx).map(function(w,i){return r(xOf(curIdx+i))+','+r(yOf(w.chk));}).join(' ');
+  var s='<svg viewBox="0 0 '+svgW+' '+svgH+'" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="31-week projected checking balance with floor risk markers" style="width:100%;height:'+svgH+'px;display:block">';
+  s+='<title>Projected checking flight path</title>';
+  // Floor reference line
+  s+='<line x1="'+padL+'" y1="'+floorY+'" x2="'+(svgW-padR)+'" y2="'+floorY+'" stroke="rgba(239,68,68,.45)" stroke-width="1" stroke-dasharray="4,3"/>';
+  s+='<text x="'+(svgW-padR-2)+'" y="'+(floorY-3)+'" font-size="8" fill="rgba(239,68,68,.6)" text-anchor="end">$6,500 floor</text>';
+  // Past line (muted)
+  if(curIdx>0)s+='<polyline points="'+pastPts+'" fill="none" stroke="rgba(255,255,255,.2)" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>';
+  // Future projected line
+  s+='<polyline points="'+futurePts+'" fill="none" stroke="rgba(255,255,255,.55)" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>';
+  // Risk week markers
+  riskWks.forEach(function(w){
+    var i=w.num-1,x=r(xOf(i)),y=r(yOf(w.chk));
+    s+='<circle cx="'+x+'" cy="'+y+'" r="3" fill="#ef4444"/>';
+  });
+  // Current week marker + labels
+  var curX=r(xOf(curIdx)),curY=r(yOf(wks[curIdx].chk));
+  s+='<circle cx="'+curX+'" cy="'+curY+'" r="4" fill="#fff" opacity=".9"/>';
+  s+='<text x="'+curX+'" y="'+(padT-4)+'" font-size="8" fill="rgba(255,255,255,.5)" text-anchor="middle">Wk '+getCalWeek(currentW)+'</text>';
+  var curValY=curY>padT+14?curY-6:curY+13;
+  s+='<text x="'+curX+'" y="'+curValY+'" font-size="8" fill="rgba(255,255,255,.65)" text-anchor="middle">'+f(wks[curIdx].chk)+'</text>';
+  // Label first risk week
+  if(riskWks.length>0){
+    var rw=riskWks[0],ri=rw.num-1,rx=r(xOf(ri)),ry=r(yOf(rw.chk));
+    var anchor=rx<svgW/2?'start':'end';
+    s+='<text x="'+(anchor==='start'?rx+5:rx-5)+'" y="'+(ry+13)+'" font-size="8" fill="rgba(239,68,68,.85)" text-anchor="'+anchor+'">Wk '+getCalWeek(rw.num)+'</text>';
+  }
+  s+='</svg>';
+  return s;
+}
+
 // ── renderOverview 3.0 — Financial Command Center ──────────────────────────
 function renderOverview(vm){
   var w=vm.weeks.find(function(x){return x.num===currentW;})||vm.weeks[0];
@@ -2052,9 +2098,11 @@ function renderOverview(vm){
 
   // Row 1: badge + interpretation + chips
   html+='<div style="display:flex;align-items:flex-start;gap:16px;margin-bottom:16px">';
-  html+='<div style="display:flex;flex-direction:column;align-items:center;gap:5px;flex-shrink:0;padding-top:2px">';
+  html+='<div style="display:flex;flex-direction:column;align-items:center;gap:4px;flex-shrink:0;padding-top:2px">';
   html+='<div style="background:'+scAccent+';color:#fff;font-size:11px;font-weight:800;letter-spacing:.12em;padding:5px 16px;border-radius:99px">'+status+'</div>';
   html+='<div style="font-size:10px;color:'+scText+';opacity:.65;white-space:nowrap">Wk '+getCalWeek(currentW)+'</div>';
+  html+='<div style="font-size:30px;font-weight:800;color:'+scText+';margin-top:6px;text-align:center;line-height:1">'+fsigned(deployable)+'</div>';
+  html+='<div style="font-size:8px;text-transform:uppercase;letter-spacing:.07em;color:rgba(255,255,255,.35);margin-top:1px">deployable</div>';
   html+='</div>';
   html+='<div style="flex:1;min-width:0">';
   html+='<div style="font-size:15px;font-weight:700;color:#fff;line-height:1.4;margin-bottom:11px">'+interp+'</div>';
@@ -2091,6 +2139,12 @@ function renderOverview(vm){
   html+='</div>';
 
   html+='</div>'; // end row 2
+
+  // Row 3: Financial Flight Path
+  html+='<div style="margin-top:12px;padding-top:12px;border-top:1px solid rgba(255,255,255,.08)">';
+  html+='<div style="font-size:9px;text-transform:uppercase;letter-spacing:.08em;color:rgba(255,255,255,.28);margin-bottom:6px;font-weight:700">Financial Flight Path — Projected Checking</div>';
+  html+=buildFlightPathSVG(vm);
+  html+='</div>';
   html+='</div>'; // end S1
 
   // ══════════════════════════════════════════════════════════════════════════
@@ -2103,23 +2157,25 @@ function renderOverview(vm){
   html+='<div class="ov3-sect-sub">Projected end-of-week checking minus operating floor</div>';
   html+='</div>';
   html+='<div style="text-align:right;flex-shrink:0">';
-  html+='<div style="font-size:26px;font-weight:800;color:'+(deployable<0?'var(--red)':deployable<1000?'var(--amber)':'var(--green)')+'">'+f(deployable)+'</div>';
-  html+='<div style="font-size:10px;color:var(--muted);margin-top:2px">above $6,500 floor</div>';
+  html+='<div style="font-size:26px;font-weight:800;color:'+(deployable<0?'var(--red)':deployable<1000?'var(--amber)':'var(--green)')+'">'+fsigned(deployable)+'</div>';
+  html+='<div style="font-size:10px;color:var(--muted);margin-top:2px">'+(deployable<0?'below':'above')+' $6,500 floor</div>';
   html+='</div>';
   html+='</div>';
 
-  // 4 locked/earmarked accounts
-  html+='<div class="ov3-acct-grid">';
-  html+='<div class="ov3-acct"><div class="ov3-acct-lbl">Truist Savings</div><div class="ov3-acct-val">'+f(w.sav)+'</div><div class="ov3-acct-hint">🔒 Alaska goal funding</div></div>';
-  html+='<div class="ov3-acct"><div class="ov3-acct-lbl">AMEX Savings</div><div class="ov3-acct-val">'+f(w.amx)+'</div><div class="ov3-acct-hint">🔒 IRA + 529 staging</div></div>';
-  html+='<div class="ov3-acct"><div class="ov3-acct-lbl">Vio — Tax Reserve</div><div class="ov3-acct-val" style="color:'+(w.tax>0?'var(--green)':'var(--amber)')+'">'+f(w.tax)+'</div><div class="ov3-acct-hint">🔒 Income tax — do not touch</div></div>';
-  html+='<div class="ov3-acct"><div class="ov3-acct-lbl">Lending Club (EF)</div><div class="ov3-acct-val">'+f(w.lc)+'</div><div class="ov3-acct-hint">🔒 Emergency fund</div></div>';
+  // Account Integrity strip (confirmation, not decision support)
+  html+='<div style="display:flex;align-items:center;flex-wrap:wrap;gap:14px;background:var(--surface3);border:1px solid var(--line);border-radius:8px;padding:8px 14px;margin-bottom:12px">';
+  html+='<span style="font-size:9px;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);font-weight:700;flex-shrink:0">Account Integrity</span>';
+  html+='<span style="color:var(--line);flex-shrink:0">|</span>';
+  html+='<span style="font-size:11px;color:var(--muted2)">Tax Reserve <strong style="color:'+(w.tax>0?'var(--green)':'var(--amber)')+'">'+f(w.tax)+'</strong></span>';
+  html+='<span style="font-size:11px;color:var(--muted2)">EF <strong style="color:var(--ink)">'+f(w.lc)+'</strong></span>';
+  html+='<span style="font-size:11px;color:var(--muted2)">Alaska Funding <strong style="color:var(--ink)">'+f(w.sav)+'</strong></span>';
+  html+='<span style="font-size:11px;color:var(--muted2)">IRA Staging <strong style="color:var(--ink)">'+f(w.amx)+'</strong></span>';
   html+='</div>';
 
   // Formula + recommendation — shared function
   var _surplusRec=getNextDollarRec(vm,deployable,nearTermRisk);
   html+='<div class="ov3-formula">';
-  html+='<div class="ov3-formula-lhs">'+f(w.chk)+' checking &minus; '+f(OP_FL)+' floor = <strong>'+f(deployable)+' deployable</strong></div>';
+  html+='<div class="ov3-formula-lhs">'+f(w.chk)+' checking &minus; '+f(OP_FL)+' floor = <strong>'+fsigned(deployable)+' deployable</strong></div>';
   html+='<div class="ov3-formula-rec">→ '+_surplusRec+'</div>';
   html+='</div>';
   html+='</div>'; // end S2

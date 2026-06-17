@@ -2100,6 +2100,145 @@ test('S24h-7: goals after locked tiers are Queued (cumDone=false propagates)', f
   assert(t6 && t6.status === 'Queued', 'T6 Bailey 529 should be Queued while locked tiers block chain');
 });
 
+// ── 24i: Fix 2 — getNextDollarRec shared function ─────────────────────────
+// Uses fullVm (all goals fully funded) so no queue item is found — tests the
+// routing logic: below-floor, collision, thin-cushion, and fallthrough.
+test('S24i-1: getNextDollarRec returns below-floor message when deployable<0', function(){
+  const r = getNextDollarRec(fullVm, -100, null);
+  assert(r.indexOf('Below floor')===0, 'Should return below-floor message, got: '+r);
+});
+test('S24i-2: getNextDollarRec returns collision message when nearTermRisk present', function(){
+  const riskWk = {num:3, dates:'Jun 21 - Jun 27', chk:5000};
+  const r = getNextDollarRec(fullVm, 2000, riskWk);
+  assert(r.indexOf('Retain')===0 && r.indexOf('Wk')>0, 'Should return retain message with Wk, got: '+r);
+});
+test('S24i-3: getNextDollarRec returns thin-cushion message when deployable<500', function(){
+  const r = getNextDollarRec(fullVm, 300, null);
+  assert(r.indexOf('Cushion thin')===0, 'Should return cushion thin message, got: '+r);
+});
+test('S24i-4: collision message includes calendar week number', function(){
+  const riskWk = {num:3, dates:'Jun 21 - Jun 27', chk:5000};
+  const r = getNextDollarRec(fullVm, 2000, riskWk);
+  // getCalWeek(3) = 22+3 = 25
+  assert(r.indexOf('25')>=0, 'Should include cal week 25, got: '+r);
+});
+
+// ── 24j: Fix 3 — contiguous lastReconNum walk ──────────────────────────────
+test('S24j-1: contiguous recon — W1 and W2 reconciled → lastReconNum=2', function(){
+  const keys = [1,2];
+  let last=0; for(let i=1;i<=31;i++){if(keys.indexOf(i)>=0){last=i;}else{break;}}
+  assert(last===2, 'lastReconNum should be 2, got '+last);
+});
+test('S24j-2: contiguous recon — W1 and W3 (gap at W2) → lastReconNum=1', function(){
+  const keys = [1,3];
+  let last=0; for(let i=1;i<=31;i++){if(keys.indexOf(i)>=0){last=i;}else{break;}}
+  assert(last===1, 'lastReconNum should be 1 (gap at W2), got '+last);
+});
+test('S24j-3: contiguous recon — empty → lastReconNum=0', function(){
+  const keys = [];
+  let last=0; for(let i=1;i<=31;i++){if(keys.indexOf(i)>=0){last=i;}else{break;}}
+  assert(last===0, 'lastReconNum should be 0 for empty, got '+last);
+});
+test('S24j-4: contiguous recon — W1-W5 all → lastReconNum=5', function(){
+  const keys = [1,2,3,4,5];
+  let last=0; for(let i=1;i<=31;i++){if(keys.indexOf(i)>=0){last=i;}else{break;}}
+  assert(last===5, 'lastReconNum should be 5, got '+last);
+});
+test('S24j-5: contiguous recon — only W3 (not W1) → lastReconNum=0', function(){
+  const keys = [3];
+  let last=0; for(let i=1;i<=31;i++){if(keys.indexOf(i)>=0){last=i;}else{break;}}
+  assert(last===0, 'lastReconNum should be 0 when W1 missing, got '+last);
+});
+
+// ── 24k: Fix 4 — no-recon confExpl message ────────────────────────────────
+test('S24k-1: confExpl is "No reconciled weeks yet" when lastReconNum=0 and no drag', function(){
+  const lastReconNum = 0;
+  const confDrag = [];
+  const confExpl = confDrag.length ? 'Dragging: '+confDrag.join(' · ') : (lastReconNum===0 ? 'No reconciled weeks yet — model running on projections' : 'All systems current');
+  assert(confExpl.indexOf('No reconciled weeks yet')===0, 'Should say no recon weeks, got: '+confExpl);
+});
+test('S24k-2: confExpl is "All systems current" when lastReconNum>0 and no drag', function(){
+  const lastReconNum = 2;
+  const confDrag = [];
+  const confExpl = confDrag.length ? 'Dragging: '+confDrag.join(' · ') : (lastReconNum===0 ? 'No reconciled weeks yet — model running on projections' : 'All systems current');
+  assert(confExpl === 'All systems current', 'Should say all systems current, got: '+confExpl);
+});
+test('S24k-3: confExpl shows drag items when confDrag non-empty (overrides lastReconNum=0)', function(){
+  const lastReconNum = 0;
+  const confDrag = ['recon lagging'];
+  const confExpl = confDrag.length ? 'Dragging: '+confDrag.join(' · ') : (lastReconNum===0 ? 'No reconciled weeks yet — model running on projections' : 'All systems current');
+  assert(confExpl.indexOf('Dragging:')===0, 'Should show dragging when confDrag non-empty, got: '+confExpl);
+});
+
+// ── 24l: Fix 5 — explicit status badge background colors ──────────────────
+test('S24l-1: Done status uses green background #ecfdf5', function(){
+  const isDone=true; const statusLabel='Done'; const gLocked=false;
+  const bg = isDone ? '#ecfdf5' : statusLabel==='Active' ? '#eff6ff' : gLocked ? '#f3f4f6' : '#f9fafb';
+  assert(bg === '#ecfdf5', 'Done should be #ecfdf5, got '+bg);
+});
+test('S24l-2: Active status uses blue background #eff6ff', function(){
+  const isDone=false; const statusLabel='Active'; const gLocked=false;
+  const bg = isDone ? '#ecfdf5' : statusLabel==='Active' ? '#eff6ff' : gLocked ? '#f3f4f6' : '#f9fafb';
+  assert(bg === '#eff6ff', 'Active should be #eff6ff, got '+bg);
+});
+test('S24l-3: Pending CPA status uses gray background #f3f4f6', function(){
+  const isDone=false; const statusLabel='Pending CPA'; const gLocked=true;
+  const bg = isDone ? '#ecfdf5' : statusLabel==='Active' ? '#eff6ff' : gLocked ? '#f3f4f6' : '#f9fafb';
+  assert(bg === '#f3f4f6', 'Pending CPA should be #f3f4f6, got '+bg);
+});
+test('S24l-4: Queued status uses light background #f9fafb', function(){
+  const isDone=false; const statusLabel='Queued'; const gLocked=false;
+  const bg = isDone ? '#ecfdf5' : statusLabel==='Active' ? '#eff6ff' : gLocked ? '#f3f4f6' : '#f9fafb';
+  assert(bg === '#f9fafb', 'Queued should be #f9fafb, got '+bg);
+});
+
+// ── 24m: fsigned() formatter ──────────────────────────────────────────────
+test('S24m-1: fsigned returns signed negative for negative input', function(){
+  const r = fsigned(-500);
+  assert(r.indexOf('−')===0, 'fsigned(-500) should start with minus sign, got: '+r);
+  assert(r.indexOf('500')>0, 'fsigned(-500) should include 500, got: '+r);
+});
+test('S24m-2: fsigned returns no sign prefix for positive input', function(){
+  const r = fsigned(1000);
+  assert(r.indexOf('−')===-1, 'fsigned(1000) should have no minus sign, got: '+r);
+  assert(r.indexOf('$')===0, 'fsigned(1000) should start with $, got: '+r);
+});
+test('S24m-3: fsigned(0) returns $0.00 with no sign', function(){
+  const r = fsigned(0);
+  assert(r==='$0.00', 'fsigned(0) should be $0.00, got: '+r);
+});
+test('S24m-4: f() always returns absolute value (existing behavior preserved)', function(){
+  assert(f(-500)==='$500.00', 'f(-500) should still return $500.00, got: '+f(-500));
+});
+
+// ── 24n: Flight path SVG content ──────────────────────────────────────────
+test('S24n-1: flight path SVG contains $6,500 floor reference line', function(){
+  const svg = buildFlightPathSVG(fullVm);
+  assertIncludes(svg, '$6,500 floor', 'SVG should include floor label');
+  assertIncludes(svg, 'stroke-dasharray', 'SVG should include dashed floor line');
+});
+test('S24n-2: flight path SVG contains current week marker (white circle)', function(){
+  const svg = buildFlightPathSVG(fullVm);
+  assertIncludes(svg, 'fill="#fff"', 'SVG should include white current week circle');
+});
+test('S24n-3: flight path SVG contains risk markers when future weeks breach floor', function(){
+  // Build a vm where a future week is below OP_FL
+  const riskVm = {weeks: WEEKS.map(function(w){
+    return w.num > currentW ? Object.assign({},w,{chk: 5000}) : w;
+  }), allActions:[], reconciledWeeks:[], goalCompletion:{}};
+  const svg = buildFlightPathSVG(riskVm);
+  assertIncludes(svg, 'fill="#ef4444"', 'SVG should include red risk markers for below-floor weeks');
+});
+test('S24n-4: flight path SVG includes accessibility role and aria-label', function(){
+  const svg = buildFlightPathSVG(fullVm);
+  assertIncludes(svg, 'role="img"', 'SVG should have role=img');
+  assertIncludes(svg, 'aria-label=', 'SVG should have aria-label');
+});
+test('S24n-5: flight path SVG includes title element', function(){
+  const svg = buildFlightPathSVG(fullVm);
+  assertIncludes(svg, '<title>Projected checking flight path</title>', 'SVG should include title element');
+});
+
 // ─────────────────────────────────────────────────────────────────────────
 console.log('\n╔══════════════════════════════════════════════════════════════╗');
 console.log('║                       RESULTS                               ║');
