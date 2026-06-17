@@ -1957,6 +1957,25 @@ function renderGoalRail(vm){
   '</div>';
 }
 
+// ── getNextDollarRec — shared recommendation logic for S1 + S2 ────────────
+function getNextDollarRec(vm,deployable,nearTermRisk){
+  if(deployable<0)return'Below floor — do not deploy. Address deficit first.';
+  if(nearTermRisk)return'Retain — collision window in Wk '+getCalWeek(nearTermRisk.num)+' ('+nearTermRisk.dates.split('-')[0].trim()+')';
+  if(deployable<500)return'Cushion thin — hold until next income week.';
+  var _g=null;
+  for(var _i=0;_i<PRIORITY_TIERS.length;_i++){
+    var _tg=GOALS_REGISTRY.find(function(x){return x.id===PRIORITY_TIERS[_i].goals[0];});
+    if(!_tg||_tg.complete)continue;
+    if(getGoalFunded(_tg.id,vm)<_tg.target-0.01){_g=_tg;break;}
+  }
+  if(_g){
+    var _rem=r(Math.max(0,_g.target-getGoalFunded(_g.id,vm)));
+    var _lk=!!(_g.needsFlag&&!goalFlags[_g.needsFlag]);
+    return _lk?'Fund next queue item: '+_g.name+' — pending CPA clearance':'Fund next queue item: '+_g.name+' ('+f(_rem)+' remaining)';
+  }
+  return'All priority goals funded — hold pending next strategic decision';
+}
+
 // ── renderOverview 3.0 — Financial Command Center ──────────────────────────
 function renderOverview(vm){
   var w=vm.weeks.find(function(x){return x.num===currentW;})||vm.weeks[0];
@@ -1994,33 +2013,14 @@ function renderOverview(vm){
 
   // Reconciliation state
   var reconKeys=Object.keys(reconData).map(Number).filter(function(n){return reconData[n]&&reconData[n].chk!==undefined;});
-  var lastReconNum=reconKeys.length?Math.max.apply(null,reconKeys):0;
+  var lastReconNum=0;for(var _rci=1;_rci<=31;_rci++){if(reconKeys.indexOf(_rci)>=0){lastReconNum=_rci;}else{break;}}
   var pastWeeksCount=Math.max(0,currentW-1);
 
-  // Next Dollar Recommendation
-  var nextDollarRec;
-  if(nearTermRisk){
-    nextDollarRec='Retain — collision window in Wk '+getCalWeek(nearTermRisk.num)+' ('+nearTermRisk.dates.split('-')[0].trim()+')';
-  }else{
-    var _ndGoal=null;
-    for(var _ndi=0;_ndi<PRIORITY_TIERS.length;_ndi++){
-      var _ndTier=PRIORITY_TIERS[_ndi];
-      var _ndG=GOALS_REGISTRY.find(function(x){return x.id===_ndTier.goals[0];});
-      if(!_ndG||_ndG.complete)continue;
-      var _ndFunded=getGoalFunded(_ndG.id,vm);
-      if(_ndFunded<_ndG.target-0.01){_ndGoal=_ndG;break;}
-    }
-    if(_ndGoal){
-      var _ndRem=r(Math.max(0,_ndGoal.target-getGoalFunded(_ndGoal.id,vm)));
-      var _ndLocked=!!((_ndGoal.needsFlag)&&!goalFlags[_ndGoal.needsFlag]);
-      nextDollarRec=_ndLocked?'Fund next queue item: '+_ndGoal.name+' — pending CPA clearance':'Fund next queue item: '+_ndGoal.name+' ('+f(_ndRem)+' remaining)';
-    }else{
-      nextDollarRec='All priority goals funded — hold pending next strategic decision';
-    }
-  }
+  // Next Dollar Recommendation — shared function
+  var nextDollarRec=getNextDollarRec(vm,cushion,nearTermRisk);
 
   // Confidence Score (0–100)
-  var reconScore=Math.min(40,pastWeeksCount===0?40:Math.round((vm.reconciledWeeks.length/pastWeeksCount)*40));
+  var reconScore=Math.min(40,pastWeeksCount===0?40:Math.round((lastReconNum/pastWeeksCount)*40));
   var pastActs=vm.allActions.filter(function(a){return a.weekNum<currentW;});
   var actScore=Math.min(30,pastActs.length===0?30:Math.round((pastActs.filter(function(a){return a.completed;}).length/pastActs.length)*30));
   // Freshness: days since end of last reconciled week (model wk 1 ends Jun 13; wk N ends Jun 6+N*7)
@@ -2030,10 +2030,10 @@ function renderOverview(vm){
   var confScore=reconScore+actScore+freshScore;
   var confColor=confScore>=80?'var(--green)':confScore>=60?'var(--amber)':'var(--red)';
   var confDrag=[];
-  if(reconScore<30&&pastWeeksCount>0)confDrag.push((pastWeeksCount-vm.reconciledWeeks.length)+' past week'+(pastWeeksCount-vm.reconciledWeeks.length!==1?'s':'')+' unreconciled');
+  if(reconScore<30&&pastWeeksCount>0)confDrag.push((pastWeeksCount-lastReconNum)+' past week'+(pastWeeksCount-lastReconNum!==1?'s':'')+' unreconciled');
   if(actScore<20&&pastActs.length>0)confDrag.push('open past actions');
   if(freshScore<15&&lastReconNum>0)confDrag.push('last recon '+daysSinceRecon+' day'+(daysSinceRecon!==1?'s':'')+' ago');
-  var confExpl=confDrag.length?'Dragging: '+confDrag.join(' · '):'All systems current';
+  var confExpl=confDrag.length?'Dragging: '+confDrag.join(' · '):(lastReconNum===0?'No reconciled weeks yet — model running on projections':'All systems current');
 
   // True Deployable Surplus
   var deployable=cushion;
@@ -2059,12 +2059,14 @@ function renderOverview(vm){
   html+='<div style="flex:1;min-width:0">';
   html+='<div style="font-size:15px;font-weight:700;color:#fff;line-height:1.4;margin-bottom:11px">'+interp+'</div>';
   html+='<div style="display:flex;flex-wrap:wrap;gap:6px">';
-  html+='<span class="cmd-chip">Cash <strong>'+f(w.chk)+'</strong></span>';
+  html+='<span class="cmd-chip">Proj. EOW Cash <strong>'+f(w.chk)+'</strong></span>';
   html+='<span class="cmd-chip">Floor <strong>'+f(OP_FL)+'</strong></span>';
   html+='<span class="cmd-chip '+(cushion<0?'chip-red':cushion<1000?'chip-amber':'chip-green')+'">Cushion <strong>'+(cushion>=0?'+':'')+f(Math.abs(cushion))+'</strong></span>';
   html+='<span class="cmd-chip">Reconciled through <strong>'+(lastReconNum?'Wk '+getCalWeek(lastReconNum):'—')+'</strong></span>';
   html+='<span class="cmd-chip '+(nextRisk?'chip-amber':'chip-green')+'">Next risk <strong>'+(nextRisk?'Wk '+getCalWeek(nextRisk.num):'None')+'</strong></span>';
   html+='<span class="cmd-chip '+(openActsCount>0?'chip-amber':'chip-green')+'">Actions <strong>'+(openActsCount>0?openActsCount+' open':'All done')+'</strong></span>';
+  var _actReq=(openActsCount>0||nearTermRisk||cushion<0);
+  html+='<span class="cmd-chip '+(_actReq?'chip-red':'chip-green')+'" style="font-weight:800">Action Required <strong>'+(_actReq?'YES':'NO')+'</strong></span>';
   html+='</div>';
   html+='</div>';
   html+='</div>'; // end row 1
@@ -2098,7 +2100,7 @@ function renderOverview(vm){
   html+='<div style="display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:14px;gap:12px">';
   html+='<div>';
   html+='<div class="ov3-sect-title">True Deployable Surplus</div>';
-  html+='<div class="ov3-sect-sub">Visible cash minus locked obligations — the only number that matters for the next decision</div>';
+  html+='<div class="ov3-sect-sub">Projected end-of-week checking minus operating floor</div>';
   html+='</div>';
   html+='<div style="text-align:right;flex-shrink:0">';
   html+='<div style="font-size:26px;font-weight:800;color:'+(deployable<0?'var(--red)':deployable<1000?'var(--amber)':'var(--green)')+'">'+f(deployable)+'</div>';
@@ -2114,23 +2116,8 @@ function renderOverview(vm){
   html+='<div class="ov3-acct"><div class="ov3-acct-lbl">Lending Club (EF)</div><div class="ov3-acct-val">'+f(w.lc)+'</div><div class="ov3-acct-hint">🔒 Emergency fund</div></div>';
   html+='</div>';
 
-  // Formula + recommendation
-  var _surplusRec;
-  if(deployable<0){
-    _surplusRec='Below floor — do not deploy. Address deficit first.';
-  }else if(nearTermRisk){
-    _surplusRec='Retain — collision window approaching in Wk '+getCalWeek(nearTermRisk.num)+'.';
-  }else if(deployable<500){
-    _surplusRec='Cushion thin — hold until next income week.';
-  }else{
-    var _srGoal=null;
-    for(var _sri=0;_sri<PRIORITY_TIERS.length;_sri++){
-      var _srG=GOALS_REGISTRY.find(function(x){return x.id===PRIORITY_TIERS[_sri].goals[0];});
-      if(!_srG||_srG.complete)continue;
-      if(getGoalFunded(_srG.id,vm)<_srG.target-0.01){_srGoal=_srG;break;}
-    }
-    _surplusRec=_srGoal?'Fund next queue item: '+_srGoal.name+'.':'All priority goals funded — hold pending next decision.';
-  }
+  // Formula + recommendation — shared function
+  var _surplusRec=getNextDollarRec(vm,deployable,nearTermRisk);
   html+='<div class="ov3-formula">';
   html+='<div class="ov3-formula-lhs">'+f(w.chk)+' checking &minus; '+f(OP_FL)+' floor = <strong>'+f(deployable)+' deployable</strong></div>';
   html+='<div class="ov3-formula-rec">→ '+_surplusRec+'</div>';
@@ -2172,7 +2159,7 @@ function renderOverview(vm){
       html+='<div style="display:flex;align-items:baseline;gap:10px;margin-bottom:7px;flex-wrap:wrap">';
       html+='<span style="font-size:14px;font-weight:800;color:var(--red)">'+f(rw.chk)+' projected</span>';
       html+='<span style="font-size:11px;color:var(--muted)">floor '+f(OP_FL)+'</span>';
-      html+='<span style="font-size:12px;font-weight:700;color:var(--red)">gap: '+f(rwGap)+'</span>';
+      html+='<span style="font-size:12px;font-weight:700;color:var(--red)">gap: '+(rwGap<0?'−':'+')+f(Math.abs(rwGap))+'</span>';
       html+='</div>';
       if(rwDrivers.length){
         html+='<div style="font-size:9px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);margin-bottom:4px;font-weight:700">Drivers</div>';
@@ -2199,7 +2186,7 @@ function renderOverview(vm){
 
   // Header row
   html+='<div class="ov3-alloc-hdr">';
-  ['#','Goal','Remaining','Due','Status'].forEach(function(h){
+  ['#','Goal','Remaining','ETA','Status'].forEach(function(h){
     html+='<div style="font-size:9px;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);font-weight:700">'+h+'</div>';
   });
   html+='</div>';
@@ -2224,7 +2211,7 @@ function renderOverview(vm){
 
     if(isDone){_cumDone=true;}else{_cumDone=false;}
 
-    var dueTxt=isDone?'—':gLocked?'TBD':(comp&&comp.num>0?'Wk '+getCalWeek(comp.num):'2027+');
+    var etaTxt=isDone?'—':gLocked?'TBD':(comp&&comp.num>0?'Wk '+getCalWeek(comp.num):'2027+');
 
     html+='<div class="ov3-alloc-row">';
     html+='<div style="font-size:12px;font-weight:800;color:'+tier.color+';background:'+tier.color+'18;border-radius:5px;text-align:center;padding:3px 0">T'+tier.num+'</div>';
@@ -2234,8 +2221,9 @@ function renderOverview(vm){
     if(!isDone)html+='<div style="margin-top:4px;height:3px;background:var(--line);border-radius:99px"><div style="height:100%;width:'+pct+'%;background:'+tier.color+';border-radius:99px"></div></div>';
     html+='</div>';
     html+='<div style="font-size:13px;font-weight:700;color:'+(rem===0?'var(--green)':'var(--ink)')+'">'+( rem===0?'—':f(rem))+'</div>';
-    html+='<div style="font-size:11px;color:var(--muted)">'+dueTxt+'</div>';
-    html+='<div style="font-size:10px;font-weight:700;color:'+statusColor+';background:'+statusColor+'1a;padding:3px 7px;border-radius:5px;text-align:center;white-space:nowrap">'+statusLabel+'</div>';
+    html+='<div style="font-size:11px;color:var(--muted)">'+etaTxt+'</div>';
+    var _stBg=isDone?'#ecfdf5':statusLabel==='Active'?'#eff6ff':gLocked?'#f3f4f6':'#f9fafb';
+    html+='<div style="font-size:10px;font-weight:700;color:'+statusColor+';background:'+_stBg+';padding:3px 7px;border-radius:5px;text-align:center;white-space:nowrap">'+statusLabel+'</div>';
     html+='</div>'; // end alloc row
   });
 
