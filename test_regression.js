@@ -2215,7 +2215,7 @@ test('S24m-4: f() always returns absolute value (existing behavior preserved)', 
 test('S24n-1: flight path SVG contains $6,500 floor reference line', function(){
   const svg = buildFlightPathSVG(fullVm);
   assertIncludes(svg, '$6,500 floor', 'SVG should include floor label');
-  assertIncludes(svg, 'stroke-dasharray', 'SVG should include dashed floor line');
+  assertIncludes(svg, 'stroke-opacity', 'SVG should include floor line stroke');
 });
 test('S24n-2: flight path SVG contains current week marker (white circle)', function(){
   const svg = buildFlightPathSVG(fullVm);

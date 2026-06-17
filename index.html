@@ -1977,47 +1977,88 @@ function getNextDollarRec(vm,deployable,nearTermRisk){
   return'All priority goals funded — hold pending next strategic decision';
 }
 
-// ── buildFlightPathSVG — compact 31-week projected checking sparkline ────────
+// ── buildFlightPathSVG — Financial Runway: distance-to-floor chart ───────────
 function buildFlightPathSVG(vm){
   var wks=vm.weeks;
-  var svgW=600,svgH=130,padL=10,padR=10,padT=18,padB=20;
+  // Wide viewBox + tall height = full visual ownership of the section
+  var svgW=960,svgH=260,padL=14,padR=14,padT=32,padB=28;
   var plotW=svgW-padL-padR,plotH=svgH-padT-padB;
-  var vals=wks.map(function(w){return w.chk;});
-  var maxV=Math.max.apply(null,vals)*1.08;
-  var minV=Math.min(Math.min.apply(null,vals)*0.88,OP_FL*0.72);
-  function xOf(i){return padL+(i/(wks.length-1))*plotW;}
-  function yOf(v){return padT+plotH-((v-minV)/(maxV-minV))*plotH;}
-  var floorY=r(yOf(OP_FL));
+
+  // Y-axis: CUSHION (distance to floor). Floor = y=0.
+  var cushions=wks.map(function(w){return r(w.chk-OP_FL);});
+  var maxC=Math.max.apply(null,cushions);
+  var minC=Math.min.apply(null,cushions);
+  // Cap safe headroom so risk dips get proportional visual space
+  var yMax=Math.min(maxC,8000)*1.1;
+  var yMin=Math.min(minC*1.5,-400);
+  var topY=padT,bottomY=padT+plotH;
+
+  function xOf(i){return r(padL+(i/(wks.length-1))*plotW);}
+  function yOf(v){return r(padT+plotH-((v-yMin)/(yMax-yMin))*plotH);}
+  var floorY=yOf(0);
+
   var curIdx=currentW-1;
-  var riskWks=wks.filter(function(w){return w.num>currentW&&w.chk<OP_FL;});
-  var pastPts=wks.slice(0,curIdx+1).map(function(w,i){return r(xOf(i))+','+r(yOf(w.chk));}).join(' ');
-  var futurePts=wks.slice(curIdx).map(function(w,i){return r(xOf(curIdx+i))+','+r(yOf(w.chk));}).join(' ');
+  var riskWks=wks.filter(function(w){return w.num>currentW&&cushions[w.num-1]<0;});
+  var nextRisk=riskWks.length?riskWks[0]:null;
+  var worstRisk=riskWks.length?riskWks.reduce(function(m,w){return cushions[w.num-1]<cushions[m.num-1]?w:m;},riskWks[0]):null;
+
+  var pastPts=wks.slice(0,curIdx+1).map(function(w,i){return xOf(i)+','+yOf(cushions[i]);}).join(' ');
+  var futurePts=wks.slice(curIdx).map(function(w,i){return xOf(curIdx+i)+','+yOf(cushions[curIdx+i]);}).join(' ');
+  var areaPts=wks.slice(curIdx).map(function(w,i){return xOf(curIdx+i)+','+yOf(cushions[curIdx+i]);}).join(' ')
+    +' '+xOf(wks.length-1)+','+floorY+' '+xOf(curIdx)+','+floorY;
+
   var s='<svg viewBox="0 0 '+svgW+' '+svgH+'" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="31-week projected checking balance with floor risk markers" style="width:100%;height:'+svgH+'px;display:block">';
   s+='<title>Projected checking flight path</title>';
-  // Floor reference line
-  s+='<line x1="'+padL+'" y1="'+floorY+'" x2="'+(svgW-padR)+'" y2="'+floorY+'" stroke="rgba(239,68,68,.45)" stroke-width="1" stroke-dasharray="4,3"/>';
-  s+='<text x="'+(svgW-padR-2)+'" y="'+(floorY-3)+'" font-size="8" fill="rgba(239,68,68,.6)" text-anchor="end">$6,500 floor</text>';
-  // Past line (muted)
+
+  s+='<defs>';
+  s+='<clipPath id="fp-safe"><rect x="'+padL+'" y="'+topY+'" width="'+plotW+'" height="'+(floorY-topY)+'"/></clipPath>';
+  s+='<clipPath id="fp-risk"><rect x="'+padL+'" y="'+floorY+'" width="'+plotW+'" height="'+(bottomY-floorY)+'"/></clipPath>';
+  s+='</defs>';
+
+  // Zone backgrounds
+  s+='<rect x="'+padL+'" y="'+topY+'" width="'+plotW+'" height="'+(floorY-topY)+'" fill="rgba(16,185,129,.07)"/>';
+  s+='<rect x="'+padL+'" y="'+floorY+'" width="'+plotW+'" height="'+(bottomY-floorY)+'" fill="rgba(239,68,68,.12)"/>';
+
+  // Area fills — green above floor, red below
+  s+='<polygon points="'+areaPts+'" clip-path="url(#fp-safe)" fill="rgba(16,185,129,.2)"/>';
+  s+='<polygon points="'+areaPts+'" clip-path="url(#fp-risk)" fill="rgba(239,68,68,.3)"/>';
+
+  // ── FLOOR LINE — governing rule of the system ─────────────────────────────
+  s+='<line x1="'+padL+'" y1="'+floorY+'" x2="'+(svgW-padR)+'" y2="'+floorY+'" stroke="#ef4444" stroke-width="2.5" stroke-opacity=".95"/>';
+  s+='<text x="'+(svgW-padR-4)+'" y="'+(floorY-6)+'" font-size="10" fill="#f87171" text-anchor="end" font-weight="800">$6,500 floor</text>';
+
+  // Past line (muted context)
   if(curIdx>0)s+='<polyline points="'+pastPts+'" fill="none" stroke="rgba(255,255,255,.2)" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>';
-  // Future projected line
-  s+='<polyline points="'+futurePts+'" fill="none" stroke="rgba(255,255,255,.55)" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>';
-  // Risk week markers
-  riskWks.forEach(function(w){
-    var i=w.num-1,x=r(xOf(i)),y=r(yOf(w.chk));
-    s+='<circle cx="'+x+'" cy="'+y+'" r="3" fill="#ef4444"/>';
-  });
-  // Current week marker + labels
-  var curX=r(xOf(curIdx)),curY=r(yOf(wks[curIdx].chk));
-  s+='<circle cx="'+curX+'" cy="'+curY+'" r="4" fill="#fff" opacity=".9"/>';
-  s+='<text x="'+curX+'" y="'+(padT-4)+'" font-size="8" fill="rgba(255,255,255,.5)" text-anchor="middle">Wk '+getCalWeek(currentW)+'</text>';
-  var curValY=curY>padT+14?curY-6:curY+13;
-  s+='<text x="'+curX+'" y="'+curValY+'" font-size="8" fill="rgba(255,255,255,.65)" text-anchor="middle">'+f(wks[curIdx].chk)+'</text>';
-  // Label first risk week
-  if(riskWks.length>0){
-    var rw=riskWks[0],ri=rw.num-1,rx=r(xOf(ri)),ry=r(yOf(rw.chk));
-    var anchor=rx<svgW/2?'start':'end';
-    s+='<text x="'+(anchor==='start'?rx+5:rx-5)+'" y="'+(ry+13)+'" font-size="8" fill="rgba(239,68,68,.85)" text-anchor="'+anchor+'">Wk '+getCalWeek(rw.num)+'</text>';
+
+  // Future line (readable but secondary to floor)
+  s+='<polyline points="'+futurePts+'" fill="none" stroke="rgba(255,255,255,.6)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>';
+
+  // ── TODAY ─────────────────────────────────────────────────────────────────
+  var curX=xOf(curIdx),curY=yOf(cushions[curIdx]);
+  s+='<circle cx="'+curX+'" cy="'+curY+'" r="7" fill="rgba(255,255,255,.15)"/>';
+  s+='<circle cx="'+curX+'" cy="'+curY+'" r="4.5" fill="#fff"/>';
+  s+='<text x="'+curX+'" y="'+(topY-8)+'" font-size="10" fill="rgba(255,255,255,.75)" text-anchor="middle" font-weight="800">Today</text>';
+
+  // ── NEXT RISK ─────────────────────────────────────────────────────────────
+  if(nextRisk){
+    var nri=nextRisk.num-1,nrx=xOf(nri),nry=yOf(cushions[nri]);
+    s+='<circle cx="'+nrx+'" cy="'+nry+'" r="9" fill="rgba(239,68,68,.2)"/>';
+    s+='<circle cx="'+nrx+'" cy="'+nry+'" r="5.5" fill="#ef4444"/>';
+    var nrAnchor=nrx<svgW*0.65?'start':'end';
+    var nrLx=nrAnchor==='start'?nrx+12:nrx-12;
+    var nrLy=cushions[nri]<0?nry+16:nry-8;
+    s+='<text x="'+nrLx+'" y="'+nrLy+'" font-size="10" fill="#f87171" text-anchor="'+nrAnchor+'" font-weight="800">Next Risk · Wk '+getCalWeek(nextRisk.num)+'</text>';
   }
+
+  // ── WORST RISK (only if different week) ───────────────────────────────────
+  if(worstRisk&&nextRisk&&worstRisk.num!==nextRisk.num){
+    var wri=worstRisk.num-1,wrx=xOf(wri),wry=yOf(cushions[wri]);
+    s+='<circle cx="'+wrx+'" cy="'+wry+'" r="9" fill="rgba(220,38,38,.25)"/>';
+    s+='<circle cx="'+wrx+'" cy="'+wry+'" r="5.5" fill="#dc2626"/>';
+    var wrAnchor=wrx<svgW*0.65?'start':'end';
+    s+='<text x="'+(wrAnchor==='start'?wrx+12:wrx-12)+'" y="'+(wry+16)+'" font-size="10" fill="#fca5a5" text-anchor="'+wrAnchor+'" font-weight="800">Worst · Wk '+getCalWeek(worstRisk.num)+'</text>';
+  }
+
   s+='</svg>';
   return s;
 }
@@ -2052,7 +2093,8 @@ function renderOverview(vm){
   }else if(cushion<1000){
     interp='Cushion is thin at '+f(cushion)+' — hold discretionary spending until next income week.';
   }else if(nextRisk){
-    interp='Operating normally. Next projected thin week: Wk '+getCalWeek(nextRisk.num)+' ('+nextRisk.dates.split('-')[0].trim()+').';
+    var _wksAway=nextRisk.num-currentW;
+    interp='Operating normally. Next projected thin week: Wk '+getCalWeek(nextRisk.num)+' ('+nextRisk.dates.split('-')[0].trim()+') — '+_wksAway+' week'+(_wksAway!==1?'s':'')+' away.';
   }else{
     interp='System healthy — '+f(cushion)+' above floor with no risk weeks remaining in the 31-week model.';
   }
@@ -2111,7 +2153,6 @@ function renderOverview(vm){
   html+='<span class="cmd-chip">Floor <strong>'+f(OP_FL)+'</strong></span>';
   html+='<span class="cmd-chip '+(cushion<0?'chip-red':cushion<1000?'chip-amber':'chip-green')+'">Cushion <strong>'+(cushion>=0?'+':'')+f(Math.abs(cushion))+'</strong></span>';
   html+='<span class="cmd-chip">Reconciled through <strong>'+(lastReconNum?'Wk '+getCalWeek(lastReconNum):'—')+'</strong></span>';
-  html+='<span class="cmd-chip '+(nextRisk?'chip-amber':'chip-green')+'">Next risk <strong>'+(nextRisk?'Wk '+getCalWeek(nextRisk.num):'None')+'</strong></span>';
   html+='<span class="cmd-chip '+(openActsCount>0?'chip-amber':'chip-green')+'">Actions <strong>'+(openActsCount>0?openActsCount+' open':'All done')+'</strong></span>';
   var _actReq=(openActsCount>0||nearTermRisk||cushion<0);
   html+='<span class="cmd-chip '+(_actReq?'chip-red':'chip-green')+'" style="font-weight:800">Action Required <strong>'+(_actReq?'YES':'NO')+'</strong></span>';
@@ -2140,12 +2181,16 @@ function renderOverview(vm){
 
   html+='</div>'; // end row 2
 
-  // Row 3: Financial Flight Path
-  html+='<div style="margin-top:12px;padding-top:12px;border-top:1px solid rgba(255,255,255,.08)">';
-  html+='<div style="font-size:9px;text-transform:uppercase;letter-spacing:.08em;color:rgba(255,255,255,.28);margin-bottom:6px;font-weight:700">Financial Flight Path — Projected Checking</div>';
+  html+='</div>'; // end S1
+
+  // ══════════════════════════════════════════════════════════════════════════
+  // FLIGHT PATH — full-width strategic visualization
+  // ══════════════════════════════════════════════════════════════════════════
+  html+='<div class="panel card-pad" style="margin-bottom:14px">';
+  html+='<div class="ov3-sect-title">Financial Flight Path</div>';
+  html+='<div class="ov3-sect-sub">31-week projected checking — distance to operating floor</div>';
   html+=buildFlightPathSVG(vm);
   html+='</div>';
-  html+='</div>'; // end S1
 
   // ══════════════════════════════════════════════════════════════════════════
   // S2 — TRUE DEPLOYABLE SURPLUS
@@ -2185,49 +2230,49 @@ function renderOverview(vm){
   // ══════════════════════════════════════════════════════════════════════════
   if(allRiskWeeks.length>0){
     html+='<div class="panel card-pad" style="margin-bottom:14px">';
-    html+='<div class="ov3-sect-title">Collision Map</div>';
-    html+='<div class="ov3-sect-sub">Projected stress points — before they become problems</div>';
+    html+='<div style="margin-bottom:16px">';
+    html+='<div style="font-size:15px;font-weight:800;color:var(--ink);margin-bottom:3px">Collision Map</div>';
+    html+='<div style="font-size:12px;color:var(--muted)">Projected stress points — when, why, and what to do</div>';
+    html+='</div>';
 
     allRiskWeeks.forEach(function(rw){
-      var rwGap=r(rw.chk-OP_FL); // negative = below floor
+      var rwGap=r(rw.chk-OP_FL);
       var rwWeeksAway=rw.num-currentW;
-      // Primary drivers from events
       var rwDrivers=[];
       if(rw.calNote)rwDrivers.push(rw.calNote);
       if(rw.evs&&rw.evs.length){
         rw.evs.filter(function(e){return e.t==='ob';}).slice(0,3).forEach(function(e){if(rwDrivers.length<3)rwDrivers.push(e.l);});
       }
-      // Response copy
       var rwResponse;
       if(rwGap<-2000)rwResponse='Major shortfall — review income timing and defer all discretionary funding.';
       else if(rwGap<-500)rwResponse='Defer discretionary spending until Wk '+getCalWeek(rw.num+1)+'.';
       else rwResponse='Monitor — margin is thin. Avoid non-essential transfers this cycle.';
 
-      html+='<div class="ov3-collision-row">';
-      // Left: week info
+      html+='<div style="display:grid;grid-template-columns:110px 1fr 160px;gap:16px;align-items:start;padding:16px;border:1px solid #fde68a;background:var(--amberSoft);border-radius:13px;margin-bottom:10px">';
+      // Left: week + timing
       html+='<div>';
-      html+='<div style="font-size:20px;font-weight:800;color:var(--amber)">Wk '+getCalWeek(rw.num)+'</div>';
-      html+='<div style="font-size:10px;color:var(--muted);margin-top:2px;line-height:1.4">'+rw.dates+'</div>';
-      html+='<div style="font-size:10px;color:var(--muted);margin-top:2px">'+rwWeeksAway+' wk'+(rwWeeksAway!==1?'s':'')+' out</div>';
+      html+='<div style="font-size:28px;font-weight:900;color:var(--amber);line-height:1">Wk '+getCalWeek(rw.num)+'</div>';
+      html+='<div style="font-size:11px;color:var(--muted);margin-top:4px;line-height:1.5">'+rw.dates+'</div>';
+      html+='<div style="font-size:12px;font-weight:700;color:var(--amber);margin-top:6px">'+rwWeeksAway+' week'+(rwWeeksAway!==1?'s':'')+' out</div>';
       html+='</div>';
       // Middle: projections + drivers
       html+='<div>';
-      html+='<div style="display:flex;align-items:baseline;gap:10px;margin-bottom:7px;flex-wrap:wrap">';
-      html+='<span style="font-size:14px;font-weight:800;color:var(--red)">'+f(rw.chk)+' projected</span>';
-      html+='<span style="font-size:11px;color:var(--muted)">floor '+f(OP_FL)+'</span>';
-      html+='<span style="font-size:12px;font-weight:700;color:var(--red)">gap: '+(rwGap<0?'−':'+')+f(Math.abs(rwGap))+'</span>';
+      html+='<div style="display:flex;align-items:baseline;gap:12px;margin-bottom:10px;flex-wrap:wrap">';
+      html+='<span style="font-size:16px;font-weight:800;color:var(--red)">'+f(rw.chk)+' projected</span>';
+      html+='<span style="font-size:12px;color:var(--muted)">floor '+f(OP_FL)+'</span>';
+      html+='<span style="font-size:13px;font-weight:800;color:var(--red)">gap: '+(rwGap<0?'−':'+')+f(Math.abs(rwGap))+'</span>';
       html+='</div>';
       if(rwDrivers.length){
-        html+='<div style="font-size:9px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);margin-bottom:4px;font-weight:700">Drivers</div>';
-        rwDrivers.forEach(function(d){html+='<div style="font-size:11px;color:var(--ink);line-height:1.5">· '+d+'</div>';});
+        html+='<div style="font-size:10px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);margin-bottom:6px;font-weight:700">Drivers</div>';
+        rwDrivers.forEach(function(d){html+='<div style="font-size:12px;color:var(--ink);line-height:1.6">· '+d+'</div>';});
       }
       html+='</div>';
-      // Right: response
-      html+='<div style="background:rgba(180,83,9,.1);border-radius:8px;padding:10px 11px">';
-      html+='<div style="font-size:9px;text-transform:uppercase;letter-spacing:.07em;color:var(--amber);margin-bottom:5px;font-weight:700">Suggested Response</div>';
-      html+='<div style="font-size:11px;color:var(--amber);line-height:1.5;font-weight:600">'+rwResponse+'</div>';
+      // Right: suggested response
+      html+='<div style="background:rgba(180,83,9,.12);border:1px solid rgba(180,83,9,.2);border-radius:10px;padding:12px 14px">';
+      html+='<div style="font-size:9px;text-transform:uppercase;letter-spacing:.07em;color:var(--amber);margin-bottom:6px;font-weight:800">Suggested Response</div>';
+      html+='<div style="font-size:12px;color:var(--amber);line-height:1.6;font-weight:600">'+rwResponse+'</div>';
       html+='</div>';
-      html+='</div>'; // end collision row
+      html+='</div>';
     });
 
     html+='</div>'; // end S3
