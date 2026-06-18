@@ -841,19 +841,19 @@ test('Ph4 Wishlist: all WISHLIST_SEED items have title, phase, status',()=>{
 });
 
 // ── Model accuracy ──
-// Phase 4.5 fix: W8 (Cal Wk 30) rent was misplaced — 8/2 rent moved to W9.
-// Model now produces exactly 2 structural floor violations: W6, W13
-// (commission+bill week and triple-rent week). Look-ahead floor protects transfers.
-test('Ph4 model: floor violations are exactly W6 and W13 (W8 resolved by rent fix)',()=>{
-  const expectedViolationWeeks=[6,13];
+// Structural floor violations: W6 (commission+bill), W8 (Wendy paycheck now base $2,152.50 — minor),
+// W13 (triple-rent, no income), W26 (triple-rent, reduced surplus from Wk 24 paycheck change).
+// W8 and W26 are new minor violations after removing $400 from Wendy paycheck schedule (Jun 2026).
+test('Ph4 model: floor violations are exactly W6, W8, W13, W26',()=>{
+  const expectedViolationWeeks=[6,8,13,26];
   const actualViolationWeeks=WEEKS.filter(w=>w.chk<6500).map(w=>w.num);
   assert(JSON.stringify(actualViolationWeeks)===JSON.stringify(expectedViolationWeeks),
     'Unexpected floor violations: '+JSON.stringify(actualViolationWeeks));
 });
-test('Ph4 model: lowest checking is W13 (~$4,908)',()=>{
+test('Ph4 model: lowest checking is W13 (~$3,700)',()=>{
   const lowest=WEEKS.reduce((m,w)=>w.chk<m.chk?w:m,WEEKS[0]);
   assert(lowest.num===13,'Expected lowest week W13, got W'+lowest.num+' ('+lowest.chk.toFixed(0)+')');
-  assert(lowest.chk>=4700&&lowest.chk<=5100,'Expected W13 ~$4,908, got '+lowest.chk.toFixed(0));
+  assert(lowest.chk>=3400&&lowest.chk<=4200,'Expected W13 ~$3,700, got '+lowest.chk.toFixed(0));
 });
 test('Ph4 model: no week ends with negative checking (EF backstop holds)',()=>{
   const bad=WEEKS.filter(w=>w.chk<0);
@@ -903,16 +903,16 @@ test('CPA pending: wewe_dcl funds normally',()=>{
   assertApprox(w31.goalSaved.wewe_dcl||0,500,'wewe_dcl with CPA pending',1);
 });
 
-// ── Floor violation guard — must stay at structural baseline W6/W13 ──
-test('CPA pending: floor violations are W6 W13 only — no new violations from AMEX sweeps',()=>{
+// ── Floor violation guard — must stay at structural baseline W6/W8/W13/W26 ──
+test('CPA pending: floor violations are W6 W8 W13 W26 — no new violations from AMEX sweeps',()=>{
   var violations=WEEKS_LOCKED.filter(function(w){return w.chk<OP_FL;});
   var nums=violations.map(function(w){return w.num;}).sort(function(a,b){return a-b;});
-  assert(violations.length<=2,'Expected ≤2 floor violations, got '+violations.length+' at weeks '+nums.join(','));
+  assert(violations.length<=4,'Expected ≤4 floor violations, got '+violations.length+' at weeks '+nums.join(','));
   [6,13].forEach(function(n){assert(nums.indexOf(n)>=0,'W'+n+' should be a structural floor violation');});
 });
-test('CPA pending: no return to 12-violation failure mode (<4 floor violations)',()=>{
+test('CPA pending: no return to 12-violation failure mode (<6 floor violations)',()=>{
   var violations=WEEKS_LOCKED.filter(function(w){return w.chk<OP_FL;});
-  assert(violations.length<4,'Too many floor violations: '+violations.length+' — check AMEX lookahead window');
+  assert(violations.length<6,'Too many floor violations: '+violations.length+' — check AMEX lookahead window');
 });
 test('CPA pending: 5-week lookahead prevents NEW floor violations from AMEX sweeps',()=>{
   // CPA cleared model should have the same violation set (both use lookahead)
@@ -1112,8 +1112,8 @@ console.log('\n── Section 20b: AMEX lookahead unit tests ──');
   test('AMEX deferral: floor violations remain at structural baseline after lookahead changes',()=>{
     var wLocked=runModelWithFlags({ira_cpa_cleared:false});
     var viols=wLocked.filter(function(w){return w.chk<OP_FL;}).map(function(w){return w.num;});
-    assert(viols.length<=2&&viols.indexOf(6)>=0&&viols.indexOf(13)>=0,
-      'Floor violations changed from W6/W13 baseline: '+viols.join(','));
+    assert(viols.length<=4&&viols.indexOf(6)>=0&&viols.indexOf(13)>=0,
+      'Floor violations changed from W6/W8/W13/W26 baseline: '+viols.join(','));
   });
 })();
 
@@ -1810,9 +1810,9 @@ test('LOW-LIQ: W15 Alaska draw note does NOT cause floor violation',()=>{
   assert(w15&&w15.calNote,'W15 should have calNote (Alaska draw info)');
   assert(w15&&w15.chk>=OP_FL,'W15 should be above floor — calNote is informational, not low-liq');
 });
-test('LOW-LIQ: W8 is now above floor after rent fix',()=>{
+test('LOW-LIQ: W8 is a minor floor violation after $400 removed from Wendy paycheck schedule',()=>{
   const w8=WEEKS.find(x=>x.num===8);
-  assert(w8&&w8.chk>=OP_FL,'W8 should be above floor after moving 8/2 rent to W9');
+  assert(w8&&w8.chk<OP_FL,'W8 should be a minor floor violation — Wendy paycheck reduced to base $2,152.50');
 });
 
 // ─────────────────────────────────────────────────────────────────────────
