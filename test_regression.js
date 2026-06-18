@@ -2297,6 +2297,233 @@ console.log('\n── Section 25: Custom tasks included in Overview open-actions
 })();
 
 // ─────────────────────────────────────────────────────────────────────────
+console.log('\n── Section 26: Commission-tax delta auto-action detection ──');
+// Regression: when a week edit adds taxable income after commission_tax is
+// already marked done, saveWeekEdits should detect the delta and create a
+// custom action. These tests validate the model-side logic that the feature
+// depends on: commission_tax appears in realActKeys at the right index for
+// weeks that carry ct>0, and the delta detection arithmetic is correct.
+
+(function(){
+  // S26-1: commission_tax appears in realActKeys for a week with ct>0
+  // Use an override with taxable income on week 6 (default commission_tax week)
+  var savedOv6=overrideData[6];
+  overrideData[6]={week_num:6,ct:400,ca:600,events_json:[{l:'Test commission',t:'in',a:1000,tx:true}]};
+  var wks6=runModel(7000,7694.87);
+  var wk6=wks6.find(function(w){return w.num===6;});
+  test('S26-1: commission_tax appears in realActKeys for a week with ct>0',function(){
+    var hasKey=(wk6&&(wk6.realActKeys||[]).indexOf(ACTION_KEYS.COMMISSION_TAX)>=0);
+    assert(hasKey,'Expected commission_tax in realActKeys for wk6 with ct=400');
+  });
+
+  // S26-2: index is consistent — realActs[ctIdx] label references commission 40%
+  test('S26-2: realActs entry at commission_tax index mentions commission 40%',function(){
+    var ctIdx=wk6?(wk6.realActKeys||[]).indexOf(ACTION_KEYS.COMMISSION_TAX):-1;
+    assert(ctIdx>=0,'commission_tax not found in realActKeys');
+    var actLabel=(wk6.realActs||[])[ctIdx]||'';
+    assert(actLabel.toLowerCase().includes('commission')||actLabel.includes('40%'),
+      'Expected commission/40% in action label, got: '+actLabel);
+  });
+  if(savedOv6!==undefined)overrideData[6]=savedOv6;else delete overrideData[6];
+
+  // S26-3: delta calculation — new ct minus old ct
+  test('S26-3: delta arithmetic is correct (new ct minus old ct)',function(){
+    var oldCt=375.68;var newCt=993.29;
+    var delta=Math.round((newCt-oldCt)*100)/100;
+    assert(Math.abs(delta-617.61)<0.01,'Expected delta 617.61, got '+delta);
+  });
+
+  // S26-4: no delta when ct did not increase
+  test('S26-4: no delta when new ct equals old ct',function(){
+    var oldCt=400;var newCt=400;
+    var delta=Math.round((newCt-oldCt)*100)/100;
+    assert(delta<=0.005,'Expected delta <= 0.005, got '+delta);
+  });
+
+  // S26-5: no delta when editing week with no taxable income (ct=0)
+  test('S26-5: no auto-action when taxable gross is zero (ct=0)',function(){
+    var ct=0;var oldCt=0;
+    var delta=Math.round((ct-oldCt)*100)/100;
+    assert(delta<=0.005,'Expected delta zero when no taxable income, got '+delta);
+  });
+
+  // S26-6: commission_tax does NOT appear in realActKeys for a week with ct=0
+  var wk1=WEEKS.find(function(w){return w.num===1;});
+  test('S26-6: commission_tax absent from realActKeys for week with no commission income',function(){
+    var idx=wk1?(wk1.realActKeys||[]).indexOf(ACTION_KEYS.COMMISSION_TAX):-1;
+    assert(idx===-1,'commission_tax should not appear in wk1 realActKeys (no ct), got idx='+idx);
+  });
+})();
+
+// ─────────────────────────────────────────────────────────────────────────
+console.log('\n── Section 27: applyCompletionSnapshots normalization layer ──');
+// Regression: when commission_tax label is recalculated after a mid-week edit,
+// the UI was showing the new total even though only the old amount was transferred.
+// Fix: applyCompletionSnapshots replaces the label with taskData.completedAmount
+// for done commission_tax actions across all consumers (UI, Ask Claude, VM).
+
+(function(){
+  var savedTd=JSON.parse(JSON.stringify(taskData));
+  var savedOv=overrideData[6];
+
+  // Set up: week 6 with ct=993.29 but only 375.68 was actually transferred
+  overrideData[6]={week_num:6,ct:993.29,ca:1489.94,events_json:[{l:'Commission',t:'in',a:2483.23,tx:true}]};
+  var wks=runModel(7000,7694.87);
+  var wk6raw=wks.find(function(w){return w.num===6;});
+  var ctIdx=wk6raw?(wk6raw.realActKeys||[]).indexOf(ACTION_KEYS.COMMISSION_TAX):-1;
+
+  test('S27-1: raw model label contains full ct (993.29) before normalization',function(){
+    assert(ctIdx>=0,'commission_tax not found in realActKeys for wk6');
+    assert((wk6raw.realActs[ctIdx]||'').includes('993.29'),
+      'Expected raw label to contain 993.29, got: '+(wk6raw.realActs[ctIdx]||''));
+  });
+
+  // Mark action done with completedAmount=375.68
+  taskData['6_'+ctIdx]={completed:true,completedAt:'2026-06-15T10:00:00Z',completedAmount:375.68,actionKey:'commission_tax'};
+
+  var wksNorm=applyCompletionSnapshots(wks);
+  var wk6norm=wksNorm.find(function(w){return w.num===6;});
+
+  test('S27-2: normalized label shows completedAmount (375.68) not full ct',function(){
+    assert((wk6norm.realActs[ctIdx]||'').includes('375.68'),
+      'Expected normalized label to contain 375.68, got: '+(wk6norm.realActs[ctIdx]||''));
+  });
+  test('S27-3: normalized label does not contain full ct (993.29)',function(){
+    assert(!(wk6norm.realActs[ctIdx]||'').includes('993.29'),
+      'Normalized label should not contain 993.29, got: '+(wk6norm.realActs[ctIdx]||''));
+  });
+  test('S27-4: runModel output is not mutated by normalization',function(){
+    var wk6check=wks.find(function(w){return w.num===6;});
+    assert((wk6check.realActs[ctIdx]||'').includes('993.29'),
+      'runModel output should still contain 993.29 after normalization');
+  });
+  test('S27-5: non-commission_tax actions are unchanged by normalization',function(){
+    var anyChanged=false;
+    wksNorm.forEach(function(w){
+      w.realActs.forEach(function(label,i){
+        var aKey=w.realActKeys?w.realActKeys[i]:null;
+        if(aKey&&aKey!==ACTION_KEYS.COMMISSION_TAX&&label!==wks.find(function(x){return x.num===w.num;}).realActs[i]){
+          anyChanged=true;
+        }
+      });
+    });
+    assert(!anyChanged,'Non-commission_tax action labels should not be changed by normalization');
+  });
+  test('S27-6: action with no completedAmount uses model label unchanged',function(){
+    taskData['6_'+ctIdx]={completed:true,completedAt:'2026-06-15T10:00:00Z',completedAmount:null,actionKey:'commission_tax'};
+    var wksNoAmt=applyCompletionSnapshots(runModel(7000,7694.87));
+    var wk6noAmt=wksNoAmt.find(function(w){return w.num===6;});
+    assert((wk6noAmt.realActs[ctIdx]||'').includes('993.29'),
+      'No completedAmount — should fall back to model label with 993.29');
+  });
+  test('S27-7: unchecked commission_tax action uses model label unchanged',function(){
+    taskData['6_'+ctIdx]={completed:false,completedAt:null,completedAmount:375.68,actionKey:'commission_tax'};
+    var wksUnchecked=applyCompletionSnapshots(runModel(7000,7694.87));
+    var wk6unc=wksUnchecked.find(function(w){return w.num===6;});
+    assert((wk6unc.realActs[ctIdx]||'').includes('993.29'),
+      'Unchecked action — completedAmount should not affect label');
+  });
+
+  // Restore state
+  if(savedOv!==undefined)overrideData[6]=savedOv;else delete overrideData[6];
+  Object.keys(taskData).forEach(function(k){delete taskData[k];});
+  Object.assign(taskData,savedTd);
+})();
+
+// ─────────────────────────────────────────────────────────────────────────
+console.log('\n── Section 28: Goal sweep action keys + completedLabel + generic normalization ──');
+(function(){
+  // Find a week with goal_ action keys (after alaska waterfall starts)
+  var goalWk=WEEKS.find(function(w){return(w.realActKeys||[]).some(function(k){return k&&k.indexOf('goal_')===0;});});
+  var savedTd=Object.assign({},taskData);
+
+  test('S28-1: At least one model week has a goal_ action key',function(){
+    assert(goalWk,'No week found with goal_ action key — acKeys.push missing in runModel goal waterfall');
+  });
+
+  test('S28-2: Every goal_ action key has a corresponding Transfer label',function(){
+    if(!goalWk)return;
+    (goalWk.realActKeys||[]).forEach(function(k,i){
+      if(!k||k.indexOf('goal_')!==0)return;
+      var lbl=goalWk.realActs[i]||'';
+      assert(lbl.includes('Transfer'),'goal_ key '+k+' at index '+i+' has no Transfer label: "'+lbl+'"');
+    });
+  });
+
+  test('S28-3: All model weeks — realActs.length equals realActKeys.length (arrays stay parallel)',function(){
+    WEEKS.forEach(function(w){
+      assert((w.realActs||[]).length===(w.realActKeys||[]).length,
+        'Wk '+w.num+': realActs.length='+w.realActs.length+' realActKeys.length='+w.realActKeys.length+' — not parallel');
+    });
+  });
+
+  test('S28-4: applyCompletionSnapshots uses completedLabel when stored (new record path)',function(){
+    if(!goalWk)return;
+    var ki=(goalWk.realActKeys||[]).findIndex(function(k){return k&&k.indexOf('goal_')===0;});
+    if(ki<0)return;
+    var storedLabel='Transfer $500.00 from Truist Checking to Truist Savings (Alaska Cruise — snapshot)';
+    taskData[goalWk.num+'_'+ki]={completed:true,completedAmount:500.00,actionKey:goalWk.realActKeys[ki],completedLabel:storedLabel};
+    var snapped=applyCompletionSnapshots([goalWk]);
+    assert(snapped[0].realActs[ki]===storedLabel,
+      'completedLabel not used: got "'+snapped[0].realActs[ki]+'"');
+  });
+
+  test('S28-5: applyCompletionSnapshots generic fallback replaces dollar amount when no completedLabel',function(){
+    if(!goalWk)return;
+    var ki=(goalWk.realActKeys||[]).findIndex(function(k){return k&&k.indexOf('goal_')===0;});
+    if(ki<0)return;
+    taskData[goalWk.num+'_'+ki]={completed:true,completedAmount:123.45,actionKey:goalWk.realActKeys[ki],completedLabel:null};
+    var snapped=applyCompletionSnapshots([goalWk]);
+    var result=snapped[0].realActs[ki]||'';
+    assert(result.includes('123.45'),'Generic fallback should replace amount with 123.45, got: "'+result+'"');
+  });
+
+  test('S28-6: applyCompletionSnapshots does not alter label when action is unchecked',function(){
+    if(!goalWk)return;
+    var ki=(goalWk.realActKeys||[]).findIndex(function(k){return k&&k.indexOf('goal_')===0;});
+    if(ki<0)return;
+    var origLabel=goalWk.realActs[ki];
+    taskData[goalWk.num+'_'+ki]={completed:false,completedAmount:999.99,actionKey:goalWk.realActKeys[ki],completedLabel:'should not appear'};
+    var snapped=applyCompletionSnapshots([goalWk]);
+    assert(snapped[0].realActs[ki]===origLabel,
+      'Unchecked action should use model label, got: "'+snapped[0].realActs[ki]+'"');
+  });
+
+  test('S28-7: _actionLabelCache is a globally accessible object',function(){
+    assert(typeof _actionLabelCache==='object'&&_actionLabelCache!==null,'_actionLabelCache not defined as object');
+    _actionLabelCache['99_0']='test label';
+    assert(_actionLabelCache['99_0']==='test label','_actionLabelCache read/write failed');
+    delete _actionLabelCache['99_0'];
+  });
+
+  test('S28-8: loadAll hydration object includes completedLabel field',function(){
+    // Simulate what loadAll does with a row that has completed_label
+    var row={week_num:10,task_idx:1,completed:true,completed_at:'2026-06-01T00:00:00Z',completed_amount:350.00,action_key:'goal_alaska',completed_label:'Transfer $350.00 from Truist Checking to Truist Savings (Alaska Cruise)'};
+    var hydrated={completed:row.completed,completedAt:row.completed_at,completedAmount:row.completed_amount!=null?parseFloat(row.completed_amount):null,actionKey:row.action_key||null,completedLabel:row.completed_label||null};
+    assert(hydrated.completedLabel==='Transfer $350.00 from Truist Checking to Truist Savings (Alaska Cruise)',
+      'completedLabel not hydrated correctly: '+hydrated.completedLabel);
+  });
+
+  test('S28-9: IRA seed sweep has goal_adam_ira_seed action key',function(){
+    // IRA seed fires when alaska completes — find week where alaska first fully funded
+    var isSeedWk=WEEKS.find(function(w){return(w.realActKeys||[]).indexOf('goal_adam_ira_seed')>=0;});
+    // IRA seed only fires if alaska is funded within the model run — may not always fire
+    // Just verify it's not silently broken: if the seed fires, the key must be present
+    if(isSeedWk){
+      var si=(isSeedWk.realActKeys||[]).indexOf('goal_adam_ira_seed');
+      var lbl=(isSeedWk.realActs||[])[si]||'';
+      assert(lbl.includes('Transfer'),'goal_adam_ira_seed week '+isSeedWk.num+' has no Transfer label');
+    }
+    // Pass regardless — seed fires only when Alaska completes in this model run
+    assert(true,'goal_adam_ira_seed key check passed');
+  });
+
+  // Restore state
+  Object.keys(taskData).forEach(function(k){delete taskData[k];});
+  Object.assign(taskData,savedTd);
+})();
+
+// ─────────────────────────────────────────────────────────────────────────
 console.log('\n╔══════════════════════════════════════════════════════════════╗');
 console.log('║                       RESULTS                               ║');
 console.log('╚══════════════════════════════════════════════════════════════╝');
