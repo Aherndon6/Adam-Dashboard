@@ -1891,7 +1891,7 @@ test('S24a-8: .ov3-acct-grid in CSS', function(){
 });
 
 // ── 24b: renderOverview 3.0 structure in source ───────────────────────────
-const fnMatch24 = html.match(/function renderOverview\(vm\)\{[\s\S]*?document\.getElementById\('overview-content'\)\.innerHTML=html;?\s*\}/);
+const fnMatch24 = html.match(/function renderOverview\(vm\)\{[\s\S]*?initFlightPathChart\(vm\);\s*\}/);
 const fnBody24  = fnMatch24 ? fnMatch24[0] : '';
 test('S24b-1: renderOverview function present', function(){
   assert(fnBody24.length > 0, 'renderOverview not found in source');
@@ -2211,33 +2211,90 @@ test('S24m-4: f() always returns absolute value (existing behavior preserved)', 
   assert(f(-500)==='$500.00', 'f(-500) should still return $500.00, got: '+f(-500));
 });
 
-// ── 24n: Flight path SVG content ──────────────────────────────────────────
-test('S24n-1: flight path SVG contains $6,500 floor reference line', function(){
-  const svg = buildFlightPathSVG(fullVm);
-  assertIncludes(svg, '$6,500 floor', 'SVG should include floor label');
-  assertIncludes(svg, 'stroke-opacity', 'SVG should include floor line stroke');
+// ── 24n: Flight path canvas placeholder (Option A — Chart.js implementation) ──
+// buildFlightPathSVG now returns a canvas placeholder; chart init requires a live DOM + Chart.js.
+// These tests validate the placeholder HTML contract. Chart rendering is browser-only.
+test('S24n-1: flight path placeholder contains canvas element', function(){
+  const html = buildFlightPathSVG(fullVm);
+  assertIncludes(html, '<canvas', 'Placeholder must include canvas element');
+  assertIncludes(html, 'id="fp-canvas"', 'Canvas must have id fp-canvas');
 });
-test('S24n-2: flight path SVG contains current week marker (white circle)', function(){
-  const svg = buildFlightPathSVG(fullVm);
-  assertIncludes(svg, 'fill="#fff"', 'SVG should include white current week circle');
+test('S24n-2: flight path placeholder has correct container height', function(){
+  const html = buildFlightPathSVG(fullVm);
+  assertIncludes(html, 'height:220px', 'Container must be 220px tall');
 });
-test('S24n-3: flight path SVG contains risk markers when future weeks breach floor', function(){
-  // Build a vm where a future week is below OP_FL
-  const riskVm = {weeks: WEEKS.map(function(w){
-    return w.num > currentW ? Object.assign({},w,{chk: 5000}) : w;
-  }), allActions:[], reconciledWeeks:[], goalCompletion:{}};
-  const svg = buildFlightPathSVG(riskVm);
-  assertIncludes(svg, 'fill="#ef4444"', 'SVG should include red risk markers for below-floor weeks');
+test('S24n-3: flight path placeholder has accessibility attributes', function(){
+  const html = buildFlightPathSVG(fullVm);
+  assertIncludes(html, 'role="img"', 'Canvas must have role=img');
+  assertIncludes(html, 'aria-label=', 'Canvas must have aria-label');
 });
-test('S24n-4: flight path SVG includes accessibility role and aria-label', function(){
-  const svg = buildFlightPathSVG(fullVm);
-  assertIncludes(svg, 'role="img"', 'SVG should have role=img');
-  assertIncludes(svg, 'aria-label=', 'SVG should have aria-label');
+test('S24n-4: flight path placeholder contains fallback text for screen readers', function(){
+  const html = buildFlightPathSVG(fullVm);
+  assertIncludes(html, 'operating floor', 'Canvas fallback text must reference the operating floor');
 });
-test('S24n-5: flight path SVG includes title element', function(){
-  const svg = buildFlightPathSVG(fullVm);
-  assertIncludes(svg, '<title>Projected checking flight path</title>', 'SVG should include title element');
+test('S24n-5: initFlightPathChart is a function', function(){
+  assert(typeof initFlightPathChart === 'function', 'initFlightPathChart must be a function');
 });
+test('S24n-6: initFlightPathChart exits gracefully when canvas not in DOM', function(){
+  // Should not throw when fp-canvas element does not exist
+  var threw = false;
+  try { initFlightPathChart(fullVm); } catch(e) { threw = true; }
+  assert(!threw, 'initFlightPathChart must not throw when canvas is absent');
+});
+
+// ─────────────────────────────────────────────────────────────────────────
+console.log('\n── Section 25: Custom tasks included in Overview open-actions count ──');
+// Regression: customTaskData was excluded from allActions and openActsCount.
+// Fix: both buildDashboardViewModel (allActions/openActions) and the inline
+// openActsCount calculation in renderOverview now include custom tasks.
+
+(function(){
+  // Save original customTaskData and taskData state
+  var savedCtd = JSON.parse(JSON.stringify(customTaskData));
+  var savedTd  = JSON.parse(JSON.stringify(taskData));
+  var savedWeeks = WEEKS;
+  var currentWeekNum = getCurrentWeek();
+
+  // Inject one incomplete and one complete custom task into the current week
+  customTaskData[currentWeekNum] = [
+    {id:'test-ct-1', label:'Test open custom action',   completed:false},
+    {id:'test-ct-2', label:'Test done custom action',   completed:true}
+  ];
+  // Clear model task completions for current week so only custom tasks drive the count
+  Object.keys(taskData).forEach(function(k){ if(k.startsWith(currentWeekNum+'_')) delete taskData[k]; });
+
+  var vmC = buildDashboardViewModel(WEEKS, {ak:7000, rt:7694.87});
+
+  test('S25-1: allActions includes custom tasks for current week',function(){
+    var cwCustom = vmC.allActions.filter(function(a){ return a.isCustom && a.weekNum===currentWeekNum; });
+    assert(cwCustom.length===2, 'Expected 2 custom actions in allActions, got '+cwCustom.length);
+  });
+  test('S25-2: openActions counts incomplete custom task as open',function(){
+    var cwOpenCustom = vmC.openActions.filter(function(a){ return a.isCustom && a.weekNum===currentWeekNum; });
+    assert(cwOpenCustom.length===1, 'Expected 1 open custom action, got '+cwOpenCustom.length);
+  });
+  test('S25-3: completed custom task is NOT in openActions',function(){
+    var doneCustom = vmC.openActions.filter(function(a){ return a.isCustom && a.completed; });
+    assert(doneCustom.length===0, 'Completed custom task should not appear in openActions');
+  });
+  test('S25-4: openActions with only complete custom tasks = 0 open custom actions',function(){
+    customTaskData[currentWeekNum] = [{id:'test-ct-3', label:'All done', completed:true}];
+    var vmAllDone = buildDashboardViewModel(WEEKS, {ak:7000, rt:7694.87});
+    var cwOpenCustom = vmAllDone.openActions.filter(function(a){ return a.isCustom && a.weekNum===currentWeekNum; });
+    assert(cwOpenCustom.length===0, 'Expected 0 open custom actions when all custom tasks done, got '+cwOpenCustom.length);
+  });
+  test('S25-5: no custom tasks → openActions unchanged (no false positives)',function(){
+    customTaskData[currentWeekNum] = [];
+    var vmNone = buildDashboardViewModel(WEEKS, {ak:7000, rt:7694.87});
+    var cwCustomOpen = vmNone.openActions.filter(function(a){ return a.isCustom && a.weekNum===currentWeekNum; });
+    assert(cwCustomOpen.length===0, 'Expected 0 custom open actions with empty customTaskData');
+  });
+
+  // Restore state
+  customTaskData = savedCtd;
+  Object.keys(taskData).forEach(function(k){ delete taskData[k]; });
+  Object.assign(taskData, savedTd);
+})();
 
 // ─────────────────────────────────────────────────────────────────────────
 console.log('\n╔══════════════════════════════════════════════════════════════╗');

@@ -743,6 +743,7 @@ button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-vis
 .ov3-alloc-row{display:grid;grid-template-columns:36px 1fr 90px 72px 72px;gap:8px;align-items:center;padding:8px 6px;border-bottom:1px solid var(--line)}
 .ov3-alloc-row:last-child{border-bottom:none}
 </style>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js"></script>
 </head>
 <body>
 <div class="app">
@@ -1981,90 +1982,114 @@ function getNextDollarRec(vm,deployable,nearTermRisk){
   return'All priority goals funded — hold pending next strategic decision';
 }
 
-// ── buildFlightPathSVG — Financial Runway: distance-to-floor chart ───────────
+// ── buildFlightPathCanvas — returns canvas placeholder (chart init via initFlightPathChart) ──
 function buildFlightPathSVG(vm){
+  return '<div style="position:relative;width:100%;height:220px;margin-top:8px"><canvas id="fp-canvas" role="img" aria-label="31-week projected checking flight path — distance to operating floor">Projected checking balance for 31 weeks relative to the $6,500 operating floor.</canvas></div>';
+}
+
+// ── initFlightPathChart — Option A: teal/red line with callout chips ──────────
+function initFlightPathChart(vm){
+  var canvas=document.getElementById('fp-canvas');
+  if(!canvas)return;
+  if(canvas._fpChart){canvas._fpChart.destroy();canvas._fpChart=null;}
+  if(typeof Chart==='undefined')return;
+
   var wks=vm.weeks;
-  // Wide viewBox + tall height = full visual ownership of the section
-  var svgW=960,svgH=260,padL=14,padR=14,padT=32,padB=28;
-  var plotW=svgW-padL-padR,plotH=svgH-padT-padB;
-
-  // Y-axis: CUSHION (distance to floor). Floor = y=0.
   var cushions=wks.map(function(w){return r(w.chk-OP_FL);});
-  var maxC=Math.max.apply(null,cushions);
-  var minC=Math.min.apply(null,cushions);
-  // Cap safe headroom so risk dips get proportional visual space
-  var yMax=Math.min(maxC,8000)*1.1;
-  var yMin=Math.min(minC*1.5,-400);
-  var topY=padT,bottomY=padT+plotH;
-
-  function xOf(i){return r(padL+(i/(wks.length-1))*plotW);}
-  function yOf(v){return r(padT+plotH-((v-yMin)/(yMax-yMin))*plotH);}
-  var floorY=yOf(0);
-
   var curIdx=currentW-1;
   var riskWks=wks.filter(function(w){return w.num>currentW&&cushions[w.num-1]<0;});
   var nextRisk=riskWks.length?riskWks[0]:null;
   var worstRisk=riskWks.length?riskWks.reduce(function(m,w){return cushions[w.num-1]<cushions[m.num-1]?w:m;},riskWks[0]):null;
+  var labels=wks.map(function(w){return'Wk '+getCalWeek(w.num);});
 
-  var pastPts=wks.slice(0,curIdx+1).map(function(w,i){return xOf(i)+','+yOf(cushions[i]);}).join(' ');
-  var futurePts=wks.slice(curIdx).map(function(w,i){return xOf(curIdx+i)+','+yOf(cushions[curIdx+i]);}).join(' ');
-  var areaPts=wks.slice(curIdx).map(function(w,i){return xOf(curIdx+i)+','+yOf(cushions[curIdx+i]);}).join(' ')
-    +' '+xOf(wks.length-1)+','+floorY+' '+xOf(curIdx)+','+floorY;
+  // ── Floor dashed line ───────────────────────────────────────────────────
+  var floorPlugin={id:'fpFloor',afterDraw:function(c){
+    var ct=c.ctx,ca=c.chartArea,fy=c.scales.y.getPixelForValue(0);
+    if(fy<ca.top||fy>ca.bottom)return;
+    ct.save();
+    ct.strokeStyle='#ef4444';ct.lineWidth=1.5;ct.setLineDash([5,4]);ct.globalAlpha=.75;
+    ct.beginPath();ct.moveTo(ca.left,fy);ct.lineTo(ca.right,fy);ct.stroke();
+    ct.globalAlpha=1;ct.fillStyle='#ef4444';
+    ct.font='600 10px Inter,system-ui,sans-serif';ct.textAlign='right';
+    ct.fillText('$6,500 floor',ca.right-4,fy-5);ct.restore();
+  }};
 
-  var s='<svg viewBox="0 0 '+svgW+' '+svgH+'" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="31-week projected checking balance with floor risk markers" style="width:100%;height:auto;display:block">';
-  s+='<title>Projected checking flight path</title>';
+  // ── Today vertical marker ───────────────────────────────────────────────
+  var todayPlugin={id:'fpToday',afterDraw:function(c){
+    var ct=c.ctx,ca=c.chartArea,tx=c.scales.x.getPixelForValue(curIdx);
+    ct.save();
+    ct.strokeStyle='#3b82f6';ct.lineWidth=1.5;ct.setLineDash([3,3]);ct.globalAlpha=.5;
+    ct.beginPath();ct.moveTo(tx,ca.top);ct.lineTo(tx,ca.bottom);ct.stroke();
+    ct.globalAlpha=1;ct.fillStyle='#3b82f6';
+    ct.font='700 10px Inter,system-ui,sans-serif';ct.textAlign='center';
+    ct.fillText('Today',tx,ca.top+12);ct.restore();
+  }};
 
-  s+='<defs>';
-  s+='<clipPath id="fp-safe"><rect x="'+padL+'" y="'+topY+'" width="'+plotW+'" height="'+(floorY-topY)+'"/></clipPath>';
-  s+='<clipPath id="fp-risk"><rect x="'+padL+'" y="'+floorY+'" width="'+plotW+'" height="'+(bottomY-floorY)+'"/></clipPath>';
-  s+='</defs>';
+  // ── Risk callout chips ──────────────────────────────────────────────────
+  var chipsPlugin={id:'fpChips',afterDraw:function(c){
+    var ct=c.ctx,ca=c.chartArea;
+    function drawChip(idx,label,col){
+      var x=c.scales.x.getPixelForValue(idx);
+      var y=c.scales.y.getPixelForValue(cushions[idx]);
+      if(y<ca.top||y>ca.bottom)return;
+      ct.save();
+      // Dot
+      ct.beginPath();ct.arc(x,y,5.5,0,Math.PI*2);
+      ct.fillStyle=col;ct.fill();
+      ct.strokeStyle='#fff';ct.lineWidth=1.5;ct.stroke();
+      // Chip
+      ct.font='600 10px Inter,system-ui,sans-serif';
+      var tw=ct.measureText(label).width,pw=tw+14,ph=18;
+      var cx=x-pw/2,cy=y-30;
+      if(cy<ca.top+4)cy=y+14;
+      if(cx<ca.left+2)cx=ca.left+2;
+      if(cx+pw>ca.right-2)cx=ca.right-pw-2;
+      ct.beginPath();
+      if(ct.roundRect){ct.roundRect(cx,cy,pw,ph,4);}else{ct.rect(cx,cy,pw,ph);}
+      ct.fillStyle=col;ct.globalAlpha=.12;ct.fill();
+      ct.globalAlpha=1;ct.strokeStyle=col;ct.lineWidth=.75;ct.stroke();
+      ct.fillStyle=col;ct.textAlign='center';
+      ct.fillText(label,cx+pw/2,cy+12);
+      ct.restore();
+    }
+    if(nextRisk){
+      var ni=nextRisk.num-1,ngap=r(OP_FL-nextRisk.chk);
+      drawChip(ni,'Wk '+getCalWeek(nextRisk.num)+' · −'+f(ngap),'#ef4444');
+    }
+    if(worstRisk&&nextRisk&&worstRisk.num!==nextRisk.num){
+      var wi=worstRisk.num-1,wgap=r(OP_FL-worstRisk.chk);
+      drawChip(wi,'Worst · Wk '+getCalWeek(worstRisk.num)+' · −'+f(wgap),'#dc2626');
+    }
+  }};
 
-  // Zone backgrounds
-  s+='<rect x="'+padL+'" y="'+topY+'" width="'+plotW+'" height="'+(floorY-topY)+'" fill="rgba(16,185,129,.07)"/>';
-  s+='<rect x="'+padL+'" y="'+floorY+'" width="'+plotW+'" height="'+(bottomY-floorY)+'" fill="rgba(239,68,68,.12)"/>';
-
-  // Area fills — green above floor, red below
-  s+='<polygon points="'+areaPts+'" clip-path="url(#fp-safe)" fill="rgba(16,185,129,.2)"/>';
-  s+='<polygon points="'+areaPts+'" clip-path="url(#fp-risk)" fill="rgba(239,68,68,.3)"/>';
-
-  // ── FLOOR LINE — governing rule of the system ─────────────────────────────
-  s+='<line x1="'+padL+'" y1="'+floorY+'" x2="'+(svgW-padR)+'" y2="'+floorY+'" stroke="#ef4444" stroke-width="2.5" stroke-opacity=".95"/>';
-  s+='<text x="'+(svgW-padR-4)+'" y="'+(floorY-6)+'" font-size="10" fill="#f87171" text-anchor="end" font-weight="800">$6,500 floor</text>';
-
-  // Past line (muted context)
-  if(curIdx>0)s+='<polyline points="'+pastPts+'" fill="none" stroke="rgba(255,255,255,.2)" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>';
-
-  // Future line (readable but secondary to floor)
-  s+='<polyline points="'+futurePts+'" fill="none" stroke="rgba(255,255,255,.6)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>';
-
-  // ── TODAY ─────────────────────────────────────────────────────────────────
-  var curX=xOf(curIdx),curY=yOf(cushions[curIdx]);
-  s+='<circle cx="'+curX+'" cy="'+curY+'" r="7" fill="rgba(255,255,255,.15)"/>';
-  s+='<circle cx="'+curX+'" cy="'+curY+'" r="4.5" fill="#fff"/>';
-  s+='<text x="'+curX+'" y="'+(topY-8)+'" font-size="10" fill="rgba(255,255,255,.75)" text-anchor="middle" font-weight="800">Today</text>';
-
-  // ── NEXT RISK ─────────────────────────────────────────────────────────────
-  if(nextRisk){
-    var nri=nextRisk.num-1,nrx=xOf(nri),nry=yOf(cushions[nri]);
-    s+='<circle cx="'+nrx+'" cy="'+nry+'" r="9" fill="rgba(239,68,68,.2)"/>';
-    s+='<circle cx="'+nrx+'" cy="'+nry+'" r="5.5" fill="#ef4444"/>';
-    var nrAnchor=nrx<svgW*0.65?'start':'end';
-    var nrLx=nrAnchor==='start'?nrx+12:nrx-12;
-    var nrLy=cushions[nri]<0?nry+16:nry-8;
-    s+='<text x="'+nrLx+'" y="'+nrLy+'" font-size="10" fill="#f87171" text-anchor="'+nrAnchor+'" font-weight="800">Next Risk · Wk '+getCalWeek(nextRisk.num)+'</text>';
-  }
-
-  // ── WORST RISK (only if different week) ───────────────────────────────────
-  if(worstRisk&&nextRisk&&worstRisk.num!==nextRisk.num){
-    var wri=worstRisk.num-1,wrx=xOf(wri),wry=yOf(cushions[wri]);
-    s+='<circle cx="'+wrx+'" cy="'+wry+'" r="9" fill="rgba(220,38,38,.25)"/>';
-    s+='<circle cx="'+wrx+'" cy="'+wry+'" r="5.5" fill="#dc2626"/>';
-    var wrAnchor=wrx<svgW*0.65?'start':'end';
-    s+='<text x="'+(wrAnchor==='start'?wrx+12:wrx-12)+'" y="'+(wry+16)+'" font-size="10" fill="#fca5a5" text-anchor="'+wrAnchor+'" font-weight="800">Worst · Wk '+getCalWeek(worstRisk.num)+'</text>';
-  }
-
-  s+='</svg>';
-  return s;
+  canvas._fpChart=new Chart(canvas,{
+    type:'line',
+    data:{labels:labels,datasets:[
+      // Above-floor fill
+      {data:cushions.map(function(v){return Math.max(v,0);}),fill:'origin',
+       backgroundColor:'rgba(16,185,129,0.11)',borderWidth:0,pointRadius:0,tension:.35},
+      // Below-floor fill
+      {data:cushions.map(function(v){return Math.min(v,0);}),fill:'origin',
+       backgroundColor:'rgba(239,68,68,0.15)',borderWidth:0,pointRadius:0,tension:.35},
+      // Main line — teal above floor, red below
+      {data:cushions,fill:false,borderWidth:2.5,tension:.35,
+       segment:{borderColor:function(ctx){
+         return(ctx.p0.parsed.y<0||ctx.p1.parsed.y<0)?'#ef4444':'#10b981';
+       }},
+       pointRadius:function(ctx){return ctx.dataIndex===curIdx?5:0;},
+       pointBackgroundColor:'#3b82f6',pointBorderColor:'#fff',pointBorderWidth:2}
+    ]},
+    options:{
+      responsive:true,maintainAspectRatio:false,animation:false,
+      layout:{padding:{top:24,right:84,bottom:4,left:4}},
+      plugins:{legend:{display:false},tooltip:{enabled:false}},
+      scales:{
+        x:{grid:{display:false},ticks:{color:'#9ca3af',font:{size:9},maxTicksLimit:8}},
+        y:{display:false}
+      }
+    },
+    plugins:[floorPlugin,todayPlugin,chipsPlugin]
+  });
 }
 
 // ── renderOverview 3.0 — Financial Command Center ──────────────────────────
@@ -2337,6 +2362,7 @@ function renderOverview(vm){
   html+='</div>'; // end S4
 
   document.getElementById('overview-content').innerHTML=html;
+  initFlightPathChart(vm);
 }
 
 // ── renderWeekDetail ───────────────────────────────────────────────────────
