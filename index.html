@@ -1870,10 +1870,14 @@ function buildDashboardViewModel(weeks,goals){
   const surplusCompletion=weeks.find(function(w){return w.surplusSwept>0;})||null;
   const lowestChecking=weeks.reduce(function(min,w){return w.chk<min.chk?w:min;},weeks[0]);
   const allActions=weeks.flatMap(function(w){
-    return w.realActs.map(function(label,index){
+    var modelActs=w.realActs.map(function(label,index){
       const key=w.num+'_'+index;
-      return{weekNum:w.num,taskIdx:index,label:label,completed:!!(taskData[key]&&taskData[key].completed)};
+      return{weekNum:w.num,taskIdx:index,label:label,completed:!!(taskData[key]&&taskData[key].completed),isCustom:false};
     });
+    var customActs=(customTaskData[w.num]||[]).map(function(ct){
+      return{weekNum:w.num,id:ct.id,label:ct.label,completed:!!ct.completed,isCustom:true};
+    });
+    return modelActs.concat(customActs);
   });
   // Per-goal completion weeks derived from model output
   var goalCompletion={};
@@ -2076,7 +2080,9 @@ function renderOverview(vm){
   // Current week actions
   var cwActs=w.realActs||[];var cwKeys=w.realActKeys||[];
   var cwDone=0;for(var _ti=0;_ti<cwActs.length;_ti++){if(taskData[w.num+'_'+_ti]&&taskData[w.num+'_'+_ti].completed)cwDone++;}
-  var openActsCount=cwActs.length-cwDone;
+  var cwCustom=customTaskData[w.num]||[];
+  var cwCustomDone=cwCustom.filter(function(ct){return ct.completed;}).length;
+  var openActsCount=(cwActs.length+cwCustom.length)-(cwDone+cwCustomDone);
 
   // Status
   var status=cushion<0?'RED':(nearTermRisk||openActsCount>0||cushion<1000)?'YELLOW':'GREEN';
