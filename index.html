@@ -2185,8 +2185,6 @@ function renderOverview(vm){
   html+='<span class="cmd-chip '+(cushion<0?'chip-red':cushion<1000?'chip-amber':'chip-green')+'">Cushion <strong>'+(cushion>=0?'+':'')+f(Math.abs(cushion))+'</strong></span>';
   html+='<span class="cmd-chip">Reconciled through <strong>'+(lastReconNum?'Wk '+getCalWeek(lastReconNum):'—')+'</strong></span>';
   html+='<span class="cmd-chip '+(openActsCount>0?'chip-amber':'chip-green')+'">Actions <strong>'+(openActsCount>0?openActsCount+' open':'All done')+'</strong></span>';
-  var _actReq=(openActsCount>0||nearTermRisk||cushion<0);
-  html+='<span class="cmd-chip '+(_actReq?'chip-red':'chip-green')+'" style="font-weight:800">Action Required <strong>'+(_actReq?'YES':'NO')+'</strong></span>';
   html+='</div>';
   html+='</div>';
   html+='</div>'; // end row 1
