@@ -3485,7 +3485,7 @@ function renderHistory(weeksArg){
   var filters=[
     {id:'all',label:'All ('+weeks.length+')'},
     {id:'reconciled',label:'Reconciled ('+weeks.filter(function(w){return w.reconciled;}).length+')'},
-    {id:'open',label:'Open Actions ('+weeks.filter(function(w){return w.realActs.length&&w.realActs.some(function(_,i){return!taskData[w.num+'_'+i]||!taskData[w.num+'_'+i].completed;});}).length+')'},
+    {id:'open',label:'Open Actions ('+weeks.filter(function(w){var _c=customTaskData[w.num]||[];return(w.realActs.length&&w.realActs.some(function(_,i){return!taskData[w.num+'_'+i]||!taskData[w.num+'_'+i].completed;}))||_c.some(function(t){return!t.completed;});}).length+')'},
     {id:'variance',label:'Variance >$'+VAR_THRESHOLD+' ('+weeks.filter(function(w){return w.reconciled&&w.variance&&Object.values(w.variance).some(function(v){return Math.abs(v)>VAR_THRESHOLD;});}).length+')'},
     {id:'trough',label:'Trough ('+weeks.filter(function(w){return w.trough;}).length+')'},
     {id:'managed',label:'Managed ('+weeks.filter(function(w){return w.managed;}).length+')'},
@@ -3494,18 +3494,19 @@ function renderHistory(weeksArg){
   ];
   var filteredWeeks=weeks;
   if(historyFilter==='reconciled')filteredWeeks=weeks.filter(function(w){return w.reconciled;});
-  else if(historyFilter==='open')filteredWeeks=weeks.filter(function(w){return w.realActs.length&&w.realActs.some(function(_,i){return!taskData[w.num+'_'+i]||!taskData[w.num+'_'+i].completed;});});
+  else if(historyFilter==='open')filteredWeeks=weeks.filter(function(w){var _c=customTaskData[w.num]||[];return(w.realActs.length&&w.realActs.some(function(_,i){return!taskData[w.num+'_'+i]||!taskData[w.num+'_'+i].completed;}))||_c.some(function(t){return!t.completed;});});
   else if(historyFilter==='variance')filteredWeeks=weeks.filter(function(w){return w.reconciled&&w.variance&&Object.values(w.variance).some(function(v){return Math.abs(v)>VAR_THRESHOLD;});});
   else if(historyFilter==='trough')filteredWeeks=weeks.filter(function(w){return w.trough;});
   else if(historyFilter==='managed')filteredWeeks=weeks.filter(function(w){return w.managed;});
   else if(historyFilter==='edited')filteredWeeks=weeks.filter(function(w){return!!overrideData[w.num]&&!overrideData[w.num].is_custom;});
   else if(historyFilter==='custom')filteredWeeks=weeks.filter(function(w){return overrideData[w.num]&&overrideData[w.num].is_custom;});
   var html='<div class="history-filters">'+filters.map(function(fi){return'<button class="filter-btn'+(historyFilter===fi.id?' active':'')+'" onclick="setHistoryFilter(\''+fi.id+'\')">'+fi.label+'</button>';}).join('')+'</div>';
-  html+='<div class="history-summary"><strong>Progress tracker</strong> — '+reconKeys.length+' of '+currentW+' past week'+(currentW!==1?'s':'')+' reconciled.'+(maxRecon?' Last reconciled: Week '+maxRecon+'.':'')+' Click any row to jump to that week.</div>';
+  html+='<div class="history-summary"><strong>Progress tracker</strong> — '+reconKeys.length+' of '+currentW+' past week'+(currentW!==1?'s':'')+' reconciled.'+(maxRecon?' Last reconciled: Wk '+getCalWeek(maxRecon)+'.':'')+' Click any row to jump to that week.</div>';
   if(!filteredWeeks.length){html+='<div style="color:var(--muted);font-size:13px;padding:16px 0">No weeks match this filter.</div>';}
   filteredWeeks.forEach(function(wx){
     var isPast=wx.num<currentW;var isNow=wx.num===currentW;
-    var hasOpenTasks=isPast&&wx.realActs.length&&wx.realActs.some(function(_,i){return!taskData[wx.num+'_'+i]||!taskData[wx.num+'_'+i].completed;});
+    var _wxCustom=customTaskData[wx.num]||[];
+    var hasOpenTasks=isPast&&((wx.realActs.length&&wx.realActs.some(function(_,i){return!taskData[wx.num+'_'+i]||!taskData[wx.num+'_'+i].completed;}))||_wxCustom.some(function(t){return!t.completed;}));
     var cls='hcard';
     if(isNow&&wx.reconciled)cls+=' past-recon current-recon';
     else if(isNow)cls+=' current';
@@ -3514,7 +3515,7 @@ function renderHistory(weeksArg){
     else if(hasOpenTasks)cls+=' past-open';
     var statusColor=isNow?'color:#92400e':!isPast?'color:var(--muted2)':wx.reconciled?'color:var(--green)':'color:var(--muted)';
     var statusTxt=isNow&&wx.reconciled?'✅ Current · Reconciled':isNow?'▶ Current':!isPast?'Future':wx.reconciled?'✅ Reconciled':'□ Not reconciled';
-    html+='<div class="'+cls+'"><div class="hcard-hdr"><div><div class="hcard-title">Week '+wx.num+'</div><div class="hcard-dates">'+wx.dates+'</div></div><div class="hcard-status" style="'+statusColor+'">'+statusTxt+'</div></div>';
+    html+='<div class="'+cls+'"><div class="hcard-hdr"><div><div class="hcard-title">Wk '+getCalWeek(wx.num)+'</div><div class="hcard-dates">'+wx.dates+'</div></div><div class="hcard-status" style="'+statusColor+'">'+statusTxt+'</div></div>';
     html+='<div class="hcard-bals">';
     var accs=[{n:'Checking',m:wx.mChk,a:wx.actualBals?wx.actualBals.chk:undefined},{n:'Savings',m:wx.mSav,a:wx.actualBals?wx.actualBals.sav:undefined},{n:'AMEX',m:wx.mAmx,a:wx.actualBals?wx.actualBals.amx:undefined},{n:'Tax',m:wx.mTax,a:wx.actualBals?wx.actualBals.tax:undefined},{n:'LC (EF)',m:wx.mLc,a:wx.actualBals?wx.actualBals.lc:undefined}];
     accs.forEach(function(acc){
@@ -3527,7 +3528,11 @@ function renderHistory(weeksArg){
       html+='</div>';
     });
     html+='</div><div class="hcard-footer">';
-    if(wx.realActs.length){var tCls=wx.doneTasks===wx.totalTasks?'done':wx.doneTasks>0?'partial':'none';html+='<div class="hcard-tasks '+tCls+'">'+(wx.doneTasks===wx.totalTasks?'✅ ':'')+'Tasks: '+wx.doneTasks+'/'+wx.totalTasks+'</div>';}
+    var _hCustom=customTaskData[wx.num]||[];
+    var _hTotalAll=wx.realActs.length+_hCustom.length;
+    var _hDoneCustom=_hCustom.filter(function(ct){return ct.completed;}).length;
+    var _hDoneAll=wx.doneTasks+_hDoneCustom;
+    if(_hTotalAll>0){var tCls=_hDoneAll===_hTotalAll?'done':_hDoneAll>0?'partial':'none';html+='<div class="hcard-tasks '+tCls+'">'+(_hDoneAll===_hTotalAll?'✅ ':'')+'Tasks: '+_hDoneAll+'/'+_hTotalAll+'</div>';}
     else{html+='<div class="hcard-tasks none">No actions</div>';}
     var note=noteData[wx.num];
     if(note)html+='<div class="hcard-note">"'+note.slice(0,60)+(note.length>60?'…':'')+'"</div>';
