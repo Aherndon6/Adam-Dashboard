@@ -2524,6 +2524,111 @@ console.log('\n── Section 28: Goal sweep action keys + completedLabel + gene
 })();
 
 // ─────────────────────────────────────────────────────────────────────────
+console.log('\n── Section 29: tr._key and Transfers This Week normalization ──');
+(function(){
+  var savedTd=Object.assign({},taskData);
+  Object.keys(taskData).forEach(function(k){delete taskData[k];});
+
+  test('S29-1: commission_tax tr entry has _key property after runModel',function(){
+    var ctWk=WEEKS.find(function(w){return(w.realActKeys||[]).indexOf('commission_tax')>=0;});
+    assert(ctWk,'commission_tax week not found in model');
+    var trEntry=ctWk.tr.find(function(x){return x._key==='commission_tax';});
+    assert(trEntry,'No tr entry with _key=commission_tax in week '+ctWk.num);
+  });
+
+  test('S29-2: tax_base tr entry has _key property after runModel',function(){
+    var tbWk=WEEKS.find(function(w){return(w.realActKeys||[]).indexOf('tax_base')>=0;});
+    assert(tbWk,'tax_base week not found in model');
+    var trEntry=tbWk.tr.find(function(x){return x._key==='tax_base';});
+    assert(trEntry,'No tr entry with _key=tax_base in week '+tbWk.num);
+  });
+
+  test('S29-3: goal sweep tr entries all have _key starting with goal_',function(){
+    var goalWk=WEEKS.find(function(w){return(w.realActKeys||[]).some(function(k){return k&&k.indexOf('goal_')===0;});});
+    assert(goalWk,'No week with goal_ action key found');
+    var goalTrEntries=goalWk.tr.filter(function(x){return x._key&&x._key.indexOf('goal_')===0;});
+    assert(goalTrEntries.length>0,'No tr entries with goal_ _key in week '+goalWk.num);
+    goalTrEntries.forEach(function(x){
+      assert(x._key.indexOf('goal_')===0,'tr _key does not start with goal_: '+x._key);
+    });
+  });
+
+  test('S29-4: commission_tax tr label amount replaced with completedAmount when set',function(){
+    var ctWk=WEEKS.find(function(w){return(w.realActKeys||[]).indexOf('commission_tax')>=0;});
+    assert(ctWk,'commission_tax week not found');
+    var ctI=(ctWk.realActKeys||[]).indexOf('commission_tax');
+    // Simulate partial completion at lower amount
+    taskData[ctWk.num+'_'+ctI]={completed:true,completedAt:new Date().toISOString(),completedAmount:375.68,actionKey:'commission_tax',completedLabel:null};
+    // Re-run model and apply normalization logic (mirrors renderWeek IIFE)
+    var wks2=runModel(7000,7694.87);
+    var ctWk2=wks2.find(function(w){return w.num===ctWk.num;});
+    var _trAmts={};
+    (ctWk2.realActKeys||[]).forEach(function(ak,ai){
+      if(!ak)return;
+      var td=taskData[ctWk2.num+'_'+ai];
+      if(td&&td.completed&&td.completedAmount!=null)_trAmts[ak]=td.completedAmount;
+    });
+    var normalizedTr=ctWk2.tr.map(function(x){
+      if(!x._key||_trAmts[x._key]==null)return x;
+      var newL=x.l.replace(/\$[0-9,]+(?:\.[0-9]+)?/,'$'+fc(_trAmts[x._key]));
+      return Object.assign({},x,{l:newL});
+    });
+    var ctEntry=normalizedTr.find(function(x){return x._key==='commission_tax';});
+    assert(ctEntry,'commission_tax tr entry not found after normalization');
+    assert(ctEntry.l.indexOf('$375.68')>=0,'Expected $375.68 in normalized tr label, got: '+ctEntry.l);
+    // Restore
+    delete taskData[ctWk.num+'_'+ctI];
+  });
+
+  test('S29-5: goal sweep tr label amount replaced with completedAmount when set',function(){
+    var goalWk=WEEKS.find(function(w){return(w.realActKeys||[]).some(function(k){return k&&k.indexOf('goal_')===0;});});
+    assert(goalWk,'No goal week found');
+    var gI=(goalWk.realActKeys||[]).findIndex(function(k){return k&&k.indexOf('goal_')===0;});
+    var gKey=goalWk.realActKeys[gI];
+    var modelTrEntry=goalWk.tr.find(function(x){return x._key===gKey;});
+    assert(modelTrEntry,'No tr entry for '+gKey);
+    // Simulate completion at a fake amount
+    var fakeAmt=99.99;
+    taskData[goalWk.num+'_'+gI]={completed:true,completedAt:new Date().toISOString(),completedAmount:fakeAmt,actionKey:gKey,completedLabel:null};
+    var wks2=runModel(7000,7694.87);
+    var gWk2=wks2.find(function(w){return w.num===goalWk.num;});
+    var _trAmts={};
+    (gWk2.realActKeys||[]).forEach(function(ak,ai){
+      if(!ak)return;
+      var td=taskData[gWk2.num+'_'+ai];
+      if(td&&td.completed&&td.completedAmount!=null)_trAmts[ak]=td.completedAmount;
+    });
+    var normalizedTr=gWk2.tr.map(function(x){
+      if(!x._key||_trAmts[x._key]==null)return x;
+      var newL=x.l.replace(/\$[0-9,]+(?:\.[0-9]+)?/,'$'+fc(_trAmts[x._key]));
+      return Object.assign({},x,{l:newL});
+    });
+    var normEntry=normalizedTr.find(function(x){return x._key===gKey;});
+    assert(normEntry,'Normalized tr entry not found for '+gKey);
+    assert(normEntry.l.indexOf('$99.99')>=0,'Expected $99.99 in normalized label, got: '+normEntry.l);
+    // Restore
+    delete taskData[goalWk.num+'_'+gI];
+  });
+
+  test('S29-6: tr entries without _key are passed through unchanged by normalization',function(){
+    // 401k deduction, surplus info, due-date warnings have no _key — verify they aren't touched
+    var allNoKey=WEEKS.reduce(function(acc,w){return acc.concat(w.tr.filter(function(x){return!x._key;}));},[]);
+    assert(allNoKey.length>0,'Expected some tr entries with no _key (info/deferred entries)');
+    // Simulate normalization with a fake _trAmts map
+    var _trAmts={'commission_tax':999};
+    allNoKey.forEach(function(x){
+      var normalized=x._key&&_trAmts[x._key]!=null?Object.assign({},x,{l:x.l.replace(/\$[0-9,]+(?:\.[0-9]+)?/,'$999')}):x;
+      assert(normalized===x,'Entry without _key was incorrectly modified: '+x.l);
+    });
+    assert(true,'All non-keyed tr entries pass through unchanged');
+  });
+
+  // Restore state
+  Object.keys(taskData).forEach(function(k){delete taskData[k];});
+  Object.assign(taskData,savedTd);
+})();
+
+// ─────────────────────────────────────────────────────────────────────────
 console.log('\n╔══════════════════════════════════════════════════════════════╗');
 console.log('║                       RESULTS                               ║');
 console.log('╚══════════════════════════════════════════════════════════════╝');

@@ -1403,12 +1403,12 @@ function runModel(akGoal,rtGoal,flags){
       if(sav>=7000){
         mvS(7000,'chk');
         tr.push({l:'Alaska $7,000 Truist Savings → Truist Checking',r:'done',a:7000,rsn:'Fund elevated September cruise card bills (Gold + Disney Visa) from Alaska savings'});
-        ac.push(akDrawLabel);acKeys.push(ACTION_KEYS.ALASKA_DRAW);
+        ac.push(akDrawLabel);acKeys.push(ACTION_KEYS.ALASKA_DRAW);tr[tr.length-1]._key=ACTION_KEYS.ALASKA_DRAW;
       } else {
         // Savings not yet at $7,000 — block draw to prevent negative savings
         tr.push({l:'Alaska draw $7,000 BLOCKED — savings only $'+fc(sav),r:'defer',rsn:'Insufficient savings ($'+fc(sav)+' available, $7,000 needed) — move draw to a later week'});
         ac.push('⚠️ Alaska draw blocked — savings insufficient ($'+fc(sav)+' available). Reschedule to a later week.');
-        acKeys.push(ACTION_KEYS.ALASKA_DRAW);
+        acKeys.push(ACTION_KEYS.ALASKA_DRAW);tr[tr.length-1]._key=ACTION_KEYS.ALASKA_DRAW;
       }
     }
     // ── 401(k) auto-contribution — payroll deduction, no checking impact ──
@@ -1435,7 +1435,7 @@ function runModel(akGoal,rtGoal,flags){
           const remT=rem>0?' — $'+fc(rem)+' carries forward':'';
           tr.push({l:'Commission 40% $'+fc(m)+' Checking → Vio Bank - Tax Reserve'+remT,r:'done',rsn:'Post $'+fc(chk)+' ≥ '+fn});
           ac.push('Transfer $'+fc(m)+' from Truist Checking to Vio Bank - Tax Reserve (commission 40%)');
-          acKeys.push(ACTION_KEYS.COMMISSION_TAX);
+          acKeys.push(ACTION_KEYS.COMMISSION_TAX);tr[tr.length-1]._key=ACTION_KEYS.COMMISSION_TAX;
           if(rem>0)commTaxPending=r(commTaxPending+rem); // partial: carry remainder under commission_tax identity
         } else {
           // Floor fully blocked — preserve commission_tax identity via commTaxPending (not taxTodo)
@@ -1452,14 +1452,14 @@ function runModel(akGoal,rtGoal,flags){
     // Fire commTaxPending on designated week or any ct===0 week after (carries forward if floor blocks)
     if(commTaxPending>0&&ct===0&&num>=commTaxWeek){
       const m=mv(commTaxPending,'tax');
-      if(m>0){commTaxPending=r(commTaxPending-m);const remT=commTaxPending>0?' — $'+fc(commTaxPending)+' carries forward':'';tr.push({l:'Commission 40% $'+fc(m)+' Checking → Vio Bank - Tax Reserve'+remT,r:'done',rsn:'Deferred commission tax'});ac.push('Transfer $'+fc(m)+' from Truist Checking to Vio Bank - Tax Reserve (deferred commission 40%)');acKeys.push(ACTION_KEYS.COMMISSION_TAX);}
+      if(m>0){commTaxPending=r(commTaxPending-m);const remT=commTaxPending>0?' — $'+fc(commTaxPending)+' carries forward':'';tr.push({l:'Commission 40% $'+fc(m)+' Checking → Vio Bank - Tax Reserve'+remT,r:'done',rsn:'Deferred commission tax'});ac.push('Transfer $'+fc(m)+' from Truist Checking to Vio Bank - Tax Reserve (deferred commission 40%)');acKeys.push(ACTION_KEYS.COMMISSION_TAX);tr[tr.length-1]._key=ACTION_KEYS.COMMISSION_TAX;}
       else tr.push({l:'Commission 40% $'+fc(commTaxPending)+' Checking → Vio Bank - Tax Reserve',r:'defer',rsn:'No surplus above '+fn+' — carries forward'});
     }
     // ── Tax backlog: fires on designated week; carries forward on ct===0 weeks after ─
     var taxBaseWeek=aoW(ACTION_KEYS.TAX_BASE);
     if(taxTodo>0&&(num===taxBaseWeek||(ct===0&&num>taxBaseWeek))){
       const m=mv(taxTodo,'tax');
-      if(m>0){taxTodo=r(taxTodo-m);const remT=taxTodo>0?' — $'+fc(taxTodo)+' carries forward':'';tr.push({l:'Tax $'+fc(m)+' Checking → Vio Bank - Tax Reserve'+remT,r:'done',rsn:'Post $'+fc(chk)+' ≥ '+fn});ac.push('Transfer $'+fc(m)+' from Truist Checking to Vio Bank - Tax Reserve');acKeys.push(ACTION_KEYS.TAX_BASE);}
+      if(m>0){taxTodo=r(taxTodo-m);const remT=taxTodo>0?' — $'+fc(taxTodo)+' carries forward':'';tr.push({l:'Tax $'+fc(m)+' Checking → Vio Bank - Tax Reserve'+remT,r:'done',rsn:'Post $'+fc(chk)+' ≥ '+fn});ac.push('Transfer $'+fc(m)+' from Truist Checking to Vio Bank - Tax Reserve');acKeys.push(ACTION_KEYS.TAX_BASE);tr[tr.length-1]._key=ACTION_KEYS.TAX_BASE;}
       else tr.push({l:'Tax $'+fc(taxTodo)+' Checking → Vio Bank - Tax Reserve',r:'defer',rsn:'Post-obligations $'+fc(chk)+' — no surplus above '+fn});
     }
     // ── Retirement Rebuild savings sweep (one-time when Alaska completes) ─
@@ -1532,7 +1532,7 @@ function runModel(akGoal,rtGoal,flags){
         var dstLbl=dst==='sav'?'Truist Savings':dst==='amx'?'AMEX Savings':(gdef.dest||gdef.name);
         tr.push({l:gdef.name+' $'+fc(m)+' → '+dstLbl+sfx,r:'done',rsn:'Waterfall allocation'});
         ac.push('Transfer $'+fc(m)+' from Truist Checking to '+dstLbl+' ('+gdef.name+')');
-        acKeys.push('goal_'+goalId);
+        acKeys.push('goal_'+goalId);tr[tr.length-1]._key='goal_'+goalId;
       }else if(m<0){
         tr.push({l:gdef.name+' $'+fc(-m)+' suppressed (<$'+MIN_XFR+') — rolls forward',r:'info',rsn:'Too small; carries to next eligible week'});
       }else{
@@ -1559,7 +1559,7 @@ function runModel(akGoal,rtGoal,flags){
       rtSavSwept=true;
       tr.push({l:'Adam IRA seed $'+fc(ms)+' Truist Savings → AMEX Savings',r:'done',rsn:'Initial IRA allocation from Alaska residual savings — zero checking impact'});
       ac.push('Transfer $'+fc(ms)+' from Truist Savings to AMEX Savings (Adam IRA seed — IRA Holding)');
-      acKeys.push('goal_adam_ira_seed');
+      acKeys.push('goal_adam_ira_seed');tr[tr.length-1]._key='goal_adam_ira_seed';
     }
     // ── Surplus tracking (all active waterfall goals funded) ──────────────
     var allFunded=regWF.every(function(id){
@@ -2492,7 +2492,24 @@ function renderWeekDetail(w,weeks){
     '</div>'+
     '<div class="panel card-pad">'+
       (function(){
-        var done=w.tr.filter(function(x){return x.r==='done'||x.r==='info';});
+        // Build key→completedAmount map from taskData for this week
+        var _trAmts={};
+        (w.realActKeys||[]).forEach(function(ak,ai){
+          if(!ak)return;
+          var td=taskData[w.num+'_'+ai];
+          if(td&&td.completed&&td.completedAmount!=null)_trAmts[ak]=td.completedAmount;
+        });
+        // Normalize done entries: replace model amount with actual completedAmount where available
+        var done=w.tr.filter(function(x){return x.r==='done'||x.r==='info';}).map(function(x){
+          if(!x._key||_trAmts[x._key]==null)return x;
+          var newL=x.l.replace(/\$[0-9,]+(?:\.[0-9]+)?/,'$'+fc(_trAmts[x._key]));
+          return Object.assign({},x,{l:newL});
+        });
+        // Append completed custom tasks to done section
+        var _cTasks=customTaskData[w.num]||[];
+        var _doneCTs=_cTasks.filter(function(ct){return ct.completed;});
+        var _pendCTs=_cTasks.filter(function(ct){return!ct.completed;});
+        _doneCTs.forEach(function(ct){done.push({l:ct.label,r:'done',rsn:'Custom required action'});});
         var deferred=w.tr.filter(function(x){return x.r==='defer';});
         var html='';
         if(done.length){
@@ -2500,6 +2517,12 @@ function renderWeekDetail(w,weeks){
           html+=done.map(function(x){
             var ic=x.r==='info'?'ℹ️':'✅';
             return'<div class="xfr-row"><span class="xi">'+ic+'</span><div class="xtext"><div class="xlbl">'+x.l+'</div><div class="xrsn">'+x.rsn+'</div></div></div>';
+          }).join('');
+        }
+        if(_pendCTs.length){
+          html+='<div class="xfr-section-hdr" style="color:var(--amber)">⏳ Pending transfers</div>';
+          html+=_pendCTs.map(function(ct){
+            return'<div class="xfr-row"><span class="xi">⏳</span><div class="xtext"><div class="xlbl">'+ct.label+'</div><div class="xrsn">Custom required action — not yet transferred</div></div></div>';
           }).join('');
         }
         if(deferred.length){
@@ -2510,7 +2533,7 @@ function renderWeekDetail(w,weeks){
             return'<div class="xfr-row deferred"><span class="xi">⏸</span><div class="xtext"><div class="xlbl">'+x.l+'</div><div class="xrsn">'+x.rsn+'</div><div class="deferred-why">'+why+'</div></div></div>';
           }).join('');
         }
-        if(!done.length&&!deferred.length){html='<div style="color:var(--muted);font-size:13px;padding:8px 0">No transfers this week.</div>';}
+        if(!done.length&&!_pendCTs.length&&!deferred.length){html='<div style="color:var(--muted);font-size:13px;padding:8px 0">No transfers this week.</div>';}
         return html;
       }())+
     '</div>'+
