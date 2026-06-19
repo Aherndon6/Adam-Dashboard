@@ -1210,31 +1210,154 @@ var vm_snapshot=null;
 
 // ── Custom task state (Supabase-backed) ────────────────────────────────────
 var customTaskData={};  // weekNum → [{id, label, completed}]
-var customTaskState=null;  // {addingWeek: N} when add form is open
-function saveCustomTask(weekNum){
+var customTaskMeta={};  // taskId → {type,source,reminderKey,lockedLabel,dismissed,version}
+var customTaskState=null;  // {addingWeek:N,addingType:'transfer'|'action'} when add form is open
+
+// ── Task metadata helpers ──────────────────────────────────────────────────
+function _ctInferType(label){
+  // Heuristic: has dollar amount AND a transfer indicator
+  return(/\$/.test(label)&&/(Transfer|→|transfer)/.test(label))?'transfer':'action';
+}
+function _ctGuessReminderKey(weekNum,label){
+  // Map known auto-reminder labels to stable keys (for migration of manually-added equivalents)
+  if(label.includes('LC BOOST'))return'2026_w'+weekNum+'__lc_boost';
+  if(label.includes('LC RETURN'))return'2026_w'+weekNum+'__lc_return';
+  if(label.includes('Jabian'))return'2026_w'+weekNum+'__jabian_reimb';
+  if(label.includes('AMEX Gold'))return'2026_w'+weekNum+'__amex_gold_close';
+  if(label.includes('Disney Visa'))return'2026_w'+weekNum+'__disney_visa_close';
+  if(label.includes('AMEX Platinum'))return'2026_w'+weekNum+'__amex_plat_close';
+  return null;
+}
+function getTaskMeta(id,label){
+  if(customTaskMeta[id])return customTaskMeta[id];
+  return{type:_ctInferType(label||''),source:'user',reminderKey:null,lockedLabel:false,dismissed:false,version:1};
+}
+function setTaskMeta(id,fields){
+  customTaskMeta[id]=Object.assign({},getTaskMeta(id,''),fields);
+}
+function saveCustomTaskMeta(){
+  return fetch(SUPA_URL+'/rest/v1/goals',{method:'POST',headers:Object.assign({},SUPA_H,{'Prefer':'resolution=merge-duplicates,return=minimal'}),body:JSON.stringify({key:'custom_task_meta',value:JSON.stringify(customTaskMeta)})}).catch(function(e){console.error('saveCustomTaskMeta:',e);});
+}
+function migrateCustomTaskMeta(){
+  // Run after hydration — assign type/reminderKey for tasks missing version field
+  var _changed=false;
+  Object.keys(customTaskData).forEach(function(wk){
+    (customTaskData[wk]||[]).forEach(function(ct){
+      if(customTaskMeta[ct.id]&&customTaskMeta[ct.id].version>=1)return; // already migrated
+      var inferredRK=_ctGuessReminderKey(parseInt(wk),ct.label||'');
+      customTaskMeta[ct.id]={
+        type:_ctInferType(ct.label||''),
+        source:'user',
+        reminderKey:inferredRK||null,
+        lockedLabel:false,
+        dismissed:false,
+        version:1
+      };
+      _changed=true;
+    });
+  });
+  if(_changed)saveCustomTaskMeta(); // persist so migration doesn't re-run on every reload
+}
+function flipCustomTaskType(weekNum,id){
+  var ct=(customTaskData[weekNum]||[]).find(function(t){return t.id===id;});
+  if(!ct)return;
+  var meta=getTaskMeta(id,ct.label);
+  if(meta.source==='auto_reminder')return; // auto-reminders type is fixed
+  setTaskMeta(id,Object.assign({},meta,{type:meta.type==='transfer'?'action':'transfer'}));
+  saveCustomTaskMeta();
+  renderApp();
+}
+
+// ── Auto-reminder definitions ──────────────────────────────────────────────
+function getAutoRemindersForWeek(weekNum){
+  var reminders=[];
+  var yr=2026;
+  var VIO_LC_MONTHS=[3,5,9,14,18,22,27,31]; // Jun trigger at model wk 3 (cal wk 25, Jun 21) not wk 1 (cal wk 23)
+  if(VIO_LC_MONTHS.indexOf(weekNum)>=0){
+    if(weekNum===14||weekNum===27){
+      reminders.push({reminderKey:yr+'_w'+weekNum+'__lc_return',label:'📌 QUARTERLY LC RETURN — Transfer $750 Lending Club → Vio Bank - Tax Reserve before this month\'s deposit (end-of-quarter APR cycle return: Jun/Jul/Aug or Sep/Oct/Nov).',type:'transfer'});
+    }
+    reminders.push({reminderKey:yr+'_w'+weekNum+'__lc_boost',label:'📌 MONTHLY LC BOOST — Transfer $250 Vio Bank - Tax Reserve → Lending Club (first of month, maintains LC APR rate tier).',type:'transfer'});
+  }
+  if([7,11,16,20,24,29].indexOf(weekNum)>=0){
+    reminders.push({reminderKey:yr+'_w'+weekNum+'__jabian_reimb',label:'Review Jabian reimbursements — compare expected vs. received. If a large or unusual amount is pending or recently arrived, add it as a one-time inflow via Edit Week. No action needed if reimbursements are on schedule.',type:'action'});
+  }
+  var _amexGoldClose=[[3,6],[7,11],[12,15],[16,19],[20,24],[25,28],[29,null]];
+  var _disneyVisaClose=[[3,7],[8,11],[12,16],[16,20],[21,25],[25,29],[29,null]];
+  var _amexPlatClose=[[4,8],[9,12],[13,17],[17,21],[22,25],[26,30],[30,null]];
+  var _agEntry=_amexGoldClose.find(function(e){return e[0]===weekNum;});
+  var _dvEntry=_disneyVisaClose.find(function(e){return e[0]===weekNum;});
+  var _apEntry=_amexPlatClose.find(function(e){return e[0]===weekNum;});
+  if(_agEntry){var _agRef=_agEntry[1]?'Cal Wk '+getCalWeek(_agEntry[1]):'next statement period';reminders.push({reminderKey:yr+'_w'+weekNum+'__amex_gold_close',label:'💳 AMEX Gold statement closes this week (23rd) — log in and confirm the actual bill amount due '+_agRef+' (~$5,500 estimated). Open Edit Week on '+_agRef+' and update if actual differs by more than $25.',type:'action'});}
+  if(_dvEntry){var _dvRef=_dvEntry[1]?'Cal Wk '+getCalWeek(_dvEntry[1]):'next statement period';reminders.push({reminderKey:yr+'_w'+weekNum+'__disney_visa_close',label:'💳 Disney Visa statement closes this week (26th) — log in and confirm the actual bill amount due '+_dvRef+' (~$3,500 estimated). Open Edit Week on '+_dvRef+' and update if actual differs by more than $25.',type:'action'});}
+  if(_apEntry){var _apRef=_apEntry[1]?'Cal Wk '+getCalWeek(_apEntry[1]):'next statement period';reminders.push({reminderKey:yr+'_w'+weekNum+'__amex_plat_close',label:'💳 AMEX Platinum statement closes this week (2nd) — log in and confirm any straggler charges due '+_apRef+'. Update Edit Week if actual is more than $25.',type:'action'});}
+  return reminders;
+}
+function ensureAutoReminders(weekNum){
+  // Idempotent: inserts auto-reminder entries in-memory if not already present
+  var reminders=getAutoRemindersForWeek(weekNum);
+  if(!reminders.length)return;
+  if(!customTaskData[weekNum])customTaskData[weekNum]=[];
+  var existing=customTaskData[weekNum];
+  reminders.forEach(function(rem){
+    var rk=rem.reminderKey;
+    // Skip if already present (by reminderKey in meta)
+    var found=existing.some(function(ct){return getTaskMeta(ct.id,ct.label).reminderKey===rk;});
+    if(found)return;
+    var id='ar_'+rk.replace(/[^a-z0-9]/gi,'_');
+    existing.push({id:id,label:rem.label,completed:false});
+    customTaskMeta[id]={type:rem.type,source:'auto_reminder',reminderKey:rk,lockedLabel:true,dismissed:false,version:1};
+  });
+}
+
+// ── Custom task CRUD ───────────────────────────────────────────────────────
+function saveCustomTask(weekNum,type){
   var inp=document.getElementById('ct-inp-'+weekNum);
   var label=inp?inp.value.trim():'';
   if(!label)return;
   var id='ct_'+Date.now()+'_'+Math.random().toString(36).slice(2,6);
+  var taskType=type||'action';
   if(!customTaskData[weekNum])customTaskData[weekNum]=[];
   customTaskData[weekNum].push({id:id,label:label,completed:false});
+  setTaskMeta(id,{type:taskType,source:'user',reminderKey:null,lockedLabel:false,dismissed:false,version:1});
   customTaskState=null;
   renderApp();
-  fetch(SUPA_URL+'/rest/v1/custom_tasks',{method:'POST',headers:Object.assign({},SUPA_H,{'Prefer':'return=minimal'}),body:JSON.stringify({id:id,week_num:weekNum,label:label,completed:false})}).catch(function(e){console.error('saveCustomTask:',e);});
+  Promise.all([
+    fetch(SUPA_URL+'/rest/v1/custom_tasks',{method:'POST',headers:Object.assign({},SUPA_H,{'Prefer':'return=minimal'}),body:JSON.stringify({id:id,week_num:weekNum,label:label,completed:false})}),
+    saveCustomTaskMeta()
+  ]).catch(function(e){console.error('saveCustomTask:',e);});
 }
 function toggleCustomTask(weekNum,id,checked){
   if(!customTaskData[weekNum])return;
   var ct=customTaskData[weekNum].find(function(t){return t.id===id;});
-  if(ct){
-    ct.completed=checked;
-    fetch(SUPA_URL+'/rest/v1/custom_tasks?id=eq.'+encodeURIComponent(id),{method:'PATCH',headers:Object.assign({},SUPA_H,{'Prefer':'return=minimal'}),body:JSON.stringify({completed:checked})}).catch(function(e){console.error('toggleCustomTask:',e);});
-  }
+  if(!ct)return;
+  ct.completed=checked;
+  var meta=getTaskMeta(id,ct.label);
+  // Upsert handles both new (auto-reminder first toggle) and existing records
+  fetch(SUPA_URL+'/rest/v1/custom_tasks',{method:'POST',headers:Object.assign({},SUPA_H,{'Prefer':'resolution=merge-duplicates,return=minimal'}),body:JSON.stringify({id:id,week_num:weekNum,label:ct.label,completed:checked})}).catch(function(e){console.error('toggleCustomTask:',e);});
+  // Persist meta: always for auto-reminders (source/reminderKey must survive reload); otherwise on first interaction
+  if(meta.source==='auto_reminder'||meta.reminderKey||(meta.version>=1&&!customTaskMeta[id])){setTaskMeta(id,meta);saveCustomTaskMeta();}
 }
 function deleteCustomTask(weekNum,id){
   if(!customTaskData[weekNum])return;
   customTaskData[weekNum]=customTaskData[weekNum].filter(function(t){return t.id!==id;});
+  delete customTaskMeta[id];
   renderApp();
-  fetch(SUPA_URL+'/rest/v1/custom_tasks?id=eq.'+encodeURIComponent(id),{method:'DELETE',headers:SUPA_H}).catch(function(e){console.error('deleteCustomTask:',e);});
+  Promise.all([
+    fetch(SUPA_URL+'/rest/v1/custom_tasks?id=eq.'+encodeURIComponent(id),{method:'DELETE',headers:SUPA_H}),
+    saveCustomTaskMeta()
+  ]).catch(function(e){console.error('deleteCustomTask:',e);});
+}
+function dismissAutoReminder(weekNum,id){
+  if(!customTaskData[weekNum])return;
+  var ct=customTaskData[weekNum].find(function(t){return t.id===id;});
+  if(!ct)return;
+  var meta=getTaskMeta(id,ct.label);
+  setTaskMeta(id,Object.assign({},meta,{dismissed:true}));
+  // Upsert so dismissal survives page reload
+  fetch(SUPA_URL+'/rest/v1/custom_tasks',{method:'POST',headers:Object.assign({},SUPA_H,{'Prefer':'resolution=merge-duplicates,return=minimal'}),body:JSON.stringify({id:id,week_num:weekNum,label:ct.label,completed:false})}).catch(function(e){console.error('dismissAutoReminder:',e);});
+  saveCustomTaskMeta();
+  renderApp();
 }
 
 const GOALS_REGISTRY=[
@@ -1594,7 +1717,7 @@ function runModel(akGoal,rtGoal,flags){
     let doneTasks=0;
     for(var ti=0;ti<totalTasks;ti++){if(taskData[num+'_'+ti]&&taskData[num+'_'+ti].completed)doneTasks++;}
     // ── Monthly Vio→LC $250 APR boost (first week of each month) ─────────────
-    var VIO_LC_MONTHS=[1,5,9,14,18,22,27,31];
+    var VIO_LC_MONTHS=[3,5,9,14,18,22,27,31]; // Jun trigger at model wk 3 (cal wk 25, Jun 21) not wk 1 (cal wk 23)
     if(VIO_LC_MONTHS.indexOf(num)>=0){
       if(num===14||num===27){
         recActs.push('📌 QUARTERLY LC RETURN — Transfer $750 Lending Club → Vio Bank - Tax Reserve before this month\'s deposit (end-of-quarter APR cycle return: Jun/Jul/Aug or Sep/Oct/Nov).');
@@ -1815,7 +1938,11 @@ async function saveWeekEdits(n){
           var _lbl='Transfer $'+fc(_deltaCt)+' from Truist Checking to Vio Bank – Tax Reserve (commission 40% on additional income)';
           if(!customTaskData[weekNum])customTaskData[weekNum]=[];
           customTaskData[weekNum].push({id:_id,label:_lbl,completed:false});
-          fetch(SUPA_URL+'/rest/v1/custom_tasks',{method:'POST',headers:Object.assign({},SUPA_H,{'Prefer':'return=minimal'}),body:JSON.stringify({id:_id,week_num:weekNum,label:_lbl,completed:false})}).catch(function(e){console.error('autoCustomTask:',e);});
+          setTaskMeta(_id,{type:'transfer',source:'user',reminderKey:null,lockedLabel:false,dismissed:false,version:1});
+          Promise.all([
+            fetch(SUPA_URL+'/rest/v1/custom_tasks',{method:'POST',headers:Object.assign({},SUPA_H,{'Prefer':'return=minimal'}),body:JSON.stringify({id:_id,week_num:weekNum,label:_lbl,completed:false})}),
+            saveCustomTaskMeta()
+          ]).catch(function(e){console.error('autoCustomTask:',e);});
         }
       }
     }
@@ -1847,7 +1974,11 @@ async function saveWeekEdits(n){
             var _gLbl='Transfer $'+fc(_gDelta)+' from Truist Checking to '+_dstLbl+' ('+_goalName+' — additional allocation)';
             if(!customTaskData[weekNum])customTaskData[weekNum]=[];
             customTaskData[weekNum].push({id:_gId,label:_gLbl,completed:false});
-            fetch(SUPA_URL+'/rest/v1/custom_tasks',{method:'POST',headers:Object.assign({},SUPA_H,{'Prefer':'return=minimal'}),body:JSON.stringify({id:_gId,week_num:weekNum,label:_gLbl,completed:false})}).catch(function(e){console.error('autoCustomTaskGoal:',e);});
+            setTaskMeta(_gId,{type:'transfer',source:'user',reminderKey:null,lockedLabel:false,dismissed:false,version:1});
+            Promise.all([
+              fetch(SUPA_URL+'/rest/v1/custom_tasks',{method:'POST',headers:Object.assign({},SUPA_H,{'Prefer':'return=minimal'}),body:JSON.stringify({id:_gId,week_num:weekNum,label:_gLbl,completed:false})}),
+              saveCustomTaskMeta()
+            ]).catch(function(e){console.error('autoCustomTaskGoal:',e);});
           }
         });
       }
@@ -1939,7 +2070,8 @@ function buildDashboardViewModel(weeks,goals){
       return{weekNum:w.num,taskIdx:index,label:label,completed:!!(taskData[key]&&taskData[key].completed),isCustom:false};
     });
     var customActs=(customTaskData[w.num]||[]).map(function(ct){
-      return{weekNum:w.num,id:ct.id,label:ct.label,completed:!!ct.completed,isCustom:true};
+      var _cm=getTaskMeta(ct.id,ct.label);
+      return{weekNum:w.num,id:ct.id,label:ct.label,completed:!!ct.completed,dismissed:!!_cm.dismissed,isCustom:true};
     });
     return modelActs.concat(customActs);
   });
@@ -1957,7 +2089,7 @@ function buildDashboardViewModel(weeks,goals){
     retirementCompletion:retirementCompletion,   // backwards compat
     goalCompletion:goalCompletion,               // NEW: keyed by goal id
     surplusCompletion:surplusCompletion,lowestChecking:lowestChecking,
-    allActions:allActions,openActions:allActions.filter(function(a){return!a.completed;}),
+    allActions:allActions,openActions:allActions.filter(function(a){return!a.completed&&!a.dismissed;}),
     troughWeeks:weeks.filter(function(w){return w.trough;}),
     managedWeeks:weeks.filter(function(w){return w.managed;}),
     reconciledWeeks:weeks.filter(function(w){return w.reconciled;}),
@@ -2204,7 +2336,7 @@ function renderOverview(vm){
   // Confidence Score (0–100)
   var reconScore=Math.min(40,pastWeeksCount===0?40:Math.round((lastReconNum/pastWeeksCount)*40));
   var pastActs=vm.allActions.filter(function(a){return a.weekNum<currentW;});
-  var actScore=Math.min(30,pastActs.length===0?30:Math.round((pastActs.filter(function(a){return a.completed;}).length/pastActs.length)*30));
+  var actScore=Math.min(30,pastActs.length===0?30:Math.round((pastActs.filter(function(a){return a.completed||a.dismissed;}).length/pastActs.length)*30));
   // Freshness: days since end of last reconciled week (model wk 1 ends Jun 13; wk N ends Jun 6+N*7)
   var _recentReconDate=lastReconNum>0?new Date(2026,5,6+lastReconNum*7):null;
   var daysSinceRecon=_recentReconDate?Math.max(0,Math.round((new Date()-_recentReconDate)/864e5)):99;
@@ -2505,24 +2637,19 @@ function renderWeekDetail(w,weeks){
           var newL=x.l.replace(/\$[0-9,]+(?:\.[0-9]+)?/,'$'+fc(_trAmts[x._key]));
           return Object.assign({},x,{l:newL});
         });
-        // Append completed custom tasks to done section
-        var _cTasks=customTaskData[w.num]||[];
-        var _doneCTs=_cTasks.filter(function(ct){return ct.completed;});
-        var _pendCTs=_cTasks.filter(function(ct){return!ct.completed;});
-        _doneCTs.forEach(function(ct){done.push({l:ct.label,r:'done',rsn:'Custom required action'});});
+        // Append completed transfer-type custom tasks only (action tasks don't belong in this panel)
+        var _allCTp=customTaskData[w.num]||[];
+        _allCTp.filter(function(ct){
+          var m=getTaskMeta(ct.id,ct.label);
+          return ct.completed&&m.type==='transfer'&&!m.dismissed;
+        }).forEach(function(ct){done.push({l:ct.label,r:'done',rsn:'Custom transfer'});});
         var deferred=w.tr.filter(function(x){return x.r==='defer';});
         var html='';
         if(done.length){
           html+='<div class="xfr-section-hdr">Transfers this week<span class="week-date-badge">'+getWeekDate(activeW)+'</span></div>';
           html+=done.map(function(x){
             var ic=x.r==='info'?'ℹ️':'✅';
-            return'<div class="xfr-row"><span class="xi">'+ic+'</span><div class="xtext"><div class="xlbl">'+x.l+'</div><div class="xrsn">'+x.rsn+'</div></div></div>';
-          }).join('');
-        }
-        if(_pendCTs.length){
-          html+='<div class="xfr-section-hdr" style="color:var(--amber)">⏳ Pending transfers</div>';
-          html+=_pendCTs.map(function(ct){
-            return'<div class="xfr-row"><span class="xi">⏳</span><div class="xtext"><div class="xlbl">'+ct.label+'</div><div class="xrsn">Custom required action — not yet transferred</div></div></div>';
+            return'<div class="xfr-row"><span class="xi">'+ic+'</span><div class="xtext"><div class="xlbl">'+esc(x.l)+'</div><div class="xrsn">'+esc(x.rsn)+'</div></div></div>';
           }).join('');
         }
         if(deferred.length){
@@ -2533,7 +2660,7 @@ function renderWeekDetail(w,weeks){
             return'<div class="xfr-row deferred"><span class="xi">⏸</span><div class="xtext"><div class="xlbl">'+x.l+'</div><div class="xrsn">'+x.rsn+'</div><div class="deferred-why">'+why+'</div></div></div>';
           }).join('');
         }
-        if(!done.length&&!_pendCTs.length&&!deferred.length){html='<div style="color:var(--muted);font-size:13px;padding:8px 0">No transfers this week.</div>';}
+        if(!done.length&&!deferred.length){html='<div style="color:var(--muted);font-size:13px;padding:8px 0">No transfers this week.</div>';}
         return html;
       }())+
     '</div>'+
@@ -2619,17 +2746,31 @@ function renderWeekDetail(w,weeks){
         over.map(function(s){return'<span class="vitem under">'+s+' below plan</span>';}).join('')+
       '</div></div>';
     }():'')+'</div>';
-  // Tasks (model + custom)
-  var customTasks=customTaskData[w.num]||[];
-  var totalAll=w.realActs.length+customTasks.length;
-  var doneCustom=customTasks.filter(function(ct){return ct.completed;}).length;
-  var doneAll=w.doneTasks+doneCustom;
-  if(totalAll>0||true){
-    var progCls=doneAll===totalAll&&totalAll>0?'all-done':'partial';
-    var progTxt=doneAll+'/'+totalAll+' done';
-    var addingCustom=customTaskState&&customTaskState.addingWeek===w.num;
+  // ── Ensure auto-reminders are in memory for this week ────────────────────
+  ensureAutoReminders(w.num);
+  // ── Split custom tasks by type ────────────────────────────────────────────
+  var _allCT=customTaskData[w.num]||[];
+  var _xfrCT=_allCT.filter(function(ct){var m=getTaskMeta(ct.id,ct.label);return m.type==='transfer'&&!m.dismissed;});
+  var _actCT=_allCT.filter(function(ct){var m=getTaskMeta(ct.id,ct.label);return m.type==='action'&&!m.dismissed;});
+  // Progress counts: model transfers + transfer custom tasks + action custom tasks
+  var _doneModel=w.doneTasks;
+  var _doneXfr=_xfrCT.filter(function(ct){return ct.completed;}).length;
+  var _doneAct=_actCT.filter(function(ct){return ct.completed;}).length;
+  var _totalXfr=w.realActs.length+_xfrCT.length;
+  var _totalAct=_actCT.length;
+  var _doneAll=_doneModel+_doneXfr+_doneAct;
+  var _totalAll=_totalXfr+_totalAct;
+  var _weekIsRecon=isWeekReconciled(w.num);
+  var _addingXfr=customTaskState&&customTaskState.addingWeek===w.num&&customTaskState.addingType==='transfer';
+  var _addingAct=customTaskState&&customTaskState.addingWeek===w.num&&customTaskState.addingType==='action';
+
+  // ── Transfers to Execute section ──────────────────────────────────────────
+  {
+    var _progCls=(_doneModel+_doneXfr)===_totalXfr&&_totalXfr>0?'all-done':'partial';
+    var _progTxt=(_doneModel+_doneXfr)+'/'+_totalXfr+' done';
     html+='<div class="panel card-pad"><div class="acts">'+
-      '<div class="act-hdr">Required actions this week <span class="act-progress '+(totalAll>0?progCls:'')+'">'+progTxt+'</span></div>'+
+      '<div class="act-hdr">Transfers to execute <span class="act-progress '+(_totalXfr>0?_progCls:'')+'">'+_progTxt+'</span></div>'+
+      // Model-generated transfer actions
       (w.realActs.length?w.realActs.map(function(a,i){
         var done=taskData[w.num+'_'+i]&&taskData[w.num+'_'+i].completed;
         var actionKey=w.realActKeys?w.realActKeys[i]:null;
@@ -2638,14 +2779,10 @@ function renderWeekDetail(w,weeks){
         var canDelete=actionKey&&DELETEABLE_MODEL_ACTIONS.has(actionKey);
         var hasOv=actionKey&&hasActionOverride(actionKey);
         var note=actionKey?getActionOverrideNote(actionKey):'';
-        var weekIsRecon=isWeekReconciled(w.num);
-        // Type badge
         var badge=isLocked?'<span class="act-type-badge locked">Locked</span>':isModelAct?'<span class="act-type-badge model">Model</span>':'';
-        // Override note
         var noteHtml=note?'<div class="act-override-note">'+esc(note)+'</div>':'';
-        // Controls: Move / Relabel / Delete / Reset — hidden until hover (or always visible when edited)
         var controls='';
-        if(isModelAct&&!isLocked&&!weekIsRecon){
+        if(isModelAct&&!isLocked&&!_weekIsRecon){
           controls='<div class="act-row-controls">'+
             '<button class="task-edit-btn" onclick="openActionEdit(\'model\',\''+actionKey+'\','+w.num+',\'move\')">Move</button>'+
             '<button class="task-edit-btn" onclick="openActionEdit(\'model\',\''+actionKey+'\','+w.num+',\'label\')">Relabel</button>'+
@@ -2665,35 +2802,44 @@ function renderWeekDetail(w,weeks){
           controls+
         '</div>'+
         (actionKey?renderActionEditPanel(actionKey,a,w.num):'');
-      }).join(''):'')+(customTasks.length?customTasks.map(function(ct,ci){
-        var ctIsRecon=isWeekReconciled(w.num);
+      }).join(''):'')+
+      // Transfer-type custom tasks
+      (_xfrCT.length?_xfrCT.map(function(ct){
+        var meta=getTaskMeta(ct.id,ct.label);
+        var isAutoXfr=meta.source==='auto_reminder';
+        var typeBadge='<span class="act-type-badge" style="background:var(--surface);border:1px solid var(--line2);cursor:'+(meta.source==='user'?'pointer':'default')+'" '+(meta.source==='user'?'onclick="flipCustomTaskType('+w.num+',\''+ct.id+'\')" title="Click to reclassify as Action Item"':'')+'>Transfer</span>';
         return'<div class="task-row">'+
           '<input type="checkbox" class="task-check" '+(ct.completed?'checked':'')+' onchange="toggleCustomTask('+w.num+',\''+ct.id+'\',this.checked)">'+
-          '<div class="task-text'+(ct.completed?' done':'')+'"><span class="act-type-badge" style="background:var(--surface);border:1px solid var(--line2)">Custom</span>'+ct.label+(ct.due_date?'<span class="task-date">'+ct.due_date+'</span>':'<span class="task-date">Custom</span>')+'</div>'+
-          (!ctIsRecon?'<button class="custom-task-del" onclick="deleteCustomTask('+w.num+',\''+ct.id+'\')" title="Remove">✕</button>':'')+
+          '<div class="task-text'+(ct.completed?' done':'')+'">'+typeBadge+esc(ct.label)+'<span class="task-date">'+(isAutoXfr?'Auto':'Custom')+'</span></div>'+
+          ((!_weekIsRecon||isAutoXfr)?'<button class="custom-task-del" onclick="'+(isAutoXfr?'dismissAutoReminder':'deleteCustomTask')+'('+w.num+',\''+ct.id+'\')" title="'+(isAutoXfr?'Dismiss':'Remove')+'">✕</button>':'')+
         '</div>';
-      }).join(''):'')+(addingCustom?
-        '<div class="custom-task-form"><input class="custom-task-input" id="ct-inp-'+w.num+'" type="text" placeholder="Describe the action..." maxlength="200"><button class="custom-task-save-btn" onclick="saveCustomTask('+w.num+')">Add</button><button class="custom-task-add-btn" onclick="customTaskState=null;renderApp()">Cancel</button></div>':
-        '<button class="custom-task-add-btn" onclick="customTaskState={addingWeek:'+w.num+'};renderApp()">+ Add action</button>')+
+      }).join(''):'')+
+      // Add Transfer form / button
+      (_addingXfr?
+        '<div class="custom-task-form"><input class="custom-task-input" id="ct-inp-'+w.num+'" type="text" placeholder="Transfer $X from A to B (reason)..." maxlength="200"><button class="custom-task-save-btn" onclick="saveCustomTask('+w.num+',\'transfer\')">Add</button><button class="custom-task-add-btn" onclick="customTaskState=null;renderApp()">Cancel</button></div>':
+        '<button class="custom-task-add-btn" onclick="customTaskState={addingWeek:'+w.num+',addingType:\'transfer\'};renderApp()">+ Add transfer</button>')+
     '</div></div>';
   }
-  // Recommended actions (no checkbox, no progress, not counted in openActions)
-  if(w.recActs&&w.recActs.length){
+
+  // ── Action Items section ──────────────────────────────────────────────────
+  {
+    var _actProgCls=_doneAct===_totalAct&&_totalAct>0?'all-done':'partial';
     html+='<div class="panel card-pad"><div class="acts">'+
-      '<div class="act-hdr">Recommended review this week</div>'+
-      w.recActs.map(function(a){
-        if(a.startsWith('📌')||a.startsWith('💳')){
-          var rkKey=a.includes('LC BOOST')?'lcboost':a.includes('LC RETURN')?'lcreturn':a.includes('AMEX Gold')?'amexgold':a.includes('Disney Visa')?'disvisa':'amexplat';
-          var rk='recCheck_'+w.num+'_'+rkKey;
-          var done=localStorage.getItem(rk)==='1';
-          return'<div class="rec-row rec-row-check'+(done?' rec-row-done':'')+'" id="'+rk+'_row">'+
-            '<input type="checkbox" class="rec-cb"'+(done?' checked':'')+
-            ' onchange="(function(cb){var k=\''+rk+'\';localStorage.setItem(k,cb.checked?\'1\':\'\');var row=document.getElementById(\''+rk+'_row\');if(row){row.classList.toggle(\'rec-row-done\',cb.checked);row.querySelector(\'.rec-text\').style.textDecoration=cb.checked?\'line-through\':\'\'}})(this)">'+
-            '<span class="rec-text" style="flex:1;font-size:12px;color:var(--muted2);line-height:1.4;'+(done?'text-decoration:line-through':'')+'">'+a+'</span>'+
-          '</div>';
-        }
-        return'<div class="rec-row"><span class="rec-icon">💡</span><span class="rec-text">'+a+'</span></div>';
-      }).join('')+
+      '<div class="act-hdr">Action items <span class="act-progress '+(_totalAct>0?_actProgCls:'')+'">'+_doneAct+'/'+_totalAct+' done</span></div>'+
+      (_actCT.length?_actCT.map(function(ct){
+        var meta=getTaskMeta(ct.id,ct.label);
+        var isAutoAct=meta.source==='auto_reminder';
+        var typeBadge='<span class="act-type-badge" style="background:var(--surface);border:1px solid var(--line2);cursor:'+(meta.source==='user'?'pointer':'default')+'" '+(meta.source==='user'?'onclick="flipCustomTaskType('+w.num+',\''+ct.id+'\')" title="Click to reclassify as Transfer"':'')+'>Task</span>';
+        return'<div class="task-row">'+
+          '<input type="checkbox" class="task-check" '+(ct.completed?'checked':'')+' onchange="toggleCustomTask('+w.num+',\''+ct.id+'\',this.checked)">'+
+          '<div class="task-text'+(ct.completed?' done':'')+'">'+typeBadge+esc(ct.label)+'<span class="task-date">'+(isAutoAct?'Auto':'Custom')+'</span></div>'+
+          ((!_weekIsRecon||isAutoAct)?'<button class="custom-task-del" onclick="'+(isAutoAct?'dismissAutoReminder':'deleteCustomTask')+'('+w.num+',\''+ct.id+'\')" title="'+(isAutoAct?'Dismiss':'Remove')+'">✕</button>':'')+
+        '</div>';
+      }).join(''):'<div style="color:var(--muted);font-size:13px;padding:4px 0 8px">No action items this week.</div>')+
+      // Add Task form / button
+      (_addingAct?
+        '<div class="custom-task-form"><input class="custom-task-input" id="ct-inp-'+w.num+'" type="text" placeholder="Review / confirm / investigate..." maxlength="200"><button class="custom-task-save-btn" onclick="saveCustomTask('+w.num+',\'action\')">Add</button><button class="custom-task-add-btn" onclick="customTaskState=null;renderApp()">Cancel</button></div>':
+        '<button class="custom-task-add-btn" onclick="customTaskState={addingWeek:'+w.num+',addingType:\'action\'};renderApp()">+ Add task</button>')+
     '</div></div>';
   }
   // Notes
@@ -3508,7 +3654,7 @@ function renderHistory(weeksArg){
   var filters=[
     {id:'all',label:'All ('+weeks.length+')'},
     {id:'reconciled',label:'Reconciled ('+weeks.filter(function(w){return w.reconciled;}).length+')'},
-    {id:'open',label:'Open Actions ('+weeks.filter(function(w){var _c=customTaskData[w.num]||[];return(w.realActs.length&&w.realActs.some(function(_,i){return!taskData[w.num+'_'+i]||!taskData[w.num+'_'+i].completed;}))||_c.some(function(t){return!t.completed;});}).length+')'},
+    {id:'open',label:'Open Actions ('+weeks.filter(function(w){ensureAutoReminders(w.num);var _c=customTaskData[w.num]||[];return(w.realActs.length&&w.realActs.some(function(_,i){return!taskData[w.num+'_'+i]||!taskData[w.num+'_'+i].completed;}))||_c.some(function(t){var _m=getTaskMeta(t.id,t.label);return!t.completed&&!_m.dismissed;});}).length+')'},
     {id:'variance',label:'Variance >$'+VAR_THRESHOLD+' ('+weeks.filter(function(w){return w.reconciled&&w.variance&&Object.values(w.variance).some(function(v){return Math.abs(v)>VAR_THRESHOLD;});}).length+')'},
     {id:'trough',label:'Trough ('+weeks.filter(function(w){return w.trough;}).length+')'},
     {id:'managed',label:'Managed ('+weeks.filter(function(w){return w.managed;}).length+')'},
@@ -3517,7 +3663,7 @@ function renderHistory(weeksArg){
   ];
   var filteredWeeks=weeks;
   if(historyFilter==='reconciled')filteredWeeks=weeks.filter(function(w){return w.reconciled;});
-  else if(historyFilter==='open')filteredWeeks=weeks.filter(function(w){var _c=customTaskData[w.num]||[];return(w.realActs.length&&w.realActs.some(function(_,i){return!taskData[w.num+'_'+i]||!taskData[w.num+'_'+i].completed;}))||_c.some(function(t){return!t.completed;});});
+  else if(historyFilter==='open')filteredWeeks=weeks.filter(function(w){ensureAutoReminders(w.num);var _c=customTaskData[w.num]||[];return(w.realActs.length&&w.realActs.some(function(_,i){return!taskData[w.num+'_'+i]||!taskData[w.num+'_'+i].completed;}))||_c.some(function(t){var _m=getTaskMeta(t.id,t.label);return!t.completed&&!_m.dismissed;});});
   else if(historyFilter==='variance')filteredWeeks=weeks.filter(function(w){return w.reconciled&&w.variance&&Object.values(w.variance).some(function(v){return Math.abs(v)>VAR_THRESHOLD;});});
   else if(historyFilter==='trough')filteredWeeks=weeks.filter(function(w){return w.trough;});
   else if(historyFilter==='managed')filteredWeeks=weeks.filter(function(w){return w.managed;});
@@ -3529,7 +3675,7 @@ function renderHistory(weeksArg){
   filteredWeeks.forEach(function(wx){
     var isPast=wx.num<currentW;var isNow=wx.num===currentW;
     var _wxCustom=customTaskData[wx.num]||[];
-    var hasOpenTasks=isPast&&((wx.realActs.length&&wx.realActs.some(function(_,i){return!taskData[wx.num+'_'+i]||!taskData[wx.num+'_'+i].completed;}))||_wxCustom.some(function(t){return!t.completed;}));
+    var hasOpenTasks=isPast&&((wx.realActs.length&&wx.realActs.some(function(_,i){return!taskData[wx.num+'_'+i]||!taskData[wx.num+'_'+i].completed;}))||_wxCustom.some(function(t){var _m=getTaskMeta(t.id,t.label);return!t.completed&&!_m.dismissed;}));
     var cls='hcard';
     if(isNow&&wx.reconciled)cls+=' past-recon current-recon';
     else if(isNow)cls+=' current';
@@ -3551,14 +3697,28 @@ function renderHistory(weeksArg){
       html+='</div>';
     });
     html+='</div><div class="hcard-footer">';
-    var _hCustom=customTaskData[wx.num]||[];
-    var _hTotalAll=wx.realActs.length+_hCustom.length;
-    var _hDoneCustom=_hCustom.filter(function(ct){return ct.completed;}).length;
-    var _hDoneAll=wx.doneTasks+_hDoneCustom;
-    if(_hTotalAll>0){var tCls=_hDoneAll===_hTotalAll?'done':_hDoneAll>0?'partial':'none';html+='<div class="hcard-tasks '+tCls+'">'+(_hDoneAll===_hTotalAll?'✅ ':'')+'Tasks: '+_hDoneAll+'/'+_hTotalAll+'</div>';}
-    else{html+='<div class="hcard-tasks none">No actions</div>';}
+    // Ensure auto-reminders are populated for this week (in-memory, idempotent)
+    ensureAutoReminders(wx.num);
+    var _hAllCT=customTaskData[wx.num]||[];
+    var _hXfrCT=_hAllCT.filter(function(ct){var m=getTaskMeta(ct.id,ct.label);return m.type==='transfer'&&!m.dismissed;});
+    // Action counting includes dismissed — dismissed=resolved counts toward the badge (Option B)
+    var _hActCTCount=_hAllCT.filter(function(ct){var m=getTaskMeta(ct.id,ct.label);return m.type==='action';});
+    // Transfer count: model tasks + transfer custom tasks
+    var _hTotalXfr=wx.realActs.length+_hXfrCT.length;
+    var _hDoneXfr=wx.doneTasks+_hXfrCT.filter(function(ct){return ct.completed;}).length;
+    // Action count: all action tasks; dismissed counts as done (Option B)
+    var _hTotalAct=_hActCTCount.length;
+    var _hDoneAct=_hActCTCount.filter(function(ct){var m=getTaskMeta(ct.id,ct.label);return ct.completed||m.dismissed;}).length;
+    var _hTotalAll=_hTotalXfr+_hTotalAct;
+    var _hDoneAll=_hDoneXfr+_hDoneAct;
+    if(_hTotalAll>0){
+      var tCls=_hDoneAll===_hTotalAll?'done':_hDoneAll>0?'partial':'none';
+      html+='<div class="hcard-tasks '+tCls+'">'+(_hDoneAll===_hTotalAll?'✅ ':'')+_hDoneAll+'/'+_hTotalAll+' done';
+      if(_hTotalXfr>0&&_hTotalAct>0){html+=' <span style="font-size:10px;color:var(--muted2);font-weight:400">(Transfers: '+_hDoneXfr+'/'+_hTotalXfr+' · Actions: '+_hDoneAct+'/'+_hTotalAct+')</span>';}
+      html+='</div>';
+    } else{html+='<div class="hcard-tasks none">No actions</div>';}
     var note=noteData[wx.num];
-    if(note)html+='<div class="hcard-note">"'+note.slice(0,60)+(note.length>60?'…':'')+'"</div>';
+    if(note)html+='<div class="hcard-note">"'+esc(note.slice(0,60))+(note.length>60?'…':'')+'"</div>';
     html+='<button class="hcard-jump" onclick="setSection(\'weekly\');activeW='+wx.num+';renderApp()">'+(isNow?'Go to current →':'View →')+'</button>';
     html+='</div></div>';
   });
@@ -3830,12 +3990,14 @@ async function loadAll(){
       if(row.key==='rt_goal'){goalRt=Math.max(1,parseFloat(row.value)||7690.98);}
       if(row.key==='anthropic_key'){anthropicKey=row.value||'';}
       if(row.key==='custom_tasks'){try{var ct=JSON.parse(row.value);if(ct&&typeof ct==='object'){customTaskData=ct;try{localStorage.setItem('hfos_custom_tasks',row.value);}catch(e){}}}catch(e){}}
+      if(row.key==='custom_task_meta'){try{var cm=JSON.parse(row.value);if(cm&&typeof cm==='object'){customTaskMeta=cm;}}catch(e){}}
     });}
     if(customTasksR.ok){
       var ctRows=await customTasksR.json();
       if(ctRows.length>0){
         // Supabase has data — use it and clear any stale localStorage
         customTaskData={};
+        // Spread existing metadata to preserve any fields beyond id/label/completed
         ctRows.forEach(function(row){if(!customTaskData[row.week_num])customTaskData[row.week_num]=[];customTaskData[row.week_num].push({id:row.id,label:row.label,completed:row.completed});});
         try{localStorage.removeItem('hfos_custom_tasks');}catch(e){}
       } else {
@@ -3861,6 +4023,8 @@ async function loadAll(){
       if(wl.length>0){wishlistData=wl;wishlistLoaded=true;}
       // else: will be seeded when roadmap section is first opened
     }
+    // Run type migration for any custom tasks missing version field
+    migrateCustomTaskMeta();
     _supaConnected=true;
   }catch(e){console.error('loadAll:',e);_supaConnected=false;}
   renderApp();

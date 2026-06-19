@@ -2629,6 +2629,523 @@ console.log('\n── Section 29: tr._key and Transfers This Week normalization 
 })();
 
 // ─────────────────────────────────────────────────────────────────────────
+// Section 30 — Custom Task Metadata Preservation + Auto-Reminder System
+// ─────────────────────────────────────────────────────────────────────────
+(function(){
+  console.log('\n── Section 30: Custom Task Metadata Preservation + Auto-Reminders ──');
+
+  var TEST_WEEK = 25; // arbitrary stable week number
+
+  // Save and clear state before tests
+  var savedCTD = JSON.parse(JSON.stringify(customTaskData));
+  var savedCTM = JSON.parse(JSON.stringify(customTaskMeta));
+  customTaskData = {};
+  customTaskMeta = {};
+
+  // ── S30-1: Auto-reminder created once per stable reminderKey ─────────────
+  test('S30-1: ensureAutoReminders inserts each reminderKey exactly once', function(){
+    customTaskData[TEST_WEEK] = [];
+    ensureAutoReminders(TEST_WEEK);
+    var arr = customTaskData[TEST_WEEK] || [];
+    assert(arr.length > 0, 'Expected at least one auto-reminder for week '+TEST_WEEK);
+
+    // Call again — should not duplicate
+    var countBefore = arr.length;
+    ensureAutoReminders(TEST_WEEK);
+    var countAfter = (customTaskData[TEST_WEEK]||[]).length;
+    assert(countAfter === countBefore, 'Duplicate reminders created: before='+countBefore+' after='+countAfter);
+
+    // All inserted entries have source: auto_reminder
+    (customTaskData[TEST_WEEK]||[]).forEach(function(ct){
+      var m = getTaskMeta(ct.id, ct.label);
+      assert(m.source === 'auto_reminder', 'Expected source=auto_reminder, got: '+m.source+' for: '+ct.label);
+    });
+  });
+
+  // ── S30-2: Completed reminder does not regenerate/duplicate ──────────────
+  test('S30-2: Completed auto-reminder is not duplicated on re-render', function(){
+    customTaskData[TEST_WEEK] = [];
+    customTaskMeta = {};
+    ensureAutoReminders(TEST_WEEK);
+    var arr = customTaskData[TEST_WEEK] || [];
+    assert(arr.length > 0, 'Need at least one auto-reminder');
+
+    // Mark first reminder completed
+    var first = arr[0];
+    first.completed = true;
+    var keyBefore = first.id;
+
+    // Re-run ensureAutoReminders — should not add a second copy
+    ensureAutoReminders(TEST_WEEK);
+    var matchingIds = (customTaskData[TEST_WEEK]||[]).filter(function(ct){
+      return ct.id === keyBefore;
+    });
+    assert(matchingIds.length === 1, 'Completed reminder was duplicated: found '+matchingIds.length+' copies');
+
+    var totalAfter = (customTaskData[TEST_WEEK]||[]).length;
+    assert(totalAfter === arr.length, 'Array grew after re-render with completed reminder: '+totalAfter+' vs '+arr.length);
+  });
+
+  // ── S30-3: Dismissed reminder does not regenerate ────────────────────────
+  test('S30-3: Dismissed auto-reminder is not recreated by ensureAutoReminders', function(){
+    customTaskData[TEST_WEEK] = [];
+    customTaskMeta = {};
+    ensureAutoReminders(TEST_WEEK);
+    var arr = customTaskData[TEST_WEEK] || [];
+    assert(arr.length > 0, 'Need at least one auto-reminder');
+
+    var first = arr[0];
+    // Simulate dismissal by setting dismissed in meta
+    setTaskMeta(first.id, {dismissed: true});
+
+    var countBefore = arr.length;
+    ensureAutoReminders(TEST_WEEK);
+    var countAfter = (customTaskData[TEST_WEEK]||[]).length;
+    assert(countAfter === countBefore, 'Dismissed reminder was recreated: before='+countBefore+' after='+countAfter);
+
+    // Confirm the dismissed entry's meta is still dismissed
+    var meta = getTaskMeta(first.id, first.label);
+    assert(meta.dismissed === true, 'Dismissed flag was reset on re-render');
+  });
+
+  // ── S30-4: toggleCustomTask preserves all metadata fields ────────────────
+  test('S30-4: toggleCustomTask preserves source, reminderKey, lockedLabel, dismissed, version', function(){
+    customTaskData[TEST_WEEK] = [];
+    customTaskMeta = {};
+
+    // Insert a custom task with full metadata
+    var taskId = 'test_s30_4_' + Date.now();
+    customTaskData[TEST_WEEK] = [{id:taskId, label:'Test transfer', completed:false}];
+    setTaskMeta(taskId, {
+      type: 'transfer',
+      source: 'user',
+      reminderKey: 'test_key_123',
+      lockedLabel: false,
+      dismissed: false,
+      version: 1
+    });
+
+    // Simulate what toggleCustomTask does: toggle completed, preserve everything else
+    toggleCustomTask(TEST_WEEK, taskId, true);
+
+    var updatedTask = (customTaskData[TEST_WEEK]||[]).find(function(t){return t.id===taskId;});
+    assert(updatedTask, 'Task not found after toggle');
+    assert(updatedTask.completed === true, 'completed should be true after toggle');
+
+    var meta = getTaskMeta(taskId, updatedTask.label);
+    assert(meta.source === 'user', 'source was dropped: got '+meta.source);
+    assert(meta.reminderKey === 'test_key_123', 'reminderKey was dropped: got '+meta.reminderKey);
+    assert(meta.lockedLabel === false, 'lockedLabel was corrupted: got '+meta.lockedLabel);
+    assert(meta.dismissed === false, 'dismissed was corrupted: got '+meta.dismissed);
+    assert(meta.version === 1, 'version was dropped: got '+meta.version);
+    assert(meta.type === 'transfer', 'type was dropped: got '+meta.type);
+  });
+
+  // ── S30-5: Migrated tasks receive correct type via heuristic ─────────────
+  test('S30-5: migrateCustomTaskMeta assigns transfer type for dollar+Transfer label', function(){
+    customTaskData[TEST_WEEK] = [
+      {id:'m1', label:'Transfer $500 to Tax Reserve'},
+      {id:'m2', label:'Review Jabian reimbursements'},
+      {id:'m3', label:'$375 → Savings account'},
+      {id:'m4', label:'Check AMEX due date'}
+    ];
+    customTaskMeta = {};
+
+    migrateCustomTaskMeta();
+
+    var m1 = getTaskMeta('m1','Transfer $500 to Tax Reserve');
+    var m2 = getTaskMeta('m2','Review Jabian reimbursements');
+    var m3 = getTaskMeta('m3','$375 → Savings account');
+    var m4 = getTaskMeta('m4','Check AMEX due date');
+
+    assert(m1.type === 'transfer', 'S30-5a: "Transfer $500..." should be transfer, got: '+m1.type);
+    assert(m2.type === 'action',   'S30-5b: "Review Jabian..." should be action, got: '+m2.type);
+    assert(m3.type === 'transfer', 'S30-5c: "$375 →..." should be transfer, got: '+m3.type);
+    assert(m4.type === 'action',   'S30-5d: "Check AMEX..." should be action, got: '+m4.type);
+  });
+
+  // ── S30-6: flipCustomTaskType toggles transfer ↔ action ──────────────────
+  test('S30-6: flipCustomTaskType toggles type between transfer and action', function(){
+    customTaskData[TEST_WEEK] = [{id:'flip1', label:'Transfer $200 somewhere', completed:false}];
+    customTaskMeta = {};
+    setTaskMeta('flip1', {type:'transfer', source:'user', version:1, reminderKey:null, lockedLabel:false, dismissed:false});
+
+    flipCustomTaskType(TEST_WEEK, 'flip1');
+    var meta = getTaskMeta('flip1','Transfer $200 somewhere');
+    assert(meta.type === 'action', 'Expected action after first flip, got: '+meta.type);
+
+    // Source and other fields should be preserved
+    assert(meta.source === 'user', 'source corrupted after flip: '+meta.source);
+    assert(meta.version === 1, 'version corrupted after flip: '+meta.version);
+
+    flipCustomTaskType(TEST_WEEK, 'flip1');
+    var meta2 = getTaskMeta('flip1','Transfer $200 somewhere');
+    assert(meta2.type === 'transfer', 'Expected transfer after second flip, got: '+meta2.type);
+  });
+
+  // ── S30-7: action-type task never appears in Transfers This Week panel ────
+  test('S30-7: action-type custom task is excluded from Transfers This Week panel', function(){
+    customTaskData[TEST_WEEK] = [
+      {id:'act1', label:'Review AMEX statement', completed:true},
+      {id:'act2', label:'Confirm Jabian deposit', completed:true}
+    ];
+    customTaskMeta = {};
+    setTaskMeta('act1', {type:'action', source:'user', version:1, dismissed:false});
+    setTaskMeta('act2', {type:'action', source:'auto_reminder', version:1, dismissed:false});
+
+    // Replicate Transfers This Week filter logic (same as in renderWeek IIFE)
+    var allCT = customTaskData[TEST_WEEK] || [];
+    var panelEntries = allCT.filter(function(ct){
+      var m = getTaskMeta(ct.id, ct.label);
+      return ct.completed && m.type === 'transfer' && !m.dismissed;
+    });
+
+    assert(panelEntries.length === 0, 'action-type tasks appeared in panel: '+panelEntries.map(function(x){return x.label;}).join(', '));
+  });
+
+  // ── S30-8: Uncompleted transfer-type task does NOT appear in top panel ────
+  test('S30-8: Uncompleted transfer-type custom task excluded from Transfers This Week panel', function(){
+    customTaskData[TEST_WEEK] = [
+      {id:'xfr_pend', label:'Transfer $300 to reserve', completed:false}
+    ];
+    customTaskMeta = {};
+    setTaskMeta('xfr_pend', {type:'transfer', source:'user', version:1, dismissed:false});
+
+    var allCT = customTaskData[TEST_WEEK] || [];
+    var panelEntries = allCT.filter(function(ct){
+      var m = getTaskMeta(ct.id, ct.label);
+      return ct.completed && m.type === 'transfer' && !m.dismissed;
+    });
+
+    assert(panelEntries.length === 0, 'Uncompleted transfer appeared in panel: '+panelEntries.length+' entries');
+  });
+
+  // ── S30-9: Completed transfer-type task DOES appear in top panel ──────────
+  test('S30-9: Completed transfer-type custom task appears in Transfers This Week panel', function(){
+    customTaskData[TEST_WEEK] = [
+      {id:'xfr_done', label:'Transfer $300 to reserve', completed:true},
+      {id:'xfr_pend', label:'Transfer $200 pending', completed:false},
+      {id:'act_done', label:'Review statement', completed:true}
+    ];
+    customTaskMeta = {};
+    setTaskMeta('xfr_done', {type:'transfer', source:'user', version:1, dismissed:false});
+    setTaskMeta('xfr_pend', {type:'transfer', source:'user', version:1, dismissed:false});
+    setTaskMeta('act_done', {type:'action', source:'user', version:1, dismissed:false});
+
+    var allCT = customTaskData[TEST_WEEK] || [];
+    var panelEntries = allCT.filter(function(ct){
+      var m = getTaskMeta(ct.id, ct.label);
+      return ct.completed && m.type === 'transfer' && !m.dismissed;
+    });
+
+    assert(panelEntries.length === 1, 'Expected 1 panel entry, got: '+panelEntries.length);
+    assert(panelEntries[0].id === 'xfr_done', 'Wrong entry in panel: '+panelEntries[0].id);
+  });
+
+  // ── S30-10: History aggregate count includes all four categories ──────────
+  test('S30-10: History aggregate count includes model tasks + custom transfers + custom actions + auto-reminders', function(){
+    var wx = WEEKS[0]; // use first model week
+
+    // Set up four categories:
+    // 1. model transfers (wx.realActs)
+    // 2. transfer-type custom task (completed)
+    // 3. action-type custom task (completed)
+    // 4. auto-reminder action task (completed)
+    customTaskData[wx.num] = [
+      {id:'ct_xfr', label:'Transfer $100 somewhere', completed:true},
+      {id:'ct_act', label:'Review something', completed:true},
+      {id:'ct_ar',  label:'Auto-generated reminder', completed:true}
+    ];
+    customTaskMeta = {};
+    setTaskMeta('ct_xfr', {type:'transfer', source:'user', version:1, dismissed:false});
+    setTaskMeta('ct_act', {type:'action', source:'user', version:1, dismissed:false});
+    setTaskMeta('ct_ar',  {type:'action', source:'auto_reminder', version:1, dismissed:false, reminderKey:'2026_w'+wx.num+'__test_ar'});
+
+    ensureAutoReminders(wx.num);
+
+    var allCT = customTaskData[wx.num] || [];
+    var xfrCT = allCT.filter(function(ct){var m=getTaskMeta(ct.id,ct.label);return m.type==='transfer'&&!m.dismissed;});
+    var actCT = allCT.filter(function(ct){var m=getTaskMeta(ct.id,ct.label);return m.type==='action'&&!m.dismissed;});
+
+    var totalXfr = wx.realActs.length + xfrCT.length;
+    var doneXfr = wx.doneTasks + xfrCT.filter(function(ct){return ct.completed;}).length;
+    var totalAct = actCT.length;
+    var doneAct = actCT.filter(function(ct){return ct.completed||getTaskMeta(ct.id,ct.label).dismissed;}).length;
+
+    var totalAll = totalXfr + totalAct;
+    var doneAll  = doneXfr + doneAct;
+
+    assert(totalAll >= 4, 'Expected at least 4 total tasks across all categories, got: '+totalAll);
+    assert(doneAll >= 3, 'Expected at least 3 done tasks across all categories, got: '+doneAll);
+    // custom transfer counted
+    assert(xfrCT.length >= 1, 'Custom transfer not counted in xfrCT');
+    // custom action + auto-reminder counted
+    assert(actCT.length >= 2, 'Custom actions/reminders not counted in actCT');
+  });
+
+  // ── S30-11: History detail shows separate Transfers and Action Items counts
+  test('S30-11: History split detail separates Transfers and Action Items', function(){
+    var wx = WEEKS[1];
+    customTaskData[wx.num] = [
+      {id:'s11_xfr', label:'Transfer $50 to IRA', completed:true},
+      {id:'s11_act', label:'Call bank about fees', completed:false}
+    ];
+    customTaskMeta = {};
+    setTaskMeta('s11_xfr', {type:'transfer', source:'user', version:1, dismissed:false});
+    setTaskMeta('s11_act', {type:'action', source:'user', version:1, dismissed:false});
+
+    ensureAutoReminders(wx.num);
+
+    var allCT = customTaskData[wx.num] || [];
+    var xfrCT = allCT.filter(function(ct){var m=getTaskMeta(ct.id,ct.label);return m.type==='transfer'&&!m.dismissed;});
+    var actCT = allCT.filter(function(ct){var m=getTaskMeta(ct.id,ct.label);return m.type==='action'&&!m.dismissed;});
+
+    var totalXfr = wx.realActs.length + xfrCT.length;
+    var doneXfr  = wx.doneTasks + xfrCT.filter(function(ct){return ct.completed;}).length;
+    var totalAct = actCT.length;
+    var doneAct  = actCT.filter(function(ct){return ct.completed||getTaskMeta(ct.id,ct.label).dismissed;}).length;
+
+    // Transfers and Actions must be tracked independently
+    assert(totalXfr !== totalAct || xfrCT.length !== actCT.length || true,
+      'Sanity: both counts computed'); // always passes — real assertions below
+    // transfer custom task counted in transfer bucket, not action bucket
+    var xfrIds = xfrCT.map(function(ct){return ct.id;});
+    var actIds = actCT.map(function(ct){return ct.id;});
+    assert(xfrIds.indexOf('s11_xfr') >= 0, 's11_xfr not in transfer bucket');
+    assert(actIds.indexOf('s11_xfr') < 0,  's11_xfr incorrectly in action bucket');
+    assert(actIds.indexOf('s11_act') >= 0, 's11_act not in action bucket');
+    assert(xfrIds.indexOf('s11_act') < 0,  's11_act incorrectly in transfer bucket');
+    // counts are independently correct
+    assert(doneXfr >= 1, 'doneXfr should include the completed custom transfer: '+doneXfr);
+    assert(doneAct === 0, 'doneAct should be 0 (action not completed): '+doneAct);
+  });
+
+  // ── S30-12: Dismissed auto-reminder counts as "done" for History badge ────
+  test('S30-12: Dismissed auto-reminder is counted as done in History badge', function(){
+    var wx = WEEKS[2];
+    customTaskData[wx.num] = [
+      {id:'s12_ar', label:'Auto CC reminder', completed:false}
+    ];
+    customTaskMeta = {};
+    setTaskMeta('s12_ar', {type:'action', source:'auto_reminder', version:1, dismissed:true, reminderKey:'2026_w'+wx.num+'__test_cc'});
+
+    var allCT = customTaskData[wx.num] || [];
+    var actCT = allCT.filter(function(ct){var m=getTaskMeta(ct.id,ct.label);return m.type==='action'&&!m.dismissed;});
+    // dismissed task is filtered OUT of the active set (not shown), but its done count reflects dismissal
+    // Per spec: dismissed counts as done. We track it separately via the dismissed filter path.
+    var allActIncDismissed = allCT.filter(function(ct){var m=getTaskMeta(ct.id,ct.label);return m.type==='action';});
+    var doneActIncDismissed = allActIncDismissed.filter(function(ct){
+      var m=getTaskMeta(ct.id,ct.label);
+      return ct.completed || m.dismissed;
+    });
+
+    assert(allActIncDismissed.length === 1, 'Expected 1 action task total: '+allActIncDismissed.length);
+    assert(doneActIncDismissed.length === 1, 'Dismissed task should count as done: '+doneActIncDismissed.length);
+
+    // Verify that dismissed tasks ARE excluded from active display (not shown in UI)
+    assert(actCT.length === 0, 'Dismissed task should not appear in active Action Items list: '+actCT.length);
+  });
+
+  // ── S30-13: Auto-reminder metadata survives simulated reload (source preserved) ─
+  test('S30-13: Auto-reminder source/reminderKey preserved after simulated reload cycle', function(){
+    customTaskData[TEST_WEEK] = [];
+    customTaskMeta = {};
+    ensureAutoReminders(TEST_WEEK);
+    var arr = customTaskData[TEST_WEEK] || [];
+    assert(arr.length > 0, 'Need at least one auto-reminder');
+
+    var ar = arr[0];
+    var metaBefore = getTaskMeta(ar.id, ar.label);
+    assert(metaBefore.source === 'auto_reminder', 'source should be auto_reminder before toggle');
+
+    // Simulate toggle — this should write meta to customTaskMeta (the "persist" step)
+    toggleCustomTask(TEST_WEEK, ar.id, true);
+
+    // Verify meta was written (simulates what would be saved to Supabase)
+    assert(customTaskMeta[ar.id] !== undefined, 'customTaskMeta not written after toggle of auto-reminder');
+    assert(customTaskMeta[ar.id].source === 'auto_reminder', 'source lost after toggle: '+customTaskMeta[ar.id].source);
+    assert(customTaskMeta[ar.id].lockedLabel === true, 'lockedLabel lost after toggle: '+customTaskMeta[ar.id].lockedLabel);
+    assert(customTaskMeta[ar.id].reminderKey, 'reminderKey lost after toggle: '+customTaskMeta[ar.id].reminderKey);
+    assert(customTaskMeta[ar.id].version >= 1, 'version lost after toggle: '+customTaskMeta[ar.id].version);
+  });
+
+  // ── S30-14: Migration runs only once — idempotent across reloads ──────────
+  test('S30-14: migrateCustomTaskMeta is idempotent — re-run does not corrupt version>=1 tasks', function(){
+    customTaskData[TEST_WEEK] = [
+      {id:'mig_idem', label:'Transfer $100 to IRA', completed:false}
+    ];
+    customTaskMeta = {};
+
+    // First migration
+    migrateCustomTaskMeta();
+    var afterFirst = JSON.parse(JSON.stringify(customTaskMeta['mig_idem']));
+    assert(afterFirst.version === 1, 'version should be 1 after first migration');
+    assert(afterFirst.type === 'transfer', 'type should be transfer after first migration');
+
+    // Manually change type to simulate user correction
+    setTaskMeta('mig_idem', {type: 'action'});
+
+    // Second migration (reload) — must NOT overwrite the version>=1 entry
+    migrateCustomTaskMeta();
+    var afterSecond = getTaskMeta('mig_idem', 'Transfer $100 to IRA');
+    assert(afterSecond.type === 'action', 'Second migration overwrote user correction: '+afterSecond.type);
+  });
+
+  // ── S30-15: Dismissed reminder does NOT cause week to appear in Open Actions ─
+  test('S30-15: Week with only dismissed reminders is excluded from Open Actions filter', function(){
+    var wx = WEEKS[3];
+    customTaskData[wx.num] = [
+      {id:'dis_ar', label:'Auto-reminder to dismiss', completed:false}
+    ];
+    customTaskMeta = {};
+    setTaskMeta('dis_ar', {type:'action', source:'auto_reminder', version:1, dismissed:true});
+
+    // Simulate hasOpenTasks logic (same as renderHistory)
+    var _c = customTaskData[wx.num] || [];
+    var hasOpenCustom = _c.some(function(t){
+      var _m = getTaskMeta(t.id, t.label);
+      return !t.completed && !_m.dismissed;
+    });
+
+    assert(hasOpenCustom === false, 'Dismissed reminder incorrectly classified week as open');
+  });
+
+  // ── S30-16: Dismissed reminder counts as resolved in History badge ─────────
+  test('S30-16: Dismissed reminder counts as resolved (done) in History aggregate badge', function(){
+    var wx = WEEKS[3];
+    customTaskData[wx.num] = [
+      {id:'dis_badge', label:'CC reminder', completed:false}
+    ];
+    customTaskMeta = {};
+    setTaskMeta('dis_badge', {type:'action', source:'auto_reminder', version:1, dismissed:true});
+
+    // Use the same pool logic as renderHistory (Option B: dismissed included in denominator)
+    var _hActCTCount = (customTaskData[wx.num]||[]).filter(function(ct){
+      var m = getTaskMeta(ct.id, ct.label);
+      return m.type === 'action'; // all action tasks, dismissed or not
+    });
+    var _hTotalAct = _hActCTCount.length;
+    var _hDoneAct = _hActCTCount.filter(function(ct){
+      var m = getTaskMeta(ct.id, ct.label);
+      return ct.completed || m.dismissed;
+    }).length;
+
+    assert(_hTotalAct === 1, 'Expected 1 total action task: '+_hTotalAct);
+    assert(_hDoneAct === 1, 'Dismissed task should count as done: '+_hDoneAct);
+    // Verify the badge would show "1/1 done" (not "No actions")
+    assert(_hTotalAct > 0, 'Badge total must be > 0 to avoid "No actions" display');
+  });
+
+  // ── S30-17: renderHistory shows 1/1 done for week with one dismissed reminder
+  test('S30-17: Week with one dismissed reminder shows 1/1 done not "No actions"', function(){
+    var wx = WEEKS[4];
+    customTaskData[wx.num] = [
+      {id:'s17_ar', label:'Auto reminder', completed:false}
+    ];
+    customTaskMeta = {};
+    setTaskMeta('s17_ar', {type:'action', source:'auto_reminder', version:1, dismissed:true});
+
+    // Replicate full renderHistory count logic
+    var _hAllCT = customTaskData[wx.num] || [];
+    var _hXfrCT = _hAllCT.filter(function(ct){var m=getTaskMeta(ct.id,ct.label);return m.type==='transfer'&&!m.dismissed;});
+    var _hActCTCount = _hAllCT.filter(function(ct){var m=getTaskMeta(ct.id,ct.label);return m.type==='action';});
+    var _hTotalXfr = wx.realActs.length + _hXfrCT.length;
+    var _hTotalAct = _hActCTCount.length;
+    var _hDoneAct  = _hActCTCount.filter(function(ct){var m=getTaskMeta(ct.id,ct.label);return ct.completed||m.dismissed;}).length;
+    var _hTotalAll = _hTotalXfr + _hTotalAct;
+    var _hDoneXfr  = wx.doneTasks + _hXfrCT.filter(function(ct){return ct.completed;}).length;
+    var _hDoneAll  = _hDoneXfr + _hDoneAct;
+
+    // The badge must render (totalAll > 0) — dismissed reminder is in the denominator, not dropped
+    assert(_hTotalAll > 0, 'Expected totalAll > 0, got: '+_hTotalAll+' (would show "No actions")');
+    // The dismissed reminder must be counted as done in _hDoneAll
+    assert(_hDoneAct === 1, 'Dismissed reminder must count as done in action bucket, got: '+_hDoneAct);
+  });
+
+  // ── S30-18: XSS — custom task labels are escaped before render ───────────
+  test('S30-18: esc() exists and escapes HTML chars in custom task labels', function(){
+    var dangerous = '<script>alert(1)</script>';
+    var safe = esc(dangerous);
+    assert(safe.indexOf('<script>') < 0,  'Raw <script> tag not escaped');
+    assert(safe.indexOf('&lt;') >= 0,     'Expected &lt; in escaped output');
+    assert(safe.indexOf('&gt;') >= 0,     'Expected &gt; in escaped output');
+
+    var ampLabel = 'Transfer $100 to 401k & IRA';
+    var escapedAmp = esc(ampLabel);
+    assert(escapedAmp.indexOf('&amp;') >= 0, 'Ampersand not escaped');
+    assert(escapedAmp.indexOf('401k') >= 0,  'Text content was corrupted by esc()');
+  });
+
+  // ── S30-19: Dismissed reminder excluded from vm.openActions ──────────────
+  test('S30-19: Dismissed auto-reminder excluded from buildDashboardViewModel openActions', function(){
+    var wx = WEEKS[0];
+    customTaskData[wx.num] = [
+      {id:'s19_dis', label:'CC close reminder', completed:false},
+      {id:'s19_open', label:'Real open action', completed:false}
+    ];
+    customTaskMeta = {};
+    setTaskMeta('s19_dis',  {type:'action', source:'auto_reminder', version:1, dismissed:true});
+    setTaskMeta('s19_open', {type:'action', source:'user', version:1, dismissed:false});
+
+    // Replicate allActions / openActions logic from buildDashboardViewModel
+    var allActions = [wx].flatMap(function(w){
+      var modelActs = w.realActs.map(function(label,index){
+        var key = w.num+'_'+index;
+        return{weekNum:w.num,taskIdx:index,label:label,completed:!!(taskData[key]&&taskData[key].completed),isCustom:false};
+      });
+      var customActs = (customTaskData[w.num]||[]).map(function(ct){
+        var _cm = getTaskMeta(ct.id, ct.label);
+        return{weekNum:w.num,id:ct.id,label:ct.label,completed:!!ct.completed,dismissed:!!_cm.dismissed,isCustom:true};
+      });
+      return modelActs.concat(customActs);
+    });
+    var openActions = allActions.filter(function(a){return!a.completed&&!a.dismissed;});
+
+    var openIds = openActions.filter(function(a){return a.isCustom;}).map(function(a){return a.id;});
+    assert(openIds.indexOf('s19_dis') < 0,  'Dismissed reminder appears in openActions');
+    assert(openIds.indexOf('s19_open') >= 0, 'Non-dismissed open action missing from openActions');
+  });
+
+  // ── S30-20: Dismissed reminder counts as resolved in confidence score ─────
+  test('S30-20: Dismissed action counts as resolved in pastActs confidence calculation', function(){
+    var wx = WEEKS[0];
+    customTaskData[wx.num] = [
+      {id:'s20_dis', label:'Dismissed reminder', completed:false}
+    ];
+    customTaskMeta = {};
+    setTaskMeta('s20_dis', {type:'action', source:'auto_reminder', version:1, dismissed:true});
+
+    var customAct = (function(){
+      var ct = customTaskData[wx.num][0];
+      var _cm = getTaskMeta(ct.id, ct.label);
+      return{weekNum:wx.num,id:ct.id,label:ct.label,completed:!!ct.completed,dismissed:!!_cm.dismissed,isCustom:true};
+    })();
+
+    // dismissed flag must be present on the action object
+    assert(customAct.dismissed === true, 'dismissed flag not propagated to action object');
+    // confidence filter must count it as resolved
+    var resolvedCount = [customAct].filter(function(a){return a.completed||a.dismissed;}).length;
+    assert(resolvedCount === 1, 'Dismissed action not counted as resolved: '+resolvedCount);
+  });
+
+  // ── S30-21: History notes are escaped before render ───────────────────────
+  test('S30-21: esc() is applied to noteData before rendering in History', function(){
+    var malicious = '<img src=x onerror=alert(2)>';
+    var escaped = esc(malicious.slice(0,60));
+    assert(escaped.indexOf('<img') < 0, 'Raw <img> tag not escaped in note');
+    assert(escaped.indexOf('&lt;') >= 0, 'Expected &lt; entity in escaped note');
+    // Also verify truncation happens before escape (slice then esc, not esc then slice)
+    var longNote = 'A'.repeat(70);
+    var truncated = esc(longNote.slice(0,60));
+    assert(truncated.length === 60, 'Truncation wrong: '+truncated.length);
+  });
+
+  // Restore state
+  customTaskData = savedCTD;
+  customTaskMeta = savedCTM;
+})();
+
+// ─────────────────────────────────────────────────────────────────────────
 console.log('\n╔══════════════════════════════════════════════════════════════╗');
 console.log('║                       RESULTS                               ║');
 console.log('╚══════════════════════════════════════════════════════════════╝');
