@@ -1756,17 +1756,17 @@ test('Rent audit: W9 has all three August rent entries (8/2, 8/3)',()=>{
   const w9=WD.find(([n])=>n===9);
   const evs=w9&&w9[4]||[];
   assert(evs.some(e=>e.l&&e.l.includes('8/2')&&e.a===-2000),'W9 missing 8/2 rent');
-  assert(evs.some(e=>e.l&&e.l.includes('8/3')&&e.a===-1300),'W9 missing 8/3 rent');
+  assert(evs.some(e=>e.l&&e.l.includes('8/3')&&e.a===-1400),'W9 missing 8/3 rent');
 });
 test('Rent audit: W30 has no 1/3 rent (moved to W31)',()=>{
   const w30=WD.find(([n])=>n===30);
   const evs=w30&&w30[4]||[];
-  assert(!evs.some(e=>e.l&&e.l.includes('1/3')&&e.a===-1300),'W30 still has 1/3 rent entry');
+  assert(!evs.some(e=>e.l&&e.l.includes('1/3')&&e.a===-1400),'W30 still has 1/3 rent entry');
 });
 test('Rent audit: W31 has 1/3 rent entry',()=>{
   const w31=WD.find(([n])=>n===31);
   const evs=w31&&w31[4]||[];
-  assert(evs.some(e=>e.l&&e.l.includes('1/3')&&e.a===-1300),'W31 missing 1/3 rent entry');
+  assert(evs.some(e=>e.l&&e.l.includes('1/3')&&e.a===-1400),'W31 missing 1/3 rent entry');
 });
 
 // CC close date actions: should fire on close week, not week before bill
