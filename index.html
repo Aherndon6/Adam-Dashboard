@@ -1504,7 +1504,14 @@ function runModel(akGoal,rtGoal,flags){
     for(const a of obs)chk=r(chk-a);
     const tr=[],ac=[],acKeys=[],recActs=[];
     // ── Budget Rules delta overlay (after WD inflows/obs, before waterfall) ─
-    chk=r(chk+applyBudgetRulesForWeek(num,ruleContext.byWeek[num]||[],tr,ruleAudit));
+    // model_week_overrides take precedence: Budget Rules bypassed for overridden weeks
+    if(overrideData[num]){
+      (ruleContext.byWeek[num]||[]).forEach(function(ru){
+        ruleAudit.push({week:num,rule_id:ru.id,label:ru.label,date:ru.dateStr,mode:ru.rule_mode,direction:ru.direction,amount:null,action:'bypassed_by_model_week_override'});
+      });
+    } else {
+      chk=r(chk+applyBudgetRulesForWeek(num,ruleContext.byWeek[num]||[],tr,ruleAudit));
+    }
     const fn='$'+effFl.toLocaleString('en-US');
     // ── Week 1 setup (historical — locked, cannot be moved or deleted) ────
     if(num===1){
@@ -4191,6 +4198,11 @@ function buildBudgetRuleContext(rules){
       ruleAudit.push({rule_id:rule.id,label:rule.label,mode:rule.rule_mode,action:action,errors:errors});
       continue;
     }
+    // Non-blocking warnings for unknown category/applies_to (hard validation deferred to Phase 6 admin UI)
+    if(ruleNorm.category&&!BUDGET_RULE_CATEGORIES.includes(ruleNorm.category))
+      console.warn('[BudgetRules] Unknown category "'+ruleNorm.category+'" on rule id:',rule.id,'— applied anyway');
+    if(ruleNorm.applies_to&&!BUDGET_RULE_APPLIES_TO.includes(ruleNorm.applies_to))
+      console.warn('[BudgetRules] Unknown applies_to "'+ruleNorm.applies_to+'" on rule id:',rule.id,'— applied anyway');
     var dates=generateOccurrenceDates(ruleNorm);
     for(var j=0;j<dates.length;j++){
       var wk=dateToModelWeek(dates[j]);
@@ -4210,7 +4222,7 @@ function applyBudgetRulesForWeek(weekNum,weekRules,tr,audit){
     var ru=weekRules[i];
     var signed=ru.direction==='inflow'?ru.amount:-ru.amount;
     delta+=signed;
-    tr.push({l:ru.label+' ('+ru.dateStr+') [budget rule]',r:ru.direction==='inflow'?'in':'ob',a:signed});
+    tr.push({l:ru.label+' ('+ru.dateStr+') [budget rule]',r:'done',a:signed,rsn:'Budget rule delta — '+ru.direction});
     audit.push({week:weekNum,rule_id:ru.id,label:ru.label,date:ru.dateStr,mode:ru.rule_mode,direction:ru.direction,amount:signed,action:'applied'});
   }
   return delta;

@@ -285,7 +285,104 @@ All data persisted to Supabase REST API.
 
 ---
 
-## 16. Model Output — Per-Week Object
+## 16. Budget Rules System (Phase 5)
+
+Budget Rules are a delta-mode overlay on the WD baseline. They adjust `chk` for time-bounded or seasonal items without changing the WD array itself.
+
+### Source-of-Truth Precedence
+
+From highest to lowest priority per week:
+
+1. `weekly_reconciliations` — actual balances override everything
+2. `model_week_overrides` — user-edited week events
+3. `budget_rules` (delta only) — additive deltas on top of WD
+4. WD baseline — default source
+
+**Absolute mode** is schema-reserved but blocked in Phase 5. Any rule with `rule_mode='absolute'` is rejected at validation and never applied.
+
+### Override Precedence (Critical — Phase 5 Behavior)
+
+When `overrideData[weekNum]` is active, Budget Rules are **bypassed entirely** for that week. This prevents double-counting: the override already captures the user's full intent for that week.
+
+Bypassed rules are logged to `ruleAudit` with `action: 'bypassed_by_model_week_override'`. The bypass is logged per-rule so the audit trail is complete even when no delta is applied.
+
+Budget Rules resume normally in all non-overridden weeks — a bypass in week 5 does not affect week 6.
+
+### ruleAudit
+
+`ruleAudit` is a global array, reset at the top of each `runModel()` call. Each entry records:
+
+```javascript
+{ week, rule_id, label, date, mode, direction, amount, action }
+```
+
+`action` values: `'applied'` | `'bypassed_by_model_week_override'` | `'blocked_absolute_mode'`
+
+Not persisted — diagnostic only. Inspectable via browser console: `ruleAudit`.
+
+### budgetRulesLoadStatus
+
+| Value | Meaning |
+|---|---|
+| `'not_configured'` | Initial state; no fetch attempted yet |
+| `'loaded'` | Fetch succeeded, even if 0 active rules |
+| `'failed'` | Fetch errored; model runs from WD baseline only |
+
+`'loaded'` on an empty table is intentional — an empty active-rules table is a valid configuration, not a failure.
+
+### Failed-Load Warning Banner
+
+`#budget-rules-warn` is shown only when `budgetRulesLoadStatus === 'failed'`. It is hidden on `'loaded'` and `'not_configured'`. Model continues normally from WD baseline if rules fail to load.
+
+### Budget Rules Decision Framework
+
+**Use Budget Rules for:** time-bounded or seasonal adjustments (medical bills, sports fees, rent changes with a known end date, travel cash flows).
+
+**Update WD directly for:** permanent baseline shifts (new recurring bill, permanent salary change, permanent expense removal). Budget Rules are not the right tool for items that don't have a natural end date.
+
+**Credit card rule (standing):** Assume credit card unless explicitly told otherwise. AMEX Gold is primary; Disney Visa and AMEX Platinum are secondary. Budget Rules for credit card items should model at payment date, not charge date. The existing WD credit card payment estimates plus statement-close true-up overrides already handle the credit card cash flow correctly — Budget Rules layered on top would double-count unless the override bypass ensures they skip overridden payment weeks.
+
+### Recurrence
+
+- `one-time`: single occurrence at `start_date`
+- `monthly`: anchored to `start_date` day-of-month via `pinnedMonthlyDateStr(year, month, pinDay)` — no drift, no `setMonth()` bug. End-of-month clamping handled by `addMonthsToDateStr()` integer math.
+- `weekly` / `biweekly`: 7-day or 14-day cadence from `start_date`
+
+All occurrences must fall within the WD window (Jun 7, 2026 – Jan 9, 2027) to generate a model week entry.
+
+### Key Helper Functions
+
+| Function | Signature | Notes |
+|---|---|---|
+| `validateBudgetRule(rule)` | `(rule) → string[]` | Returns error strings; blocks absolute mode |
+| `addMonthsToDateStr(dateStr, n)` | `(str, int) → str` | Integer month math, no drift |
+| `pinnedMonthlyDateStr(year, month, pinDay)` | `(int, int, int) → str` | Clamps to EOM if pinDay > days in month |
+| `dateToModelWeek(dateStr)` | `(str) → int\|null` | Returns 1–31 or null if outside WD |
+| `generateOccurrenceDates(rule)` | `(rule) → str[]` | ISO date strings within WD window |
+| `buildBudgetRuleContext(rules)` | `(rules) → {byWeek}` | Validates + maps rules to week numbers |
+| `applyBudgetRulesForWeek(weekNum, weekRules, tr, audit)` | `(...) → number` | Returns chkDelta; mutates tr and audit |
+
+### Test Coverage
+
+Sections BR-A through BR-K of `test_regression.js` — 98 tests (as of Phase 5):
+
+| Section | Coverage |
+|---|---|
+| BR-A | Baseline equivalence — no rules = WD baseline |
+| BR-B | `isValidISODate` |
+| BR-C | `validateBudgetRule` — valid rules, blocked modes, field errors |
+| BR-D | `addMonthsToDateStr` — EOM clamping, year rollover, no drift |
+| BR-E | `pinnedMonthlyDateStr` — signature `(year, month, pinDay)` |
+| BR-F | `dateToModelWeek` — in-window, out-of-window, boundaries |
+| BR-G | `generateOccurrenceDates` — one-time, monthly, weekly, biweekly |
+| BR-H | `buildBudgetRuleContext` — byWeek mapping, inactive filter, unknown field warnings |
+| BR-I | `applyBudgetRulesForWeek` — delta math, tr mutation, audit entries |
+| BR-J | `runModel()` integration — rule impacts specific weeks, non-rule weeks unchanged |
+| BR-K | Override precedence — bypass logged, tr clean, rules resume after override |
+
+---
+
+## 17. Model Output — Per-Week Object
 
 ```javascript
 {
@@ -307,11 +404,11 @@ All data persisted to Supabase REST API.
 
 ---
 
-## 17. Test Harness
+## 18. Test Harness
 
 **File:** `test_regression.js`  
 **Run:** `node test_regression.js` (or `HFOS_INDEX=/path/to/index.html node test_regression.js`)  
-**Count:** 310 tests, 0 failing
+**Count:** 555 tests, 0 failing (as of Phase 5)
 
 | Section | Coverage |
 |---|---|
@@ -320,22 +417,46 @@ All data persisted to Supabase REST API.
 | 19 | IRA gate: locked vs cleared, 14 tests covering surplus suppression, goal blocking, clearing behavior |
 | 20 | Decision Engine / runModel parity (8 tests) |
 | 21 | Mutation guards — 6 intentional breaks, each must be caught |
+| BR-A–BR-K | Budget Rules — 98 tests covering helpers, occurrence generation, week mapping, runModel integration, override precedence |
 
 **Mutation guards (Section 21):** A) 529 before IRA reorder, B) AK_START=2, C) OP_FL=$8,000, D) needsFlag removed from adam_ira, E) adam_ira/wendy_ira waterfall swap, F) RET_SAV_XFR=0.
 
+**E2E / Playwright:**  
+**File:** `e2e.js`  
+**Run:** `node e2e.js` (file:// mode) or `HFOS_URL=https://dashboard.herndons.us node e2e.js`  
+**Standing rule:** Playwright tests must be updated and run on every build. Any new feature that changes visible weekly transfer logs, warning banners, or override behavior requires corresponding e2e coverage before push.
+
+| Section | Coverage |
+|---|---|
+| A | Tab smoke — no blank panels, no [object Object] |
+| B | Console error check on initial load |
+| C–D | Decision Engine and IRA flag toggle |
+| E | Edit Week workflow |
+| F | Reconciliation workflow |
+| G | Wishlist CRUD |
+| H | XSS safety |
+| I | Supabase offline graceful failure |
+| J | Mobile viewport |
+| K–P | (various Phase 4/5 additions) |
+| BR | Budget Rules — 5 tests: rule in tr, override bypass, resume after bypass, banner hidden/visible |
+
 ---
 
-## 18. Phase 5 Wishlist
+## 19. Phase 5 Status
 
-1. Supabase live data connection
-2. Ask Claude API key security (Supabase Edge Function proxy)
-3. Playwright e2e activation (`e2e.js` already written)
-4. Costco Visa modeling (pending date confirmation)
-5. Mobile UI polish
+Phase 5 is complete. Delivered: Budget Rules delta foundation (Supabase table, delta engine, audit trail, load-failure banner, override precedence fix, 98 regression tests, 5 e2e tests).
+
+**Remaining backlog (Phase 6+):**
+1. Budget Rules admin UI (add/edit/deactivate/preview) — absorbs wishlist id 40
+2. Budget Rules absolute mode + baseline_match_key
+3. Ask Claude API key security (Supabase Edge Function proxy)
+4. Authentication + account connections (OAuth)
+5. Costco Visa modeling (pending date confirmation)
+6. Mobile UI polish
 
 ---
 
-## 19. Technology Stack
+## 20. Technology Stack
 
 | Component | Details |
 |---|---|
@@ -350,7 +471,7 @@ All data persisted to Supabase REST API.
 
 ---
 
-## 22. Action Override System
+## 23. Action Override System
 
 ### Overview
 
