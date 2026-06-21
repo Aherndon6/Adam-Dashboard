@@ -3332,6 +3332,14 @@ test('S31-13: Recon guidance note instructs capturing items in "Week Notes"', fu
 test('S31-14: .xfr-row.pending CSS class present in index.html source', function(){
   assertIncludes(html, 'xfr-row.pending', '.xfr-row.pending CSS class missing from index.html');
 });
+test('S31-15: BUILD_TS is present and non-empty in index.html source', function(){
+  var m = html.match(/const BUILD_TS='([^']+)'/);
+  assert(m && m[1] && m[1].length > 0, 'BUILD_TS missing or empty in index.html');
+});
+test('S31-16: BUILD_TS is a valid ISO-format local datetime string', function(){
+  var m = html.match(/const BUILD_TS='([^']+)'/);
+  assert(m && /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}$/.test(m[1]), 'BUILD_TS format invalid: ' + (m && m[1]));
+});
 
 // ─────────────────────────────────────────────────────────────────────────
 console.log('\n╔══════════════════════════════════════════════════════════════╗');
