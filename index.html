@@ -805,7 +805,7 @@ button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-vis
 // ── Constants (unchanged) ──────────────────────────────────────────────────
 // Simplified architecture — $8,250 total from LC · $6,500 operating floor · no legacy mechanics
 // Real-world moves: keep $2,250 in chk, move $2,750 sav→chk, move $1,000 LC→chk, move $2,250 LC→chk (Option 1 correction)
-const BUILD_TS='2026-06-21T13:34:21'; // updated each push — local time string
+const BUILD_TS='2026-06-21T17:51:19'; // updated each push — local time string
 const START_CHK=18037.73,START_SAV=3772.77,START_AMX=103.64,START_TAX=0,START_LC=13488.88;
 const EF_AMT=13488.88; // LC/EF balance — static this model year (no transfers in or out)
 const BASE_TAX=521.36,RET_SAV_XFR=3772.74;
@@ -1218,6 +1218,9 @@ var engineAmt='';
 var engineType='regular';
 var engineResult=null;
 var vm_snapshot=null;
+// ── What-If Impact Calculator state (Phase 5) ─────────────────────────────
+var whatIfState={label:'',amount:'',direction:'outflow',date:'',recurrence:'one-time',endDate:''};
+var whatIfResult=null;
 
 // ── Custom task state (Supabase-backed) ────────────────────────────────────
 var customTaskData={};  // weekNum → [{id, label, completed}]
@@ -3572,6 +3575,133 @@ function _renderGoalsEngine(vm,w){
   return calcSection+scenarioSection;
 }
 
+function _renderGoalsImpact(){
+  var wi=whatIfState;
+  var showEnd=wi.recurrence!=='one-time';
+  var formHtml='<div class="panel card-pad" style="margin-bottom:16px">'+
+    '<div style="display:flex;align-items:center;gap:10px;margin-bottom:14px">'+
+      '<span style="font-size:16px">🎯</span>'+
+      '<div>'+
+        '<div style="font-size:13px;font-weight:700;color:var(--ink)">What-If Impact Calculator</div>'+
+        '<div style="font-size:11.5px;color:var(--muted)">Enter a dollar amount and date — the model runs with and without it and shows the full goal and cash impact. Nothing is saved.</div>'+
+      '</div>'+
+    '</div>'+
+    '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:10px;margin-bottom:14px">'+
+      '<div><label style="font-size:11px;font-weight:600;color:var(--muted2);display:block;margin-bottom:4px">Label (optional)</label>'+
+      '<input id="wi-label" type="text" placeholder="e.g. Baseball fees" value="'+esc(wi.label)+'" style="width:100%;box-sizing:border-box;padding:7px 10px;border:1px solid var(--border);border-radius:6px;font-size:12px;background:var(--surface2);color:var(--ink)" oninput="whatIfState.label=this.value;whatIfResult=null"></div>'+
+      '<div><label style="font-size:11px;font-weight:600;color:var(--muted2);display:block;margin-bottom:4px">Amount ($)</label>'+
+      '<input id="wi-amount" type="number" min="0" step="10" placeholder="0.00" value="'+(wi.amount||'')+'" style="width:100%;box-sizing:border-box;padding:7px 10px;border:1px solid var(--border);border-radius:6px;font-size:12px;background:var(--surface2);color:var(--ink)" oninput="whatIfState.amount=this.value;whatIfResult=null"></div>'+
+      '<div><label style="font-size:11px;font-weight:600;color:var(--muted2);display:block;margin-bottom:4px">Direction</label>'+
+      '<div style="display:flex;gap:6px">'+
+        '<button onclick="whatIfState.direction=\'outflow\';whatIfResult=null;renderApp()" style="flex:1;padding:7px;border-radius:6px;font-size:11px;font-weight:600;cursor:pointer;border:1.5px solid '+(wi.direction==='outflow'?'var(--red)':'var(--border)')+';background:'+(wi.direction==='outflow'?'var(--redSoft)':'var(--surface2)')+';color:'+(wi.direction==='outflow'?'var(--red)':'var(--muted)')+'">Outflow</button>'+
+        '<button onclick="whatIfState.direction=\'inflow\';whatIfResult=null;renderApp()" style="flex:1;padding:7px;border-radius:6px;font-size:11px;font-weight:600;cursor:pointer;border:1.5px solid '+(wi.direction==='inflow'?'var(--green)':'var(--border)')+';background:'+(wi.direction==='inflow'?'var(--greenSoft)':'var(--surface2)')+';color:'+(wi.direction==='inflow'?'var(--green)':'var(--muted)')+'">Inflow</button>'+
+      '</div></div>'+
+      '<div><label style="font-size:11px;font-weight:600;color:var(--muted2);display:block;margin-bottom:4px">Start Date</label>'+
+      '<input id="wi-date" type="date" value="'+(wi.date||'')+'" min="2026-06-07" max="2027-01-09" style="width:100%;box-sizing:border-box;padding:7px 10px;border:1px solid var(--border);border-radius:6px;font-size:12px;background:var(--surface2);color:var(--ink)" onchange="whatIfState.date=this.value;whatIfResult=null"></div>'+
+      '<div><label style="font-size:11px;font-weight:600;color:var(--muted2);display:block;margin-bottom:4px">Recurrence</label>'+
+      '<select id="wi-recurrence" style="width:100%;box-sizing:border-box;padding:7px 10px;border:1px solid var(--border);border-radius:6px;font-size:12px;background:var(--surface2);color:var(--ink)" onchange="whatIfState.recurrence=this.value;whatIfResult=null;renderApp()">'+
+        ['one-time','monthly','biweekly','weekly'].map(function(v){return'<option value="'+v+'"'+(wi.recurrence===v?' selected':'')+'>'+v.charAt(0).toUpperCase()+v.slice(1)+'</option>';}).join('')+
+      '</select></div>'+
+      (showEnd?'<div><label style="font-size:11px;font-weight:600;color:var(--muted2);display:block;margin-bottom:4px">End Date (optional)</label>'+
+      '<input id="wi-enddate" type="date" value="'+(wi.endDate||'')+'" min="2026-06-07" max="2027-01-09" style="width:100%;box-sizing:border-box;padding:7px 10px;border:1px solid var(--border);border-radius:6px;font-size:12px;background:var(--surface2);color:var(--ink)" onchange="whatIfState.endDate=this.value;whatIfResult=null"></div>':'')+
+    '</div>'+
+    '<div style="display:flex;gap:8px">'+
+      '<button id="wi-calc-btn" onclick="runWhatIf()" style="padding:9px 20px;background:var(--blue);color:#fff;border:none;border-radius:7px;font-size:12px;font-weight:700;cursor:pointer">Calculate Impact →</button>'+
+      '<button onclick="clearWhatIf()" style="padding:9px 16px;background:var(--surface2);color:var(--muted);border:1px solid var(--border);border-radius:7px;font-size:12px;cursor:pointer">Clear</button>'+
+    '</div>'+
+  '</div>';
+  var outputHtml='';
+  if(!whatIfResult){
+    outputHtml='<div class="engine-empty" id="wi-empty">Fill in the form above and click Calculate to see the full impact on goal ETAs and cash position.</div>';
+  }else if(whatIfResult.error==='outside_window'){
+    outputHtml='<div id="wi-validation-msg" style="padding:14px;background:var(--amberSoft);border:1px solid #fbbf24;border-radius:8px;color:var(--amber);font-size:12px;font-weight:600">⚠️ Date is outside the model window (Jun 7, 2026 – Jan 9, 2027). No weeks affected.</div>';
+  }else if(whatIfResult.error==='invalid_input'){
+    outputHtml='<div id="wi-validation-msg" style="padding:14px;background:var(--amberSoft);border:1px solid #fbbf24;border-radius:8px;color:var(--amber);font-size:12px;font-weight:600">⚠️ Please enter a valid amount and start date.</div>';
+  }else{
+    var res=whatIfResult;
+    var cs=res.cashSummary;
+    var dir=whatIfState.direction;
+    // Summary line
+    var impacted=res.goalImpact.filter(function(g){return g.shift!==null&&g.shift!==0;});
+    var firstDelayed=impacted.find(function(g){return g.shift>0;});
+    var firstAccel=impacted.find(function(g){return g.shift<0;});
+    var goalDelta=Math.abs(Math.round((cs.scenarioTotalGoals-cs.baselineTotalGoals)*100)/100);
+    var summaryLine='';
+    if(dir==='outflow'&&firstDelayed){summaryLine='This outflow reduces total goal contributions by <strong>'+f(goalDelta)+'</strong> and delays <strong>'+esc(firstDelayed.name)+'</strong> by '+Math.abs(firstDelayed.shift)+' week'+(Math.abs(firstDelayed.shift)!==1?'s':'')+'.';}
+    else if(dir==='inflow'&&firstAccel){summaryLine='This inflow adds <strong>'+f(goalDelta)+'</strong> to goal contributions and accelerates <strong>'+esc(firstAccel.name)+'</strong> by '+Math.abs(firstAccel.shift)+' week'+(Math.abs(firstAccel.shift)!==1?'s':'')+'.';}
+    else{summaryLine='No active goals are affected — the amount is absorbed into the operating floor buffer.';}
+    // Bypass notice
+    var bypassHtml='';
+    if(res.bypassedWeeks.length){
+      bypassHtml='<div id="wi-bypass-msg" style="padding:10px 14px;background:var(--amberSoft);border:1px solid #fbbf24;border-radius:7px;font-size:11.5px;color:var(--amber);margin-bottom:12px">'+
+        '⚠️ This entry falls in an overridden week (Wk '+res.bypassedWeeks.map(getCalWeek).join(', Wk ')+') and was bypassed for that occurrence.'+
+        (res.entryWeeks.length?' Subsequent occurrences applied normally (Wk '+res.entryWeeks.map(getCalWeek).join(', Wk ')+').':'')+
+      '</div>';
+    }
+    // Cash summary
+    var floorHtml=cs.floorBreachWeeks.length?'<div style="margin-top:6px;font-size:11px;color:var(--red);font-weight:600">⚠️ Checking falls below $'+OP_FL.toLocaleString('en-US')+' floor in Wk '+cs.floorBreachWeeks.map(getCalWeek).join(', Wk ')+'</div>':'';
+    var cashHtml='<div class="panel card-pad" id="wi-cash-summary" style="margin-bottom:12px">'+
+      '<div style="font-size:12px;font-weight:700;color:var(--ink);margin-bottom:10px">Cash Impact</div>'+
+      '<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px">'+
+        '<div style="background:var(--surface2);border-radius:7px;padding:10px;text-align:center">'+
+          '<div style="font-size:10px;color:var(--muted2);margin-bottom:3px">Total cash impact</div>'+
+          '<div style="font-size:14px;font-weight:700;color:'+(dir==='outflow'?'var(--red)':'var(--green)')+'">'+
+            (dir==='outflow'?'−':'+')+'$'+Math.abs(cs.totalCashImpact).toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2})+'</div>'+
+          '<div style="font-size:10px;color:var(--muted2);margin-top:2px">across '+cs.occurrenceCount+' occurrence'+(cs.occurrenceCount!==1?'s':'')+'</div>'+
+        '</div>'+
+        '<div style="background:var(--surface2);border-radius:7px;padding:10px;text-align:center">'+
+          '<div style="font-size:10px;color:var(--muted2);margin-bottom:3px">Lowest checking</div>'+
+          '<div style="font-size:14px;font-weight:700;color:var(--ink)">'+f(cs.scenarioMinChk)+'</div>'+
+          '<div style="font-size:10px;color:var(--muted2);margin-top:2px">baseline: '+f(cs.baselineMinChk)+'</div>'+
+        '</div>'+
+        '<div style="background:var(--surface2);border-radius:7px;padding:10px;text-align:center">'+
+          '<div style="font-size:10px;color:var(--muted2);margin-bottom:3px">Total goal contributions</div>'+
+          '<div style="font-size:14px;font-weight:700;color:var(--ink)">'+f(cs.scenarioTotalGoals)+'</div>'+
+          '<div style="font-size:10px;color:var(--muted2);margin-top:2px">baseline: '+f(cs.baselineTotalGoals)+'</div>'+
+        '</div>'+
+      '</div>'+floorHtml+
+    '</div>';
+    // Goal ETA table
+    var tableHtml='<div class="panel card-pad" id="wi-goal-table">'+
+      '<div style="font-size:12px;font-weight:700;color:var(--ink);margin-bottom:6px">Goal ETA Impact</div>'+
+      '<div style="font-size:11px;color:var(--muted2);margin-bottom:10px">'+summaryLine+'</div>'+
+      '<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:11.5px">'+
+        '<thead><tr style="background:var(--surface2)">'+
+          '<th style="text-align:left;padding:7px 8px;font-size:10.5px;color:var(--muted2);font-weight:600;border-bottom:1px solid var(--border)">Goal</th>'+
+          '<th style="text-align:center;padding:7px 8px;font-size:10.5px;color:var(--muted2);font-weight:600;border-bottom:1px solid var(--border)">Baseline ETA</th>'+
+          '<th style="text-align:center;padding:7px 8px;font-size:10.5px;color:var(--muted2);font-weight:600;border-bottom:1px solid var(--border)">Scenario ETA</th>'+
+          '<th style="text-align:center;padding:7px 8px;font-size:10.5px;color:var(--muted2);font-weight:600;border-bottom:1px solid var(--border)">Shift</th>'+
+          '<th style="text-align:right;padding:7px 8px;font-size:10.5px;color:var(--muted2);font-weight:600;border-bottom:1px solid var(--border)">Funded (B → S)</th>'+
+        '</tr></thead>'+
+        '<tbody>'+
+        res.goalImpact.map(function(g){
+          var etaLbl=function(wk){return wk?'Wk '+getCalWeek(wk):'Beyond model';};
+          var shiftTxt='',shiftColor='var(--muted)';
+          if(g.caseType==='already_complete'){shiftTxt='Already complete';shiftColor='var(--green)';}
+          else if(g.caseType==='both'&&g.shift===0){shiftTxt='No change';shiftColor='var(--muted)';}
+          else if(g.caseType==='both'&&g.shift>0){shiftTxt='+'+g.shift+' wk'+(g.shift!==1?'s':'');shiftColor='var(--red)';}
+          else if(g.caseType==='both'&&g.shift<0){shiftTxt=g.shift+' wk'+(Math.abs(g.shift)!==1?'s':'');shiftColor='var(--green)';}
+          else if(g.caseType==='baseline_only'){shiftTxt='Delayed beyond model';shiftColor='var(--red)';}
+          else if(g.caseType==='scenario_only'){shiftTxt='Accelerated into model';shiftColor='var(--green)';}
+          else{shiftTxt='—';shiftColor='var(--muted)';}
+          var fd=Math.round((g.scenarioFunded-g.baselineFunded)*100)/100;
+          var fdColor=fd>0.01?'var(--green)':fd<-0.01?'var(--red)':'var(--muted)';
+          var fdStr=fd>0.01?(' <span style="color:'+fdColor+';font-weight:700">+'+f(fd)+'</span>'):fd<-0.01?(' <span style="color:'+fdColor+';font-weight:700">−'+f(Math.abs(fd))+'</span>'):'';
+          return'<tr style="border-bottom:1px solid var(--surface2)">'+
+            '<td style="padding:7px 8px;font-weight:600;color:var(--ink)">'+esc(g.name)+'</td>'+
+            '<td style="padding:7px 8px;text-align:center;color:var(--muted)">'+etaLbl(g.baselineETA)+'</td>'+
+            '<td style="padding:7px 8px;text-align:center;color:var(--muted)">'+etaLbl(g.scenarioETA)+'</td>'+
+            '<td style="padding:7px 8px;text-align:center;font-weight:700;color:'+shiftColor+'">'+shiftTxt+'</td>'+
+            '<td style="padding:7px 8px;text-align:right;color:var(--muted2);font-size:10.5px">'+f(g.baselineFunded)+fdStr+'</td>'+
+          '</tr>';
+        }).join('')+
+        '</tbody></table></div>'+
+    '</div>';
+    outputHtml=bypassHtml+cashHtml+tableHtml;
+  }
+  return formHtml+outputHtml;
+}
+
 function renderGoals(vm){
   var el=document.getElementById('goals-content');if(!el)return;
   vm_snapshot=vm; // store for engine button onclick
@@ -3579,7 +3709,7 @@ function renderGoals(vm){
   // Auto-detect alaska funded
   if(w.akRem<=0.01&&!goalFlags.alaska_funded)goalFlags.alaska_funded=true;
   var subnav='<div class="goals-subnav">'+
-    [['savings','Savings Goals'],['priorities','Priorities'],['funding','Funding Plan'],['engine','What-If / Scenarios']].map(function(pair){
+    [['savings','Savings Goals'],['priorities','Priorities'],['funding','Funding Plan'],['impact','What-If Impact'],['engine','Waterfall / Scenarios']].map(function(pair){
       return'<button class="goals-pill'+(goalsSubTab===pair[0]?' active':'')+'" onclick="setGoalsSubTab(\''+pair[0]+'\')">'+pair[1]+'</button>';
     }).join('')+
   '</div>';
@@ -3587,6 +3717,7 @@ function renderGoals(vm){
   if(goalsSubTab==='savings')body=_renderGoalsSavings(vm);
   else if(goalsSubTab==='priorities')body=_renderGoalsPriorities(vm);
   else if(goalsSubTab==='funding')body=_renderGoalsFunding(vm,w);
+  else if(goalsSubTab==='impact')body=_renderGoalsImpact();
   else if(goalsSubTab==='engine')body=_renderGoalsEngine(vm,w);
   el.innerHTML=subnav+body;
   // Wire engine amount input live
@@ -4242,6 +4373,70 @@ function applyBudgetRulesForWeek(weekNum,weekRules,tr,audit){
   }
   return delta;
 }
+
+// ── What-If Impact Calculator — Phase 5 ──────────────────────────────────
+function diffModels(baseline,scenario,scenarioAudit,akTarget){
+  var rnd=function(n){return Math.round(n*100)/100;};
+  var bypassed=scenarioAudit.filter(function(e){return e.rule_id==='what_if_temp'&&e.action==='bypassed_by_model_week_override';});
+  var applied=scenarioAudit.filter(function(e){return e.rule_id==='what_if_temp'&&e.action==='applied';});
+  var entryWeeks=applied.map(function(e){return e.week;});
+  var bypassedWeeks=bypassed.map(function(e){return e.week;});
+  var entryStart=entryWeeks.length?Math.min.apply(null,entryWeeks):999;
+  // Goal ETA analysis
+  var activeGoals=GOALS_REGISTRY.filter(function(g){return!g.complete&&!g.auto;});
+  var goalImpact=[];
+  activeGoals.forEach(function(gdef){
+    var gTgt=gdef.id==='alaska'?akTarget:gdef.target;
+    var baselineETA=null;
+    for(var i=0;i<baseline.length;i++){if((baseline[i].goalSaved[gdef.id]||0)>=gTgt-0.01){baselineETA=baseline[i].num;break;}}
+    var baselineFunded=baseline.length?(baseline[baseline.length-1].goalSaved[gdef.id]||0):0;
+    var scenarioETA=null;
+    for(var j=0;j<scenario.length;j++){if((scenario[j].goalSaved[gdef.id]||0)>=gTgt-0.01){scenarioETA=scenario[j].num;break;}}
+    var scenarioFunded=scenario.length?(scenario[scenario.length-1].goalSaved[gdef.id]||0):0;
+    var shift=null,caseType='neither';
+    if(baselineETA!==null&&scenarioETA!==null){
+      shift=scenarioETA-baselineETA;
+      caseType=(baselineETA<=entryStart&&shift===0)?'already_complete':'both';
+    }else if(baselineETA!==null&&scenarioETA===null){caseType='baseline_only';}
+    else if(baselineETA===null&&scenarioETA!==null){caseType='scenario_only';}
+    goalImpact.push({id:gdef.id,name:gdef.name,target:gTgt,baselineETA:baselineETA,scenarioETA:scenarioETA,shift:shift,caseType:caseType,baselineFunded:rnd(baselineFunded),scenarioFunded:rnd(scenarioFunded),baselinePct:Math.min(100,Math.round(baselineFunded/gTgt*100)),scenarioPct:Math.min(100,Math.round(scenarioFunded/gTgt*100))});
+  });
+  // Cash summary
+  var baselineMinChk=baseline.length?Math.min.apply(null,baseline.map(function(w){return w.mChk;})):0;
+  var scenarioMinChk=scenario.length?Math.min.apply(null,scenario.map(function(w){return w.mChk;})):0;
+  var floorBreachWeeks=scenario.filter(function(w){return w.mChk<OP_FL;}).map(function(w){return w.num;});
+  var trackIds=['alaska','wewe_rccl','wewe_dcl','adam_ira','wendy_ira','bailey_529','bryce_529','preston_529','bryce_vehicle','christmas_cruise','taxable_etf'];
+  var blFinal=baseline.length?baseline[baseline.length-1].goalSaved:{};
+  var scFinal=scenario.length?scenario[scenario.length-1].goalSaved:{};
+  var baselineTotalGoals=0,scenarioTotalGoals=0;
+  trackIds.forEach(function(id){baselineTotalGoals+=blFinal[id]||0;scenarioTotalGoals+=scFinal[id]||0;});
+  var totalCashImpact=rnd(applied.reduce(function(s,e){return s+(e.amount||0);},0));
+  return{goalImpact:goalImpact,cashSummary:{baselineMinChk:rnd(baselineMinChk),scenarioMinChk:rnd(scenarioMinChk),floorBreachWeeks:floorBreachWeeks,baselineTotalGoals:rnd(baselineTotalGoals),scenarioTotalGoals:rnd(scenarioTotalGoals),totalCashImpact:totalCashImpact,occurrenceCount:applied.length+bypassed.length},entryWeeks:entryWeeks,bypassedWeeks:bypassedWeeks};
+}
+
+function runWhatIf(){
+  var amt=parseFloat(whatIfState.amount)||0;
+  if(amt<=0||!whatIfState.date){whatIfResult={error:'invalid_input'};renderApp();return;}
+  if(!dateToModelWeek(whatIfState.date)){whatIfResult={error:'outside_window'};renderApp();return;}
+  var g=getGoals();
+  var savedRules=budgetRules.slice();
+  var savedAudit=ruleAudit.slice();
+  var baseline,scenario,scenarioAudit;
+  try{
+    baseline=runModel(g.ak,g.rt);
+    var wiRule={id:'what_if_temp',label:whatIfState.label||'What-if entry',active:true,amount:amt,direction:whatIfState.direction,frequency:whatIfState.recurrence,start_date:whatIfState.date,end_date:(whatIfState.endDate&&whatIfState.endDate!=='')?whatIfState.endDate:null,rule_mode:'delta',category:'other',source:'what_if_calculator'};
+    budgetRules=budgetRules.concat([wiRule]);
+    scenario=runModel(g.ak,g.rt);
+    scenarioAudit=ruleAudit.slice();
+  }finally{
+    budgetRules=savedRules;
+    ruleAudit=savedAudit;
+  }
+  whatIfResult=diffModels(baseline,scenario,scenarioAudit,g.ak);
+  renderApp();
+}
+
+function clearWhatIf(){whatIfState={label:'',amount:'',direction:'outflow',date:'',recurrence:'one-time',endDate:''};whatIfResult=null;renderApp();}
 
 // ── Scenario-aware model runner ───────────────────────────────────────────
 function getActiveModel(){

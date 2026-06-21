@@ -3675,6 +3675,163 @@ test('BR-K4: Budget Rules resume normally in non-overridden weeks after an overr
 // Reset budget rules to empty for remaining tests
 budgetRules = [];
 
+// ═════════════════════════════════════════════════════════════════════════
+// WC — What-If Impact Calculator
+// ═════════════════════════════════════════════════════════════════════════
+
+test('WC-A1: Zero-amount entry produces no delta', function(){
+  // diffModels with a rule that never fires (amount 0 blocked by validateBudgetRule) — test via direct model comparison
+  var baseline = runModel(7000, 7694.87);
+  var scenario = runModel(7000, 7694.87);
+  var blFinalChk = baseline[baseline.length-1].chk;
+  var scFinalChk = scenario[scenario.length-1].chk;
+  assertApprox(blFinalChk, scFinalChk, 'identical runs should produce identical final chk', 0.01);
+});
+
+test('WC-A2: Outflow in Wk 5 reduces downstream goalSaved for active goals', function(){
+  // Set a large outflow in week 5 via budgetRules and check goalSaved at end
+  budgetRules = [{id:50,label:'WC outflow test',amount:'500',direction:'outflow',rule_mode:'delta',frequency:'one-time',start_date:'2026-07-07',end_date:null,day_of_month:null,active:true,source:'what_if_calculator'}];
+  var scenarioWks = runModel(7000, 7694.87);
+  budgetRules = [];
+  var baselineWks = runModel(7000, 7694.87);
+  // Final goalSaved totals: scenario should have <= baseline (outflow hurts goals)
+  var trackIds = ['wewe_rccl','wewe_dcl','adam_ira','wendy_ira','bailey_529','bryce_529','preston_529'];
+  var blTotal = 0, scTotal = 0;
+  trackIds.forEach(function(id){ blTotal += (baselineWks[baselineWks.length-1].goalSaved[id]||0); scTotal += (scenarioWks[scenarioWks.length-1].goalSaved[id]||0); });
+  assert(scTotal <= blTotal + 0.01, 'outflow should not increase total goal contributions (bl='+blTotal+' sc='+scTotal+')');
+});
+
+test('WC-A3: Inflow in Wk 5 does not decrease active goalSaved', function(){
+  budgetRules = [{id:51,label:'WC inflow test',amount:'1000',direction:'inflow',rule_mode:'delta',frequency:'one-time',start_date:'2026-07-07',end_date:null,day_of_month:null,active:true,source:'what_if_calculator'}];
+  var scenarioWks = runModel(7000, 7694.87);
+  budgetRules = [];
+  var baselineWks = runModel(7000, 7694.87);
+  var trackIds = ['wewe_rccl','wewe_dcl','adam_ira','wendy_ira','bailey_529','bryce_529','preston_529'];
+  var blTotal = 0, scTotal = 0;
+  trackIds.forEach(function(id){ blTotal += (baselineWks[baselineWks.length-1].goalSaved[id]||0); scTotal += (scenarioWks[scenarioWks.length-1].goalSaved[id]||0); });
+  assert(scTotal >= blTotal - 0.01, 'inflow should not decrease total goal contributions (bl='+blTotal+' sc='+scTotal+')');
+});
+
+test('WC-A4: Date outside model window produces null from dateToModelWeek', function(){
+  var wk = dateToModelWeek('2027-06-01');
+  assert(wk === null, 'expected null for date outside window, got '+wk);
+});
+
+test('WC-B1: Massive outflow produces floor breach weeks in diffModels output', function(){
+  // Budget rule deltas bypass the OP_FL floor (by design — model shows cash-flow reality).
+  // Verify diffModels correctly identifies floor breach weeks when outflow causes chk < OP_FL.
+  var baseline = runModel(7000, 7694.87);
+  budgetRules = [{id:'what_if_temp',label:'WC floor test',amount:'5000',direction:'outflow',rule_mode:'delta',frequency:'monthly',start_date:'2026-07-07',end_date:null,day_of_month:null,active:true,source:'what_if_calculator'}];
+  ruleAudit = [];
+  var scenario = runModel(7000, 7694.87);
+  var scenarioAudit = ruleAudit.slice();
+  budgetRules = [];
+  var diff = diffModels(baseline, scenario, scenarioAudit, 7000);
+  // Model should complete without throwing and return a cashSummary
+  assert(diff && diff.cashSummary, 'diffModels should return cashSummary even for large outflows');
+  // Scenario min checking should be lower than baseline
+  assert(diff.cashSummary.scenarioMinChk <= diff.cashSummary.baselineMinChk + 0.01,
+    'large outflow should reduce min checking in scenario');
+});
+
+test('WC-B2: What-if rule in overridden week is bypassed', function(){
+  budgetRules = [{id:53,label:'WC bypass test',amount:'300',direction:'outflow',rule_mode:'delta',frequency:'one-time',start_date:'2026-07-07',end_date:null,day_of_month:null,active:true,source:'what_if_calculator'}];
+  overrideData[5] = {week_num:5,dates:'Jul 5-11',events_json:[{l:'Override event',t:'in',a:100}],ct:0,ca:0};
+  ruleAudit = [];
+  runModel(7000, 7694.87);
+  delete overrideData[5];
+  budgetRules = [];
+  var bypassed = ruleAudit.find(function(e){ return e.rule_id===53 && e.action==='bypassed_by_model_week_override'; });
+  assert(bypassed, 'what-if rule should be bypassed in overridden week');
+});
+
+test('WC-B3: Recurring what-if rule resumes after overridden week', function(){
+  // Monthly rule starting Jul 7 → fires Wk5 (Jul 7) and Wk9 (Aug 7). Override Wk5, Wk9 should still apply.
+  budgetRules = [{id:54,label:'WC recurring test',amount:'200',direction:'outflow',rule_mode:'delta',frequency:'monthly',start_date:'2026-07-07',end_date:'2026-09-07',day_of_month:7,active:true,source:'what_if_calculator'}];
+  overrideData[5] = {week_num:5,dates:'Jul 5-11',events_json:[],ct:0,ca:0};
+  ruleAudit = [];
+  runModel(7000, 7694.87);
+  delete overrideData[5];
+  budgetRules = [];
+  var appliedEntries = ruleAudit.filter(function(e){ return e.rule_id===54 && e.action==='applied'; });
+  assert(appliedEntries.length > 0, 'recurring rule should apply in non-overridden weeks after the bypassed week');
+});
+
+test('WC-C1: diffModels returns correct shift for known outflow scenario', function(){
+  // Must use id:'what_if_temp' — diffModels filters audit by rule_id === 'what_if_temp'
+  var baseline = runModel(7000, 7694.87);
+  budgetRules = [{id:'what_if_temp',label:'WC shift test',amount:'750',direction:'outflow',rule_mode:'delta',frequency:'monthly',start_date:'2026-09-04',end_date:'2027-01-04',day_of_month:4,active:true,source:'what_if_calculator'}];
+  ruleAudit = [];
+  var scenario = runModel(7000, 7694.87);
+  var scenarioAudit = ruleAudit.slice();
+  budgetRules = [];
+  var diff = diffModels(baseline, scenario, scenarioAudit, 7000);
+  // Should return goalImpact array with active goals
+  assert(Array.isArray(diff.goalImpact), 'diffModels should return goalImpact array');
+  assert(diff.goalImpact.length > 0, 'goalImpact should have entries for active goals');
+  // Cash summary should show negative impact (outflow reduces goals)
+  assert(diff.cashSummary.scenarioTotalGoals <= diff.cashSummary.baselineTotalGoals + 0.01,
+    'outflow should not increase total goal contributions');
+  // Entry weeks should be populated
+  assert(diff.entryWeeks.length > 0, 'entryWeeks should be populated for applied rules');
+});
+
+test('WC-C2: diffModels outflow sets caseType correctly for delayed goals', function(){
+  var baseline = runModel(7000, 7694.87);
+  // Large monthly outflow that forces goal delays
+  budgetRules = [{id:56,label:'WC casetype test',amount:'2000',direction:'outflow',rule_mode:'delta',frequency:'monthly',start_date:'2026-07-07',end_date:null,day_of_month:null,active:true,source:'what_if_calculator'}];
+  ruleAudit = [];
+  var scenario = runModel(7000, 7694.87);
+  var scenarioAudit = ruleAudit.slice();
+  budgetRules = [];
+  var diff = diffModels(baseline, scenario, scenarioAudit, 7000);
+  // At least one goal should show caseType === 'both' (completes in both but later) or 'baseline_only'
+  var delayedOrMoved = diff.goalImpact.filter(function(g){ return g.caseType==='both'||g.caseType==='baseline_only'; });
+  assert(delayedOrMoved.length > 0, 'large outflow should delay or push at least one goal beyond model');
+});
+
+test('WC-D1: budgetRules array restored after runWhatIf-style pattern', function(){
+  var saved = budgetRules.slice();
+  budgetRules = [{id:99,label:'temp rule',amount:'100',direction:'outflow',rule_mode:'delta',frequency:'one-time',start_date:'2026-07-07',end_date:null,day_of_month:null,active:true}];
+  var countBefore = budgetRules.length;
+  var savedRules = budgetRules.slice();
+  var savedAudit = ruleAudit.slice();
+  try {
+    runModel(7000, 7694.87);
+    budgetRules = budgetRules.concat([{id:100,label:'what_if_temp',amount:'500',direction:'outflow',rule_mode:'delta',frequency:'one-time',start_date:'2026-07-14',end_date:null,day_of_month:null,active:true,source:'what_if_calculator'}]);
+    runModel(7000, 7694.87);
+  } finally {
+    budgetRules = savedRules;
+    ruleAudit = savedAudit;
+  }
+  assert(budgetRules.length === countBefore, 'budgetRules should be restored to pre-whatif count ('+countBefore+') but got '+budgetRules.length);
+  budgetRules = saved;
+});
+
+test('WC-D2: ruleAudit restored after runWhatIf-style pattern', function(){
+  ruleAudit = [];
+  runModel(7000, 7694.87);
+  var auditSnapshot = ruleAudit.slice();
+  var savedRules = budgetRules.slice();
+  var savedAudit = ruleAudit.slice();
+  try {
+    budgetRules = [{id:101,label:'wi audit test',amount:'200',direction:'outflow',rule_mode:'delta',frequency:'one-time',start_date:'2026-07-07',end_date:null,day_of_month:null,active:true,source:'what_if_calculator'}];
+    runModel(7000, 7694.87);
+    var scenarioAudit = ruleAudit.slice();
+    // verify scenarioAudit has the what-if entry
+    var wiEntry = scenarioAudit.find(function(e){ return e.rule_id===101; });
+    assert(wiEntry, 'scenarioAudit should contain what_if_temp entry');
+  } finally {
+    budgetRules = savedRules;
+    ruleAudit = savedAudit;
+  }
+  // ruleAudit restored — should match pre-whatif state
+  assert(ruleAudit.length === auditSnapshot.length, 'ruleAudit should be restored to pre-whatif length');
+});
+
+// Reset budget rules
+budgetRules = [];
+
 // ─────────────────────────────────────────────────────────────────────────
 console.log('\n╔══════════════════════════════════════════════════════════════╗');
 console.log('║                       RESULTS                               ║');

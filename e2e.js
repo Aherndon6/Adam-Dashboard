@@ -117,7 +117,7 @@ async function clickNav(page, id) {
     if (flagOn) await flagOn.click();
     await page.waitForTimeout(200);
     // Navigate to What-If / Engine tab
-    const engineTab = await page.$('[data-tab="engine"], #goals-tab-engine, button:has-text("What-If"), button:has-text("Engine")');
+    const engineTab = await page.$('[data-tab="engine"], #goals-tab-engine, button:has-text("Waterfall"), button:has-text("Engine")');
     if (engineTab) { await engineTab.click(); await page.waitForTimeout(200); }
     // Enter a large income amount so waterfall has room to fund IRA and 529 goals
     const amtInput = await page.$('#engine-amt-inp, input[placeholder*="amount"], input[placeholder*="Amount"]');
@@ -145,7 +145,7 @@ async function clickNav(page, id) {
   await test('Engine: empty state shows "IRA/529 AMEX holding" not "IRA gating"', async () => {
     const { page, context } = await openApp(browser);
     await clickNav(page, 'goals');
-    const engineTab = await page.$('[data-tab="engine"], #goals-tab-engine, button:has-text("What-If"), button:has-text("Engine")');
+    const engineTab = await page.$('[data-tab="engine"], #goals-tab-engine, button:has-text("Waterfall"), button:has-text("Engine")');
     if (engineTab) { await engineTab.click(); await page.waitForTimeout(200); }
     // Read empty state (before any amount is entered)
     const emptyText = await page.evaluate(() => {
@@ -162,7 +162,7 @@ async function clickNav(page, id) {
   await test('Engine: CPA flag on vs off — IRA/529 allocation identical', async () => {
     const { page, context } = await openApp(browser);
     await clickNav(page, 'goals');
-    const engineTab = await page.$('[data-tab="engine"], #goals-tab-engine, button:has-text("What-If"), button:has-text("Engine")');
+    const engineTab = await page.$('[data-tab="engine"], #goals-tab-engine, button:has-text("Waterfall"), button:has-text("Engine")');
 
     async function getEngineOutput(flagShouldBeOn) {
       const isOn = await page.$('.flag-toggle.on') !== null;
@@ -171,7 +171,7 @@ async function clickNav(page, id) {
         if (btn) { await btn.click(); await page.waitForTimeout(200); }
       }
       // Re-query engineTab each time using waitForSelector — flag toggle re-renders the DOM
-      const freshTab = await page.waitForSelector('[data-tab="engine"], #goals-tab-engine, button:has-text("What-If"), button:has-text("Engine")', {timeout:3000}).catch(()=>null);
+      const freshTab = await page.waitForSelector('[data-tab="engine"], #goals-tab-engine, button:has-text("Waterfall"), button:has-text("Engine")', {timeout:3000}).catch(()=>null);
       if (freshTab) { await freshTab.click(); await page.waitForTimeout(250); }
       const amtInput = await page.$('#engine-amt-inp, input[placeholder*="amount"], input[placeholder*="Amount"]');
       if (amtInput) {
@@ -665,6 +665,152 @@ async function clickNav(page, id) {
     assert(bannerVisible, 'Failed-load banner should be visible when status is failed');
     // Cleanup
     await page.evaluate(() => { budgetRulesLoadStatus = 'not_configured'; renderApp(); });
+    await context.close();
+  });
+
+  // ═══════════════════════════════════════════════════════════════════════
+  // WC — What-If Impact Calculator
+  // ═══════════════════════════════════════════════════════════════════════
+
+  await test('WC-1: What-If Impact tab is visible in Goals subnav', async () => {
+    const { page, context } = await openApp(browser);
+    await page.evaluate(() => { setSection('goals'); renderApp(); });
+    await page.waitForTimeout(300);
+    const tabVisible = await page.evaluate(() => {
+      const pills = Array.from(document.querySelectorAll('.goals-pill'));
+      return pills.some(function(p) { return p.textContent && p.textContent.includes('What-If Impact'); });
+    });
+    assert(tabVisible, 'What-If Impact sub-tab should be visible in Goals subnav');
+    await context.close();
+  });
+
+  await test('WC-2: What-If Impact tab renders calculator form', async () => {
+    const { page, context } = await openApp(browser);
+    await page.evaluate(() => { setSection('goals'); goalsSubTab = 'impact'; renderApp(); });
+    await page.waitForTimeout(300);
+    const calcVisible = await page.evaluate(() => {
+      return !!document.getElementById('wi-calc-btn');
+    });
+    assert(calcVisible, 'What-If calculator button should render when impact tab is active');
+    await context.close();
+  });
+
+  await test('WC-3: Outflow entry produces negative or neutral impact on goalSaved', async () => {
+    const { page, context } = await openApp(browser);
+    await page.evaluate(() => { setSection('goals'); goalsSubTab = 'impact'; renderApp(); });
+    await page.waitForTimeout(300);
+    const result = await page.evaluate(() => {
+      // Simulate what runWhatIf does — inject outflow and check diffModels output
+      whatIfState = { label: 'E2E outflow test', amount: '750', direction: 'outflow', date: '2026-09-04', recurrence: 'monthly', endDate: '2027-01-04' };
+      var g = getGoals();
+      var savedRules = budgetRules.slice();
+      var savedAudit = ruleAudit.slice();
+      var baseline, scenario, scenarioAudit;
+      try {
+        baseline = runModel(g.ak, g.rt);
+        var wiRule = { id: 'what_if_temp', label: 'E2E outflow test', active: true, amount: 750, direction: 'outflow', frequency: 'monthly', start_date: '2026-09-04', end_date: '2027-01-04', rule_mode: 'delta', category: 'other', source: 'what_if_calculator' };
+        budgetRules = budgetRules.concat([wiRule]);
+        scenario = runModel(g.ak, g.rt);
+        scenarioAudit = ruleAudit.slice();
+      } finally {
+        budgetRules = savedRules;
+        ruleAudit = savedAudit;
+      }
+      var diff = diffModels(baseline, scenario, scenarioAudit, g.ak);
+      return { scenarioGoals: diff.cashSummary.scenarioTotalGoals, baselineGoals: diff.cashSummary.baselineTotalGoals, entryWeeks: diff.entryWeeks.length };
+    });
+    assert(result.entryWeeks > 0, 'outflow entry should fire in at least one week');
+    assert(result.scenarioGoals <= result.baselineGoals + 0.01,
+      'outflow should not increase total goal contributions (baseline=' + result.baselineGoals + ' scenario=' + result.scenarioGoals + ')');
+    await context.close();
+  });
+
+  await test('WC-4: Inflow entry fires and returns valid diffModels output', async () => {
+    const { page, context } = await openApp(browser);
+    const result = await page.evaluate(() => {
+      var g = getGoals();
+      var savedRules = budgetRules.slice();
+      var savedAudit = ruleAudit.slice();
+      var baseline, scenario, scenarioAudit;
+      try {
+        baseline = runModel(g.ak, g.rt);
+        var wiRule = { id: 'what_if_temp', label: 'E2E inflow test', active: true, amount: 1000, direction: 'inflow', frequency: 'one-time', start_date: '2026-07-07', end_date: null, rule_mode: 'delta', category: 'other', source: 'what_if_calculator' };
+        budgetRules = budgetRules.concat([wiRule]);
+        scenario = runModel(g.ak, g.rt);
+        scenarioAudit = ruleAudit.slice();
+      } finally {
+        budgetRules = savedRules;
+        ruleAudit = savedAudit;
+      }
+      var diff = diffModels(baseline, scenario, scenarioAudit, g.ak);
+      return {
+        hasGoalImpact: Array.isArray(diff.goalImpact) && diff.goalImpact.length > 0,
+        hasCashSummary: !!(diff.cashSummary && typeof diff.cashSummary.totalCashImpact === 'number'),
+        entryWeeks: diff.entryWeeks.length,
+        budgetRulesRestored: budgetRules.length === savedRules.length
+      };
+    });
+    assert(result.hasGoalImpact, 'diffModels should return goalImpact array with entries');
+    assert(result.hasCashSummary, 'diffModels should return cashSummary with totalCashImpact');
+    assert(result.entryWeeks > 0, 'inflow entry should fire in at least one model week');
+    assert(result.budgetRulesRestored, 'budgetRules should be restored after what-if run');
+    await context.close();
+  });
+
+  await test('WC-5: clearWhatIf resets state and clears result', async () => {
+    const { page, context } = await openApp(browser);
+    await page.evaluate(() => {
+      setSection('goals'); goalsSubTab = 'impact';
+      whatIfState = { label: 'test', amount: '500', direction: 'outflow', date: '2026-07-07', recurrence: 'one-time', endDate: '' };
+      whatIfResult = { error: 'invalid_input' };
+      clearWhatIf();
+    });
+    const cleared = await page.evaluate(() => ({
+      label: whatIfState.label,
+      amount: whatIfState.amount,
+      result: whatIfResult
+    }));
+    assert(cleared.label === '', 'label should be empty after clearWhatIf');
+    assert(cleared.amount === '', 'amount should be empty after clearWhatIf');
+    assert(cleared.result === null, 'whatIfResult should be null after clearWhatIf');
+    await context.close();
+  });
+
+  await test('WC-6: Date outside model window returns error state', async () => {
+    const { page, context } = await openApp(browser);
+    const result = await page.evaluate(() => {
+      whatIfState = { label: '', amount: '500', direction: 'outflow', date: '2027-06-01', recurrence: 'one-time', endDate: '' };
+      var wk = dateToModelWeek('2027-06-01');
+      return { wk: wk };
+    });
+    assert(result.wk === null, 'dateToModelWeek should return null for out-of-window date');
+    await context.close();
+  });
+
+  await test('WC-7: Override bypass appears in diffModels bypassedWeeks', async () => {
+    const { page, context } = await openApp(browser);
+    const result = await page.evaluate(() => {
+      // Add override for week 5
+      overrideData[5] = { week_num: 5, dates: 'Jul 5-11', events_json: [{ l: 'Test', t: 'in', a: 100 }], ct: 0, ca: 0 };
+      var g = getGoals();
+      var savedRules = budgetRules.slice();
+      var savedAudit = ruleAudit.slice();
+      var baseline, scenario, scenarioAudit;
+      try {
+        baseline = runModel(g.ak, g.rt);
+        var wiRule = { id: 'what_if_temp', label: 'WC bypass e2e', active: true, amount: 300, direction: 'outflow', frequency: 'one-time', start_date: '2026-07-07', end_date: null, rule_mode: 'delta', category: 'other', source: 'what_if_calculator' };
+        budgetRules = budgetRules.concat([wiRule]);
+        scenario = runModel(g.ak, g.rt);
+        scenarioAudit = ruleAudit.slice();
+      } finally {
+        budgetRules = savedRules;
+        ruleAudit = savedAudit;
+        delete overrideData[5];
+      }
+      var diff = diffModels(baseline, scenario, scenarioAudit, g.ak);
+      return { bypassedWeeks: diff.bypassedWeeks };
+    });
+    assert(result.bypassedWeeks.includes(5), 'overridden week 5 should appear in bypassedWeeks');
     await context.close();
   });
 
