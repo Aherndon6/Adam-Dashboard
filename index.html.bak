@@ -328,7 +328,6 @@ body{background:var(--bg);color:var(--ink);font-family:Inter,ui-sans-serif,syste
 .recon-open-btn:hover{background:var(--blueSoft);border-color:var(--blue);color:var(--blue);border-style:solid}
 .recon-form{background:var(--surface2);border:1px solid var(--line2);border-radius:11px;padding:13px;margin-top:9px}
 .recon-form-title{font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;margin-bottom:9px}
-.recon-guidance-note{font-size:11px;color:var(--muted);line-height:1.5;background:var(--surface3);border:1px solid var(--line2);border-radius:7px;padding:8px 10px;margin-bottom:11px}
 .recon-inputs{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:11px}
 .recon-field label{font-size:10px;color:var(--muted2);text-transform:uppercase;letter-spacing:.04em;display:block;margin-bottom:3px}
 .recon-input{width:100%;padding:7px 9px;border:1px solid var(--line2);border-radius:7px;font-size:14px;font-family:inherit;background:var(--surface);color:var(--ink)}
@@ -541,7 +540,6 @@ button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-vis
 .xfr-section-hdr{font-size:10px;font-weight:700;color:var(--muted2);text-transform:uppercase;letter-spacing:.07em;margin:10px 0 5px;padding-bottom:3px;border-bottom:1px solid var(--line)}
 .xfr-section-hdr:first-child{margin-top:0}
 .xfr-row.deferred{background:var(--amberSoft);border-radius:7px;padding:5px 7px;margin-bottom:4px}
-.xfr-row.pending{background:var(--surface3);border-radius:7px;padding:5px 7px;margin-bottom:4px}
 .xfr-row.deferred .xlbl{color:var(--amber);font-weight:700}
 .deferred-why{font-size:10px;color:var(--amber);margin-top:2px;font-style:italic}
 /* ── Phase 2: Floor health ─────────────────────────────────────────── */
@@ -779,8 +777,6 @@ button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-vis
       <div class="top-right" id="topbar-right"><div class="sync-badge"><div class="sync-dot" id="sync-dot"></div><span id="lastReconLabel">Connecting...</span></div></div>
     </header>
     <div class="content">
-      <div id="budget-rules-warn" style="display:none;background:#7f1d1d;color:#fca5a5;padding:8px 16px;font-size:12px;font-weight:600;text-align:center;">&#x26A0; Budget Rules failed to load — model running from WD baseline only</div>
-      <div id="goals-load-warn" style="display:none;background:#78350f;color:#fde68a;padding:8px 16px;font-size:12px;font-weight:600;text-align:center;">&#x26A0; Goals running from local fallback — Supabase unavailable</div>
       <div id="s-overview" class="section active"><div id="overview-content"></div></div>
       <div id="s-weekly" class="section"><div id="weekly-content"></div></div>
       <div id="s-goals" class="section"><div id="goals-content"></div></div>
@@ -806,7 +802,7 @@ button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-vis
 // ── Constants (unchanged) ──────────────────────────────────────────────────
 // Simplified architecture — $8,250 total from LC · $6,500 operating floor · no legacy mechanics
 // Real-world moves: keep $2,250 in chk, move $2,750 sav→chk, move $1,000 LC→chk, move $2,250 LC→chk (Option 1 correction)
-const BUILD_TS='2026-06-21T17:51:19'; // updated each push — local time string
+const BUILD_TS='2026-06-19T11:13:00'; // updated each push — local time string
 const START_CHK=18037.73,START_SAV=3772.77,START_AMX=103.64,START_TAX=0,START_LC=13488.88;
 const EF_AMT=13488.88; // LC/EF balance — static this model year (no transfers in or out)
 const BASE_TAX=521.36,RET_SAV_XFR=3772.74;
@@ -822,34 +818,34 @@ const WD=[
   [1,'Jun 7-13',[],[791],[{l:'Kia payment (6/7)',t:'ob',a:-791}],0,0,''],
   [2,'Jun 14-20',[2152.5],[],[{l:'Wendy paycheck (6/19)',t:'in',a:2152.5}],0,0,''],
   [3,'Jun 21-27',[5816.5],[5925.13,6368.48],[{l:'Adam paycheck (6/22)',t:'in',a:5816.5},{l:'Disney Visa $5,925.13 due 6/23 (Winshape $2,349 + party $673)',t:'ob',a:-5925.13},{l:'AMEX Platinum $6,368.48 due 6/27 — LAST major Platinum bill',t:'ob',a:-6368.48}],0,0,''],
-  [4,'Jun 28-Jul 4',[2152.5],[2000,2000,1400],[{l:'Rent $2,000 — Zelle to Tiffany Dye (7/1)',t:'ob',a:-2000},{l:'Rent $2,000 — Zelle to Tiffany Dye (7/2)',t:'ob',a:-2000},{l:'Wendy paycheck (7/3)',t:'in',a:2152.5},{l:'Rent $1,400 — Zelle to Tiffany Dye (7/3, late day)',t:'ob',a:-1400}],0,0,''],
+  [4,'Jun 28-Jul 4',[2152.5],[2000,2000,1300],[{l:'Rent $2,000 — Zelle to Tiffany Dye (7/1)',t:'ob',a:-2000},{l:'Rent $2,000 — Zelle to Tiffany Dye (7/2)',t:'ob',a:-2000},{l:'Wendy paycheck (7/3)',t:'in',a:2152.5},{l:'Rent $1,300 — Zelle to Tiffany Dye (7/3, late day)',t:'ob',a:-1300}],0,0,''],
   [5,'Jul 5-11',[5816.5],[791],[{l:'Adam paycheck (7/7)',t:'in',a:5816.5},{l:'Kia payment (7/7)',t:'ob',a:-791}],0,0,''],
   [6,'Jul 12-18',[1767.94,2152.5],[5500],[{l:'AMEX Gold ~$5,500 due 7/17 (first statement)',t:'ob',a:-5500},{l:'Wendy Deep South commission $1,767.94 (7/15)',t:'in',a:1767.94},{l:'Wendy paycheck (7/17)',t:'in',a:2152.5}],COMM_TAX,COMM_AK,''],
   [7,'Jul 19-25',[5816.5],[3500],[{l:'Adam paycheck (7/22)',t:'in',a:5816.5},{l:'Disney Visa ~$3,500 due ~7/23',t:'ob',a:-3500}],0,0,''],
   [8,'Jul 26-Aug 1',[2152.5],[200,2000],[{l:'AMEX Platinum ~$200 due ~7/27 (stragglers)',t:'ob',a:-200},{l:'Wendy paycheck (7/31)',t:'in',a:2152.5},{l:'Rent $2,000 — Zelle to Tiffany Dye (8/1)',t:'ob',a:-2000}],0,0,''],
-  [9,'Aug 2-8',[5816.5],[2000,1400,791],[{l:'Rent $2,000 — Zelle to Tiffany Dye (8/2)',t:'ob',a:-2000},{l:'Rent $1,400 — Zelle to Tiffany Dye (8/3)',t:'ob',a:-1400},{l:'Adam paycheck (8/7)',t:'in',a:5816.5},{l:'Kia payment (8/7)',t:'ob',a:-791}],0,0,''],
+  [9,'Aug 2-8',[5816.5],[2000,1300,791],[{l:'Rent $2,000 — Zelle to Tiffany Dye (8/2)',t:'ob',a:-2000},{l:'Rent $1,300 — Zelle to Tiffany Dye (8/3)',t:'ob',a:-1300},{l:'Adam paycheck (8/7)',t:'in',a:5816.5},{l:'Kia payment (8/7)',t:'ob',a:-791}],0,0,''],
   [10,'Aug 9-15',[2152.5],[],[{l:'Wendy paycheck (8/14)',t:'in',a:2152.5}],0,0,''],
   [11,'Aug 16-22',[5816.5],[5500,3500],[{l:'AMEX Gold ~$5,500 due 8/17',t:'ob',a:-5500},{l:'Adam paycheck (8/21)',t:'in',a:5816.5},{l:'Disney Visa ~$3,500 due ~8/23',t:'ob',a:-3500}],0,0,''],
   [12,'Aug 23-29',[2152.5],[],[{l:'Wendy paycheck (8/28)',t:'in',a:2152.5}],0,0,''],
-  [13,'Aug 30-Sep 5',[],[2000,2000,1400],[{l:'Rent $2,000 — Zelle to Tiffany Dye (9/1)',t:'ob',a:-2000},{l:'Rent $2,000 — Zelle to Tiffany Dye (9/2)',t:'ob',a:-2000},{l:'Rent $1,400 — Zelle to Tiffany Dye (9/3)',t:'ob',a:-1400}],0,0,'All three rent payments due this week with no income — avoid discretionary spending'],
+  [13,'Aug 30-Sep 5',[],[2000,2000,1300],[{l:'Rent $2,000 — Zelle to Tiffany Dye (9/1)',t:'ob',a:-2000},{l:'Rent $2,000 — Zelle to Tiffany Dye (9/2)',t:'ob',a:-2000},{l:'Rent $1,300 — Zelle to Tiffany Dye (9/3)',t:'ob',a:-1300}],0,0,'All three rent payments due this week with no income — avoid discretionary spending'],
   [14,'Sep 6-12',[5816.5,2152.5],[791],[{l:'Adam paycheck (9/7)',t:'in',a:5816.5},{l:'Kia payment (9/7)',t:'ob',a:-791},{l:'Wendy paycheck (9/11)',t:'in',a:2152.5}],0,0,''],
   [15,'Sep 13-19',[],[5500],[{l:'AMEX Gold ~$5,500 due 9/17',t:'ob',a:-5500}],0,0,'Alaska $7,000 Truist Savings → Checking this week — funds elevated Sep cruise card bills'],
   [16,'Sep 20-26',[5816.5,2152.5],[3500],[{l:'Adam paycheck (9/22)',t:'in',a:5816.5},{l:'Disney Visa ~$3,500 due ~9/23',t:'ob',a:-3500},{l:'Wendy paycheck (9/25)',t:'in',a:2152.5}],0,0,''],
-  [17,'Sep 27-Oct 3',[],[2000,2000,1400],[{l:'Rent $2,000 — Zelle to Tiffany Dye (10/1)',t:'ob',a:-2000},{l:'Rent $2,000 — Zelle to Tiffany Dye (10/2)',t:'ob',a:-2000},{l:'Rent $1,400 — Zelle to Tiffany Dye (10/3)',t:'ob',a:-1400}],0,0,'All three rent payments due this week with no income — avoid discretionary spending'],
+  [17,'Sep 27-Oct 3',[],[2000,2000,1300],[{l:'Rent $2,000 — Zelle to Tiffany Dye (10/1)',t:'ob',a:-2000},{l:'Rent $2,000 — Zelle to Tiffany Dye (10/2)',t:'ob',a:-2000},{l:'Rent $1,300 — Zelle to Tiffany Dye (10/3)',t:'ob',a:-1300}],0,0,'All three rent payments due this week with no income — avoid discretionary spending'],
   [18,'Oct 4-10',[5816.5,2152.5],[791],[{l:'Adam paycheck (10/7)',t:'in',a:5816.5},{l:'Kia payment (10/7)',t:'ob',a:-791},{l:'Wendy paycheck (10/9)',t:'in',a:2152.5}],0,0,''],
   [19,'Oct 11-17',[],[5500],[{l:'AMEX Gold ~$5,500 due ~10/16',t:'ob',a:-5500}],0,0,''],
   [20,'Oct 18-24',[5816.5,2152.5],[3500],[{l:'Adam paycheck (10/22)',t:'in',a:5816.5},{l:'Disney Visa ~$3,500 due ~10/23',t:'ob',a:-3500},{l:'Wendy paycheck (10/23)',t:'in',a:2152.5}],0,0,''],
   [21,'Oct 25-31',[],[2000],[{l:'Rent $2,000 — Zelle to Tiffany Dye (sent 10/31, due 11/1)',t:'ob',a:-2000}],0,0,''],
-  [22,'Nov 1-7',[5816.5,2152.5],[2000,1400,791],[{l:'Rent $2,000 — Zelle to Tiffany Dye (11/2)',t:'ob',a:-2000},{l:'Rent $1,400 — Zelle to Tiffany Dye (11/3)',t:'ob',a:-1400},{l:'Adam paycheck (11/6)',t:'in',a:5816.5},{l:'Wendy paycheck (11/6)',t:'in',a:2152.5},{l:'Kia payment (11/7)',t:'ob',a:-791}],0,0,''],
+  [22,'Nov 1-7',[5816.5,2152.5],[2000,1300,791],[{l:'Rent $2,000 — Zelle to Tiffany Dye (11/2)',t:'ob',a:-2000},{l:'Rent $1,300 — Zelle to Tiffany Dye (11/3)',t:'ob',a:-1300},{l:'Adam paycheck (11/6)',t:'in',a:5816.5},{l:'Wendy paycheck (11/6)',t:'in',a:2152.5},{l:'Kia payment (11/7)',t:'ob',a:-791}],0,0,''],
   [23,'Nov 8-14',[],[],[],0,0,''],
   [24,'Nov 15-21',[5816.5,2152.5],[5500],[{l:'AMEX Gold ~$5,500 due ~11/17',t:'ob',a:-5500},{l:'Adam paycheck (11/20)',t:'in',a:5816.5},{l:'Wendy paycheck (11/20)',t:'in',a:2152.5}],0,0,''],
   [25,'Nov 22-28',[],[3500],[{l:'Disney Visa ~$3,500 due ~11/23',t:'ob',a:-3500}],0,0,''],
-  [26,'Nov 29-Dec 5',[2152.5],[2000,2000,1400],[{l:'Wendy paycheck (12/4)',t:'in',a:2152.5},{l:'Rent $2,000 — Zelle to Tiffany Dye (12/1)',t:'ob',a:-2000},{l:'Rent $2,000 — Zelle to Tiffany Dye (12/2)',t:'ob',a:-2000},{l:'Rent $1,400 — Zelle to Tiffany Dye (12/3)',t:'ob',a:-1400}],0,0,''],
+  [26,'Nov 29-Dec 5',[2152.5],[2000,2000,1300],[{l:'Wendy paycheck (12/4)',t:'in',a:2152.5},{l:'Rent $2,000 — Zelle to Tiffany Dye (12/1)',t:'ob',a:-2000},{l:'Rent $2,000 — Zelle to Tiffany Dye (12/2)',t:'ob',a:-2000},{l:'Rent $1,300 — Zelle to Tiffany Dye (12/3)',t:'ob',a:-1300}],0,0,''],
   [27,'Dec 6-12',[5816.5],[791],[{l:'Adam paycheck (12/7)',t:'in',a:5816.5},{l:'Kia payment (12/7)',t:'ob',a:-791}],0,0,''],
   [28,'Dec 13-19',[2152.5],[5500],[{l:'AMEX Gold ~$5,500 due ~12/17',t:'ob',a:-5500},{l:'Wendy paycheck (12/18)',t:'in',a:2152.5}],0,0,''],
   [29,'Dec 20-26',[5816.5],[3500],[{l:'Adam paycheck (12/22)',t:'in',a:5816.5},{l:'Disney Visa ~$3,500 due ~12/23',t:'ob',a:-3500}],0,0,''],
   [30,'Dec 27-Jan 2',[2152.5],[2000,2000],[{l:'Wendy paycheck (12/31)',t:'in',a:2152.5},{l:'Rent $2,000 — Zelle to Tiffany Dye (1/1)',t:'ob',a:-2000},{l:'Rent $2,000 — Zelle to Tiffany Dye (1/2)',t:'ob',a:-2000}],0,0,''],
-  [31,'Jan 3-9 2027',[5816.5],[1400,791],[{l:'Rent $1,400 — Zelle to Tiffany Dye (1/3)',t:'ob',a:-1400},{l:'Adam paycheck (1/7)',t:'in',a:5816.5},{l:'Kia payment (1/7)',t:'ob',a:-791}],0,0,''],
+  [31,'Jan 3-9 2027',[5816.5],[1300,791],[{l:'Rent $1,300 — Zelle to Tiffany Dye (1/3)',t:'ob',a:-1300},{l:'Adam paycheck (1/7)',t:'in',a:5816.5},{l:'Kia payment (1/7)',t:'ob',a:-791}],0,0,''],
 ];
 
 // ── State (Supabase-backed; no localStorage) ───────────────────────────────
@@ -858,11 +854,6 @@ var taskData={};
 var noteData={};
 var overrideData={};
 var reconOpen=null;
-
-// ── Budget Rules (Phase 5) ─────────────────────────────────────────────────
-var budgetRules=[];
-var budgetRulesLoadStatus='not_configured'; // 'not_configured' | 'loaded' | 'failed'
-var ruleAudit=[]; // reset each runModel() call; diagnostic only, not persisted
 
 // ── Action override system ─────────────────────────────────────────────────
 // Action keys for model-generated actions
@@ -1219,9 +1210,6 @@ var engineAmt='';
 var engineType='regular';
 var engineResult=null;
 var vm_snapshot=null;
-// ── What-If Impact Calculator state (Phase 5) ─────────────────────────────
-var whatIfState={label:'',amount:'',direction:'outflow',date:'',recurrence:'one-time',endDate:''};
-var whatIfResult=null;
 
 // ── Custom task state (Supabase-backed) ────────────────────────────────────
 var customTaskData={};  // weekNum → [{id, label, completed}]
@@ -1375,125 +1363,52 @@ function dismissAutoReminder(weekNum,id){
   renderApp();
 }
 
-// ── Phase 6A: Dynamic Goal Registry ─────────────────────────────────────────
-// Hardcoded fallback — live at all times, never removed.
-// Activated when Supabase goal_registry load fails or validation fails.
-// KEY: alaska is status:'funding' (not 'funded') — complete computed from status only.
-const HARDCODED_GOALS_FALLBACK=[
-  {id:'adam_401k',     name:'Adam 401(k)',      tier:'Retirement',target:24500,   priority:0,  status:'funding', notes:'Auto-funded via payroll',                       auto:true,  stretch:false,complete:false,startsAfter:null,      dueWeek:null,needsFlag:null,            milestone:null,  fromModel:null,src:'Payroll (auto-deduction)',        dest:'Empower 401(k)',              color:null     },
-  {id:'wendy_sep',     name:'Wendy SEP',         tier:'Retirement',target:17859,   priority:0,  status:'executed',notes:'Completed — 2025 SE income',                    auto:false, stretch:false,complete:true, startsAfter:null,      dueWeek:null,needsFlag:null,            milestone:null,  fromModel:null,src:'Wendy SE income',                 dest:'Ascensus / BK CPA',          color:null     },
-  {id:'alaska',        name:'Alaska Cruise',     tier:'Travel',    target:7000,    priority:1,  status:'funding', notes:'Funded Cal Wk 27 — cruise Sep 2026',            auto:false, stretch:false,complete:false,startsAfter:null,      dueWeek:null,needsFlag:null,            milestone:null,  fromModel:'ak',src:'Truist Checking (weekly surplus)',dest:'Truist Savings',             color:'#0369a1'},
-  {id:'wewe_rccl',     name:'Wewe RCCL',         tier:'Travel',    target:600,     priority:2,  status:'funding', notes:'Due end of July (Cal Wk 30)',                    auto:false, stretch:false,complete:false,startsAfter:'alaska',  dueWeek:8,   needsFlag:null,            milestone:null,  fromModel:null,src:'Truist Checking',                 dest:'RCCL payment',               color:'#be185d'},
-  {id:'wewe_dcl',      name:'Wewe DCL',          tier:'Travel',    target:500,     priority:3,  status:'funding', notes:'Due first week of October (Cal Wk 41)',          auto:false, stretch:false,complete:false,startsAfter:'alaska',  dueWeek:19,  needsFlag:null,            milestone:null,  fromModel:null,src:'Truist Checking',                 dest:'DCL payment',                color:'#9333ea'},
-  {id:'adam_ira',      name:'Adam IRA',          tier:'Retirement',target:7000,    priority:4,  status:'planned', notes:'Backdoor Roth — pending CPA clearance',         auto:false, stretch:false,complete:false,startsAfter:'wewe_dcl',dueWeek:null,needsFlag:'ira_cpa_cleared',milestone:null,  fromModel:null,src:'Truist Checking (weekly surplus)',dest:'AMEX Savings (IRA Holding)',color:'#6d28d9'},
-  {id:'wendy_ira',     name:'Wendy IRA',         tier:'Retirement',target:7000,    priority:5,  status:'planned', notes:'Pending CPA clearance',                         auto:false, stretch:false,complete:false,startsAfter:null,      dueWeek:null,needsFlag:'ira_cpa_cleared',milestone:null,  fromModel:null,src:'Truist Checking (weekly surplus)',dest:'AMEX Savings (IRA Holding)',color:'#7c3aed'},
-  {id:'bailey_529',    name:'Bailey 529',         tier:'Education', target:3500,    priority:6,  status:'planned', notes:'Highest priority 529',                          auto:false, stretch:false,complete:false,startsAfter:null,      dueWeek:null,needsFlag:null,            milestone:null,  fromModel:null,src:'Truist Checking (weekly surplus)',dest:'AMEX Savings (529 Holding)',color:'#0e7490'},
-  {id:'bryce_529',     name:'Bryce 529',          tier:'Education', target:1500,    priority:7,  status:'planned', notes:'',                                              auto:false, stretch:false,complete:false,startsAfter:null,      dueWeek:null,needsFlag:null,            milestone:null,  fromModel:null,src:'Truist Checking (weekly surplus)',dest:'AMEX Savings (529 Holding)',color:'#0891b2'},
-  {id:'preston_529',   name:'Preston 529',        tier:'Education', target:1000,    priority:8,  status:'planned', notes:'',                                              auto:false, stretch:false,complete:false,startsAfter:null,      dueWeek:null,needsFlag:null,            milestone:null,  fromModel:null,src:'Truist Checking (weekly surplus)',dest:'AMEX Savings (529 Holding)',color:'#0284c7'},
-  {id:'bryce_vehicle', name:'Bryce Vehicle',      tier:'Emerging',  target:8000,    priority:9,  status:'planned', notes:'Evaluate September 2026',                       auto:false, stretch:false,complete:false,startsAfter:null,      dueWeek:null,needsFlag:null,            milestone:null,  fromModel:null,src:'Truist Checking',                 dest:'Truist Checking (hold)',     color:'#b45309'},
-  {id:'christmas_cruise',name:'Christmas Cruise', tier:'Travel',    target:5000,    priority:10, status:'planned', notes:'Interim milestone $2,500 — full target $5,000', auto:false, stretch:false,complete:false,startsAfter:null,      dueWeek:null,needsFlag:null,            milestone:2500,  fromModel:null,src:'Truist Checking',                 dest:'Truist Savings (earmarked)', color:'#4d7c0f'},
-  {id:'taxable_etf',   name:'Taxable ETF',        tier:'Stretch',   target:4999.79, priority:11, status:'planned', notes:'2027 restart — after all other goals funded',   auto:false, stretch:true, complete:false,startsAfter:null,      dueWeek:null,needsFlag:null,            milestone:null,  fromModel:null,src:'Truist Checking surplus',         dest:'Brokerage (Fidelity)',       color:'#94a3b8'},
+const GOALS_REGISTRY=[
+  // src: where money comes FROM · dest: where it lands · startsAfter: goal id that must complete first
+  // status: planned | funding | funded | approved | executed | cancelled
+  {id:'adam_401k',name:'Adam 401(k)',tier:'Retirement',target:24500,notes:'Auto-funded via payroll',auto:true,status:'funding',
+    src:'Payroll (auto-deduction)',dest:'Empower 401(k)'},
+  {id:'wendy_sep',name:'Wendy SEP',tier:'Retirement',target:17859,notes:'Completed — 2025 SE income',complete:true,status:'executed',
+    src:'Wendy SE income',dest:'Ascensus / BK CPA'},
+  {id:'alaska',name:'Alaska Cruise',tier:'Travel',target:7000,notes:'Funded Cal Wk 27 — cruise Sep 2026',fromModel:'ak',status:'funded',
+    src:'Truist Checking (weekly surplus)',dest:'Truist Savings'},
+  {id:'wewe_rccl',name:'Wewe RCCL',tier:'Travel',target:600,notes:'Due end of July (Cal Wk 30)',startsAfter:'alaska',dueWeek:8,status:'funding',
+    src:'Truist Checking',dest:'RCCL payment'},
+  {id:'wewe_dcl',name:'Wewe DCL',tier:'Travel',target:500,notes:'Due first week of October (Cal Wk 41)',startsAfter:'alaska',dueWeek:19,status:'funding',
+    src:'Truist Checking',dest:'DCL payment'},
+  {id:'adam_ira',name:'Adam IRA',tier:'Retirement',target:7000,notes:'Backdoor Roth — pending CPA clearance',needsFlag:'ira_cpa_cleared',startsAfter:'wewe_dcl',status:'planned',
+    src:'Truist Checking (weekly surplus)',dest:'AMEX Savings (IRA Holding)'},
+  {id:'wendy_ira',name:'Wendy IRA',tier:'Retirement',target:7000,notes:'Pending CPA clearance',needsFlag:'ira_cpa_cleared',status:'planned',
+    src:'Truist Checking (weekly surplus)',dest:'AMEX Savings (IRA Holding)'},
+  {id:'bailey_529',name:'Bailey 529',tier:'Education',target:3500,notes:'Highest priority 529',status:'planned',
+    src:'Truist Checking (weekly surplus)',dest:'AMEX Savings (529 Holding)'},
+  {id:'bryce_529',name:'Bryce 529',tier:'Education',target:1500,notes:'',status:'planned',
+    src:'Truist Checking (weekly surplus)',dest:'AMEX Savings (529 Holding)'},
+  {id:'preston_529',name:'Preston 529',tier:'Education',target:1000,notes:'',status:'planned',
+    src:'Truist Checking (weekly surplus)',dest:'AMEX Savings (529 Holding)'},
+  {id:'bryce_vehicle',name:'Bryce Vehicle',tier:'Emerging',target:8000,notes:'Evaluate September 2026',status:'planned',
+    src:'Truist Checking',dest:'Truist Checking (hold until Sep decision)'},
+  {id:'christmas_cruise',name:'Christmas Cruise',tier:'Travel',target:5000,milestone:2500,notes:'Interim milestone $2,500 — full target $5,000',status:'planned',
+    src:'Truist Checking',dest:'Truist Savings (earmarked)'},
+  {id:'taxable_etf',name:'Taxable ETF',tier:'Stretch',target:4999.79,notes:'2027 restart — after all other goals funded',stretch:true,status:'planned',
+    src:'Truist Checking surplus',dest:'Brokerage (Fidelity)'},
 ];
-
-// ── Phase 6A state ─────────────────────────────────────────────────────────
-var goalsLoadStatus='not_configured'; // 'not_configured'|'loaded'|'loaded_fallback'|'failed_validation'
-var GOALS_REGISTRY=[];
-var VARIABLE_WATERFALL=[];
-var REGULAR_WATERFALL=[];
-var PRIORITY_TIERS=[];
-var ALLOWED_STATUSES=['planned','funding','funded','executed','paused','archived'];
-
-// ── Phase 6A helpers ────────────────────────────────────────────────────────
-function mapGoalFromDB(g){
-  return{
-    id:          g.id,
-    name:        g.name,
-    tier:        g.tier,
-    target:      parseFloat(g.target),
-    priority:    parseInt(g.priority,10),
-    status:      g.status,
-    notes:       g.notes||'',
-    startsAfter: g.starts_after||null,
-    dueWeek:     g.due_week||null,
-    needsFlag:   g.needs_flag||null,
-    fromModel:   g.from_model||null,
-    milestone:   g.milestone?parseFloat(g.milestone):null,
-    stretch:     !!g.stretch,
-    auto:        !!g.auto,
-    src:         g.src||null,
-    dest:        g.dest||null,
-    color:       g.color||null,
-    complete:    ['funded','executed'].includes(g.status)
-  };
-}
-
-function validateLoadedGoals(goals){
-  var errors=[];
-  var ids=goals.map(function(g){return g.id;});
-  var activeGoals=goals.filter(function(g){return g.status!=='archived';});
-  // Required fields
-  goals.forEach(function(g){
-    if(!g.id)                                                              errors.push('Missing id on a goal row');
-    if(!g.name)                                                            errors.push((g.id||'?')+': missing name');
-    if(!g.tier)                                                            errors.push((g.id||'?')+': missing tier');
-    if(g.target===null||g.target===undefined||isNaN(g.target)||g.target<0) errors.push((g.id||'?')+': target must be numeric >= 0');
-    if(g.priority===null||g.priority===undefined||isNaN(g.priority))       errors.push((g.id||'?')+': priority must be numeric');
-    if(ALLOWED_STATUSES.indexOf(g.status)<0)                               errors.push((g.id||'?')+': invalid status "'+g.status+'"');
-  });
-  // No duplicate priorities among non-auto active goals
-  var seen={};
-  activeGoals.filter(function(g){return !g.auto;}).forEach(function(g){
-    if(seen[g.priority])errors.push('Duplicate priority '+g.priority+' on non-auto goals');
-    seen[g.priority]=true;
-  });
-  // starts_after references existing id
-  activeGoals.forEach(function(g){
-    if(g.startsAfter&&ids.indexOf(g.startsAfter)<0)
-      errors.push(g.id+': starts_after references missing id "'+g.startsAfter+'"');
-  });
-  // No self-reference
-  activeGoals.forEach(function(g){
-    if(g.startsAfter===g.id)errors.push(g.id+': starts_after references itself');
-  });
-  // No circular chains
-  activeGoals.forEach(function(g){
-    var visited={};
-    var current=g.id;
-    visited[current]=true;
-    for(var i=0;i<goals.length+1;i++){
-      var node=goals.find(function(x){return x.id===current;});
-      if(!node||!node.startsAfter)break;
-      if(visited[node.startsAfter]){errors.push('Circular starts_after chain involving '+g.id);break;}
-      visited[node.startsAfter]=true;
-      current=node.startsAfter;
-    }
-  });
-  return errors;
-}
-
-function applyGoalsFromData(goals){
-  GOALS_REGISTRY=goals;
-  // Waterfall: active, non-auto, non-complete, non-stretch, not paused/archived, sorted by priority
-  var wf=goals
-    .filter(function(g){return !g.auto&&!g.complete&&!g.stretch&&g.status!=='paused'&&g.status!=='archived';})
-    .sort(function(a,b){return a.priority-b.priority;})
-    .map(function(g){return g.id;});
-  VARIABLE_WATERFALL=wf.slice();
-  REGULAR_WATERFALL=wf.slice();
-  // PRIORITY_TIERS for display (non-auto, non-complete, priority order — matches old 11-entry hardcoded behavior)
-  PRIORITY_TIERS=goals
-    .filter(function(g){return !g.auto&&!g.complete;})
-    .sort(function(a,b){return a.priority-b.priority;})
-    .map(function(g,i){return{num:i+1,name:g.name,goals:[g.id],color:g.color||'#94a3b8'};});
-}
-
-function applyGoalsFallback(){
-  applyGoalsFromData(HARDCODED_GOALS_FALLBACK.slice());
-}
-
-// Initialize from fallback immediately so model can run before loadAll() completes
-applyGoalsFallback();
-// Direct waterfall — IRA/529 goals route to AMEX Savings (holding). (comment preserved)
+const PRIORITY_TIERS=[
+  {num:1,name:'Alaska Cruise',goals:['alaska'],color:'#0369a1'},
+  {num:2,name:'Wewe RCCL',goals:['wewe_rccl'],color:'#be185d'},
+  {num:3,name:'Wewe DCL',goals:['wewe_dcl'],color:'#9333ea'},
+  {num:4,name:'Adam IRA',goals:['adam_ira'],color:'#6d28d9'},
+  {num:5,name:'Wendy IRA',goals:['wendy_ira'],color:'#7c3aed'},
+  {num:6,name:'Bailey 529',goals:['bailey_529'],color:'#0e7490'},
+  {num:7,name:'Bryce 529',goals:['bryce_529'],color:'#0891b2'},
+  {num:8,name:'Preston 529',goals:['preston_529'],color:'#0284c7'},
+  {num:9,name:'Bryce Vehicle',goals:['bryce_vehicle'],color:'#b45309'},
+  {num:10,name:'Christmas Cruise',goals:['christmas_cruise'],color:'#4d7c0f'},
+  {num:11,name:'Stretch Goal',goals:['taxable_etf'],color:'#94a3b8'},
+];
+// Direct waterfall — all goals sweep from Truist Checking. IRA/529 goals route to AMEX Savings (holding).
+const VARIABLE_WATERFALL=['alaska','wewe_rccl','wewe_dcl','adam_ira','wendy_ira','bailey_529','bryce_529','preston_529','bryce_vehicle','christmas_cruise'];
+const REGULAR_WATERFALL=['alaska','wewe_rccl','wewe_dcl','adam_ira','wendy_ira','bailey_529','bryce_529','preston_529','bryce_vehicle','christmas_cruise'];
 
 // ── AMEX lookahead helpers ─────────────────────────────────────────────────
 // Projects checking forward `ahead` weeks using scheduled inflows and outflows only
@@ -1570,9 +1485,6 @@ function runModel(akGoal,rtGoal,flags){
     var effEvs=ov.events_json||[];
     effectiveWD.push([ov.week_num,ov.dates||'Custom week',effEvs.filter(function(e){return e.t==='in';}).map(function(e){return e.a;}),effEvs.filter(function(e){return e.t==='ob';}).map(function(e){return Math.abs(e.a);}),effEvs,ov.ct||0,ov.ca||0,'']);
   });
-  // ── Budget Rules — Phase 5 delta overlay ─────────────────────────────
-  ruleAudit=[];
-  var ruleContext=buildBudgetRuleContext(budgetRules);
   for(const wd of effectiveWD){
     const[num,dates,inflows,obs,evs,ct,ca,calNote]=wd;
     const startChk=r(chk),startSav=r(sav),startAmx=r(amx),startTax=r(tax),startLc=r(lc);
@@ -1580,15 +1492,6 @@ function runModel(akGoal,rtGoal,flags){
     for(const a of inflows)chk=r(chk+a);
     for(const a of obs)chk=r(chk-a);
     const tr=[],ac=[],acKeys=[],recActs=[];
-    // ── Budget Rules delta overlay (after WD inflows/obs, before waterfall) ─
-    // model_week_overrides take precedence: Budget Rules bypassed for overridden weeks
-    if(overrideData[num]){
-      (ruleContext.byWeek[num]||[]).forEach(function(ru){
-        ruleAudit.push({week:num,rule_id:ru.id,label:ru.label,date:ru.dateStr,mode:ru.rule_mode,direction:ru.direction,amount:null,action:'bypassed_by_model_week_override'});
-      });
-    } else {
-      chk=r(chk+applyBudgetRulesForWeek(num,ruleContext.byWeek[num]||[],tr,ruleAudit));
-    }
     const fn='$'+effFl.toLocaleString('en-US');
     // ── Week 1 setup (historical — locked, cannot be moved or deleted) ────
     if(num===1){
@@ -2742,26 +2645,12 @@ function renderWeekDetail(w,weeks){
           return ct.completed&&m.type==='transfer'&&!m.dismissed;
         }).forEach(function(ct){done.push({l:ct.label,r:'done',rsn:'Custom transfer'});});
         var deferred=w.tr.filter(function(x){return x.r==='defer';});
-        // Pending bucket: custom transfer tasks only, not yet completed.
-        // Scoped to custom tasks (not model-generated actions) so we never
-        // infer pending state for forecast/model transfers that don't have
-        // an explicit model state for it.
-        var pending=_allCTp.filter(function(ct){
-          var m=getTaskMeta(ct.id,ct.label);
-          return !ct.completed&&m.type==='transfer'&&!m.dismissed;
-        });
         var html='';
         if(done.length){
           html+='<div class="xfr-section-hdr">Transfers this week<span class="week-date-badge">'+getWeekDate(activeW)+'</span></div>';
           html+=done.map(function(x){
             var ic=x.r==='info'?'ℹ️':'✅';
             return'<div class="xfr-row"><span class="xi">'+ic+'</span><div class="xtext"><div class="xlbl">'+esc(x.l)+'</div><div class="xrsn">'+esc(x.rsn)+'</div></div></div>';
-          }).join('');
-        }
-        if(pending.length){
-          html+='<div class="xfr-section-hdr" style="color:var(--muted)">⏳ Pending — not yet completed</div>';
-          html+=pending.map(function(ct){
-            return'<div class="xfr-row pending"><span class="xi">⏳</span><div class="xtext"><div class="xlbl">'+esc(ct.label)+'</div><div class="xrsn">Transfer task is still open</div></div></div>';
           }).join('');
         }
         if(deferred.length){
@@ -2772,7 +2661,7 @@ function renderWeekDetail(w,weeks){
             return'<div class="xfr-row deferred"><span class="xi">⏸</span><div class="xtext"><div class="xlbl">'+x.l+'</div><div class="xrsn">'+x.rsn+'</div><div class="deferred-why">'+why+'</div></div></div>';
           }).join('');
         }
-        if(!done.length&&!pending.length&&!deferred.length){html='<div style="color:var(--muted);font-size:13px;padding:8px 0">No transfers this week.</div>';}
+        if(!done.length&&!deferred.length){html='<div style="color:var(--muted);font-size:13px;padding:8px 0">No transfers this week.</div>';}
         return html;
       }())+
     '</div>'+
@@ -2970,9 +2859,7 @@ function renderWeekDetail(w,weeks){
   }
   if(reconOpen===w.num){
     var pre=w.actualBals||{chk:w.mChk,sav:w.mSav,amx:w.mAmx,tax:w.mTax,lc:w.mLc};
-    html+='<div class="recon-form"><div class="recon-form-title">Actual end-of-week balances — Wk '+getCalWeek(w.num)+' \xb7 '+w.dates+'</div>'+
-      '<div class="recon-guidance-note">Enter posted/cleared balances only. Do not include pending inflows, pending outflows, or in-transit transfers that have not settled. Capture those items in Week Notes, along with the expected balance after they clear.</div>'+
-      '<div class="recon-inputs">'+
+    html+='<div class="recon-form"><div class="recon-form-title">Actual end-of-week balances — Wk '+getCalWeek(w.num)+' \xb7 '+w.dates+'</div><div class="recon-inputs">'+
       '<div class="recon-field"><label>Truist Checking</label><input class="recon-input" id="ri_chk" type="number" step="0.01" value="'+pre.chk+'"></div>'+
       '<div class="recon-field"><label>Truist Savings</label><input class="recon-input" id="ri_sav" type="number" step="0.01" value="'+pre.sav+'"></div>'+
       '<div class="recon-field"><label>AMEX Savings</label><input class="recon-input" id="ri_amx" type="number" step="0.01" value="'+pre.amx+'"></div>'+
@@ -3649,133 +3536,6 @@ function _renderGoalsEngine(vm,w){
   return calcSection+scenarioSection;
 }
 
-function _renderGoalsImpact(){
-  var wi=whatIfState;
-  var showEnd=wi.recurrence!=='one-time';
-  var formHtml='<div class="panel card-pad" style="margin-bottom:16px">'+
-    '<div style="display:flex;align-items:center;gap:10px;margin-bottom:14px">'+
-      '<span style="font-size:16px">🎯</span>'+
-      '<div>'+
-        '<div style="font-size:13px;font-weight:700;color:var(--ink)">What-If Impact Calculator</div>'+
-        '<div style="font-size:11.5px;color:var(--muted)">Enter a dollar amount and date — the model runs with and without it and shows the full goal and cash impact. Nothing is saved.</div>'+
-      '</div>'+
-    '</div>'+
-    '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:10px;margin-bottom:14px">'+
-      '<div><label style="font-size:11px;font-weight:600;color:var(--muted2);display:block;margin-bottom:4px">Label (optional)</label>'+
-      '<input id="wi-label" type="text" placeholder="e.g. Baseball fees" value="'+esc(wi.label)+'" style="width:100%;box-sizing:border-box;padding:7px 10px;border:1px solid var(--border);border-radius:6px;font-size:12px;background:var(--surface2);color:var(--ink)" oninput="whatIfState.label=this.value;whatIfResult=null"></div>'+
-      '<div><label style="font-size:11px;font-weight:600;color:var(--muted2);display:block;margin-bottom:4px">Amount ($)</label>'+
-      '<input id="wi-amount" type="number" min="0" step="10" placeholder="0.00" value="'+(wi.amount||'')+'" style="width:100%;box-sizing:border-box;padding:7px 10px;border:1px solid var(--border);border-radius:6px;font-size:12px;background:var(--surface2);color:var(--ink)" oninput="whatIfState.amount=this.value;whatIfResult=null"></div>'+
-      '<div><label style="font-size:11px;font-weight:600;color:var(--muted2);display:block;margin-bottom:4px">Direction</label>'+
-      '<div style="display:flex;gap:6px">'+
-        '<button onclick="whatIfState.direction=\'outflow\';whatIfResult=null;renderApp()" style="flex:1;padding:7px;border-radius:6px;font-size:11px;font-weight:600;cursor:pointer;border:1.5px solid '+(wi.direction==='outflow'?'var(--red)':'var(--border)')+';background:'+(wi.direction==='outflow'?'var(--redSoft)':'var(--surface2)')+';color:'+(wi.direction==='outflow'?'var(--red)':'var(--muted)')+'">Outflow</button>'+
-        '<button onclick="whatIfState.direction=\'inflow\';whatIfResult=null;renderApp()" style="flex:1;padding:7px;border-radius:6px;font-size:11px;font-weight:600;cursor:pointer;border:1.5px solid '+(wi.direction==='inflow'?'var(--green)':'var(--border)')+';background:'+(wi.direction==='inflow'?'var(--greenSoft)':'var(--surface2)')+';color:'+(wi.direction==='inflow'?'var(--green)':'var(--muted)')+'">Inflow</button>'+
-      '</div></div>'+
-      '<div><label style="font-size:11px;font-weight:600;color:var(--muted2);display:block;margin-bottom:4px">Start Date</label>'+
-      '<input id="wi-date" type="date" value="'+(wi.date||'')+'" min="2026-06-07" max="2027-01-09" style="width:100%;box-sizing:border-box;padding:7px 10px;border:1px solid var(--border);border-radius:6px;font-size:12px;background:var(--surface2);color:var(--ink)" onchange="whatIfState.date=this.value;whatIfResult=null"></div>'+
-      '<div><label style="font-size:11px;font-weight:600;color:var(--muted2);display:block;margin-bottom:4px">Recurrence</label>'+
-      '<select id="wi-recurrence" style="width:100%;box-sizing:border-box;padding:7px 10px;border:1px solid var(--border);border-radius:6px;font-size:12px;background:var(--surface2);color:var(--ink)" onchange="whatIfState.recurrence=this.value;whatIfResult=null;renderApp()">'+
-        ['one-time','monthly','biweekly','weekly'].map(function(v){return'<option value="'+v+'"'+(wi.recurrence===v?' selected':'')+'>'+v.charAt(0).toUpperCase()+v.slice(1)+'</option>';}).join('')+
-      '</select></div>'+
-      (showEnd?'<div><label style="font-size:11px;font-weight:600;color:var(--muted2);display:block;margin-bottom:4px">End Date (optional)</label>'+
-      '<input id="wi-enddate" type="date" value="'+(wi.endDate||'')+'" min="2026-06-07" max="2027-01-09" style="width:100%;box-sizing:border-box;padding:7px 10px;border:1px solid var(--border);border-radius:6px;font-size:12px;background:var(--surface2);color:var(--ink)" onchange="whatIfState.endDate=this.value;whatIfResult=null"></div>':'')+
-    '</div>'+
-    '<div style="display:flex;gap:8px">'+
-      '<button id="wi-calc-btn" onclick="runWhatIf()" style="padding:9px 20px;background:var(--blue);color:#fff;border:none;border-radius:7px;font-size:12px;font-weight:700;cursor:pointer">Calculate Impact →</button>'+
-      '<button onclick="clearWhatIf()" style="padding:9px 16px;background:var(--surface2);color:var(--muted);border:1px solid var(--border);border-radius:7px;font-size:12px;cursor:pointer">Clear</button>'+
-    '</div>'+
-  '</div>';
-  var outputHtml='';
-  if(!whatIfResult){
-    outputHtml='<div class="engine-empty" id="wi-empty">Fill in the form above and click Calculate to see the full impact on goal ETAs and cash position.</div>';
-  }else if(whatIfResult.error==='outside_window'){
-    outputHtml='<div id="wi-validation-msg" style="padding:14px;background:var(--amberSoft);border:1px solid #fbbf24;border-radius:8px;color:var(--amber);font-size:12px;font-weight:600">⚠️ Date is outside the model window (Jun 7, 2026 – Jan 9, 2027). No weeks affected.</div>';
-  }else if(whatIfResult.error==='invalid_input'){
-    outputHtml='<div id="wi-validation-msg" style="padding:14px;background:var(--amberSoft);border:1px solid #fbbf24;border-radius:8px;color:var(--amber);font-size:12px;font-weight:600">⚠️ Please enter a valid amount and start date.</div>';
-  }else{
-    var res=whatIfResult;
-    var cs=res.cashSummary;
-    var dir=whatIfState.direction;
-    // Summary line
-    var impacted=res.goalImpact.filter(function(g){return g.shift!==null&&g.shift!==0;});
-    var firstDelayed=impacted.find(function(g){return g.shift>0;});
-    var firstAccel=impacted.find(function(g){return g.shift<0;});
-    var goalDelta=Math.abs(Math.round((cs.scenarioTotalGoals-cs.baselineTotalGoals)*100)/100);
-    var summaryLine='';
-    if(dir==='outflow'&&firstDelayed){summaryLine='This outflow reduces total goal contributions by <strong>'+f(goalDelta)+'</strong> and delays <strong>'+esc(firstDelayed.name)+'</strong> by '+Math.abs(firstDelayed.shift)+' week'+(Math.abs(firstDelayed.shift)!==1?'s':'')+'.';}
-    else if(dir==='inflow'&&firstAccel){summaryLine='This inflow adds <strong>'+f(goalDelta)+'</strong> to goal contributions and accelerates <strong>'+esc(firstAccel.name)+'</strong> by '+Math.abs(firstAccel.shift)+' week'+(Math.abs(firstAccel.shift)!==1?'s':'')+'.';}
-    else{summaryLine='No active goals are affected — the amount is absorbed into the operating floor buffer.';}
-    // Bypass notice
-    var bypassHtml='';
-    if(res.bypassedWeeks.length){
-      bypassHtml='<div id="wi-bypass-msg" style="padding:10px 14px;background:var(--amberSoft);border:1px solid #fbbf24;border-radius:7px;font-size:11.5px;color:var(--amber);margin-bottom:12px">'+
-        '⚠️ This entry falls in an overridden week (Wk '+res.bypassedWeeks.map(getCalWeek).join(', Wk ')+') and was bypassed for that occurrence.'+
-        (res.entryWeeks.length?' Subsequent occurrences applied normally (Wk '+res.entryWeeks.map(getCalWeek).join(', Wk ')+').':'')+
-      '</div>';
-    }
-    // Cash summary
-    var floorHtml=cs.floorBreachWeeks.length?'<div style="margin-top:6px;font-size:11px;color:var(--red);font-weight:600">⚠️ Checking falls below $'+OP_FL.toLocaleString('en-US')+' floor in Wk '+cs.floorBreachWeeks.map(getCalWeek).join(', Wk ')+'</div>':'';
-    var cashHtml='<div class="panel card-pad" id="wi-cash-summary" style="margin-bottom:12px">'+
-      '<div style="font-size:12px;font-weight:700;color:var(--ink);margin-bottom:10px">Cash Impact</div>'+
-      '<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px">'+
-        '<div style="background:var(--surface2);border-radius:7px;padding:10px;text-align:center">'+
-          '<div style="font-size:10px;color:var(--muted2);margin-bottom:3px">Total cash impact</div>'+
-          '<div style="font-size:14px;font-weight:700;color:'+(dir==='outflow'?'var(--red)':'var(--green)')+'">'+
-            (dir==='outflow'?'−':'+')+'$'+Math.abs(cs.totalCashImpact).toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2})+'</div>'+
-          '<div style="font-size:10px;color:var(--muted2);margin-top:2px">across '+cs.occurrenceCount+' occurrence'+(cs.occurrenceCount!==1?'s':'')+'</div>'+
-        '</div>'+
-        '<div style="background:var(--surface2);border-radius:7px;padding:10px;text-align:center">'+
-          '<div style="font-size:10px;color:var(--muted2);margin-bottom:3px">Lowest checking</div>'+
-          '<div style="font-size:14px;font-weight:700;color:var(--ink)">'+f(cs.scenarioMinChk)+'</div>'+
-          '<div style="font-size:10px;color:var(--muted2);margin-top:2px">baseline: '+f(cs.baselineMinChk)+'</div>'+
-        '</div>'+
-        '<div style="background:var(--surface2);border-radius:7px;padding:10px;text-align:center">'+
-          '<div style="font-size:10px;color:var(--muted2);margin-bottom:3px">Total goal contributions</div>'+
-          '<div style="font-size:14px;font-weight:700;color:var(--ink)">'+f(cs.scenarioTotalGoals)+'</div>'+
-          '<div style="font-size:10px;color:var(--muted2);margin-top:2px">baseline: '+f(cs.baselineTotalGoals)+'</div>'+
-        '</div>'+
-      '</div>'+floorHtml+
-    '</div>';
-    // Goal ETA table
-    var tableHtml='<div class="panel card-pad" id="wi-goal-table">'+
-      '<div style="font-size:12px;font-weight:700;color:var(--ink);margin-bottom:6px">Goal ETA Impact</div>'+
-      '<div style="font-size:11px;color:var(--muted2);margin-bottom:10px">'+summaryLine+'</div>'+
-      '<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:11.5px">'+
-        '<thead><tr style="background:var(--surface2)">'+
-          '<th style="text-align:left;padding:7px 8px;font-size:10.5px;color:var(--muted2);font-weight:600;border-bottom:1px solid var(--border)">Goal</th>'+
-          '<th style="text-align:center;padding:7px 8px;font-size:10.5px;color:var(--muted2);font-weight:600;border-bottom:1px solid var(--border)">Baseline ETA</th>'+
-          '<th style="text-align:center;padding:7px 8px;font-size:10.5px;color:var(--muted2);font-weight:600;border-bottom:1px solid var(--border)">Scenario ETA</th>'+
-          '<th style="text-align:center;padding:7px 8px;font-size:10.5px;color:var(--muted2);font-weight:600;border-bottom:1px solid var(--border)">Shift</th>'+
-          '<th style="text-align:right;padding:7px 8px;font-size:10.5px;color:var(--muted2);font-weight:600;border-bottom:1px solid var(--border)">Funded (B → S)</th>'+
-        '</tr></thead>'+
-        '<tbody>'+
-        res.goalImpact.map(function(g){
-          var etaLbl=function(wk){return wk?'Wk '+getCalWeek(wk):'Beyond model';};
-          var shiftTxt='',shiftColor='var(--muted)';
-          if(g.caseType==='already_complete'){shiftTxt='Already complete';shiftColor='var(--green)';}
-          else if(g.caseType==='both'&&g.shift===0){shiftTxt='No change';shiftColor='var(--muted)';}
-          else if(g.caseType==='both'&&g.shift>0){shiftTxt='+'+g.shift+' wk'+(g.shift!==1?'s':'');shiftColor='var(--red)';}
-          else if(g.caseType==='both'&&g.shift<0){shiftTxt=g.shift+' wk'+(Math.abs(g.shift)!==1?'s':'');shiftColor='var(--green)';}
-          else if(g.caseType==='baseline_only'){shiftTxt='Delayed beyond model';shiftColor='var(--red)';}
-          else if(g.caseType==='scenario_only'){shiftTxt='Accelerated into model';shiftColor='var(--green)';}
-          else{shiftTxt='—';shiftColor='var(--muted)';}
-          var fd=Math.round((g.scenarioFunded-g.baselineFunded)*100)/100;
-          var fdColor=fd>0.01?'var(--green)':fd<-0.01?'var(--red)':'var(--muted)';
-          var fdStr=fd>0.01?(' <span style="color:'+fdColor+';font-weight:700">+'+f(fd)+'</span>'):fd<-0.01?(' <span style="color:'+fdColor+';font-weight:700">−'+f(Math.abs(fd))+'</span>'):'';
-          return'<tr style="border-bottom:1px solid var(--surface2)">'+
-            '<td style="padding:7px 8px;font-weight:600;color:var(--ink)">'+esc(g.name)+'</td>'+
-            '<td style="padding:7px 8px;text-align:center;color:var(--muted)">'+etaLbl(g.baselineETA)+'</td>'+
-            '<td style="padding:7px 8px;text-align:center;color:var(--muted)">'+etaLbl(g.scenarioETA)+'</td>'+
-            '<td style="padding:7px 8px;text-align:center;font-weight:700;color:'+shiftColor+'">'+shiftTxt+'</td>'+
-            '<td style="padding:7px 8px;text-align:right;color:var(--muted2);font-size:10.5px">'+f(g.baselineFunded)+fdStr+'</td>'+
-          '</tr>';
-        }).join('')+
-        '</tbody></table></div>'+
-    '</div>';
-    outputHtml=bypassHtml+cashHtml+tableHtml;
-  }
-  return formHtml+outputHtml;
-}
-
 function renderGoals(vm){
   var el=document.getElementById('goals-content');if(!el)return;
   vm_snapshot=vm; // store for engine button onclick
@@ -3783,7 +3543,7 @@ function renderGoals(vm){
   // Auto-detect alaska funded
   if(w.akRem<=0.01&&!goalFlags.alaska_funded)goalFlags.alaska_funded=true;
   var subnav='<div class="goals-subnav">'+
-    [['savings','Savings Goals'],['priorities','Priorities'],['funding','Funding Plan'],['impact','What-If Impact'],['engine','Waterfall / Scenarios']].map(function(pair){
+    [['savings','Savings Goals'],['priorities','Priorities'],['funding','Funding Plan'],['engine','What-If / Scenarios']].map(function(pair){
       return'<button class="goals-pill'+(goalsSubTab===pair[0]?' active':'')+'" onclick="setGoalsSubTab(\''+pair[0]+'\')">'+pair[1]+'</button>';
     }).join('')+
   '</div>';
@@ -3791,7 +3551,6 @@ function renderGoals(vm){
   if(goalsSubTab==='savings')body=_renderGoalsSavings(vm);
   else if(goalsSubTab==='priorities')body=_renderGoalsPriorities(vm);
   else if(goalsSubTab==='funding')body=_renderGoalsFunding(vm,w);
-  else if(goalsSubTab==='impact')body=_renderGoalsImpact();
   else if(goalsSubTab==='engine')body=_renderGoalsEngine(vm,w);
   el.innerHTML=subnav+body;
   // Wire engine amount input live
@@ -4023,21 +3782,6 @@ function renderAssumptions(){
       '<p><strong>When to intervene:</strong> Large or unusual Jabian expenses or reimbursements should be added manually through Edit Week when they materially affect a paycheck, AMEX Gold bill, or Disney/Costco bill.</p>'+
       '<p><strong>Monthly review:</strong> A recommended action appears in the Adam-paycheck week closest to the 22nd of each month. Review outstanding Jabian expenses and expected reimbursements at that time — reimbursements arrive with the 22nd paycheck.</p>'+
     '</div>'+
-    '<div class="panel assumption-card"><h3>Budget Rules (Phase 5)</h3>'+
-      '<p>Budget Rules are a <strong>delta-mode overlay</strong> on the WD baseline. They adjust Truist Checking for time-bounded or seasonal items without changing the WD array.</p>'+
-      '<p><strong>Use Budget Rules for:</strong> new expenses that layer on top of existing WD estimates — time-bounded items (sports fees, medical payment plans) or ongoing additions that don\'t replace a WD line item (a new credit card charge category, a recurring subscription). Any delta that adds to the baseline without rewriting it.</p>'+
-      '<p><strong>Update WD directly for:</strong> changes to an existing WD line item — a rent payment that increases from $1,300 to $1,400, a new paycheck amount, a bill that replaces a prior estimate. If the event already exists in WD and the amount is changing permanently, update WD. When you roll to a new model period, WD reflects reality and Budget Rules handle what\'s new on top.</p>'+
-      '<p><strong>Credit card rule (standing):</strong> Assume a charge lands on a credit card unless explicitly told otherwise. AMEX Gold is the primary card. Disney Visa and AMEX Platinum are secondary. Budget Rules for credit card charges should model at the <em>payment date</em>, not the charge date — the existing WD credit card payment estimates plus statement-close true-up overrides already handle the cash flow. Adding a Budget Rule at the charge date would double-count it.</p>'+
-      '<p><strong>Source-of-truth precedence per week (highest → lowest):</strong></p>'+
-      '<ol style="margin:6px 0 10px 18px;font-size:13px;line-height:1.8">'+
-        '<li>Reconciled actuals — real balances override everything</li>'+
-        '<li>Week overrides (overrideData) — user-edited events</li>'+
-        '<li>Budget Rules delta — additive on top of WD</li>'+
-        '<li>WD baseline — default source</li>'+
-      '</ol>'+
-      '<p>When a week override is active, Budget Rules are <strong>bypassed entirely</strong> for that week and logged to ruleAudit as <code>bypassed_by_model_week_override</code>. Budget Rules resume normally in the next non-overridden week.</p>'+
-      '<p style="font-size:12px;color:var(--muted)">Absolute mode (replacing WD values instead of adding deltas) is reserved for a future phase and is currently blocked. All active rules must use delta mode.</p>'+
-    '</div>'+
     '<div class="panel assumption-card"><h3>Reconciliation &amp; Overrides</h3>'+
       '<p><strong>Reconciliation roll-forward:</strong> When you enter actual balances for a week, those actuals replace the modeled ending balances as the starting point for the next week. This propagates real-world variances through the forecast.</p>'+
       '<p><strong>Week overrides:</strong> Editing a week creates an entry in <code>overrideData</code>. The model reads <code>overrideData[num]</code> when building the effective week list. Overrides never mutate <code>WD</code>. Deleting an override restores the base week definition.</p>'+
@@ -4158,18 +3902,6 @@ function renderApp(){
   var weeks=applyCompletionSnapshots(getActiveModel());
   var vm=buildDashboardViewModel(weeks,g);
   updateReconLabel(weeks);
-  // ── Budget Rules warning banner ────────────────────────────────────────
-  var _brw=document.getElementById('budget-rules-warn');
-  if(_brw)_brw.style.display=(budgetRulesLoadStatus==='failed')?'block':'none';
-  // ── Goal Registry fallback banner (Phase 6A) ───────────────────────────
-  var _glw=document.getElementById('goals-load-warn');
-  if(_glw){
-    var _showGlw=(goalsLoadStatus==='loaded_fallback'||goalsLoadStatus==='failed_validation');
-    _glw.style.display=_showGlw?'block':'none';
-    _glw.textContent=(goalsLoadStatus==='failed_validation')
-      ?'⚠ Goals failed validation — using local fallback. Check console for details.'
-      :'⚠ Goals running from local fallback — Supabase unavailable';
-  }
   // Update nav pill
   var pill=document.getElementById('nav-pill-weekly');if(pill)pill.textContent='W'+getCalWeek(activeW);
   // ── Dynamic topbar subtitle ─────────────────────────────────────────────
@@ -4241,16 +3973,14 @@ async function saveGoal(key,value){
 
 async function loadAll(){
   try{
-    var[reconR,tasksR,notesR,overridesR,goalsR,wishlistR,customTasksR,budgetRulesR,goalRegistryR]=await Promise.all([
+    var[reconR,tasksR,notesR,overridesR,goalsR,wishlistR,customTasksR]=await Promise.all([
       fetch(SUPA_URL+'/rest/v1/weekly_reconciliations?select=*',{headers:SUPA_H}),
       fetch(SUPA_URL+'/rest/v1/weekly_tasks?select=*',{headers:SUPA_H}),
       fetch(SUPA_URL+'/rest/v1/weekly_notes?select=*',{headers:SUPA_H}),
       fetch(SUPA_URL+'/rest/v1/model_week_overrides?select=*',{headers:SUPA_H}),
       fetch(SUPA_URL+'/rest/v1/goals?select=key,value',{headers:SUPA_H}),
       fetch(SUPA_URL+'/rest/v1/wishlist_items?select=*&order=created_at.asc',{headers:SUPA_H}),
-      fetch(SUPA_URL+'/rest/v1/custom_tasks?select=*&order=created_at.asc',{headers:SUPA_H}),
-      fetch(SUPA_URL+'/rest/v1/budget_rules?active=eq.true&order=start_date.asc',{headers:SUPA_H}),
-      fetch(SUPA_URL+'/rest/v1/goal_registry?order=priority.asc',{headers:SUPA_H})
+      fetch(SUPA_URL+'/rest/v1/custom_tasks?select=*&order=created_at.asc',{headers:SUPA_H})
     ]);
     if(reconR.ok){(await reconR.json()).forEach(function(row){reconData[row.week_num]={chk:row.chk,sav:row.sav,amx:row.amx,tax:row.tax,lc:row.lc,date:new Date(row.recorded_at).toLocaleDateString('en-US',{month:'short',day:'numeric'})};});}
     if(tasksR.ok){(await tasksR.json()).forEach(function(row){taskData[row.week_num+'_'+row.task_idx]={completed:row.completed,completedAt:row.completed_at,completedAmount:row.completed_amount!=null?parseFloat(row.completed_amount):null,actionKey:row.action_key||null,completedLabel:row.completed_label||null};});}
@@ -4296,41 +4026,8 @@ async function loadAll(){
     }
     // Run type migration for any custom tasks missing version field
     migrateCustomTaskMeta();
-    // ── Budget Rules load ──────────────────────────────────────────────────
-    if(budgetRulesR.ok){
-      budgetRules=await budgetRulesR.json();
-      budgetRulesLoadStatus='loaded'; // successful fetch, even if 0 active rules
-    } else {
-      budgetRulesLoadStatus='failed';
-      console.warn('[BudgetRules] Load failed: HTTP '+budgetRulesR.status);
-    }
-    // ── Goal Registry load (Phase 6A) ─────────────────────────────────────
-    if(goalRegistryR.ok){
-      var grData=await goalRegistryR.json();
-      if(!Array.isArray(grData)||grData.length===0){
-        console.warn('[GoalRegistry] Empty or invalid response — using hardcoded fallback');
-        goalsLoadStatus='loaded_fallback';
-        applyGoalsFallback();
-      } else {
-        var grMapped=grData.map(mapGoalFromDB);
-        var grErrors=validateLoadedGoals(grMapped);
-        if(grErrors.length>0){
-          console.warn('[GoalRegistry] Validation failed:',grErrors,'— using hardcoded fallback');
-          goalsLoadStatus='failed_validation';
-          applyGoalsFallback();
-        } else {
-          applyGoalsFromData(grMapped);
-          goalsLoadStatus='loaded';
-          console.log('[GoalRegistry] Loaded '+grMapped.length+' goals from Supabase');
-        }
-      }
-    } else {
-      console.warn('[GoalRegistry] Load failed: HTTP '+goalRegistryR.status+' — using hardcoded fallback');
-      goalsLoadStatus='loaded_fallback';
-      applyGoalsFallback();
-    }
     _supaConnected=true;
-  }catch(e){console.error('loadAll:',e);_supaConnected=false;budgetRulesLoadStatus='failed';goalsLoadStatus='loaded_fallback';applyGoalsFallback();}
+  }catch(e){console.error('loadAll:',e);_supaConnected=false;}
   renderApp();
 }
 
@@ -4352,200 +4049,6 @@ var askLoading=false;
 function getWeekStartDate(n){return new Date(2026,5,7+(n-1)*7);}
 function fmtDate(d){var M=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];return M[d.getMonth()]+' '+d.getDate();}
 function getWeekDate(n){return fmtDate(getWeekStartDate(n));}
-
-// ── Budget Rules — Phase 5 helper module ─────────────────────────────────
-// Constants
-var BUDGET_RULE_CATEGORIES=['income','rent','auto','medical','sports','credit_card','tax','savings','travel','education','insurance','utilities','other'];
-var BUDGET_RULE_APPLIES_TO=['truist_checking','vio_tax','lending_club_ef','fidelity','amex_savings'];
-var _BR_START=new Date(2026,5,7,12,0,0);  // Jun 7 2026 noon
-var _BR_END  =new Date(2027,0,9,12,0,0);  // Jan 9 2027 noon
-var _BR_END_STR='2027-01-09';
-
-function isValidISODate(s){
-  if(typeof s!=='string'||!/^\d{4}-\d{2}-\d{2}$/.test(s))return false;
-  var p=s.split('-').map(Number);
-  var dt=new Date(p[0],p[1]-1,p[2]);
-  return dt.getFullYear()===p[0]&&dt.getMonth()===p[1]-1&&dt.getDate()===p[2];
-}
-
-function validateBudgetRule(rule){
-  var errors=[];
-  if(typeof rule.amount!=='number'||rule.amount<=0)errors.push('amount must be numeric and > 0');
-  if(!['inflow','outflow'].includes(rule.direction))errors.push('direction must be inflow or outflow');
-  if(!['one-time','weekly','biweekly','monthly'].includes(rule.frequency))errors.push('unsupported frequency: '+rule.frequency);
-  if(!isValidISODate(rule.start_date))errors.push('start_date must be valid YYYY-MM-DD');
-  if(rule.end_date!=null&&rule.end_date!==undefined){
-    if(!isValidISODate(rule.end_date))errors.push('end_date must be valid YYYY-MM-DD');
-    else if(rule.end_date<rule.start_date)errors.push('end_date must not be before start_date');
-  }
-  if(rule.rule_mode==='absolute')errors.push('PHASE1_ABSOLUTE_BLOCKED: absolute mode not supported in OS Phase 5');
-  return errors;
-}
-
-function addMonthsToDateStr(dateStr,n){
-  // Integer-math month addition — never uses setMonth() — anchored to dateStr day to prevent drift
-  var p=dateStr.split('-').map(Number);
-  var totalMonths=(p[0]*12+(p[1]-1))+n;
-  var ny=Math.floor(totalMonths/12);
-  var nm=(totalMonths%12)+1;
-  var lastDay=new Date(ny,nm,0).getDate();
-  return ny+'-'+String(nm).padStart(2,'0')+'-'+String(Math.min(p[2],lastDay)).padStart(2,'0');
-}
-
-function pinnedMonthlyDateStr(year,month,pinDay){
-  // Clamp pinDay to last day of target month
-  var lastDay=new Date(year,month,0).getDate();
-  return year+'-'+String(month).padStart(2,'0')+'-'+String(Math.min(pinDay,lastDay)).padStart(2,'0');
-}
-
-function dateToModelWeek(dateStr){
-  var p=dateStr.split('-').map(Number);
-  var dt=new Date(p[0],p[1]-1,p[2],12,0,0);
-  if(dt<_BR_START||dt>_BR_END)return null;
-  return Math.floor((dt-_BR_START)/604800000)+1; // 604800000 = 7*24*3600*1000
-}
-
-function generateOccurrenceDates(rule){
-  var endBound=(rule.end_date&&isValidISODate(rule.end_date))?rule.end_date:_BR_END_STR;
-  var occ=[];
-  if(rule.frequency==='one-time'){
-    if(rule.start_date<=endBound)occ.push(rule.start_date);
-    return occ;
-  }
-  var current=rule.start_date;
-  var pinDay=rule.day_of_month||null;
-  var monthCount=0;
-  while(current<=endBound){
-    occ.push(current);
-    if(rule.frequency==='weekly'){
-      var pw=current.split('-').map(Number);
-      var nd=new Date(pw[0],pw[1]-1,pw[2]+7,12);
-      current=nd.getFullYear()+'-'+String(nd.getMonth()+1).padStart(2,'0')+'-'+String(nd.getDate()).padStart(2,'0');
-    } else if(rule.frequency==='biweekly'){
-      var pb=current.split('-').map(Number);
-      var nb=new Date(pb[0],pb[1]-1,pb[2]+14,12);
-      current=nb.getFullYear()+'-'+String(nb.getMonth()+1).padStart(2,'0')+'-'+String(nb.getDate()).padStart(2,'0');
-    } else if(rule.frequency==='monthly'){
-      monthCount++;
-      if(pinDay){
-        var base=addMonthsToDateStr(rule.start_date,monthCount);
-        var bp=base.split('-').map(Number);
-        current=pinnedMonthlyDateStr(bp[0],bp[1],pinDay);
-      } else {
-        current=addMonthsToDateStr(rule.start_date,monthCount);
-      }
-    }
-  }
-  return occ;
-}
-
-function buildBudgetRuleContext(rules){
-  var byWeek={};
-  for(var i=0;i<rules.length;i++){
-    var rule=rules[i];
-    if(!rule.active)continue;
-    // amount must be numeric for validation (Supabase returns strings)
-    var ruleNorm=Object.assign({},rule,{amount:parseFloat(rule.amount)});
-    var errors=validateBudgetRule(ruleNorm);
-    if(errors.length>0){
-      var action=errors.some(function(e){return e.indexOf('PHASE1_ABSOLUTE_BLOCKED')===0;})?'skipped_unsupported_absolute_phase1':'skipped_validation_error';
-      console.warn('[BudgetRules] Rule skipped — id:',rule.id,rule.label,errors);
-      ruleAudit.push({rule_id:rule.id,label:rule.label,mode:rule.rule_mode,action:action,errors:errors});
-      continue;
-    }
-    // Non-blocking warnings for unknown category/applies_to (hard validation deferred to Phase 6 admin UI)
-    if(ruleNorm.category&&!BUDGET_RULE_CATEGORIES.includes(ruleNorm.category))
-      console.warn('[BudgetRules] Unknown category "'+ruleNorm.category+'" on rule id:',rule.id,'— applied anyway');
-    if(ruleNorm.applies_to&&!BUDGET_RULE_APPLIES_TO.includes(ruleNorm.applies_to))
-      console.warn('[BudgetRules] Unknown applies_to "'+ruleNorm.applies_to+'" on rule id:',rule.id,'— applied anyway');
-    var dates=generateOccurrenceDates(ruleNorm);
-    for(var j=0;j<dates.length;j++){
-      var wk=dateToModelWeek(dates[j]);
-      if(!wk)continue;
-      if(!byWeek[wk])byWeek[wk]=[];
-      byWeek[wk].push({id:rule.id,label:rule.label,amount:ruleNorm.amount,direction:rule.direction,rule_mode:rule.rule_mode,category:rule.category,baseline_match_key:rule.baseline_match_key,dateStr:dates[j]});
-    }
-  }
-  return{byWeek:byWeek};
-}
-
-function applyBudgetRulesForWeek(weekNum,weekRules,tr,audit){
-  // Returns chkDelta — caller adds this to chk.
-  // Phase 5: only delta rules reach this function (absolute blocked in buildBudgetRuleContext).
-  var delta=0;
-  for(var i=0;i<weekRules.length;i++){
-    var ru=weekRules[i];
-    var signed=ru.direction==='inflow'?ru.amount:-ru.amount;
-    delta+=signed;
-    tr.push({l:ru.label+' ('+ru.dateStr+') [budget rule]',r:'done',a:signed,rsn:'Budget rule delta — '+ru.direction});
-    audit.push({week:weekNum,rule_id:ru.id,label:ru.label,date:ru.dateStr,mode:ru.rule_mode,direction:ru.direction,amount:signed,action:'applied'});
-  }
-  return delta;
-}
-
-// ── What-If Impact Calculator — Phase 5 ──────────────────────────────────
-function diffModels(baseline,scenario,scenarioAudit,akTarget){
-  var rnd=function(n){return Math.round(n*100)/100;};
-  var bypassed=scenarioAudit.filter(function(e){return e.rule_id==='what_if_temp'&&e.action==='bypassed_by_model_week_override';});
-  var applied=scenarioAudit.filter(function(e){return e.rule_id==='what_if_temp'&&e.action==='applied';});
-  var entryWeeks=applied.map(function(e){return e.week;});
-  var bypassedWeeks=bypassed.map(function(e){return e.week;});
-  var entryStart=entryWeeks.length?Math.min.apply(null,entryWeeks):999;
-  // Goal ETA analysis
-  var activeGoals=GOALS_REGISTRY.filter(function(g){return!g.complete&&!g.auto;});
-  var goalImpact=[];
-  activeGoals.forEach(function(gdef){
-    var gTgt=gdef.id==='alaska'?akTarget:gdef.target;
-    var baselineETA=null;
-    for(var i=0;i<baseline.length;i++){if((baseline[i].goalSaved[gdef.id]||0)>=gTgt-0.01){baselineETA=baseline[i].num;break;}}
-    var baselineFunded=baseline.length?(baseline[baseline.length-1].goalSaved[gdef.id]||0):0;
-    var scenarioETA=null;
-    for(var j=0;j<scenario.length;j++){if((scenario[j].goalSaved[gdef.id]||0)>=gTgt-0.01){scenarioETA=scenario[j].num;break;}}
-    var scenarioFunded=scenario.length?(scenario[scenario.length-1].goalSaved[gdef.id]||0):0;
-    var shift=null,caseType='neither';
-    if(baselineETA!==null&&scenarioETA!==null){
-      shift=scenarioETA-baselineETA;
-      caseType=(baselineETA<=entryStart&&shift===0)?'already_complete':'both';
-    }else if(baselineETA!==null&&scenarioETA===null){caseType='baseline_only';}
-    else if(baselineETA===null&&scenarioETA!==null){caseType='scenario_only';}
-    goalImpact.push({id:gdef.id,name:gdef.name,target:gTgt,baselineETA:baselineETA,scenarioETA:scenarioETA,shift:shift,caseType:caseType,baselineFunded:rnd(baselineFunded),scenarioFunded:rnd(scenarioFunded),baselinePct:Math.min(100,Math.round(baselineFunded/gTgt*100)),scenarioPct:Math.min(100,Math.round(scenarioFunded/gTgt*100))});
-  });
-  // Cash summary
-  var baselineMinChk=baseline.length?Math.min.apply(null,baseline.map(function(w){return w.mChk;})):0;
-  var scenarioMinChk=scenario.length?Math.min.apply(null,scenario.map(function(w){return w.mChk;})):0;
-  var floorBreachWeeks=scenario.filter(function(w){return w.mChk<OP_FL;}).map(function(w){return w.num;});
-  var trackIds=['alaska','wewe_rccl','wewe_dcl','adam_ira','wendy_ira','bailey_529','bryce_529','preston_529','bryce_vehicle','christmas_cruise','taxable_etf'];
-  var blFinal=baseline.length?baseline[baseline.length-1].goalSaved:{};
-  var scFinal=scenario.length?scenario[scenario.length-1].goalSaved:{};
-  var baselineTotalGoals=0,scenarioTotalGoals=0;
-  trackIds.forEach(function(id){baselineTotalGoals+=blFinal[id]||0;scenarioTotalGoals+=scFinal[id]||0;});
-  var totalCashImpact=rnd(applied.reduce(function(s,e){return s+(e.amount||0);},0));
-  return{goalImpact:goalImpact,cashSummary:{baselineMinChk:rnd(baselineMinChk),scenarioMinChk:rnd(scenarioMinChk),floorBreachWeeks:floorBreachWeeks,baselineTotalGoals:rnd(baselineTotalGoals),scenarioTotalGoals:rnd(scenarioTotalGoals),totalCashImpact:totalCashImpact,occurrenceCount:applied.length+bypassed.length},entryWeeks:entryWeeks,bypassedWeeks:bypassedWeeks};
-}
-
-function runWhatIf(){
-  var amt=parseFloat(whatIfState.amount)||0;
-  if(amt<=0||!whatIfState.date){whatIfResult={error:'invalid_input'};renderApp();return;}
-  if(!dateToModelWeek(whatIfState.date)){whatIfResult={error:'outside_window'};renderApp();return;}
-  var g=getGoals();
-  var savedRules=budgetRules.slice();
-  var savedAudit=ruleAudit.slice();
-  var baseline,scenario,scenarioAudit;
-  try{
-    baseline=runModel(g.ak,g.rt);
-    var wiRule={id:'what_if_temp',label:whatIfState.label||'What-if entry',active:true,amount:amt,direction:whatIfState.direction,frequency:whatIfState.recurrence,start_date:whatIfState.date,end_date:(whatIfState.endDate&&whatIfState.endDate!=='')?whatIfState.endDate:null,rule_mode:'delta',category:'other',source:'what_if_calculator'};
-    budgetRules=budgetRules.concat([wiRule]);
-    scenario=runModel(g.ak,g.rt);
-    scenarioAudit=ruleAudit.slice();
-  }finally{
-    budgetRules=savedRules;
-    ruleAudit=savedAudit;
-  }
-  whatIfResult=diffModels(baseline,scenario,scenarioAudit,g.ak);
-  renderApp();
-}
-
-function clearWhatIf(){whatIfState={label:'',amount:'',direction:'outflow',date:'',recurrence:'one-time',endDate:''};whatIfResult=null;renderApp();}
 
 // ── Scenario-aware model runner ───────────────────────────────────────────
 function getActiveModel(){

@@ -19,8 +19,31 @@ fi
 
 echo "Repo: $SCRIPT_DIR"
 
-# ── 2. Stage, commit, push ────────────────────────────────────────────────────
-git add index.html test_regression.js
+# ── 2. Run regression tests ───────────────────────────────────────────────────
+echo "Running regression suite..."
+node test_regression.js
+if [ $? -ne 0 ]; then
+  echo "ERROR: Regression tests failed. Push aborted."
+  exit 1
+fi
+echo "Regression suite passed."
+
+# ── 3. Run Playwright e2e tests ───────────────────────────────────────────────
+echo "Running Playwright e2e suite..."
+node e2e.js
+if [ $? -ne 0 ]; then
+  echo "ERROR: Playwright e2e tests failed. Push aborted."
+  exit 1
+fi
+echo "Playwright e2e suite passed."
+
+# ── 4. Stamp build timestamp ─────────────────────────────────────────────────
+BUILD_TIME=$(date '+%Y-%m-%dT%H:%M:%S')
+sed -i '' "s/const BUILD_TS='[^']*'/const BUILD_TS='${BUILD_TIME}'/" index.html
+echo "Build timestamp updated: ${BUILD_TIME}"
+
+# ── 5. Stage, commit, push ────────────────────────────────────────────────────
+git add index.html test_regression.js e2e.js model_spec.md budget-rules-spec-v3.1.md budget-rules-prebuild-outputs.md
 git status --short
 
 git commit -m "$COMMIT_MSG"

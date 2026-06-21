@@ -814,6 +814,90 @@ async function clickNav(page, id) {
     await context.close();
   });
 
+  // ── Section GR: Phase 6A Dynamic Goal Registry ────────────────────────
+  console.log('\n── Section GR: Phase 6A Goal Registry ──');
+
+  await test('GR-1: Goals tab renders correctly after applyGoalsFromData (DB-simulated load)', async () => {
+    const { page, context } = await openApp(browser);
+    await clickNav(page, 'goals');
+    // Simulate DB load via JS in page
+    await page.evaluate(() => {
+      var dbRows = HARDCODED_GOALS_FALLBACK.map(function(g) {
+        return { id:g.id, name:g.name, tier:g.tier, target:g.target, priority:g.priority,
+          status:g.status, notes:g.notes, starts_after:g.startsAfter, due_week:g.dueWeek,
+          needs_flag:g.needsFlag, from_model:g.fromModel, milestone:g.milestone,
+          stretch:g.stretch, auto:g.auto, src:g.src, dest:g.dest, color:g.color };
+      });
+      applyGoalsFromData(dbRows.map(mapGoalFromDB));
+      renderApp();
+    });
+    await page.waitForTimeout(300);
+    const content = await page.evaluate(() => document.getElementById('goals-content').innerText);
+    assert(content && content.trim().length > 50, 'Goals tab should render content after applyGoalsFromData');
+    await context.close();
+  });
+
+  await test('GR-2: Savings Goals sub-tab shows active goals from DB-loaded registry', async () => {
+    const { page, context } = await openApp(browser);
+    await clickNav(page, 'goals');
+    await page.waitForTimeout(300);
+    // Goals sub-tab should be on savings by default — check for known active goal names
+    const content = await page.evaluate(() => document.getElementById('goals-content').innerText);
+    assert(content.includes('Alaska Cruise'), 'Alaska Cruise should appear in Savings Goals');
+    assert(content.includes('Bailey 529'),    'Bailey 529 should appear in Savings Goals');
+    await context.close();
+  });
+
+  await test('GR-3: Fallback banner appears when goalsLoadStatus is "loaded_fallback"', async () => {
+    const { page, context } = await openApp(browser);
+    // Force fallback banner via JS
+    await page.evaluate(() => {
+      goalsLoadStatus = 'loaded_fallback';
+      renderApp();
+    });
+    await page.waitForTimeout(200);
+    const bannerStyle = await page.evaluate(() => {
+      var el = document.getElementById('goals-load-warn');
+      return el ? el.style.display : 'missing';
+    });
+    assert(bannerStyle !== 'none' && bannerStyle !== 'missing',
+      'goals-load-warn should be visible with loaded_fallback, got display: ' + bannerStyle);
+    await context.close();
+  });
+
+  await test('GR-4: No fallback banner when goalsLoadStatus is "loaded"', async () => {
+    const { page, context } = await openApp(browser);
+    await page.evaluate(() => {
+      goalsLoadStatus = 'loaded';
+      renderApp();
+    });
+    await page.waitForTimeout(200);
+    const bannerStyle = await page.evaluate(() => {
+      var el = document.getElementById('goals-load-warn');
+      return el ? el.style.display : 'missing';
+    });
+    assert(bannerStyle === 'none',
+      'goals-load-warn should be hidden with goalsLoadStatus=loaded, got display: ' + bannerStyle);
+    await context.close();
+  });
+
+  await test('GR-5: Goal count in UI matches GOALS_REGISTRY.length after simulated DB load', async () => {
+    const { page, context } = await openApp(browser);
+    const result = await page.evaluate(() => {
+      var dbRows = HARDCODED_GOALS_FALLBACK.map(function(g) {
+        return { id:g.id, name:g.name, tier:g.tier, target:g.target, priority:g.priority,
+          status:g.status, notes:g.notes, starts_after:g.startsAfter, due_week:g.dueWeek,
+          needs_flag:g.needsFlag, from_model:g.fromModel, milestone:g.milestone,
+          stretch:g.stretch, auto:g.auto, src:g.src, dest:g.dest, color:g.color };
+      });
+      applyGoalsFromData(dbRows.map(mapGoalFromDB));
+      return { registryLength: GOALS_REGISTRY.length, fallbackLength: HARDCODED_GOALS_FALLBACK.length };
+    });
+    assert(result.registryLength === result.fallbackLength,
+      'GOALS_REGISTRY.length (' + result.registryLength + ') should match fallback length (' + result.fallbackLength + ')');
+    await context.close();
+  });
+
   await browser.close();
 
   // ── Results ───────────────────────────────────────────────────────────
