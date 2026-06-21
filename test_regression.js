@@ -3146,6 +3146,194 @@ console.log('\n── Section 29: tr._key and Transfers This Week normalization 
 })();
 
 // ─────────────────────────────────────────────────────────────────────────
+// Section 31: Pending Transfer Bucket + Reconciliation Guidance Note (v2.4)
+// ─────────────────────────────────────────────────────────────────────────
+(function(){
+  console.log('\n── Section 31: Pending Transfer Bucket + Recon Guidance Note (v2.4) ──');
+
+  var savedCTD = JSON.parse(JSON.stringify(customTaskData));
+  var savedCTM = JSON.parse(JSON.stringify(customTaskMeta));
+  customTaskData = {};
+  customTaskMeta = {};
+
+  var TEST_WEEK = 10;
+
+  // ── S31-1: Uncompleted transfer-type custom task appears in pending bucket ──
+  test('S31-1: Uncompleted transfer-type custom task appears in pending bucket', function(){
+    customTaskData[TEST_WEEK] = [{id:'p1_xfr', label:'Transfer $500 to savings', completed:false}];
+    customTaskMeta = {};
+    setTaskMeta('p1_xfr', {type:'transfer', source:'user', version:1, dismissed:false});
+    var allCT = customTaskData[TEST_WEEK] || [];
+    var pending = allCT.filter(function(ct){
+      var m = getTaskMeta(ct.id, ct.label);
+      return !ct.completed && m.type === 'transfer' && !m.dismissed;
+    });
+    assert(pending.length === 1, 'Expected 1 pending entry, got: '+pending.length);
+    assert(pending[0].id === 'p1_xfr', 'Wrong entry in pending: '+pending[0].id);
+  });
+
+  // ── S31-2: Completed transfer-type does NOT appear in pending bucket ────────
+  test('S31-2: Completed transfer-type custom task does NOT appear in pending bucket', function(){
+    customTaskData[TEST_WEEK] = [{id:'p2_xfr', label:'Transfer $200 to IRA', completed:true}];
+    customTaskMeta = {};
+    setTaskMeta('p2_xfr', {type:'transfer', source:'user', version:1, dismissed:false});
+    var allCT = customTaskData[TEST_WEEK] || [];
+    var pending = allCT.filter(function(ct){
+      var m = getTaskMeta(ct.id, ct.label);
+      return !ct.completed && m.type === 'transfer' && !m.dismissed;
+    });
+    assert(pending.length === 0, 'Completed transfer should not appear in pending: '+pending.length);
+  });
+
+  // ── S31-3: Dismissed transfer-type excluded from pending bucket ────────────
+  test('S31-3: Dismissed transfer-type custom task excluded from pending bucket', function(){
+    customTaskData[TEST_WEEK] = [{id:'p3_xfr', label:'Transfer $300 to reserve', completed:false}];
+    customTaskMeta = {};
+    setTaskMeta('p3_xfr', {type:'transfer', source:'user', version:1, dismissed:true});
+    var allCT = customTaskData[TEST_WEEK] || [];
+    var pending = allCT.filter(function(ct){
+      var m = getTaskMeta(ct.id, ct.label);
+      return !ct.completed && m.type === 'transfer' && !m.dismissed;
+    });
+    assert(pending.length === 0, 'Dismissed transfer should not appear in pending: '+pending.length);
+  });
+
+  // ── S31-4: Action-type custom task excluded from pending bucket ────────────
+  test('S31-4: Action-type custom task excluded from pending bucket', function(){
+    customTaskData[TEST_WEEK] = [{id:'p4_act', label:'Review AMEX statement', completed:false}];
+    customTaskMeta = {};
+    setTaskMeta('p4_act', {type:'action', source:'user', version:1, dismissed:false});
+    var allCT = customTaskData[TEST_WEEK] || [];
+    var pending = allCT.filter(function(ct){
+      var m = getTaskMeta(ct.id, ct.label);
+      return !ct.completed && m.type === 'transfer' && !m.dismissed;
+    });
+    assert(pending.length === 0, 'Action-type task should not appear in pending: '+pending.length);
+  });
+
+  // ── S31-5: Pending and done buckets populate independently ────────────────
+  test('S31-5: Pending and done buckets populate independently from mixed task set', function(){
+    customTaskData[TEST_WEEK] = [
+      {id:'p5_done', label:'Transfer $400 to savings',  completed:true},
+      {id:'p5_pend', label:'Transfer $600 to IRA',      completed:false},
+      {id:'p5_act',  label:'Review bank statement',      completed:false},
+      {id:'p5_dis',  label:'Transfer $100 dismissed',    completed:false}
+    ];
+    customTaskMeta = {};
+    setTaskMeta('p5_done', {type:'transfer', source:'user', version:1, dismissed:false});
+    setTaskMeta('p5_pend', {type:'transfer', source:'user', version:1, dismissed:false});
+    setTaskMeta('p5_act',  {type:'action',   source:'user', version:1, dismissed:false});
+    setTaskMeta('p5_dis',  {type:'transfer', source:'user', version:1, dismissed:true});
+    var allCT = customTaskData[TEST_WEEK] || [];
+    var done = allCT.filter(function(ct){
+      var m = getTaskMeta(ct.id, ct.label);
+      return ct.completed && m.type === 'transfer' && !m.dismissed;
+    });
+    var pending = allCT.filter(function(ct){
+      var m = getTaskMeta(ct.id, ct.label);
+      return !ct.completed && m.type === 'transfer' && !m.dismissed;
+    });
+    assert(done.length === 1,    'Expected 1 done entry, got: '+done.length);
+    assert(pending.length === 1, 'Expected 1 pending entry, got: '+pending.length);
+    assert(done[0].id === 'p5_done',    'Wrong done entry: '+done[0].id);
+    assert(pending[0].id === 'p5_pend', 'Wrong pending entry: '+pending[0].id);
+  });
+
+  // ── S31-6: Empty state suppressed when pending is non-empty ───────────────
+  test('S31-6: "No transfers this week" empty state suppressed when pending bucket non-empty', function(){
+    customTaskData[TEST_WEEK] = [{id:'p6_pend', label:'Transfer $250 to reserve', completed:false}];
+    customTaskMeta = {};
+    setTaskMeta('p6_pend', {type:'transfer', source:'user', version:1, dismissed:false});
+    var allCT = customTaskData[TEST_WEEK] || [];
+    var done = allCT.filter(function(ct){
+      var m = getTaskMeta(ct.id, ct.label);
+      return ct.completed && m.type === 'transfer' && !m.dismissed;
+    });
+    var pending = allCT.filter(function(ct){
+      var m = getTaskMeta(ct.id, ct.label);
+      return !ct.completed && m.type === 'transfer' && !m.dismissed;
+    });
+    // New empty-state condition: done.length===0 && pending.length===0
+    var showEmpty = (done.length === 0 && pending.length === 0);
+    assert(!showEmpty, '"No transfers" empty state incorrectly triggered when pending is non-empty');
+  });
+
+  // ── S31-7: Empty state shown when both done and pending are empty ─────────
+  test('S31-7: "No transfers this week" empty state shown when done=0 and pending=0', function(){
+    customTaskData[TEST_WEEK] = [];
+    customTaskMeta = {};
+    var allCT = customTaskData[TEST_WEEK] || [];
+    var done = allCT.filter(function(ct){
+      var m = getTaskMeta(ct.id, ct.label);
+      return ct.completed && m.type === 'transfer' && !m.dismissed;
+    });
+    var pending = allCT.filter(function(ct){
+      var m = getTaskMeta(ct.id, ct.label);
+      return !ct.completed && m.type === 'transfer' && !m.dismissed;
+    });
+    var showEmpty = (done.length === 0 && pending.length === 0);
+    assert(showEmpty, '"No transfers" empty state should show when done=0 and pending=0');
+  });
+
+  // ── S31-8: Multiple uncompleted transfers all appear in pending bucket ─────
+  test('S31-8: Multiple uncompleted transfer-type tasks all appear in pending bucket', function(){
+    customTaskData[TEST_WEEK] = [
+      {id:'p8_a', label:'Transfer $100 to savings', completed:false},
+      {id:'p8_b', label:'Transfer $200 to IRA',     completed:false},
+      {id:'p8_c', label:'Transfer $300 to reserve', completed:false}
+    ];
+    customTaskMeta = {};
+    setTaskMeta('p8_a', {type:'transfer', source:'user', version:1, dismissed:false});
+    setTaskMeta('p8_b', {type:'transfer', source:'user', version:1, dismissed:false});
+    setTaskMeta('p8_c', {type:'transfer', source:'user', version:1, dismissed:false});
+    var allCT = customTaskData[TEST_WEEK] || [];
+    var pending = allCT.filter(function(ct){
+      var m = getTaskMeta(ct.id, ct.label);
+      return !ct.completed && m.type === 'transfer' && !m.dismissed;
+    });
+    assert(pending.length === 3, 'Expected 3 pending entries, got: '+pending.length);
+  });
+
+  // ── S31-9: Pending bucket scoped to custom tasks only (not model tr entries)
+  test('S31-9: Model tr entries are not eligible for pending bucket (custom tasks only)', function(){
+    customTaskData[TEST_WEEK] = [];
+    customTaskMeta = {};
+    // W5 has several model tr entries including done/deferred — none should appear in pending
+    var w5 = WEEKS.find(function(w){ return w.num === 5; });
+    assert(w5 && w5.tr.length > 0, 'W5 should have model tr entries');
+    var allCT = customTaskData[TEST_WEEK] || [];
+    var pending = allCT.filter(function(ct){
+      var m = getTaskMeta(ct.id, ct.label);
+      return !ct.completed && m.type === 'transfer' && !m.dismissed;
+    });
+    assert(pending.length === 0, 'Model tr entries must not appear in pending bucket: '+pending.length);
+  });
+
+  // Restore state
+  customTaskData = savedCTD;
+  customTaskMeta = savedCTM;
+})();
+
+// ── S31-10 through S31-14: HTML source checks (run outside IIFE — read from `html`) ──
+console.log('');
+test('S31-10: .recon-guidance-note CSS class present in index.html source', function(){
+  assertIncludes(html, 'recon-guidance-note', '.recon-guidance-note CSS class missing from index.html');
+});
+test('S31-11: Recon guidance note text "posted/cleared balances only" present in index.html', function(){
+  assertIncludes(html, 'posted/cleared balances only', 'Recon guidance text missing from index.html');
+});
+test('S31-12: Recon guidance note references "pending inflows" and "pending outflows"', function(){
+  assertIncludes(html, 'pending inflows', '"pending inflows" missing from recon guidance note');
+  assertIncludes(html, 'pending outflows', '"pending outflows" missing from recon guidance note');
+});
+test('S31-13: Recon guidance note instructs capturing items in "Week Notes"', function(){
+  assertIncludes(html, 'Week Notes', '"Week Notes" reference missing from recon guidance note');
+});
+test('S31-14: .xfr-row.pending CSS class present in index.html source', function(){
+  assertIncludes(html, 'xfr-row.pending', '.xfr-row.pending CSS class missing from index.html');
+});
+
+// ─────────────────────────────────────────────────────────────────────────
 console.log('\n╔══════════════════════════════════════════════════════════════╗');
 console.log('║                       RESULTS                               ║');
 console.log('╚══════════════════════════════════════════════════════════════╝');

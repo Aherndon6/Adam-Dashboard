@@ -328,6 +328,7 @@ body{background:var(--bg);color:var(--ink);font-family:Inter,ui-sans-serif,syste
 .recon-open-btn:hover{background:var(--blueSoft);border-color:var(--blue);color:var(--blue);border-style:solid}
 .recon-form{background:var(--surface2);border:1px solid var(--line2);border-radius:11px;padding:13px;margin-top:9px}
 .recon-form-title{font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;margin-bottom:9px}
+.recon-guidance-note{font-size:11px;color:var(--muted);line-height:1.5;background:var(--surface3);border:1px solid var(--line2);border-radius:7px;padding:8px 10px;margin-bottom:11px}
 .recon-inputs{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:11px}
 .recon-field label{font-size:10px;color:var(--muted2);text-transform:uppercase;letter-spacing:.04em;display:block;margin-bottom:3px}
 .recon-input{width:100%;padding:7px 9px;border:1px solid var(--line2);border-radius:7px;font-size:14px;font-family:inherit;background:var(--surface);color:var(--ink)}
@@ -540,6 +541,7 @@ button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-vis
 .xfr-section-hdr{font-size:10px;font-weight:700;color:var(--muted2);text-transform:uppercase;letter-spacing:.07em;margin:10px 0 5px;padding-bottom:3px;border-bottom:1px solid var(--line)}
 .xfr-section-hdr:first-child{margin-top:0}
 .xfr-row.deferred{background:var(--amberSoft);border-radius:7px;padding:5px 7px;margin-bottom:4px}
+.xfr-row.pending{background:var(--surface3);border-radius:7px;padding:5px 7px;margin-bottom:4px}
 .xfr-row.deferred .xlbl{color:var(--amber);font-weight:700}
 .deferred-why{font-size:10px;color:var(--amber);margin-top:2px;font-style:italic}
 /* ── Phase 2: Floor health ─────────────────────────────────────────── */
@@ -2645,12 +2647,26 @@ function renderWeekDetail(w,weeks){
           return ct.completed&&m.type==='transfer'&&!m.dismissed;
         }).forEach(function(ct){done.push({l:ct.label,r:'done',rsn:'Custom transfer'});});
         var deferred=w.tr.filter(function(x){return x.r==='defer';});
+        // Pending bucket: custom transfer tasks only, not yet completed.
+        // Scoped to custom tasks (not model-generated actions) so we never
+        // infer pending state for forecast/model transfers that don't have
+        // an explicit model state for it.
+        var pending=_allCTp.filter(function(ct){
+          var m=getTaskMeta(ct.id,ct.label);
+          return !ct.completed&&m.type==='transfer'&&!m.dismissed;
+        });
         var html='';
         if(done.length){
           html+='<div class="xfr-section-hdr">Transfers this week<span class="week-date-badge">'+getWeekDate(activeW)+'</span></div>';
           html+=done.map(function(x){
             var ic=x.r==='info'?'ℹ️':'✅';
             return'<div class="xfr-row"><span class="xi">'+ic+'</span><div class="xtext"><div class="xlbl">'+esc(x.l)+'</div><div class="xrsn">'+esc(x.rsn)+'</div></div></div>';
+          }).join('');
+        }
+        if(pending.length){
+          html+='<div class="xfr-section-hdr" style="color:var(--muted)">⏳ Pending — not yet completed</div>';
+          html+=pending.map(function(ct){
+            return'<div class="xfr-row pending"><span class="xi">⏳</span><div class="xtext"><div class="xlbl">'+esc(ct.label)+'</div><div class="xrsn">Transfer task is still open</div></div></div>';
           }).join('');
         }
         if(deferred.length){
@@ -2661,7 +2677,7 @@ function renderWeekDetail(w,weeks){
             return'<div class="xfr-row deferred"><span class="xi">⏸</span><div class="xtext"><div class="xlbl">'+x.l+'</div><div class="xrsn">'+x.rsn+'</div><div class="deferred-why">'+why+'</div></div></div>';
           }).join('');
         }
-        if(!done.length&&!deferred.length){html='<div style="color:var(--muted);font-size:13px;padding:8px 0">No transfers this week.</div>';}
+        if(!done.length&&!pending.length&&!deferred.length){html='<div style="color:var(--muted);font-size:13px;padding:8px 0">No transfers this week.</div>';}
         return html;
       }())+
     '</div>'+
@@ -2859,7 +2875,9 @@ function renderWeekDetail(w,weeks){
   }
   if(reconOpen===w.num){
     var pre=w.actualBals||{chk:w.mChk,sav:w.mSav,amx:w.mAmx,tax:w.mTax,lc:w.mLc};
-    html+='<div class="recon-form"><div class="recon-form-title">Actual end-of-week balances — Wk '+getCalWeek(w.num)+' \xb7 '+w.dates+'</div><div class="recon-inputs">'+
+    html+='<div class="recon-form"><div class="recon-form-title">Actual end-of-week balances — Wk '+getCalWeek(w.num)+' \xb7 '+w.dates+'</div>'+
+      '<div class="recon-guidance-note">Enter posted/cleared balances only. Do not include pending inflows, pending outflows, or in-transit transfers that have not settled. Capture those items in Week Notes, along with the expected balance after they clear.</div>'+
+      '<div class="recon-inputs">'+
       '<div class="recon-field"><label>Truist Checking</label><input class="recon-input" id="ri_chk" type="number" step="0.01" value="'+pre.chk+'"></div>'+
       '<div class="recon-field"><label>Truist Savings</label><input class="recon-input" id="ri_sav" type="number" step="0.01" value="'+pre.sav+'"></div>'+
       '<div class="recon-field"><label>AMEX Savings</label><input class="recon-input" id="ri_amx" type="number" step="0.01" value="'+pre.amx+'"></div>'+
