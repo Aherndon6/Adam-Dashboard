@@ -3818,6 +3818,21 @@ function renderAssumptions(){
       '<p><strong>When to intervene:</strong> Large or unusual Jabian expenses or reimbursements should be added manually through Edit Week when they materially affect a paycheck, AMEX Gold bill, or Disney/Costco bill.</p>'+
       '<p><strong>Monthly review:</strong> A recommended action appears in the Adam-paycheck week closest to the 22nd of each month. Review outstanding Jabian expenses and expected reimbursements at that time — reimbursements arrive with the 22nd paycheck.</p>'+
     '</div>'+
+    '<div class="panel assumption-card"><h3>Budget Rules (Phase 5)</h3>'+
+      '<p>Budget Rules are a <strong>delta-mode overlay</strong> on the WD baseline. They adjust Truist Checking for time-bounded or seasonal items without changing the WD array.</p>'+
+      '<p><strong>Use Budget Rules for:</strong> time-bounded or seasonal items with a natural end date — rent changes, medical bills on a payment plan, sports/activity fees, travel cash flows. Any outflow or inflow that starts and stops on a known schedule.</p>'+
+      '<p><strong>Update WD directly for:</strong> permanent baseline shifts — a new recurring bill that has no end date, a permanent salary change, a permanent expense removal. Budget Rules are the wrong tool for items that never end.</p>'+
+      '<p><strong>Credit card rule (standing):</strong> Assume a charge lands on a credit card unless explicitly told otherwise. AMEX Gold is the primary card. Disney Visa and AMEX Platinum are secondary. Budget Rules for credit card charges should model at the <em>payment date</em>, not the charge date — the existing WD credit card payment estimates plus statement-close true-up overrides already handle the cash flow. Adding a Budget Rule at the charge date would double-count it.</p>'+
+      '<p><strong>Source-of-truth precedence per week (highest → lowest):</strong></p>'+
+      '<ol style="margin:6px 0 10px 18px;font-size:13px;line-height:1.8">'+
+        '<li>Reconciled actuals — real balances override everything</li>'+
+        '<li>Week overrides (overrideData) — user-edited events</li>'+
+        '<li>Budget Rules delta — additive on top of WD</li>'+
+        '<li>WD baseline — default source</li>'+
+      '</ol>'+
+      '<p>When a week override is active, Budget Rules are <strong>bypassed entirely</strong> for that week and logged to ruleAudit as <code>bypassed_by_model_week_override</code>. Budget Rules resume normally in the next non-overridden week.</p>'+
+      '<p style="font-size:12px;color:var(--muted)">Absolute mode (replacing WD values instead of adding deltas) is reserved for a future phase and is currently blocked. All active rules must use delta mode.</p>'+
+    '</div>'+
     '<div class="panel assumption-card"><h3>Reconciliation &amp; Overrides</h3>'+
       '<p><strong>Reconciliation roll-forward:</strong> When you enter actual balances for a week, those actuals replace the modeled ending balances as the starting point for the next week. This propagates real-world variances through the forecast.</p>'+
       '<p><strong>Week overrides:</strong> Editing a week creates an entry in <code>overrideData</code>. The model reads <code>overrideData[num]</code> when building the effective week list. Overrides never mutate <code>WD</code>. Deleting an override restores the base week definition.</p>'+
