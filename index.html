@@ -779,6 +779,7 @@ button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-vis
       <div class="top-right" id="topbar-right"><div class="sync-badge"><div class="sync-dot" id="sync-dot"></div><span id="lastReconLabel">Connecting...</span></div></div>
     </header>
     <div class="content">
+      <div id="budget-rules-warn" style="display:none;background:#7f1d1d;color:#fca5a5;padding:8px 16px;font-size:12px;font-weight:600;text-align:center;">&#x26A0; Budget Rules failed to load — model running from WD baseline only</div>
       <div id="s-overview" class="section active"><div id="overview-content"></div></div>
       <div id="s-weekly" class="section"><div id="weekly-content"></div></div>
       <div id="s-goals" class="section"><div id="goals-content"></div></div>
@@ -856,6 +857,11 @@ var taskData={};
 var noteData={};
 var overrideData={};
 var reconOpen=null;
+
+// ── Budget Rules (Phase 5) ─────────────────────────────────────────────────
+var budgetRules=[];
+var budgetRulesLoadStatus='not_configured'; // 'not_configured' | 'loaded' | 'failed'
+var ruleAudit=[]; // reset each runModel() call; diagnostic only, not persisted
 
 // ── Action override system ─────────────────────────────────────────────────
 // Action keys for model-generated actions
@@ -1487,6 +1493,9 @@ function runModel(akGoal,rtGoal,flags){
     var effEvs=ov.events_json||[];
     effectiveWD.push([ov.week_num,ov.dates||'Custom week',effEvs.filter(function(e){return e.t==='in';}).map(function(e){return e.a;}),effEvs.filter(function(e){return e.t==='ob';}).map(function(e){return Math.abs(e.a);}),effEvs,ov.ct||0,ov.ca||0,'']);
   });
+  // ── Budget Rules — Phase 5 delta overlay ─────────────────────────────
+  ruleAudit=[];
+  var ruleContext=buildBudgetRuleContext(budgetRules);
   for(const wd of effectiveWD){
     const[num,dates,inflows,obs,evs,ct,ca,calNote]=wd;
     const startChk=r(chk),startSav=r(sav),startAmx=r(amx),startTax=r(tax),startLc=r(lc);
@@ -1494,6 +1503,8 @@ function runModel(akGoal,rtGoal,flags){
     for(const a of inflows)chk=r(chk+a);
     for(const a of obs)chk=r(chk-a);
     const tr=[],ac=[],acKeys=[],recActs=[];
+    // ── Budget Rules delta overlay (after WD inflows/obs, before waterfall) ─
+    chk=r(chk+applyBudgetRulesForWeek(num,ruleContext.byWeek[num]||[],tr,ruleAudit));
     const fn='$'+effFl.toLocaleString('en-US');
     // ── Week 1 setup (historical — locked, cannot be moved or deleted) ────
     if(num===1){
@@ -3920,6 +3931,9 @@ function renderApp(){
   var weeks=applyCompletionSnapshots(getActiveModel());
   var vm=buildDashboardViewModel(weeks,g);
   updateReconLabel(weeks);
+  // ── Budget Rules warning banner ────────────────────────────────────────
+  var _brw=document.getElementById('budget-rules-warn');
+  if(_brw)_brw.style.display=(budgetRulesLoadStatus==='failed')?'block':'none';
   // Update nav pill
   var pill=document.getElementById('nav-pill-weekly');if(pill)pill.textContent='W'+getCalWeek(activeW);
   // ── Dynamic topbar subtitle ─────────────────────────────────────────────
@@ -3991,14 +4005,15 @@ async function saveGoal(key,value){
 
 async function loadAll(){
   try{
-    var[reconR,tasksR,notesR,overridesR,goalsR,wishlistR,customTasksR]=await Promise.all([
+    var[reconR,tasksR,notesR,overridesR,goalsR,wishlistR,customTasksR,budgetRulesR]=await Promise.all([
       fetch(SUPA_URL+'/rest/v1/weekly_reconciliations?select=*',{headers:SUPA_H}),
       fetch(SUPA_URL+'/rest/v1/weekly_tasks?select=*',{headers:SUPA_H}),
       fetch(SUPA_URL+'/rest/v1/weekly_notes?select=*',{headers:SUPA_H}),
       fetch(SUPA_URL+'/rest/v1/model_week_overrides?select=*',{headers:SUPA_H}),
       fetch(SUPA_URL+'/rest/v1/goals?select=key,value',{headers:SUPA_H}),
       fetch(SUPA_URL+'/rest/v1/wishlist_items?select=*&order=created_at.asc',{headers:SUPA_H}),
-      fetch(SUPA_URL+'/rest/v1/custom_tasks?select=*&order=created_at.asc',{headers:SUPA_H})
+      fetch(SUPA_URL+'/rest/v1/custom_tasks?select=*&order=created_at.asc',{headers:SUPA_H}),
+      fetch(SUPA_URL+'/rest/v1/budget_rules?active=eq.true&order=start_date.asc',{headers:SUPA_H})
     ]);
     if(reconR.ok){(await reconR.json()).forEach(function(row){reconData[row.week_num]={chk:row.chk,sav:row.sav,amx:row.amx,tax:row.tax,lc:row.lc,date:new Date(row.recorded_at).toLocaleDateString('en-US',{month:'short',day:'numeric'})};});}
     if(tasksR.ok){(await tasksR.json()).forEach(function(row){taskData[row.week_num+'_'+row.task_idx]={completed:row.completed,completedAt:row.completed_at,completedAmount:row.completed_amount!=null?parseFloat(row.completed_amount):null,actionKey:row.action_key||null,completedLabel:row.completed_label||null};});}
@@ -4044,8 +4059,16 @@ async function loadAll(){
     }
     // Run type migration for any custom tasks missing version field
     migrateCustomTaskMeta();
+    // ── Budget Rules load ──────────────────────────────────────────────────
+    if(budgetRulesR.ok){
+      budgetRules=await budgetRulesR.json();
+      budgetRulesLoadStatus='loaded'; // successful fetch, even if 0 active rules
+    } else {
+      budgetRulesLoadStatus='failed';
+      console.warn('[BudgetRules] Load failed: HTTP '+budgetRulesR.status);
+    }
     _supaConnected=true;
-  }catch(e){console.error('loadAll:',e);_supaConnected=false;}
+  }catch(e){console.error('loadAll:',e);_supaConnected=false;budgetRulesLoadStatus='failed';}
   renderApp();
 }
 
@@ -4067,6 +4090,131 @@ var askLoading=false;
 function getWeekStartDate(n){return new Date(2026,5,7+(n-1)*7);}
 function fmtDate(d){var M=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];return M[d.getMonth()]+' '+d.getDate();}
 function getWeekDate(n){return fmtDate(getWeekStartDate(n));}
+
+// ── Budget Rules — Phase 5 helper module ─────────────────────────────────
+// Constants
+var BUDGET_RULE_CATEGORIES=['income','rent','auto','medical','sports','credit_card','tax','savings','travel','education','insurance','utilities','other'];
+var BUDGET_RULE_APPLIES_TO=['truist_checking','vio_tax','lending_club_ef','fidelity','amex_savings'];
+var _BR_START=new Date(2026,5,7,12,0,0);  // Jun 7 2026 noon
+var _BR_END  =new Date(2027,0,9,12,0,0);  // Jan 9 2027 noon
+var _BR_END_STR='2027-01-09';
+
+function isValidISODate(s){
+  if(typeof s!=='string'||!/^\d{4}-\d{2}-\d{2}$/.test(s))return false;
+  var p=s.split('-').map(Number);
+  var dt=new Date(p[0],p[1]-1,p[2]);
+  return dt.getFullYear()===p[0]&&dt.getMonth()===p[1]-1&&dt.getDate()===p[2];
+}
+
+function validateBudgetRule(rule){
+  var errors=[];
+  if(typeof rule.amount!=='number'||rule.amount<=0)errors.push('amount must be numeric and > 0');
+  if(!['inflow','outflow'].includes(rule.direction))errors.push('direction must be inflow or outflow');
+  if(!['one-time','weekly','biweekly','monthly'].includes(rule.frequency))errors.push('unsupported frequency: '+rule.frequency);
+  if(!isValidISODate(rule.start_date))errors.push('start_date must be valid YYYY-MM-DD');
+  if(rule.end_date!=null&&rule.end_date!==undefined){
+    if(!isValidISODate(rule.end_date))errors.push('end_date must be valid YYYY-MM-DD');
+    else if(rule.end_date<rule.start_date)errors.push('end_date must not be before start_date');
+  }
+  if(rule.rule_mode==='absolute')errors.push('PHASE1_ABSOLUTE_BLOCKED: absolute mode not supported in OS Phase 5');
+  return errors;
+}
+
+function addMonthsToDateStr(dateStr,n){
+  // Integer-math month addition — never uses setMonth() — anchored to dateStr day to prevent drift
+  var p=dateStr.split('-').map(Number);
+  var totalMonths=(p[0]*12+(p[1]-1))+n;
+  var ny=Math.floor(totalMonths/12);
+  var nm=(totalMonths%12)+1;
+  var lastDay=new Date(ny,nm,0).getDate();
+  return ny+'-'+String(nm).padStart(2,'0')+'-'+String(Math.min(p[2],lastDay)).padStart(2,'0');
+}
+
+function pinnedMonthlyDateStr(year,month,pinDay){
+  // Clamp pinDay to last day of target month
+  var lastDay=new Date(year,month,0).getDate();
+  return year+'-'+String(month).padStart(2,'0')+'-'+String(Math.min(pinDay,lastDay)).padStart(2,'0');
+}
+
+function dateToModelWeek(dateStr){
+  var p=dateStr.split('-').map(Number);
+  var dt=new Date(p[0],p[1]-1,p[2],12,0,0);
+  if(dt<_BR_START||dt>_BR_END)return null;
+  return Math.floor((dt-_BR_START)/604800000)+1; // 604800000 = 7*24*3600*1000
+}
+
+function generateOccurrenceDates(rule){
+  var endBound=(rule.end_date&&isValidISODate(rule.end_date))?rule.end_date:_BR_END_STR;
+  var occ=[];
+  if(rule.frequency==='one-time'){
+    if(rule.start_date<=endBound)occ.push(rule.start_date);
+    return occ;
+  }
+  var current=rule.start_date;
+  var pinDay=rule.day_of_month||null;
+  var monthCount=0;
+  while(current<=endBound){
+    occ.push(current);
+    if(rule.frequency==='weekly'){
+      var pw=current.split('-').map(Number);
+      var nd=new Date(pw[0],pw[1]-1,pw[2]+7,12);
+      current=nd.getFullYear()+'-'+String(nd.getMonth()+1).padStart(2,'0')+'-'+String(nd.getDate()).padStart(2,'0');
+    } else if(rule.frequency==='biweekly'){
+      var pb=current.split('-').map(Number);
+      var nb=new Date(pb[0],pb[1]-1,pb[2]+14,12);
+      current=nb.getFullYear()+'-'+String(nb.getMonth()+1).padStart(2,'0')+'-'+String(nb.getDate()).padStart(2,'0');
+    } else if(rule.frequency==='monthly'){
+      monthCount++;
+      if(pinDay){
+        var base=addMonthsToDateStr(rule.start_date,monthCount);
+        var bp=base.split('-').map(Number);
+        current=pinnedMonthlyDateStr(bp[0],bp[1],pinDay);
+      } else {
+        current=addMonthsToDateStr(rule.start_date,monthCount);
+      }
+    }
+  }
+  return occ;
+}
+
+function buildBudgetRuleContext(rules){
+  var byWeek={};
+  for(var i=0;i<rules.length;i++){
+    var rule=rules[i];
+    if(!rule.active)continue;
+    // amount must be numeric for validation (Supabase returns strings)
+    var ruleNorm=Object.assign({},rule,{amount:parseFloat(rule.amount)});
+    var errors=validateBudgetRule(ruleNorm);
+    if(errors.length>0){
+      var action=errors.some(function(e){return e.indexOf('PHASE1_ABSOLUTE_BLOCKED')===0;})?'skipped_unsupported_absolute_phase1':'skipped_validation_error';
+      console.warn('[BudgetRules] Rule skipped — id:',rule.id,rule.label,errors);
+      ruleAudit.push({rule_id:rule.id,label:rule.label,mode:rule.rule_mode,action:action,errors:errors});
+      continue;
+    }
+    var dates=generateOccurrenceDates(ruleNorm);
+    for(var j=0;j<dates.length;j++){
+      var wk=dateToModelWeek(dates[j]);
+      if(!wk)continue;
+      if(!byWeek[wk])byWeek[wk]=[];
+      byWeek[wk].push({id:rule.id,label:rule.label,amount:ruleNorm.amount,direction:rule.direction,rule_mode:rule.rule_mode,category:rule.category,baseline_match_key:rule.baseline_match_key,dateStr:dates[j]});
+    }
+  }
+  return{byWeek:byWeek};
+}
+
+function applyBudgetRulesForWeek(weekNum,weekRules,tr,audit){
+  // Returns chkDelta — caller adds this to chk.
+  // Phase 5: only delta rules reach this function (absolute blocked in buildBudgetRuleContext).
+  var delta=0;
+  for(var i=0;i<weekRules.length;i++){
+    var ru=weekRules[i];
+    var signed=ru.direction==='inflow'?ru.amount:-ru.amount;
+    delta+=signed;
+    tr.push({l:ru.label+' ('+ru.dateStr+') [budget rule]',r:ru.direction==='inflow'?'in':'ob',a:signed});
+    audit.push({week:weekNum,rule_id:ru.id,label:ru.label,date:ru.dateStr,mode:ru.rule_mode,direction:ru.direction,amount:signed,action:'applied'});
+  }
+  return delta;
+}
 
 // ── Scenario-aware model runner ───────────────────────────────────────────
 function getActiveModel(){

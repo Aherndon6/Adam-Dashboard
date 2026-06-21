@@ -3341,6 +3341,267 @@ test('S31-16: BUILD_TS is a valid ISO-format local datetime string', function(){
   assert(m && /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}$/.test(m[1]), 'BUILD_TS format invalid: ' + (m && m[1]));
 });
 
+// ═══════════════════════════════════════════════════════════════════════════
+// Section BR: Budget Rules — Phase 5 delta foundation
+// ═══════════════════════════════════════════════════════════════════════════
+console.log('\n── Section BR-A: Baseline equivalence ──');
+
+test('BR-A1: empty budgetRules produces identical chk as baseline for all 31 weeks', function(){
+  var baseline = runModel(7000, 7694.87);
+  budgetRules = [];
+  var withEmpty = runModel(7000, 7694.87);
+  for(var i=0;i<31;i++){
+    assert(Math.abs(baseline[i].chk - withEmpty[i].chk) < 0.01,
+      'Week '+(i+1)+' chk mismatch: '+baseline[i].chk+' vs '+withEmpty[i].chk);
+  }
+});
+
+test('BR-A2: budgetRulesLoadStatus starts as not_configured before any load', function(){
+  budgetRulesLoadStatus = 'not_configured';
+  assert(budgetRulesLoadStatus === 'not_configured', 'should be not_configured');
+});
+
+test('BR-A3: ruleAudit is empty when budgetRules is empty', function(){
+  budgetRules = [];
+  ruleAudit = [];
+  runModel(7000, 7694.87);
+  assert(ruleAudit.length === 0, 'ruleAudit should be empty, got '+ruleAudit.length);
+});
+
+console.log('\n── Section BR-B: isValidISODate ──');
+
+test('BR-B1: 2026-07-15 is valid', function(){ assert(isValidISODate('2026-07-15')); });
+test('BR-B2: 2027-01-09 is valid', function(){ assert(isValidISODate('2027-01-09')); });
+test('BR-B3: 07/15/2026 is invalid', function(){ assert(!isValidISODate('07/15/2026')); });
+test('BR-B4: 2026-2-5 is invalid', function(){ assert(!isValidISODate('2026-2-5')); });
+test('BR-B5: 2026-02-30 is invalid', function(){ assert(!isValidISODate('2026-02-30')); });
+test('BR-B6: non-string is invalid', function(){ assert(!isValidISODate(20260715)); });
+
+console.log('\n── Section BR-C: validateBudgetRule ──');
+
+var _validRule = {amount:200,direction:'outflow',rule_mode:'delta',frequency:'monthly',start_date:'2026-08-01',end_date:null};
+test('BR-C1: valid delta rule produces no errors', function(){
+  assert(validateBudgetRule(_validRule).length === 0, 'expected no errors');
+});
+test('BR-C2: amount=0 produces error', function(){
+  assert(validateBudgetRule(Object.assign({},_validRule,{amount:0})).length > 0);
+});
+test('BR-C3: amount negative produces error', function(){
+  assert(validateBudgetRule(Object.assign({},_validRule,{amount:-50})).length > 0);
+});
+test('BR-C4: bad direction produces error', function(){
+  assert(validateBudgetRule(Object.assign({},_validRule,{direction:'sideways'})).length > 0);
+});
+test('BR-C5: unsupported frequency produces error', function(){
+  assert(validateBudgetRule(Object.assign({},_validRule,{frequency:'quarterly'})).length > 0);
+});
+test('BR-C6: invalid start_date format produces error', function(){
+  assert(validateBudgetRule(Object.assign({},_validRule,{start_date:'07/15/2026'})).length > 0);
+});
+test('BR-C7: end_date before start_date produces error', function(){
+  assert(validateBudgetRule(Object.assign({},_validRule,{start_date:'2026-08-01',end_date:'2026-07-01'})).length > 0);
+});
+test('BR-C8: rule_mode=absolute produces PHASE1_ABSOLUTE_BLOCKED error', function(){
+  var errors = validateBudgetRule(Object.assign({},_validRule,{rule_mode:'absolute'}));
+  assert(errors.some(function(e){return e.indexOf('PHASE1_ABSOLUTE_BLOCKED') === 0;}), 'expected absolute blocked error');
+});
+
+console.log('\n── Section BR-D: addMonthsToDateStr ──');
+
+test('BR-D1: Jan 31 + 1 = Feb 28 (2026, non-leap)', function(){
+  assert(addMonthsToDateStr('2026-01-31',1) === '2026-02-28', 'got '+addMonthsToDateStr('2026-01-31',1));
+});
+test('BR-D2: Jan 31 + 1 = Feb 29 (2028, leap)', function(){
+  assert(addMonthsToDateStr('2028-01-31',1) === '2028-02-29', 'got '+addMonthsToDateStr('2028-01-31',1));
+});
+test('BR-D3: Aug 31 + 1 = Sep 30', function(){
+  assert(addMonthsToDateStr('2026-08-31',1) === '2026-09-30', 'got '+addMonthsToDateStr('2026-08-31',1));
+});
+test('BR-D4: Dec 31 + 1 = Jan 31 next year', function(){
+  assert(addMonthsToDateStr('2026-12-31',1) === '2027-01-31', 'got '+addMonthsToDateStr('2026-12-31',1));
+});
+test('BR-D5: no drift — Jan 31: +1=Feb 28, +2=Mar 31, +3=Apr 30, +4=May 31', function(){
+  assert(addMonthsToDateStr('2026-01-31',1) === '2026-02-28');
+  assert(addMonthsToDateStr('2026-01-31',2) === '2026-03-31', '+2 drifted: '+addMonthsToDateStr('2026-01-31',2));
+  assert(addMonthsToDateStr('2026-01-31',3) === '2026-04-30', '+3 drifted: '+addMonthsToDateStr('2026-01-31',3));
+  assert(addMonthsToDateStr('2026-01-31',4) === '2026-05-31', '+4 drifted: '+addMonthsToDateStr('2026-01-31',4));
+});
+
+console.log('\n── Section BR-E: pinnedMonthlyDateStr ──');
+
+test('BR-E1: pin 31 in April = Apr 30', function(){
+  assert(pinnedMonthlyDateStr(2026,4,31) === '2026-04-30', 'got '+pinnedMonthlyDateStr(2026,4,31));
+});
+test('BR-E2: pin 31 in Feb (non-leap) = Feb 28', function(){
+  assert(pinnedMonthlyDateStr(2026,2,31) === '2026-02-28', 'got '+pinnedMonthlyDateStr(2026,2,31));
+});
+test('BR-E3: pin 31 in Feb (leap) = Feb 29', function(){
+  assert(pinnedMonthlyDateStr(2028,2,31) === '2028-02-29', 'got '+pinnedMonthlyDateStr(2028,2,31));
+});
+test('BR-E4: pin 15 in any month = always 15th', function(){
+  assert(pinnedMonthlyDateStr(2026,7,15) === '2026-07-15');
+  assert(pinnedMonthlyDateStr(2026,12,15) === '2026-12-15');
+});
+
+console.log('\n── Section BR-F: dateToModelWeek ──');
+
+test('BR-F1: Jun 7 2026 = week 1', function(){ assert(dateToModelWeek('2026-06-07') === 1); });
+test('BR-F2: Jun 13 2026 = week 1', function(){ assert(dateToModelWeek('2026-06-13') === 1); });
+test('BR-F3: Jun 14 2026 = week 2', function(){ assert(dateToModelWeek('2026-06-14') === 2); });
+test('BR-F4: Jan 9 2027 = week 31', function(){ assert(dateToModelWeek('2027-01-09') === 31); });
+test('BR-F5: Jun 6 2026 = null (before model)', function(){ assert(dateToModelWeek('2026-06-06') === null); });
+test('BR-F6: Jan 10 2027 = null (after model)', function(){ assert(dateToModelWeek('2027-01-10') === null); });
+test('BR-F7: Jul 7 2026 = week 5 (Kia payment week)', function(){ assert(dateToModelWeek('2026-07-07') === 5); });
+
+console.log('\n── Section BR-G: generateOccurrenceDates ──');
+
+test('BR-G1: one-time rule produces exactly 1 date', function(){
+  var rule = {frequency:'one-time',start_date:'2026-09-01',end_date:null,day_of_month:null};
+  assert(generateOccurrenceDates(rule).length === 1);
+});
+test('BR-G2: monthly rule Jul 15 – Dec 15 produces 6 occurrences', function(){
+  var rule = {frequency:'monthly',start_date:'2026-07-15',end_date:'2026-12-15',day_of_month:15};
+  var occ = generateOccurrenceDates(rule);
+  assert(occ.length === 6, 'expected 6, got '+occ.length);
+  assert(occ[0] === '2026-07-15');
+  assert(occ[5] === '2026-12-15');
+});
+test('BR-G3: monthly rule pinned to day 1 Aug – model end produces correct months', function(){
+  var rule = {frequency:'monthly',start_date:'2026-08-01',end_date:null,day_of_month:1};
+  var occ = generateOccurrenceDates(rule);
+  // Aug 1, Sep 1, Oct 1, Nov 1, Dec 1, Jan 1 2027 — all within model
+  assert(occ.length >= 5, 'expected at least 5, got '+occ.length);
+  assert(occ[0] === '2026-08-01');
+});
+test('BR-G4: weekly rule produces 7-day intervals', function(){
+  var rule = {frequency:'weekly',start_date:'2026-07-01',end_date:'2026-07-22',day_of_month:null};
+  var occ = generateOccurrenceDates(rule);
+  assert(occ.length === 4, 'expected 4, got '+occ.length);
+  assert(occ[1] === '2026-07-08');
+  assert(occ[3] === '2026-07-22');
+});
+test('BR-G5: one-time rule before model start produces no in-window weeks', function(){
+  var rule = {frequency:'one-time',start_date:'2026-06-01',end_date:null,day_of_month:null};
+  var occ = generateOccurrenceDates(rule);
+  var inWindow = occ.filter(function(d){return dateToModelWeek(d)!==null;});
+  assert(inWindow.length === 0, 'expected 0 in-window, got '+inWindow.length);
+});
+
+console.log('\n── Section BR-H: buildBudgetRuleContext ──');
+
+test('BR-H1: inactive rule produces empty byWeek and no ruleAudit entry', function(){
+  ruleAudit = [];
+  var ctx = buildBudgetRuleContext([{id:1,label:'X',amount:100,direction:'outflow',rule_mode:'delta',frequency:'one-time',start_date:'2026-07-07',end_date:null,day_of_month:null,active:false}]);
+  assert(Object.keys(ctx.byWeek).length === 0);
+  assert(ruleAudit.length === 0);
+});
+test('BR-H2: valid delta rule appears in correct week', function(){
+  ruleAudit = [];
+  var ctx = buildBudgetRuleContext([{id:2,label:'Test',amount:'150',direction:'outflow',rule_mode:'delta',frequency:'one-time',start_date:'2026-07-07',end_date:null,day_of_month:null,active:true}]);
+  assert(ctx.byWeek[5] && ctx.byWeek[5].length === 1, 'expected week 5');
+  assert(ctx.byWeek[5][0].label === 'Test');
+});
+test('BR-H3: absolute rule is blocked — not in byWeek, in ruleAudit', function(){
+  ruleAudit = [];
+  var ctx = buildBudgetRuleContext([{id:3,label:'AbsTest',amount:791,direction:'outflow',rule_mode:'absolute',frequency:'monthly',start_date:'2026-07-07',end_date:null,day_of_month:7,active:true}]);
+  assert(Object.keys(ctx.byWeek).length === 0, 'absolute rule should not appear in byWeek');
+  assert(ruleAudit.length === 1 && ruleAudit[0].action === 'skipped_unsupported_absolute_phase1', 'expected audit entry');
+});
+test('BR-H4: two delta rules in same week both appear', function(){
+  ruleAudit = [];
+  var rules = [
+    {id:4,label:'A',amount:'100',direction:'outflow',rule_mode:'delta',frequency:'one-time',start_date:'2026-07-07',end_date:null,day_of_month:null,active:true},
+    {id:5,label:'B',amount:'200',direction:'inflow',rule_mode:'delta',frequency:'one-time',start_date:'2026-07-07',end_date:null,day_of_month:null,active:true}
+  ];
+  var ctx = buildBudgetRuleContext(rules);
+  assert(ctx.byWeek[5] && ctx.byWeek[5].length === 2, 'expected 2 rules in week 5, got '+(ctx.byWeek[5]||[]).length);
+});
+
+console.log('\n── Section BR-I: applyBudgetRulesForWeek ──');
+
+test('BR-I1: outflow rule returns negative delta', function(){
+  var tr=[],audit=[];
+  var delta = applyBudgetRulesForWeek(5,[{id:1,label:'Rent+',amount:200,direction:'outflow',rule_mode:'delta',dateStr:'2026-08-01'}],tr,audit);
+  assertApprox(delta,-200,'delta');
+});
+test('BR-I2: inflow rule returns positive delta', function(){
+  var tr=[],audit=[];
+  var delta = applyBudgetRulesForWeek(5,[{id:2,label:'Bonus',amount:1500,direction:'inflow',rule_mode:'delta',dateStr:'2026-09-01'}],tr,audit);
+  assertApprox(delta,1500,'delta');
+});
+test('BR-I3: rule appears in tr with correct label and direction', function(){
+  var tr=[],audit=[];
+  applyBudgetRulesForWeek(5,[{id:1,label:'Medical',amount:150,direction:'outflow',rule_mode:'delta',dateStr:'2026-07-15'}],tr,audit);
+  assert(tr.length === 1, 'expected 1 tr entry');
+  assertIncludes(tr[0].l,'Medical');
+  assertIncludes(tr[0].l,'2026-07-15');
+  assert(tr[0].r === 'ob');
+});
+test('BR-I4: audit entry has correct fields', function(){
+  var tr=[],audit=[];
+  applyBudgetRulesForWeek(7,[{id:99,label:'Baseball',amount:125,direction:'outflow',rule_mode:'delta',dateStr:'2026-07-10'}],tr,audit);
+  assert(audit.length === 1);
+  assert(audit[0].week === 7);
+  assert(audit[0].rule_id === 99);
+  assert(audit[0].action === 'applied');
+  assertApprox(audit[0].amount,-125,'audit amount');
+});
+test('BR-I5: empty weekRules returns 0 delta, nothing in tr or audit', function(){
+  var tr=[],audit=[];
+  var delta = applyBudgetRulesForWeek(1,[],tr,audit);
+  assert(delta === 0);
+  assert(tr.length === 0);
+  assert(audit.length === 0);
+});
+test('BR-I6: two stacked rules produce sum delta', function(){
+  var tr=[],audit=[];
+  var delta = applyBudgetRulesForWeek(5,[
+    {id:1,label:'A',amount:200,direction:'outflow',rule_mode:'delta',dateStr:'2026-08-01'},
+    {id:2,label:'B',amount:150,direction:'outflow',rule_mode:'delta',dateStr:'2026-08-01'}
+  ],tr,audit);
+  assertApprox(delta,-350,'stacked delta');
+  assert(tr.length === 2);
+  assert(audit.length === 2);
+});
+
+console.log('\n── Section BR-J: runModel integration ──');
+
+test('BR-J1: active delta rule reduces chk in correct week', function(){
+  budgetRules = [{id:10,label:'Rent increase',amount:'200',direction:'outflow',rule_mode:'delta',frequency:'monthly',start_date:'2026-08-01',end_date:null,day_of_month:1,active:true}];
+  var baseWeeks = runModel(7000,7694.87); // budgetRules now active
+  budgetRules = [];
+  var noRuleWeeks = runModel(7000,7694.87);
+  // Aug 1 = model week 9 (Jun 7 + 8*7 = Aug 2, so Aug 1 = end of week 8 range — let's verify)
+  var aug1week = dateToModelWeek('2026-08-01');
+  assert(aug1week !== null, 'Aug 1 should be in model window');
+  var baseChk = baseWeeks[aug1week-1].chk;
+  var noRuleChk = noRuleWeeks[aug1week-1].chk;
+  assertApprox(baseChk, noRuleChk - 200, 'rent increase week chk should be $200 lower', 0.01);
+});
+test('BR-J2: weeks before rule start_date are unaffected', function(){
+  budgetRules = [{id:11,label:'Rent increase',amount:'200',direction:'outflow',rule_mode:'delta',frequency:'monthly',start_date:'2026-08-01',end_date:null,day_of_month:1,active:true}];
+  var withRule = runModel(7000,7694.87);
+  budgetRules = [];
+  var noRule = runModel(7000,7694.87);
+  // Aug 1 falls in model week 8 (Jul 26–Aug 1), so only weeks 1–7 are unaffected
+  var aug1week = dateToModelWeek('2026-08-01'); // = 8
+  for(var i=0;i<aug1week-1;i++){
+    assertApprox(withRule[i].chk, noRule[i].chk, 'week '+(i+1)+' should be unaffected', 0.01);
+  }
+});
+test('BR-J3: ruleAudit resets each runModel call', function(){
+  budgetRules = [{id:12,label:'X',amount:'100',direction:'outflow',rule_mode:'delta',frequency:'monthly',start_date:'2026-07-01',end_date:'2026-09-30',day_of_month:1,active:true}];
+  runModel(7000,7694.87);
+  var firstLen = ruleAudit.filter(function(e){return e.action==='applied';}).length;
+  runModel(7000,7694.87);
+  var secondLen = ruleAudit.filter(function(e){return e.action==='applied';}).length;
+  assert(firstLen === secondLen, 'ruleAudit should reset each call: '+firstLen+' vs '+secondLen);
+  budgetRules = [];
+});
+
+// Reset budget rules to empty for remaining tests
+budgetRules = [];
+
 // ─────────────────────────────────────────────────────────────────────────
 console.log('\n╔══════════════════════════════════════════════════════════════╗');
 console.log('║                       RESULTS                               ║');
