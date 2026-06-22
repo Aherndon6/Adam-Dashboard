@@ -787,7 +787,7 @@ button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-vis
   <div class="auth-box">
     <div class="auth-logo">
       <div class="auth-logo-icon">H</div>
-      <div><h1>Herndon Financial OS</h1><p>Wealth Plan · 2026</p></div>
+      <div><h1>Herndon Financial OS</h1></div>
     </div>
     <div id="auth-banner" class="auth-banner"></div>
     <div id="auth-error" class="auth-error"></div>
@@ -798,7 +798,7 @@ button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-vis
   <aside class="sidebar">
     <div class="brand">
       <div class="logo">H</div>
-      <div class="brand-text"><h1>Herndon<br>Financial OS</h1><p>Wealth Plan · 2026</p></div>
+      <div class="brand-text"><h1>Herndon<br>Financial OS</h1></div>
     </div>
     <div class="nav-label">Dashboard</div>
     <button class="nav-item active" id="nav-overview" onclick="setSection('overview')"><span class="nav-icon">◉</span>Overview</button>
@@ -852,7 +852,7 @@ button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-vis
 // ── Constants (unchanged) ──────────────────────────────────────────────────
 // Simplified architecture — $8,250 total from LC · $6,500 operating floor · no legacy mechanics
 // Real-world moves: keep $2,250 in chk, move $2,750 sav→chk, move $1,000 LC→chk, move $2,250 LC→chk (Option 1 correction)
-const BUILD_TS='2026-06-22T13:59:29'; // updated each push — local time string
+const BUILD_TS='2026-06-22T19:04:58'; // updated each push — local time string
 const START_CHK=18037.73,START_SAV=3772.77,START_AMX=103.64,START_TAX=0,START_LC=13488.88;
 const EF_AMT=13488.88; // LC/EF balance — static this model year (no transfers in or out)
 const BASE_TAX=521.36,RET_SAV_XFR=3772.74;
@@ -1339,9 +1339,9 @@ function getAutoRemindersForWeek(weekNum){
   var VIO_LC_MONTHS=[3,5,9,14,18,22,27,31]; // Jun trigger at model wk 3 (cal wk 25, Jun 21) not wk 1 (cal wk 23)
   if(VIO_LC_MONTHS.indexOf(weekNum)>=0){
     if(weekNum===14||weekNum===27){
-      reminders.push({reminderKey:yr+'_w'+weekNum+'__lc_return',label:'📌 QUARTERLY LC RETURN — Transfer $750 Lending Club → Vio Bank - Tax Reserve before this month\'s deposit (end-of-quarter APR cycle return: Jun/Jul/Aug or Sep/Oct/Nov).',type:'transfer'});
+      reminders.push({reminderKey:yr+'_w'+weekNum+'__lc_return',label:'📌 QUARTERLY LC RETURN — Transfer $750 Lending Club → Vio Bank - Emergency before this month\'s deposit (end-of-quarter APR cycle return: Jun/Jul/Aug or Sep/Oct/Nov).',type:'transfer'});
     }
-    reminders.push({reminderKey:yr+'_w'+weekNum+'__lc_boost',label:'📌 MONTHLY LC BOOST — Transfer $250 Vio Bank - Tax Reserve → Lending Club (first of month, maintains LC APR rate tier).',type:'transfer'});
+    reminders.push({reminderKey:yr+'_w'+weekNum+'__lc_boost',label:'📌 MONTHLY LC BOOST — Transfer $250 Vio Bank - Emergency → Lending Club (first of month, maintains LC APR rate tier).',type:'transfer'});
   }
   if([7,11,16,20,24,29].indexOf(weekNum)>=0){
     reminders.push({reminderKey:yr+'_w'+weekNum+'__jabian_reimb',label:'Review Jabian reimbursements — compare expected vs. received. If a large or unusual amount is pending or recently arrived, add it as a one-time inflow via Edit Week. No action needed if reimbursements are on schedule.',type:'action'});
@@ -1869,9 +1869,9 @@ function runModel(akGoal,rtGoal,flags){
     var VIO_LC_MONTHS=[3,5,9,14,18,22,27,31]; // Jun trigger at model wk 3 (cal wk 25, Jun 21) not wk 1 (cal wk 23)
     if(VIO_LC_MONTHS.indexOf(num)>=0){
       if(num===14||num===27){
-        recActs.push('📌 QUARTERLY LC RETURN — Transfer $750 Lending Club → Vio Bank - Tax Reserve before this month\'s deposit (end-of-quarter APR cycle return: Jun/Jul/Aug or Sep/Oct/Nov).');
+        recActs.push('📌 QUARTERLY LC RETURN — Transfer $750 Lending Club → Vio Bank - Emergency before this month\'s deposit (end-of-quarter APR cycle return: Jun/Jul/Aug or Sep/Oct/Nov).');
       }
-      recActs.push('📌 MONTHLY LC BOOST — Transfer $250 Vio Bank - Tax Reserve → Lending Club (first of month, maintains LC APR rate tier).');
+      recActs.push('📌 MONTHLY LC BOOST — Transfer $250 Vio Bank - Emergency → Lending Club (first of month, maintains LC APR rate tier).');
     }
     if([7,11,16,20,24,29].indexOf(num)>=0){
       recActs.push('Review Jabian reimbursements — compare expected vs. received. If a large or unusual amount is pending or recently arrived, add it as a one-time inflow via Edit Week. No action needed if reimbursements are on schedule.');}
@@ -4553,7 +4553,7 @@ var wishlistEditId=null;
 var wishlistDoneId=null;
 var wishlistPhaseFilter=[];
 var WISHLIST_BUILD_TAGS=['Auth v1','Stabilization S1','Phase 6A Goal Registry','Phase 5 What-If','Phase 5 Budget Rules','Phase 4','Phase 3'];
-var WISHLIST_PHASE_ORDER=['Backlog','Phase 3','Phase 4','Phase 5','Phase 6','Security','Platform','Auth+'];
+var WISHLIST_PHASE_ORDER=['Phase 1','Phase 2','Phase 3','Phase 4','Phase 5','Phase 6','Phase 7','Security','Auth+','Platform','Backlog'];
 var scenarioState={active:false,type:null,weekNum:1,params:{},previewOverride:null,previewGoal:null,commitModal:false};
 var anthropicKey=localStorage.getItem('herndon_anthropic_key')||'';
 var askMessages=[];
