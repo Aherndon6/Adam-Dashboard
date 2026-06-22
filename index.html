@@ -488,6 +488,13 @@ body{background:var(--bg);color:var(--ink);font-family:Inter,ui-sans-serif,syste
 .wl-save-btn{padding:5px 12px;border-radius:7px;border:none;background:var(--blue);color:#fff;font-size:11px;font-weight:800;cursor:pointer;font-family:inherit}
 .wl-cancel-btn{padding:5px 10px;border-radius:7px;border:1px solid var(--line2);background:transparent;color:var(--muted2);font-size:11px;cursor:pointer;font-family:inherit}
 .wl-loading{color:var(--muted2);font-size:12px;text-align:center;padding:16px;font-style:italic}
+.wl-filter-bar{display:flex;align-items:center;flex-wrap:wrap;gap:5px;padding:9px 0 12px;overflow-x:hidden}
+.wl-filter-label{font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:.07em;color:var(--muted2);margin-right:2px}
+.wl-filter-pill{padding:3px 10px;border-radius:99px;border:1px solid var(--line2);background:var(--surface2);color:var(--muted2);font-size:10px;font-weight:700;cursor:pointer;font-family:inherit;white-space:nowrap}
+.wl-filter-pill:hover{border-color:var(--blue);color:var(--blue)}
+.wl-filter-active{background:var(--blue)!important;color:#fff!important;border-color:var(--blue)!important}
+.wl-done-confirm{display:flex;align-items:center;gap:5px;flex-wrap:wrap;margin-top:7px;padding:7px 9px;background:var(--surface2);border:1px solid var(--line);border-radius:7px}
+.wl-done-select{padding:3px 6px;border:1px solid var(--line2);border-radius:5px;font-family:inherit;font-size:11px;background:var(--surface);color:var(--ink)}
 /* Drawer (preserved from original) */
 .drawer-backdrop{position:fixed;inset:0;background:rgba(0,0,0,.4);z-index:399;display:none}
 .drawer{position:fixed;top:0;right:0;height:100vh;width:560px;background:var(--surface);box-shadow:-4px 0 24px rgba(0,0,0,.18);z-index:400;overflow:hidden;transform:translateX(100%);transition:transform .22s ease;display:flex;flex-direction:column}
@@ -843,7 +850,7 @@ button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-vis
 // ── Constants (unchanged) ──────────────────────────────────────────────────
 // Simplified architecture — $8,250 total from LC · $6,500 operating floor · no legacy mechanics
 // Real-world moves: keep $2,250 in chk, move $2,750 sav→chk, move $1,000 LC→chk, move $2,250 LC→chk (Option 1 correction)
-const BUILD_TS='2026-06-22T11:48:25'; // updated each push — local time string
+const BUILD_TS='2026-06-22T13:59:29'; // updated each push — local time string
 const START_CHK=18037.73,START_SAV=3772.77,START_AMX=103.64,START_TAX=0,START_LC=13488.88;
 const EF_AMT=13488.88; // LC/EF balance — static this model year (no transfers in or out)
 const BASE_TAX=521.36,RET_SAV_XFR=3772.74;
@@ -2175,6 +2182,7 @@ function updateReconLabel(weeks){
 // ── setSection ─────────────────────────────────────────────────────────────
 const SECTION_TITLES={overview:'Overview',weekly:'Weekly Model',goals:'Goals',scenarios:'Scenarios',history:'History',assumptions:'Assumptions',roadmap:'Wishlist',ask:'Ask Claude'};
 function setSection(s){
+  if(s!=='roadmap'){wishlistPhaseFilter=[];wishlistDoneId=null;}
   activeSection=s;
   document.querySelectorAll('.section').forEach(function(el){el.classList.remove('active');});
   var sec=document.getElementById('s-'+s);if(sec)sec.classList.add('active');
@@ -4529,6 +4537,10 @@ var wishlistData=[];
 var wishlistLoaded=false;
 var wishlistAddOpen=false;
 var wishlistEditId=null;
+var wishlistDoneId=null;
+var wishlistPhaseFilter=[];
+var WISHLIST_BUILD_TAGS=['Auth v1','Stabilization S1','Phase 6A Goal Registry','Phase 5 What-If','Phase 5 Budget Rules','Phase 4','Phase 3'];
+var WISHLIST_PHASE_ORDER=['Backlog','Phase 3','Phase 4','Phase 5','Phase 6','Security','Platform','Auth+'];
 var scenarioState={active:false,type:null,weekNum:1,params:{},previewOverride:null,previewGoal:null,commitModal:false};
 var anthropicKey=localStorage.getItem('herndon_anthropic_key')||'';
 var askMessages=[];
@@ -5097,6 +5109,7 @@ async function mergeSeedWishlist(){
       var mh=await getAuthHeaders();
       var r=await fetch(SUPA_URL+'/rest/v1/wishlist_items',{method:'POST',headers:Object.assign({},mh,{'Prefer':'return=representation'}),body:JSON.stringify(rows)});
       if(r.ok){var added=await r.json();wishlistData=wishlistData.concat(added);console.log('Wishlist: merged '+added.length+' new seed items.');}
+      else{var errText=await r.text();console.error('mergeSeedWishlist POST failed:',r.status,errText);}
     }catch(e){console.warn('mergeSeedWishlist:',e);}
   }
   await phaseMigrateWishlist();
@@ -5151,22 +5164,9 @@ async function phaseMigrateWishlist(){
       }catch(e){console.warn('titleMigrate error:',e);}
     }
   }
-  // Status corrections for items now done
-  var statusCorrections=[
-    {title:'Playwright end-to-end smoke tests',status:'done',
-     notes:'54 Playwright tests (A-J + BR + WC + GR + AUTH). Run: node e2e.js from ~/Adam-Dashboard. Credentials via .env (gitignored). Push gate in push_to_github.sh.'},
-  ];
-  for(var s=0;s<statusCorrections.length;s++){
-    var sc=statusCorrections[s];
-    var sm=wishlistData.find(function(x){return x.title===sc.title;});
-    if(sm&&sm.status!==sc.status){
-      try{
-        await fetch(SUPA_URL+'/rest/v1/wishlist_items?id=eq.'+sm.id,{method:'PATCH',headers:Object.assign({},ph,{'Prefer':'return=minimal'}),body:JSON.stringify({status:sc.status,notes:sc.notes})});
-        sm.status=sc.status;sm.notes=sc.notes;
-        console.log('Wishlist status migration: "'+sm.title+'" → '+sc.status);
-      }catch(e){console.warn('statusMigrate error:',e);}
-    }
-  }
+  // statusCorrections removed in Wishlist v2 (WL-V2-6).
+  // All status close-outs now handled via data-only SQL or UI Done button.
+  // See: docs/wishlist-v2-spec.md — Pre-Retirement Reconciliation section.
 }
 async function seedWishlist(){
   try{
@@ -5200,11 +5200,17 @@ async function deleteWishlistItem(id){
     renderApp();
   }catch(e){console.error('deleteWishlistItem:',e);}
 }
-async function moveWishlistItem(id,newStatus){
+async function moveWishlistItem(id,newStatus,buildTag){
   var item=wishlistData.find(function(x){return x.id===id;});
   if(!item)return;
   var upd={status:newStatus,updated_at:new Date().toISOString()};
-  if(newStatus==='done')upd.completed_at=new Date().toISOString();
+  if(newStatus==='done'){
+    upd.completed_in=buildTag||WISHLIST_BUILD_TAGS[0];
+    upd.completed_at=new Date().toISOString();
+  }else{
+    upd.completed_in=null;
+    upd.completed_at=null;
+  }
   try{
     var mwh=await getAuthHeaders();
     await fetch(SUPA_URL+'/rest/v1/wishlist_items?id=eq.'+id,{method:'PATCH',headers:Object.assign({},mwh,{'Prefer':'return=minimal'}),body:JSON.stringify(upd)});
@@ -5221,27 +5227,51 @@ function renderRoadmap(){
     if(!wishlistLoaded)loadWishlist();
     return;
   }
-  var PHASES=['Backlog','Phase 3','Phase 4','Phase 5','Phase 6'];
-  function phaseColor(p){var m={'Phase 1':'#64748b','Phase 2':'#2563eb','Phase 3':'#7c3aed','Phase 4':'#db2777','Phase 5':'#ea580c','Phase 6':'#0d9488','Backlog':'#94a3b8'};return m[p]||'#94a3b8';}
+  // Build data-resilient phase list (canonical order + unknown phases from data)
+  var allPhases=WISHLIST_PHASE_ORDER.slice();
+  wishlistData.forEach(function(it){if(it.phase&&allPhases.indexOf(it.phase)<0)allPhases.push(it.phase);});
+  function phaseColor(p){var m={'Phase 1':'#64748b','Phase 2':'#2563eb','Phase 3':'#7c3aed','Phase 4':'#db2777','Phase 5':'#ea580c','Phase 6':'#0d9488','Backlog':'#94a3b8','Security':'#dc2626','Platform':'#6366f1','Auth+':'#0891b2'};return m[p]||'#94a3b8';}
+  function filterBar(){
+    return'<div class="wl-filter-bar">'+
+      '<span class="wl-filter-label">Phase:</span>'+
+      '<button class="wl-filter-pill'+(wishlistPhaseFilter.length===0?' wl-filter-active':'')+'" onclick="wishlistPhaseFilter=[];renderApp()">All</button>'+
+      allPhases.map(function(ph){
+        var active=wishlistPhaseFilter.indexOf(ph)>=0;var c=phaseColor(ph);
+        return'<button class="wl-filter-pill'+(active?' wl-filter-active':'')+'"'+(active?' style="background:'+c+'28;color:'+c+';border-color:'+c+'66"':'')+' onclick="_togglePhaseFilter(\''+ph+'\')">'+_esc(ph)+'</button>';
+      }).join('')+
+    '</div>';
+  }
   function card(item,canEdit){
     var c=phaseColor(item.phase);
     var isEditing=wishlistEditId===item.id;
     if(isEditing)return editForm(item);
+    var isDoneConfirm=wishlistDoneId===item.id;
     var isBug=item.item_type==='bug';
     var typeBadge=isBug?'<span style="background:#fee2e2;color:#dc2626;border:1px solid #fca5a5;border-radius:99px;font-size:10px;font-weight:700;letter-spacing:.04em;padding:1px 7px;margin-left:5px">Bug</span>':'';
+    var doneConfirmHtml=isDoneConfirm?
+      '<div class="wl-done-confirm">'+
+        '<span style="font-size:11px;color:var(--muted);margin-right:3px">Build tag:</span>'+
+        '<select id="wl-done-tag-'+item.id+'" class="wl-done-select">'+
+          WISHLIST_BUILD_TAGS.map(function(t){return'<option value="'+_esc(t)+'">'+_esc(t)+'</option>';}).join('')+
+        '</select>'+
+        '<button class="wl-save-btn" style="padding:3px 8px;font-size:10px" onclick="_confirmDoneWishlist('+item.id+')">Confirm</button>'+
+        '<button class="wl-cancel-btn" style="padding:3px 8px;font-size:10px" onclick="wishlistDoneId=null;renderApp()">Cancel</button>'+
+      '</div>':'';
     return'<div class="wl-card">'+
       '<div class="wl-card-title">'+_esc(item.title)+typeBadge+'</div>'+
       (item.notes?'<div class="wl-card-notes">'+_esc(item.notes)+'</div>':'')+
       '<div class="wl-card-footer"><span class="wl-phase-tag" style="background:'+c+'18;color:'+c+';border-color:'+c+'44">'+(item.phase||'Backlog')+'</span></div>'+
       (canEdit?'<div class="wl-card-actions">'+
-        (item.status==='idea'?'<button class="wl-move-btn" onclick="moveWishlistItem('+item.id+',\'planned\')">→ Planned</button>':'')+''+
-        (item.status==='planned'?'<button class="wl-move-btn" onclick="moveWishlistItem('+item.id+',\'idea\')">← Idea</button><button class="wl-move-btn" onclick="moveWishlistItem('+item.id+',\'done\')">✓ Done</button>':'')+''+
-        '<button class="wl-move-btn" onclick="wishlistEditId='+item.id+';renderApp()">Edit</button>'+
+        (item.status==='idea'?'<button class="wl-move-btn" onclick="moveWishlistItem('+item.id+',\'planned\')">→ Planned</button>':'')+
+        (item.status==='planned'?'<button class="wl-move-btn" onclick="moveWishlistItem('+item.id+',\'idea\')">← Idea</button>'+(isDoneConfirm?'':'<button class="wl-move-btn" onclick="wishlistDoneId='+item.id+';wishlistEditId=null;renderApp()">✓ Done</button>'):'')+
+        (item.status==='done'?'<button class="wl-move-btn" onclick="moveWishlistItem('+item.id+',\'planned\')">← Planned</button>':'')+
+        '<button class="wl-move-btn" onclick="wishlistEditId='+item.id+';wishlistDoneId=null;renderApp()">Edit</button>'+
         '<button class="wl-del-btn" onclick="deleteWishlistItem('+item.id+')">Delete</button>'+
-      '</div>':'')+'</div>';
+      '</div>'+doneConfirmHtml:'')+
+    '</div>';
   }
   function editForm(item){
-    var pOpts=PHASES.map(function(ph){return'<option value="'+ph+'"'+(item.phase===ph?' selected':'')+'>'+ph+'</option>';}).join('');
+    var pOpts=allPhases.map(function(ph){return'<option value="'+ph+'"'+(item.phase===ph?' selected':'')+'>'+ph+'</option>';}).join('');
     var tOpts='<option value="feature"'+(item.item_type!=='bug'?' selected':'')+'>Feature</option><option value="bug"'+(item.item_type==='bug'?' selected':'')+'>Bug / Defect</option>';
     return'<div class="wl-add-form">'+
       '<div class="wl-add-form-title">Edit item</div>'+
@@ -5256,7 +5286,7 @@ function renderRoadmap(){
     '</div>';
   }
   function addForm(){
-    var pOpts=PHASES.map(function(ph){return'<option value="'+ph+'">'+ph+'</option>';}).join('');
+    var pOpts=allPhases.map(function(ph){return'<option value="'+ph+'">'+ph+'</option>';}).join('');
     return'<div class="wl-add-form">'+
       '<div class="wl-add-form-title">New idea</div>'+
       '<input id="wl-new-title" type="text" placeholder="Title *">'+
@@ -5269,21 +5299,27 @@ function renderRoadmap(){
       '</div>'+
     '</div>';
   }
+  // Split data, then apply phase filter
   var ideas=wishlistData.filter(function(i){return i.status==='idea';});
   var planned=wishlistData.filter(function(i){return i.status==='planned';});
   var done=wishlistData.filter(function(i){return i.status==='done';});
-  // Determine current and next phase from done items
-  var donePhaseNums=done.map(function(i){return parseInt((i.phase||'').replace('Phase ',''))||0;});
+  if(wishlistPhaseFilter.length>0){
+    ideas=ideas.filter(function(it){return wishlistPhaseFilter.indexOf(it.phase||'Backlog')>=0;});
+    planned=planned.filter(function(it){return wishlistPhaseFilter.indexOf(it.phase||'Backlog')>=0;});
+    done=done.filter(function(it){return wishlistPhaseFilter.indexOf(it.phase||'Backlog')>=0;});
+  }
+  // Determine next phase from ALL done items (unfiltered)
+  var allDoneItems=wishlistData.filter(function(i){return i.status==='done';});
+  var donePhaseNums=allDoneItems.map(function(i){return parseInt((i.phase||'').replace('Phase ',''))||0;});
   var currentPhaseNum=donePhaseNums.length?Math.max.apply(null,donePhaseNums):4;
   var nextPhaseLabel='Phase '+(currentPhaseNum+1);
   function plannedCol(items){
-    // Group by phase, sorted by phase number
     var phaseNums={};
     items.forEach(function(it){phaseNums[it.phase||'Backlog']=parseInt((it.phase||'').replace('Phase ',''))||99;});
     var phases=[...new Set(items.map(function(i){return i.phase||'Backlog';}))].sort(function(a,b){return(phaseNums[a]||99)-(phaseNums[b]||99);});
     var body='';
     if(wishlistAddOpen)body+=addForm();
-    if(!items.length){body+='<div class="wl-empty">Nothing planned yet</div>';}
+    if(!items.length&&!wishlistAddOpen){body+='<div class="wl-empty">'+(wishlistPhaseFilter.length?'No planned items match the current filter':'Nothing planned yet')+'</div>';}
     phases.forEach(function(ph){
       var phItems=items.filter(function(i){return(i.phase||'Backlog')===ph;});
       if(!phItems.length)return;
@@ -5297,26 +5333,68 @@ function renderRoadmap(){
     });
     return'<div class="wl-col">'+
       '<div class="wl-col-header"><span class="wl-col-title">Planned</span><span class="wl-col-count">'+items.length+'</span>'+
-      '<button class="wl-add-btn" onclick="wishlistAddOpen='+(wishlistAddOpen?'false':'true')+';wishlistEditId=null;renderApp()">'+(wishlistAddOpen?'✕':'+ Add')+'</button>'+
+      '<button class="wl-add-btn" onclick="wishlistAddOpen='+(wishlistAddOpen?'false':'true')+';wishlistEditId=null;wishlistDoneId=null;renderApp()">'+(wishlistAddOpen?'✕':'+ Add')+'</button>'+
       '</div><div class="wl-col-body">'+body+'</div></div>';
   }
-  function col(title,items,showAdd,canEdit,emptyMsg){
+  function ideasCol(items){
     return'<div class="wl-col">'+
-      '<div class="wl-col-header"><span class="wl-col-title">'+title+'</span><span class="wl-col-count">'+items.length+'</span>'+
-      (showAdd?'<button class="wl-add-btn" onclick="wishlistAddOpen='+(wishlistAddOpen?'false':'true')+';wishlistEditId=null;renderApp()">'+( wishlistAddOpen?'✕':'+ Add')+'</button>':'')+
+      '<div class="wl-col-header"><span class="wl-col-title">Ideas</span><span class="wl-col-count">'+items.length+'</span>'+
+      '<button class="wl-add-btn" onclick="wishlistAddOpen='+(wishlistAddOpen?'false':'true')+';wishlistEditId=null;wishlistDoneId=null;renderApp()">'+(wishlistAddOpen?'✕':'+ Add')+'</button>'+
       '</div>'+
       '<div class="wl-col-body">'+
-        (showAdd&&wishlistAddOpen?addForm():'')+
-        (items.length?items.map(function(it){return card(it,canEdit);}).join(''):('<div class="wl-empty">'+emptyMsg+'</div>'))+
+        (wishlistAddOpen?addForm():'')+
+        (items.length?items.map(function(it){return card(it,true);}).join(''):('<div class="wl-empty">'+(wishlistPhaseFilter.length?'No ideas match the current filter':'No ideas yet — click Add to capture one')+'</div>'))+
       '</div>'+
     '</div>';
   }
+  function doneCol(items){
+    var allDone=wishlistData.filter(function(i){return i.status==='done';});
+    var knownOrder=WISHLIST_BUILD_TAGS.filter(function(t){return items.some(function(it){return it.completed_in===t;});});
+    var unknownTagSet={};
+    items.forEach(function(it){if(it.completed_in&&WISHLIST_BUILD_TAGS.indexOf(it.completed_in)<0)unknownTagSet[it.completed_in]=true;});
+    var unknownTags=Object.keys(unknownTagSet).sort(function(a,b){
+      function latest(tag){var g=items.filter(function(it){return it.completed_in===tag;});return Math.max.apply(null,g.map(function(it){return new Date(it.completed_at||it.updated_at||0).getTime();}));}
+      return latest(b)-latest(a);
+    });
+    var allTags=knownOrder.concat(unknownTags);
+    var untagged=items.filter(function(it){return!it.completed_in;});
+    var body='';
+    if(!allDone.length){
+      body='<div class="wl-empty">Nothing done yet</div>';
+    }else if(!items.length){
+      body='<div class="wl-empty">No done items match the current filter</div>';
+    }else{
+      allTags.forEach(function(tag){
+        var tagItems=items.filter(function(it){return it.completed_in===tag;});
+        if(!tagItems.length)return;
+        body+='<div data-build-tag="'+_esc(tag)+'" style="display:flex;align-items:center;gap:8px;margin:'+(body?'14px':'0')+' 0 6px;'+(body?'border-top:1px solid var(--border);padding-top:12px;':'')+'">'+
+          '<span style="background:#0d948818;color:#0d9488;border:1px solid #0d948844;border-radius:99px;font-size:10px;font-weight:700;letter-spacing:.04em;padding:2px 9px">'+_esc(tag)+'</span>'+
+          '<span style="flex:1;height:1px;background:var(--border)"></span>'+
+          '<span style="font-size:10px;color:var(--muted)">'+tagItems.length+' item'+(tagItems.length!==1?'s':'')+'</span>'+
+        '</div>'+
+        '<div data-build-group="'+_esc(tag)+'">'+tagItems.map(function(it){return card(it,true);}).join('')+'</div>';
+      });
+      if(untagged.length){
+        body+='<div data-build-tag="Untagged" style="display:flex;align-items:center;gap:8px;margin:'+(body?'14px':'0')+' 0 6px;'+(body?'border-top:1px solid var(--border);padding-top:12px;':'')+'">'+
+          '<span style="background:#94a3b818;color:#94a3b8;border:1px solid #94a3b844;border-radius:99px;font-size:10px;font-weight:700;letter-spacing:.04em;padding:2px 9px">Untagged</span>'+
+          '<span style="flex:1;height:1px;background:var(--border)"></span>'+
+          '<span style="font-size:10px;color:var(--muted)">'+untagged.length+' item'+(untagged.length!==1?'s':'')+'</span>'+
+        '</div>'+
+        '<div data-build-group="Untagged">'+untagged.map(function(it){return card(it,true);}).join('')+'</div>';
+      }
+    }
+    return'<div class="wl-col" data-col="done">'+
+      '<div class="wl-col-header"><span class="wl-col-title">Done</span><span class="wl-col-count">'+items.length+'</span></div>'+
+      '<div class="wl-col-body">'+body+'</div>'+
+    '</div>';
+  }
   var html='<div class="wl-header-bar"><div class="wl-page-title">Feature Wishlist</div><div class="wl-page-sub">Source of truth for what has been built, what is coming, and what is on your mind. Claude reads this list for phase planning.</div></div>'+
-  '<div class="wl-board">'+
-    col('Ideas',ideas,true,true,'No ideas yet — click Add to capture one')+
-    plannedCol(planned)+
-    col('Done',done,false,false,'Nothing done yet')+
-  '</div>';
+    filterBar()+
+    '<div class="wl-board">'+
+      ideasCol(ideas)+
+      plannedCol(planned)+
+      doneCol(done)+
+    '</div>';
   el.innerHTML=html;
 }
 function _esc(s){return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');}
@@ -5331,6 +5409,17 @@ function _saveEditForm(id){
   var item=wishlistData.find(function(x){return x.id===id;});
   if(!item)return;
   saveWishlistItem(Object.assign({},item,{title:t.value.trim(),notes:n?n.value.trim():item.notes,phase:p?p.value:item.phase,item_type:tp?tp.value:(item.item_type||'feature')}));
+}
+function _togglePhaseFilter(ph){
+  var idx=wishlistPhaseFilter.indexOf(ph);
+  if(idx>=0)wishlistPhaseFilter.splice(idx,1);else wishlistPhaseFilter.push(ph);
+  renderApp();
+}
+function _confirmDoneWishlist(id){
+  var sel=document.getElementById('wl-done-tag-'+id);
+  var tag=sel?sel.value:WISHLIST_BUILD_TAGS[0];
+  wishlistDoneId=null;
+  moveWishlistItem(id,'done',tag);
 }
 
 // ── AI Q&A ─────────────────────────────────────────────────────────────────

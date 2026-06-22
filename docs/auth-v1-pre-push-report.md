@@ -2,8 +2,8 @@
 
 **Build:** Auth v1 per auth-spec-v1.4.md  
 **Date:** Cal Wk 25 (Jun 22, 2026)  
-**Revision:** Rev 5 — Playwright 54/0 confirmed. Ready for push authorization.  
-**Status:** Ready for ChatGPT review — do not push until approved
+**Revision:** Rev 6 — CLOSED. Auth v1 shipped and live-validated.  
+**Status:** COMPLETE — pushed commit 0f98fb3, live validation 54/0 on https://dashboard.herndons.us
 
 ---
 
@@ -551,8 +551,9 @@ WHERE email = 'wherndon22@gmail.com';
 - [ ] `.env` exists locally at `~/Adam-Dashboard/.env` with `TEST_EMAIL` and `TEST_PASSWORD`
 - [ ] `git status` confirms `.env` is not tracked
 - [x] `node e2e.js` run locally — **54/0, ALL TESTS PASSED**
-- [ ] Updated pre-push report reviewed and approved by ChatGPT
-- [ ] **Only then: push**
+- [x] Updated pre-push report reviewed and approved by ChatGPT
+- [x] **Pushed — commit 0f98fb3, 2026-06-22**
+- [x] Live validation: `HFOS_URL=https://dashboard.herndons.us node e2e.js` — **54/0, ALL TESTS PASSED**
 
 ---
 

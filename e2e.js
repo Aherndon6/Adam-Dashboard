@@ -324,6 +324,116 @@ async function clickNav(page, id) {
     await context.close();
   });
 
+  // ── WL-PW-1: Filter smoke ────────────────────────────────────────────────
+  // Security items inserted via SQL in WL-V2 build step (Supabase seed migration).
+  // No constraint blocks Security phase; items were never in Supabase before this build.
+  console.log('── WL-PW-1: Wishlist filter smoke ──');
+  await test('WL-PW-1: Phase filter hides/shows cards correctly', async () => {
+    const context = await browser.newContext();
+    const page = await context.newPage();
+    await page.goto(URL, { waitUntil: 'domcontentloaded', timeout: 15000 });
+    await page.waitForTimeout(1000);
+    await loginIfNeeded(page);
+    await clickNav(page, 'roadmap');
+    // Wait for wishlist to load and filter bar to appear
+    await page.waitForFunction(() => {
+      const el = document.getElementById('roadmap-content');
+      return el && el.querySelector('.wl-filter-bar') !== null && el.innerText.includes('Phase');
+    }, { timeout: 8000 }).catch(() => null);
+    await page.waitForTimeout(300);
+
+    // PRE-FILTER: Security and Phase 6 both visible (Security items in Supabase via SQL seed)
+    const secCountBefore = await page.evaluate(() =>
+      Array.from(document.querySelectorAll('.wl-phase-tag'))
+        .filter(function(el){ return el.textContent.trim() === 'Security'; }).length
+    );
+    const allTagsBefore = await page.evaluate(() =>
+      [...new Set(Array.from(document.querySelectorAll('.wl-phase-tag'))
+        .map(function(el){ return el.textContent.trim(); }))].join(', ')
+    );
+    assert(secCountBefore > 0, 'Pre-filter: expected Security cards (got 0). Phases visible: ' + allTagsBefore);
+
+    const ph6CountBefore = await page.evaluate(() =>
+      Array.from(document.querySelectorAll('.wl-phase-tag'))
+        .filter(function(el){ return el.textContent.trim() === 'Phase 6'; }).length
+    );
+    assert(ph6CountBefore > 0, 'Pre-filter: expected Phase 6 cards in unfiltered board');
+
+    // Click Security filter pill
+    const secPillFound = await page.evaluate(() => {
+      const btn = Array.from(document.querySelectorAll('.wl-filter-pill'))
+        .find(function(b){ return b.textContent.trim() === 'Security'; });
+      if (btn) { btn.click(); return true; }
+      return false;
+    });
+    assert(secPillFound, 'Security filter pill not found in filter bar');
+    await page.waitForTimeout(300);
+
+    // POST-FILTER: Security visible, Phase 6 hidden
+    const secCountAfter = await page.evaluate(() =>
+      Array.from(document.querySelectorAll('.wl-phase-tag'))
+        .filter(function(el){ return el.textContent.trim() === 'Security'; }).length
+    );
+    assert(secCountAfter > 0, 'Post-filter: Security cards should remain visible after Security filter selected');
+
+    const ph6CountAfter = await page.evaluate(() =>
+      Array.from(document.querySelectorAll('.wl-phase-tag'))
+        .filter(function(el){ return el.textContent.trim() === 'Phase 6'; }).length
+    );
+    assert(ph6CountAfter === 0, 'Post-filter: Phase 6 cards should be hidden when Security filter active (got ' + ph6CountAfter + ')');
+
+    // Click All to clear filter
+    const allPillFound = await page.evaluate(() => {
+      const btn = Array.from(document.querySelectorAll('.wl-filter-pill'))
+        .find(function(b){ return b.textContent.trim() === 'All'; });
+      if (btn) { btn.click(); return true; }
+      return false;
+    });
+    assert(allPillFound, 'All pill not found in filter bar');
+    await page.waitForTimeout(300);
+
+    // Phase 6 visible again after clearing filter
+    const ph6CountCleared = await page.evaluate(() =>
+      Array.from(document.querySelectorAll('.wl-phase-tag'))
+        .filter(function(el){ return el.textContent.trim() === 'Phase 6'; }).length
+    );
+    assert(ph6CountCleared > 0, 'After clearing filter: Phase 6 cards should be visible again');
+    await context.close();
+  });
+
+  // ── WL-PW-2: Done grouping smoke ─────────────────────────────────────────
+  console.log('── WL-PW-2: Wishlist Done grouping smoke ──');
+  await test('WL-PW-2: Done column contains Auth v1 group with Authentication (Phase 6A)', async () => {
+    const context = await browser.newContext();
+    const page = await context.newPage();
+    await page.goto(URL, { waitUntil: 'domcontentloaded', timeout: 15000 });
+    await page.waitForTimeout(1000);
+    await loginIfNeeded(page);
+    await clickNav(page, 'roadmap');
+    await page.waitForFunction(() => {
+      const el = document.getElementById('roadmap-content');
+      return el && el.innerText.includes('Phase');
+    }, { timeout: 8000 }).catch(() => null);
+    await page.waitForTimeout(500);
+
+    // Find Done column
+    const doneCol = await page.$('[data-col="done"]');
+    assert(doneCol, 'Done column (data-col="done") not found');
+
+    // Find Auth v1 group container scoped inside Done column
+    const authV1Group = await doneCol.$('[data-build-group="Auth v1"]');
+    assert(authV1Group, 'Auth v1 group container not found inside Done column — confirm Auth v1 close-out SQL has been run');
+
+    // Assert the card title inside that group
+    const authCard = await authV1Group.$('.wl-card-title');
+    const authCardText = authCard ? await authCard.textContent() : '';
+    assert(
+      authCardText.includes('Authentication (Phase 6A)'),
+      'Authentication (Phase 6A) not found inside Auth v1 group. Got: ' + authCardText.slice(0, 100)
+    );
+    await context.close();
+  });
+
   // ── Section H: XSS safety ─────────────────────────────────────────────
   console.log('── Section H: XSS safety ──');
   const xssPayload = '<script>window.__xss_fired=true<\/script>';

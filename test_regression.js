@@ -4497,6 +4497,62 @@ test('GOALS TEXT: custom_task_meta read handles both string and object (backward
 });
 
 // ─────────────────────────────────────────────────────────────────────────
+// ── WL-V2: Wishlist v2 structural checks ──────────────────────────────────
+// ─────────────────────────────────────────────────────────────────────────
+console.log('\n── WL-V2: Wishlist v2 structural checks ──');
+
+test('WL-V2-1: WISHLIST_BUILD_TAGS is defined and [0] === Auth v1',()=>{
+  var htmlSrc='';
+  try{htmlSrc=require('fs').readFileSync(require('path').join(__dirname,'index.html'),'utf8');}catch(e){}
+  assert(htmlSrc.length>0,'Could not read index.html');
+  assert(/var WISHLIST_BUILD_TAGS=/.test(htmlSrc),'WISHLIST_BUILD_TAGS constant not found');
+  assert(/WISHLIST_BUILD_TAGS=\['Auth v1'/.test(htmlSrc),'WISHLIST_BUILD_TAGS[0] must be \'Auth v1\'');
+});
+
+test('WL-V2-2: WISHLIST_PHASE_ORDER includes Security, Platform, Auth+',()=>{
+  var htmlSrc='';
+  try{htmlSrc=require('fs').readFileSync(require('path').join(__dirname,'index.html'),'utf8');}catch(e){}
+  assert(htmlSrc.length>0,'Could not read index.html');
+  assert(/var WISHLIST_PHASE_ORDER=/.test(htmlSrc),'WISHLIST_PHASE_ORDER constant not found');
+  assert(/WISHLIST_PHASE_ORDER=\[.*'Security'/.test(htmlSrc),'WISHLIST_PHASE_ORDER missing Security');
+  assert(/WISHLIST_PHASE_ORDER=\[.*'Platform'/.test(htmlSrc),'WISHLIST_PHASE_ORDER missing Platform');
+  assert(/WISHLIST_PHASE_ORDER=\[.*'Auth\+'/.test(htmlSrc),'WISHLIST_PHASE_ORDER missing Auth+');
+});
+
+test('WL-V2-3: phaseColor returns non-default values for Security, Platform, Auth+',()=>{
+  var htmlSrc='';
+  try{htmlSrc=require('fs').readFileSync(require('path').join(__dirname,'index.html'),'utf8');}catch(e){}
+  assert(htmlSrc.length>0,'Could not read index.html');
+  assert(/'Security':'#dc2626'/.test(htmlSrc),'phaseColor missing Security (#dc2626)');
+  assert(/'Platform':'#6366f1'/.test(htmlSrc),'phaseColor missing Platform (#6366f1)');
+  assert(/'Auth\+':'#0891b2'/.test(htmlSrc),'phaseColor missing Auth+ (#0891b2)');
+});
+
+test('WL-V2-4: moveWishlistItem sets completed_in and completed_at when moving to done',()=>{
+  var htmlSrc='';
+  try{htmlSrc=require('fs').readFileSync(require('path').join(__dirname,'index.html'),'utf8');}catch(e){}
+  assert(htmlSrc.length>0,'Could not read index.html');
+  assert(/if\(newStatus==='done'\)\{/.test(htmlSrc),'moveWishlistItem missing done branch');
+  assert(/upd\.completed_in=buildTag/.test(htmlSrc),'moveWishlistItem must set completed_in on done');
+  assert(/upd\.completed_at=new Date/.test(htmlSrc),'moveWishlistItem must set completed_at on done');
+});
+
+test('WL-V2-5: moveWishlistItem clears completed_in and completed_at when moving away from done',()=>{
+  var htmlSrc='';
+  try{htmlSrc=require('fs').readFileSync(require('path').join(__dirname,'index.html'),'utf8');}catch(e){}
+  assert(htmlSrc.length>0,'Could not read index.html');
+  assert(/upd\.completed_in=null/.test(htmlSrc),'moveWishlistItem must null completed_in when moving away from done');
+  assert(/upd\.completed_at=null/.test(htmlSrc),'moveWishlistItem must null completed_at when moving away from done');
+});
+
+test('WL-V2-6: phaseMigrateWishlist does NOT contain a statusCorrections array',()=>{
+  var htmlSrc='';
+  try{htmlSrc=require('fs').readFileSync(require('path').join(__dirname,'index.html'),'utf8');}catch(e){}
+  assert(htmlSrc.length>0,'Could not read index.html');
+  assert(!/var statusCorrections=/.test(htmlSrc),'statusCorrections array must be removed from phaseMigrateWishlist (WL-V2-6)');
+});
+
+// ─────────────────────────────────────────────────────────────────────────
 console.log('\n╔══════════════════════════════════════════════════════════════╗');
 console.log('║                       RESULTS                               ║');
 console.log('╚══════════════════════════════════════════════════════════════╝');
