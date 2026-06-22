@@ -745,10 +745,46 @@ button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-vis
 .ov3-alloc-hdr{display:grid;grid-template-columns:36px 1fr 90px 72px 72px;gap:8px;align-items:center;padding:0 6px 8px;border-bottom:1px solid var(--line);margin-bottom:4px}
 .ov3-alloc-row{display:grid;grid-template-columns:36px 1fr 90px 72px 72px;gap:8px;align-items:center;padding:8px 6px;border-bottom:1px solid var(--line)}
 .ov3-alloc-row:last-child{border-bottom:none}
+/* Auth overlay */
+#auth-overlay{position:fixed;inset:0;z-index:9999;display:flex;align-items:center;justify-content:center;background:var(--bg);}
+#auth-overlay.hidden{display:none;}
+.auth-box{background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);box-shadow:var(--shadow);padding:36px 32px;width:100%;max-width:380px;}
+.auth-logo{display:flex;align-items:center;gap:10px;margin-bottom:24px;}
+.auth-logo-icon{width:40px;height:40px;border-radius:12px;background:linear-gradient(135deg,#8ab4ff,#fff);color:var(--navy);display:flex;align-items:center;justify-content:center;font-weight:900;font-size:16px;}
+.auth-logo h1{font-size:15px;font-weight:700;color:var(--ink);}
+.auth-logo p{font-size:11px;color:var(--muted);margin-top:2px;}
+.auth-field{margin-bottom:14px;}
+.auth-field label{display:block;font-size:12px;font-weight:600;color:var(--ink);margin-bottom:5px;}
+.auth-field input{width:100%;padding:9px 12px;border:1px solid var(--line2);border-radius:9px;font-size:13px;font-family:inherit;background:var(--surface);color:var(--ink);outline:none;}
+.auth-field input:focus{border-color:var(--blue);box-shadow:0 0 0 3px rgba(37,99,235,.12);}
+.auth-btn{width:100%;padding:10px;background:var(--blue);color:#fff;border:none;border-radius:9px;font-size:13px;font-weight:600;font-family:inherit;cursor:pointer;margin-top:6px;transition:background .1s;}
+.auth-btn:hover{background:#1d4ed8;}
+.auth-btn:disabled{opacity:.6;cursor:not-allowed;}
+.auth-error{font-size:12px;color:var(--red);background:var(--redSoft);border:1px solid #fecaca;border-radius:7px;padding:8px 11px;margin-bottom:12px;display:none;}
+.auth-banner{font-size:12px;color:var(--amber);background:var(--amberSoft);border:1px solid #fde68a;border-radius:7px;padding:8px 11px;margin-bottom:12px;display:none;}
+.auth-state-msg{text-align:center;font-size:13px;color:var(--muted);padding:20px 0;}
+.auth-state-deny{text-align:center;padding:20px 0;}
+.auth-state-deny p{font-size:13px;color:var(--ink);margin-bottom:12px;line-height:1.5;}
+.auth-state-deny a{font-size:12px;color:var(--blue);cursor:pointer;text-decoration:underline;}
+.auth-signout-btn{font-size:11px;font-weight:600;padding:5px 12px;border-radius:99px;border:1px solid var(--line2);background:var(--surface2);color:var(--muted);cursor:pointer;font-family:inherit;transition:all .1s;}
+.auth-signout-btn:hover{color:var(--red);border-color:var(--red);}
 </style>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
 </head>
 <body>
+<!-- Auth overlay — shown in all states except 'ready'; hides once auth + authorization pass -->
+<div id="auth-overlay">
+  <div class="auth-box">
+    <div class="auth-logo">
+      <div class="auth-logo-icon">H</div>
+      <div><h1>Herndon Financial OS</h1><p>Wealth Plan · 2026</p></div>
+    </div>
+    <div id="auth-banner" class="auth-banner"></div>
+    <div id="auth-error" class="auth-error"></div>
+    <div id="auth-body"><div class="auth-state-msg">Loading&hellip;</div></div>
+  </div>
+</div>
 <div class="app">
   <aside class="sidebar">
     <div class="brand">
@@ -776,7 +812,7 @@ button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-vis
   <div class="main">
     <header class="topbar">
       <div class="top-title"><h2 id="topbar-title">Overview</h2><p id="topbar-sub">Herndon Family · Jun 7, 2026 – Jan 9, 2027</p></div>
-      <div class="top-right" id="topbar-right"><div class="sync-badge"><div class="sync-dot" id="sync-dot"></div><span id="lastReconLabel">Connecting...</span></div></div>
+      <div class="top-right" id="topbar-right"><div class="sync-badge"><div class="sync-dot" id="sync-dot"></div><span id="lastReconLabel">Connecting...</span></div><button class="auth-signout-btn" id="signout-btn" onclick="doSignOut()" style="display:none">Sign out</button></div>
     </header>
     <div class="content">
       <div id="budget-rules-warn" style="display:none;background:#7f1d1d;color:#fca5a5;padding:8px 16px;font-size:12px;font-weight:600;text-align:center;">&#x26A0; Budget Rules failed to load — model running from WD baseline only</div>
@@ -807,7 +843,7 @@ button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-vis
 // ── Constants (unchanged) ──────────────────────────────────────────────────
 // Simplified architecture — $8,250 total from LC · $6,500 operating floor · no legacy mechanics
 // Real-world moves: keep $2,250 in chk, move $2,750 sav→chk, move $1,000 LC→chk, move $2,250 LC→chk (Option 1 correction)
-const BUILD_TS='2026-06-21T22:34:12'; // updated each push — local time string
+const BUILD_TS='2026-06-22T11:48:25'; // updated each push — local time string
 const START_CHK=18037.73,START_SAV=3772.77,START_AMX=103.64,START_TAX=0,START_LC=13488.88;
 const EF_AMT=13488.88; // LC/EF balance — static this model year (no transfers in or out)
 const BASE_TAX=521.36,RET_SAV_XFR=3772.74;
@@ -1251,8 +1287,11 @@ function getTaskMeta(id,label){
 function setTaskMeta(id,fields){
   customTaskMeta[id]=Object.assign({},getTaskMeta(id,''),fields);
 }
-function saveCustomTaskMeta(){
-  return fetch(SUPA_URL+'/rest/v1/goals',{method:'POST',headers:Object.assign({},SUPA_H,{'Prefer':'resolution=merge-duplicates,return=minimal'}),body:JSON.stringify({key:'custom_task_meta',value:JSON.stringify(customTaskMeta)})}).catch(function(e){console.error('saveCustomTaskMeta:',e);});
+async function saveCustomTaskMeta(){
+  try{
+    var h=await getAuthHeaders();
+    return fetch(SUPA_URL+'/rest/v1/goals',{method:'POST',headers:Object.assign({},h,{'Prefer':'resolution=merge-duplicates,return=minimal'}),body:JSON.stringify({key:'custom_task_meta',value:JSON.stringify(customTaskMeta)})}).catch(function(e){console.error('saveCustomTaskMeta:',e);});
+  }catch(e){console.error('saveCustomTaskMeta:',e);}
 }
 function migrateCustomTaskMeta(){
   // Run after hydration — assign type/reminderKey for tasks missing version field
@@ -1338,10 +1377,10 @@ function saveCustomTask(weekNum,type){
   setTaskMeta(id,{type:taskType,source:'user',reminderKey:null,lockedLabel:false,dismissed:false,version:1});
   customTaskState=null;
   renderApp();
-  Promise.all([
-    fetch(SUPA_URL+'/rest/v1/custom_tasks',{method:'POST',headers:Object.assign({},SUPA_H,{'Prefer':'return=minimal'}),body:JSON.stringify({id:id,week_num:weekNum,label:label,completed:false})}),
+  getAuthHeaders().then(function(h){return Promise.all([
+    fetch(SUPA_URL+'/rest/v1/custom_tasks',{method:'POST',headers:Object.assign({},h,{'Prefer':'return=minimal'}),body:JSON.stringify({id:id,week_num:weekNum,label:label,completed:false})}),
     saveCustomTaskMeta()
-  ]).catch(function(e){console.error('saveCustomTask:',e);});
+  ]);}).catch(function(e){console.error('saveCustomTask:',e);});
 }
 function toggleCustomTask(weekNum,id,checked){
   if(!customTaskData[weekNum])return;
@@ -1350,7 +1389,7 @@ function toggleCustomTask(weekNum,id,checked){
   ct.completed=checked;
   var meta=getTaskMeta(id,ct.label);
   // Upsert handles both new (auto-reminder first toggle) and existing records
-  fetch(SUPA_URL+'/rest/v1/custom_tasks',{method:'POST',headers:Object.assign({},SUPA_H,{'Prefer':'resolution=merge-duplicates,return=minimal'}),body:JSON.stringify({id:id,week_num:weekNum,label:ct.label,completed:checked})}).catch(function(e){console.error('toggleCustomTask:',e);});
+  getAuthHeaders().then(function(h){return fetch(SUPA_URL+'/rest/v1/custom_tasks',{method:'POST',headers:Object.assign({},h,{'Prefer':'resolution=merge-duplicates,return=minimal'}),body:JSON.stringify({id:id,week_num:weekNum,label:ct.label,completed:checked})}).catch(function(e){console.error('toggleCustomTask:',e);});}).catch(function(e){console.error('toggleCustomTask auth:',e);});
   // Persist meta: always for auto-reminders (source/reminderKey must survive reload); otherwise on first interaction
   if(meta.source==='auto_reminder'||meta.reminderKey||(meta.version>=1&&!customTaskMeta[id])){setTaskMeta(id,meta);saveCustomTaskMeta();}
 }
@@ -1359,10 +1398,10 @@ function deleteCustomTask(weekNum,id){
   customTaskData[weekNum]=customTaskData[weekNum].filter(function(t){return t.id!==id;});
   delete customTaskMeta[id];
   renderApp();
-  Promise.all([
-    fetch(SUPA_URL+'/rest/v1/custom_tasks?id=eq.'+encodeURIComponent(id),{method:'DELETE',headers:SUPA_H}),
+  getAuthHeaders().then(function(h){return Promise.all([
+    fetch(SUPA_URL+'/rest/v1/custom_tasks?id=eq.'+encodeURIComponent(id),{method:'DELETE',headers:h}),
     saveCustomTaskMeta()
-  ]).catch(function(e){console.error('deleteCustomTask:',e);});
+  ]);}).catch(function(e){console.error('deleteCustomTask:',e);});
 }
 function dismissAutoReminder(weekNum,id){
   if(!customTaskData[weekNum])return;
@@ -1371,7 +1410,7 @@ function dismissAutoReminder(weekNum,id){
   var meta=getTaskMeta(id,ct.label);
   setTaskMeta(id,Object.assign({},meta,{dismissed:true}));
   // Upsert so dismissal survives page reload
-  fetch(SUPA_URL+'/rest/v1/custom_tasks',{method:'POST',headers:Object.assign({},SUPA_H,{'Prefer':'resolution=merge-duplicates,return=minimal'}),body:JSON.stringify({id:id,week_num:weekNum,label:ct.label,completed:false})}).catch(function(e){console.error('dismissAutoReminder:',e);});
+  getAuthHeaders().then(function(h){return fetch(SUPA_URL+'/rest/v1/custom_tasks',{method:'POST',headers:Object.assign({},h,{'Prefer':'resolution=merge-duplicates,return=minimal'}),body:JSON.stringify({id:id,week_num:weekNum,label:ct.label,completed:false})}).catch(function(e){console.error('dismissAutoReminder:',e);});}).catch(function(e){console.error('dismissAutoReminder auth:',e);});
   saveCustomTaskMeta();
   renderApp();
 }
@@ -1903,7 +1942,8 @@ async function saveRecon(n){
   reconData[n]={...data,date:now.toLocaleDateString('en-US',{month:'short',day:'numeric'})};
   reconSaving=true;renderApp();
   try{
-    var r=await fetch(SUPA_URL+'/rest/v1/weekly_reconciliations',{method:'POST',headers:Object.assign({},SUPA_H,{'Prefer':'resolution=merge-duplicates,return=minimal'}),body:JSON.stringify({week_num:n,chk:data.chk,sav:data.sav,amx:data.amx,tax:data.tax,lc:data.lc,recorded_at:now.toISOString()})});
+    var h=await getAuthHeaders();
+    var r=await fetch(SUPA_URL+'/rest/v1/weekly_reconciliations',{method:'POST',headers:Object.assign({},h,{'Prefer':'resolution=merge-duplicates,return=minimal'}),body:JSON.stringify({week_num:n,chk:data.chk,sav:data.sav,amx:data.amx,tax:data.tax,lc:data.lc,recorded_at:now.toISOString()})});
     if(!r.ok)throw new Error('HTTP '+r.status);
     reconSaving=false;reconOpen=null;renderApp();
   }catch(e){
@@ -1916,7 +1956,8 @@ async function saveRecon(n){
 async function deleteRecon(n){
   delete reconData[n];
   try{
-    await fetch(SUPA_URL+'/rest/v1/weekly_reconciliations?week_num=eq.'+n,{method:'DELETE',headers:SUPA_H});
+    var h=await getAuthHeaders();
+    await fetch(SUPA_URL+'/rest/v1/weekly_reconciliations?week_num=eq.'+n,{method:'DELETE',headers:h});
   }catch(e){console.error('deleteRecon:',e);}
   reconOpen=null;renderApp();
 }
@@ -1929,7 +1970,8 @@ async function toggleTask(weekNum,taskIdx,checked,actionKey,amount){
   var completedLabel=(checked&&actionKey)?(_actionLabelCache[key]||null):null;
   taskData[key]={completed:checked,completedAt:checked?now:null,completedAmount:completedAmount,actionKey:actionKey||null,completedLabel:completedLabel};
   try{
-    await fetch(SUPA_URL+'/rest/v1/weekly_tasks',{method:'POST',headers:Object.assign({},SUPA_H,{'Prefer':'resolution=merge-duplicates,return=minimal'}),body:JSON.stringify({week_num:weekNum,task_idx:taskIdx,completed:checked,completed_at:checked?now:null,completed_amount:completedAmount,action_key:actionKey||null,completed_label:completedLabel})});
+    var h=await getAuthHeaders();
+    await fetch(SUPA_URL+'/rest/v1/weekly_tasks',{method:'POST',headers:Object.assign({},h,{'Prefer':'resolution=merge-duplicates,return=minimal'}),body:JSON.stringify({week_num:weekNum,task_idx:taskIdx,completed:checked,completed_at:checked?now:null,completed_amount:completedAmount,action_key:actionKey||null,completed_label:completedLabel})});
   }catch(e){console.error('toggleTask:',e);}
   renderApp();
 }
@@ -1939,7 +1981,8 @@ async function saveNote(weekNum,el){
   noteData[weekNum]=el.value;
   const s=document.getElementById('ns_'+weekNum);if(s)s.textContent='Saving...';
   try{
-    var r=await fetch(SUPA_URL+'/rest/v1/weekly_notes',{method:'POST',headers:Object.assign({},SUPA_H,{'Prefer':'resolution=merge-duplicates,return=minimal'}),body:JSON.stringify({week_num:weekNum,note:el.value})});
+    var h=await getAuthHeaders();
+    var r=await fetch(SUPA_URL+'/rest/v1/weekly_notes',{method:'POST',headers:Object.assign({},h,{'Prefer':'resolution=merge-duplicates,return=minimal'}),body:JSON.stringify({week_num:weekNum,note:el.value})});
     if(!r.ok)throw new Error('HTTP '+r.status);
     if(s){s.textContent='Saved';setTimeout(function(){if(s)s.textContent='';},1800);}
   }catch(e){console.error('saveNote:',e);if(s)s.textContent='Error';}
@@ -2017,7 +2060,8 @@ async function saveWeekEdits(n){
   if(isNew&&dates)payload.dates=dates;
   editSaving=true;renderEditDrawer();
   try{
-    var r=await fetch(SUPA_URL+'/rest/v1/model_week_overrides',{method:'POST',headers:Object.assign({},SUPA_H,{'Prefer':'resolution=merge-duplicates,return=minimal'}),body:JSON.stringify(payload)});
+    var _ewh=await getAuthHeaders();
+    var r=await fetch(SUPA_URL+'/rest/v1/model_week_overrides',{method:'POST',headers:Object.assign({},_ewh,{'Prefer':'resolution=merge-duplicates,return=minimal'}),body:JSON.stringify(payload)});
     if(!r.ok)throw new Error('HTTP '+r.status);
     var _preWk=null;
     if(!isNew){
@@ -2034,14 +2078,14 @@ async function saveWeekEdits(n){
         if(_ctIdx>=0&&taskData[weekNum+'_'+_ctIdx]&&taskData[weekNum+'_'+_ctIdx].completed){
           taskData[weekNum+'_'+_ctIdx].completedAmount=_oldCt;
           taskData[weekNum+'_'+_ctIdx].actionKey=ACTION_KEYS.COMMISSION_TAX;
-          fetch(SUPA_URL+'/rest/v1/weekly_tasks?week_num=eq.'+weekNum+'&task_idx=eq.'+_ctIdx,{method:'PATCH',headers:Object.assign({},SUPA_H,{'Prefer':'return=minimal'}),body:JSON.stringify({completed_amount:_oldCt,action_key:ACTION_KEYS.COMMISSION_TAX})}).catch(function(e){console.error('autoBackfillCompletedAmount:',e);});
+          fetch(SUPA_URL+'/rest/v1/weekly_tasks?week_num=eq.'+weekNum+'&task_idx=eq.'+_ctIdx,{method:'PATCH',headers:Object.assign({},_ewh,{'Prefer':'return=minimal'}),body:JSON.stringify({completed_amount:_oldCt,action_key:ACTION_KEYS.COMMISSION_TAX})}).catch(function(e){console.error('autoBackfillCompletedAmount:',e);});
           var _id='ct_'+Date.now()+'_'+Math.random().toString(36).slice(2,6);
           var _lbl='Transfer $'+fc(_deltaCt)+' from Truist Checking to Vio Bank – Tax Reserve (commission 40% on additional income)';
           if(!customTaskData[weekNum])customTaskData[weekNum]=[];
           customTaskData[weekNum].push({id:_id,label:_lbl,completed:false});
           setTaskMeta(_id,{type:'transfer',source:'user',reminderKey:null,lockedLabel:false,dismissed:false,version:1});
           Promise.all([
-            fetch(SUPA_URL+'/rest/v1/custom_tasks',{method:'POST',headers:Object.assign({},SUPA_H,{'Prefer':'return=minimal'}),body:JSON.stringify({id:_id,week_num:weekNum,label:_lbl,completed:false})}),
+            fetch(SUPA_URL+'/rest/v1/custom_tasks',{method:'POST',headers:Object.assign({},_ewh,{'Prefer':'return=minimal'}),body:JSON.stringify({id:_id,week_num:weekNum,label:_lbl,completed:false})}),
             saveCustomTaskMeta()
           ]).catch(function(e){console.error('autoCustomTask:',e);});
         }
@@ -2066,7 +2110,7 @@ async function saveWeekEdits(n){
           if(_gDelta>0.005){
             taskData[weekNum+'_'+ai].completedAmount=_prevAmt;
             taskData[weekNum+'_'+ai].actionKey=aKey;
-            fetch(SUPA_URL+'/rest/v1/weekly_tasks?week_num=eq.'+weekNum+'&task_idx=eq.'+ai,{method:'PATCH',headers:Object.assign({},SUPA_H,{'Prefer':'return=minimal'}),body:JSON.stringify({completed_amount:_prevAmt,action_key:aKey})}).catch(function(e){console.error('autoBackfillGoal:',e);});
+            fetch(SUPA_URL+'/rest/v1/weekly_tasks?week_num=eq.'+weekNum+'&task_idx=eq.'+ai,{method:'PATCH',headers:Object.assign({},_ewh,{'Prefer':'return=minimal'}),body:JSON.stringify({completed_amount:_prevAmt,action_key:aKey})}).catch(function(e){console.error('autoBackfillGoal:',e);});
             var _goalId=aKey.replace('goal_','');
             var _goalDef=GOALS_REGISTRY.find(function(x){return x.id===_goalId;})||{};
             var _goalName=_goalDef.name||_goalId;
@@ -2077,7 +2121,7 @@ async function saveWeekEdits(n){
             customTaskData[weekNum].push({id:_gId,label:_gLbl,completed:false});
             setTaskMeta(_gId,{type:'transfer',source:'user',reminderKey:null,lockedLabel:false,dismissed:false,version:1});
             Promise.all([
-              fetch(SUPA_URL+'/rest/v1/custom_tasks',{method:'POST',headers:Object.assign({},SUPA_H,{'Prefer':'return=minimal'}),body:JSON.stringify({id:_gId,week_num:weekNum,label:_gLbl,completed:false})}),
+              fetch(SUPA_URL+'/rest/v1/custom_tasks',{method:'POST',headers:Object.assign({},_ewh,{'Prefer':'return=minimal'}),body:JSON.stringify({id:_gId,week_num:weekNum,label:_gLbl,completed:false})}),
               saveCustomTaskMeta()
             ]).catch(function(e){console.error('autoCustomTaskGoal:',e);});
           }
@@ -2096,7 +2140,8 @@ function confirmEditDelete(n){editDeleteConfirm=n;renderEditDrawer();}
 function cancelEditDelete(){editDeleteConfirm=false;renderEditDrawer();}
 async function deleteWeekOverride(n){
   try{
-    await fetch(SUPA_URL+'/rest/v1/model_week_overrides?week_num=eq.'+n,{method:'DELETE',headers:SUPA_H});
+    var h=await getAuthHeaders();
+    await fetch(SUPA_URL+'/rest/v1/model_week_overrides?week_num=eq.'+n,{method:'DELETE',headers:h});
     delete overrideData[n];
   }catch(e){console.error('deleteWeekOverride:',e);}
   editDeleteConfirm=false;editOpen=null;renderApp();
@@ -4245,24 +4290,153 @@ const SUPA_URL='https://usayoldrawwmjsmretin.supabase.co';
 const SUPA_KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InVzYXlvbGRyYXd3bWpzbXJldGluIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzc0NjI0MzIsImV4cCI6MjA5MzAzODQzMn0.7dpPsXdQy2aIYYsm1yWK7D5WJH0tB32ixERMBf5HRWA';
 const SUPA_H={'apikey':SUPA_KEY,'Authorization':'Bearer '+SUPA_KEY,'Content-Type':'application/json'};
 
+// ── Auth state machine ────────────────────────────────────────────────────────
+// SUPA_H is retained as a const for reference but is no longer used in any fetch() call.
+// All live data calls use getAuthHeaders() which injects the session Bearer token.
+var _supabase=supabase.createClient(SUPA_URL,SUPA_KEY);
+var AUTH_STATE='checking_session';
+
+function setAuthState(state){
+  AUTH_STATE=state;
+  var overlay=document.getElementById('auth-overlay');
+  var body=document.getElementById('auth-body');
+  var banner=document.getElementById('auth-banner');
+  var errEl=document.getElementById('auth-error');
+  var signoutBtn=document.getElementById('signout-btn');
+  if(state==='ready'){
+    if(overlay)overlay.classList.add('hidden');
+    if(signoutBtn)signoutBtn.style.display='';
+    return;
+  }
+  if(overlay)overlay.classList.remove('hidden');
+  if(signoutBtn)signoutBtn.style.display='none';
+  if(!body)return;
+  if(banner)banner.style.display='none';
+  if(errEl)errEl.style.display='none';
+  if(state==='checking_session'||state==='authenticated'){
+    body.innerHTML='<div class="auth-state-msg">Signing in…</div>';
+  } else if(state==='unauthenticated'){
+    body.innerHTML='<div class="auth-field"><label for="auth-email">Email</label><input type="email" id="auth-email" value="aherndon6@gmail.com" autocomplete="username"></div><div class="auth-field"><label for="auth-password">Password</label><input type="password" id="auth-password" autocomplete="current-password"></div><button class="auth-btn" id="auth-submit-btn" onclick="doLogin()">Sign in</button>';
+    setTimeout(function(){var pw=document.getElementById('auth-password');if(pw)pw.focus();},50);
+    document.addEventListener('keydown',function _authKey(e){if(e.key==='Enter'&&AUTH_STATE==='unauthenticated'){document.removeEventListener('keydown',_authKey);doLogin();}});
+  } else if(state==='session_expired'){
+    if(banner){banner.textContent='Your session expired. Please sign in again.';banner.style.display='block';}
+    body.innerHTML='<div class="auth-field"><label for="auth-email">Email</label><input type="email" id="auth-email" value="aherndon6@gmail.com" autocomplete="username"></div><div class="auth-field"><label for="auth-password">Password</label><input type="password" id="auth-password" autocomplete="current-password"></div><button class="auth-btn" id="auth-submit-btn" onclick="doLogin()">Sign in</button>';
+    setTimeout(function(){var pw=document.getElementById('auth-password');if(pw)pw.focus();},50);
+    document.addEventListener('keydown',function _authKey(e){if(e.key==='Enter'&&AUTH_STATE==='session_expired'){document.removeEventListener('keydown',_authKey);doLogin();}});
+  } else if(state==='unauthorized'){
+    body.innerHTML='<div class="auth-state-deny"><p>Access denied. This account is not authorized to access this application.</p><a onclick="doSignOut()">Sign out</a></div>';
+  } else if(state==='auth_error'){
+    if(errEl){errEl.textContent='Unable to connect to authentication service. Check your connection and try again.';errEl.style.display='block';}
+    body.innerHTML='<button class="auth-btn" onclick="initAuth()">Retry</button>';
+  }
+}
+
+async function getCurrentSession(){
+  var result=await _supabase.auth.getSession();
+  return result.data&&result.data.session?result.data.session:null;
+}
+
+async function getAuthHeaders(extra){
+  var session=await getCurrentSession();
+  var token=session&&session.access_token;
+  if(!token)throw new Error('[Auth] No authenticated session — cannot fetch data');
+  return Object.assign({},{apikey:SUPA_KEY,Authorization:'Bearer '+token,'Content-Type':'application/json'},extra||{});
+}
+
+async function doLogin(){
+  var emailEl=document.getElementById('auth-email');
+  var pwEl=document.getElementById('auth-password');
+  var btn=document.getElementById('auth-submit-btn');
+  var errEl=document.getElementById('auth-error');
+  if(!emailEl||!pwEl)return;
+  if(errEl)errEl.style.display='none';
+  if(btn){btn.disabled=true;btn.textContent='Signing in…';}
+  try{
+    var result=await _supabase.auth.signInWithPassword({email:emailEl.value.trim(),password:pwEl.value});
+    if(result.error){
+      if(btn){btn.disabled=false;btn.textContent='Sign in';}
+      if(errEl){errEl.textContent='Invalid email or password.';errEl.style.display='block';}
+      return;
+    }
+    setAuthState('authenticated');
+    await checkAuthorization(result.data.session);
+  }catch(e){
+    if(btn){btn.disabled=false;btn.textContent='Sign in';}
+    if(errEl){errEl.textContent='Sign-in error: '+e.message;errEl.style.display='block';}
+  }
+}
+
+async function checkAuthorization(session){
+  try{
+    var token=session&&session.access_token;
+    var email=session&&session.user&&session.user.email;
+    if(!token||!email){setAuthState('unauthorized');return;}
+    // Read own app_users row — direct table read, not RPC.
+    // is_allowed_user() is used only by RLS policies, not called here.
+    var h={apikey:SUPA_KEY,Authorization:'Bearer '+token,'Content-Type':'application/json'};
+    var r=await fetch(SUPA_URL+'/rest/v1/app_users?email=eq.'+encodeURIComponent(email.toLowerCase())+'&select=active&limit=1',{headers:h});
+    if(!r.ok){setAuthState('auth_error');return;}
+    var rows=await r.json();
+    if(!rows||!rows.length||!rows[0].active){setAuthState('unauthorized');return;}
+    // Both gates passed: valid session + active app_users row
+    await loadAll();
+    if(goalsLoadStatus==='not_configured'){
+      console.warn('[GoalRegistry] still not_configured after loadAll() — treating as loaded_fallback');
+      goalsLoadStatus='loaded_fallback';
+      applyGoalsFallback();
+      renderApp();
+    }
+    setAuthState('ready');
+  }catch(e){
+    console.error('checkAuthorization:',e);
+    setAuthState('auth_error');
+  }
+}
+
+async function doSignOut(){
+  try{await _supabase.auth.signOut();}catch(e){console.error('signOut:',e);}
+  setAuthState('unauthenticated');
+}
+
+async function initAuth(){
+  setAuthState('checking_session');
+  _supabase.auth.onAuthStateChange(function(event,session){
+    if(event==='SIGNED_OUT'){setAuthState('unauthenticated');}
+    else if(event==='TOKEN_REFRESHED'){/* transparent refresh — no state change */}
+    else if(event==='TOKEN_REFRESH_FAILED'){setAuthState('session_expired');}
+  });
+  try{
+    var session=await getCurrentSession();
+    if(!session){setAuthState('unauthenticated');return;}
+    setAuthState('authenticated');
+    await checkAuthorization(session);
+  }catch(e){
+    console.error('initAuth:',e);
+    setAuthState('auth_error');
+  }
+}
+
 async function saveGoal(key,value){
   try{
-    await fetch(SUPA_URL+'/rest/v1/goals',{method:'POST',headers:Object.assign({},SUPA_H,{'Prefer':'resolution=merge-duplicates,return=minimal'}),body:JSON.stringify({key:key,value:String(value)})});
+    var h=await getAuthHeaders();
+    await fetch(SUPA_URL+'/rest/v1/goals',{method:'POST',headers:Object.assign({},h,{'Prefer':'resolution=merge-duplicates,return=minimal'}),body:JSON.stringify({key:key,value:String(value)})});
   }catch(e){console.error('saveGoal:',e);}
 }
 
 async function loadAll(){
   try{
+    var h=await getAuthHeaders();
     var[reconR,tasksR,notesR,overridesR,goalsR,wishlistR,customTasksR,budgetRulesR,goalRegistryR]=await Promise.all([
-      fetch(SUPA_URL+'/rest/v1/weekly_reconciliations?select=*',{headers:SUPA_H}),
-      fetch(SUPA_URL+'/rest/v1/weekly_tasks?select=*',{headers:SUPA_H}),
-      fetch(SUPA_URL+'/rest/v1/weekly_notes?select=*',{headers:SUPA_H}),
-      fetch(SUPA_URL+'/rest/v1/model_week_overrides?select=*',{headers:SUPA_H}),
-      fetch(SUPA_URL+'/rest/v1/goals?select=key,value',{headers:SUPA_H}),
-      fetch(SUPA_URL+'/rest/v1/wishlist_items?select=*&order=created_at.asc',{headers:SUPA_H}),
-      fetch(SUPA_URL+'/rest/v1/custom_tasks?select=*&order=created_at.asc',{headers:SUPA_H}),
-      fetch(SUPA_URL+'/rest/v1/budget_rules?active=eq.true&order=start_date.asc',{headers:SUPA_H}),
-      fetch(SUPA_URL+'/rest/v1/goal_registry?order=priority.asc',{headers:SUPA_H})
+      fetch(SUPA_URL+'/rest/v1/weekly_reconciliations?select=*',{headers:h}),
+      fetch(SUPA_URL+'/rest/v1/weekly_tasks?select=*',{headers:h}),
+      fetch(SUPA_URL+'/rest/v1/weekly_notes?select=*',{headers:h}),
+      fetch(SUPA_URL+'/rest/v1/model_week_overrides?select=*',{headers:h}),
+      fetch(SUPA_URL+'/rest/v1/goals?select=key,value',{headers:h}),
+      fetch(SUPA_URL+'/rest/v1/wishlist_items?select=*&order=created_at.asc',{headers:h}),
+      fetch(SUPA_URL+'/rest/v1/custom_tasks?select=*&order=created_at.asc',{headers:h}),
+      fetch(SUPA_URL+'/rest/v1/budget_rules?active=eq.true&order=start_date.asc',{headers:h}),
+      fetch(SUPA_URL+'/rest/v1/goal_registry?order=priority.asc',{headers:h})
     ]);
     if(reconR.ok){(await reconR.json()).forEach(function(row){reconData[row.week_num]={chk:row.chk,sav:row.sav,amx:row.amx,tax:row.tax,lc:row.lc,date:new Date(row.recorded_at).toLocaleDateString('en-US',{month:'short',day:'numeric'})};});}
     if(tasksR.ok){(await tasksR.json()).forEach(function(row){taskData[row.week_num+'_'+row.task_idx]={completed:row.completed,completedAt:row.completed_at,completedAmount:row.completed_amount!=null?parseFloat(row.completed_amount):null,actionKey:row.action_key||null,completedLabel:row.completed_label||null};});}
@@ -4273,7 +4447,7 @@ async function loadAll(){
       if(row.key==='rt_goal'){goalRt=Math.max(1,parseFloat(row.value)||7690.98);}
       if(row.key==='anthropic_key'){anthropicKey=row.value||'';}
       if(row.key==='custom_tasks'){try{var ct=JSON.parse(row.value);if(ct&&typeof ct==='object'){customTaskData=ct;try{localStorage.setItem('hfos_custom_tasks',row.value);}catch(e){}}}catch(e){}}
-      if(row.key==='custom_task_meta'){try{var cm=JSON.parse(row.value);if(cm&&typeof cm==='object'){customTaskMeta=cm;}}catch(e){}}
+      if(row.key==='custom_task_meta'){try{var cm=typeof row.value==='string'?JSON.parse(row.value):row.value;if(cm&&typeof cm==='object'){customTaskMeta=cm;}}catch(e){}}
     });}
     if(customTasksR.ok){
       var ctRows=await customTasksR.json();
@@ -4294,7 +4468,7 @@ async function loadAll(){
               var toMigrate=[];
               Object.keys(lsParsed).forEach(function(wn){(lsParsed[wn]||[]).forEach(function(t){toMigrate.push({id:t.id,week_num:parseInt(wn),label:t.label,completed:t.completed||false});});});
               if(toMigrate.length>0){
-                fetch(SUPA_URL+'/rest/v1/custom_tasks',{method:'POST',headers:Object.assign({},SUPA_H,{'Prefer':'return=minimal'}),body:JSON.stringify(toMigrate)}).then(function(){try{localStorage.removeItem('hfos_custom_tasks');}catch(e){}}).catch(function(e){console.error('migrate custom_tasks:',e);});
+                getAuthHeaders().then(function(mh){fetch(SUPA_URL+'/rest/v1/custom_tasks',{method:'POST',headers:Object.assign({},mh,{'Prefer':'return=minimal'}),body:JSON.stringify(toMigrate)}).then(function(){try{localStorage.removeItem('hfos_custom_tasks');}catch(e){}}).catch(function(e){console.error('migrate custom_tasks:',e);});}).catch(function(e){console.error('migrate custom_tasks auth:',e);});
               } else {try{localStorage.removeItem('hfos_custom_tasks');}catch(e){}}
             }
           }
@@ -4634,7 +4808,8 @@ async function commitScenario(){
     }else if(scenarioState.previewOverride){
       var payload=scenarioState.previewOverride;
       payload.updated_at=new Date().toISOString();
-      await fetch(SUPA_URL+'/rest/v1/model_week_overrides',{method:'POST',headers:Object.assign({},SUPA_H,{'Prefer':'resolution=merge-duplicates,return=minimal'}),body:JSON.stringify(payload)});
+      var _csh=await getAuthHeaders();
+      await fetch(SUPA_URL+'/rest/v1/model_week_overrides',{method:'POST',headers:Object.assign({},_csh,{'Prefer':'resolution=merge-duplicates,return=minimal'}),body:JSON.stringify(payload)});
       overrideData[payload.week_num]=payload;
     }
     clearScenario();
@@ -4843,11 +5018,11 @@ var WISHLIST_SEED=[
   {title:'Required action override system',notes:'Model-generated required actions can now be moved, relabeled, reset, or deleted where allowed, with validation, localStorage persistence, and full model recalculation.',phase:'Phase 4',status:'done'},
   {title:'IRA/529 AMEX 5-week lookahead',notes:'Checking → AMEX holding sweeps for IRA/529 goals use a 5-week scheduled cash-flow lookahead and max-safe-sweep binary search to prevent new floor violations. CPA flag is display/deployment status only and no longer gates accumulation.',phase:'Phase 4',status:'done'},
   // Phase 5 — planned
-  {title:'Dynamic goal registry (CRUD)',notes:'Add / edit / pause / archive / reprioritize goals via UI. Deferred from Phase 4.',phase:'Phase 5',status:'planned'},
+  {title:'Goal Registry CRUD (Phase 6B)',notes:'Add / edit / pause / archive / reprioritize goals via UI. Requires authentication (docs/auth-spec-v1.4.md) and write policy on goal_registry before live deployment. Architecture: docs/stabilization-roadmap-spec.md Phase 6B section.',phase:'Phase 6',status:'planned'},
   {title:'Goal dependency chain',notes:'Start a goal after another goal completes (startsAfter). Display layer exists; full UI deferred from Phase 4.',phase:'Phase 5',status:'planned'},
   {title:'Goal progress from actions',notes:'Progress gated on checked required actions, not model projection alone. Deferred from Phase 4.',phase:'Phase 5',status:'planned'},
-  {title:'Ask Claude API key security — backend proxy',notes:'Move Anthropic API calls behind a Supabase Edge Function. Browser sends question + model context; Edge Function holds ANTHROPIC_API_KEY as env secret and calls Anthropic server-side. Removes user-entered key from browser and Supabase storage. Not blocking for local-only use (Wendy + Adam, $5 credit, no auto-renew) but required before any wider access.',phase:'Phase 5',status:'planned'},
-  {title:'Playwright end-to-end smoke tests',notes:'e2e.js written and ready. Install: npm install playwright && npx playwright install chromium. Run: node e2e.js. Sections: A) tab smoke, B) console errors, C) Decision Engine locked/cleared, D) IRA flag toggle, E) edit week, F) reconciliation, G) wishlist, H) XSS injection, I) Supabase offline, J) mobile viewport. Mirrors what test_regression.js does for model logic, but for the browser UI. Activate when promotions become more frequent or a second user is added.',phase:'Phase 5',status:'planned'},
+  {title:'Ask Claude API key security — backend proxy',notes:'Move Anthropic API calls behind a Supabase Edge Function. Browser sends question + model context; Edge Function holds ANTHROPIC_API_KEY as env secret and calls Anthropic server-side. Removes user-entered key from browser and Supabase storage. Tracked in docs/security-brittleness-backlog.md item 12. Not blocking for local-only use but required before any wider access or before the key is treated as sensitive.',phase:'Phase 5',status:'planned'},
+  {title:'Playwright end-to-end smoke tests',notes:'54 Playwright tests across sections A-J, BR (budget rules), WC (what-if), GR (goal registry), AUTH (auth flow). Run: node e2e.js from ~/Adam-Dashboard. Credentials via .env (gitignored). Push gate in push_to_github.sh requires all tests pass before push.',phase:'Phase 5',status:'done'},
   {title:'Scenario preview: commit to Supabase',notes:'Scenario Builder write-back — commit scenario as override week with single click.',phase:'Phase 5',status:'planned'},
   {title:'Retirement dashboard (Coast FI view)',notes:'Show Coast FI target vs. current trajectory. Age-indexed. IRA/401k/SEP balances vs. Coast FI number.',phase:'Phase 5',status:'planned'},
   {title:'Coast FI calculator',notes:'Inputs: current age, retirement age, expected return, current balances. Outputs: Coast FI number and gap.',phase:'Phase 5',status:'planned'},
@@ -4862,7 +5037,7 @@ var WISHLIST_SEED=[
   {title:'LC Boost and Quarterly LC Return checkable',notes:'Recommended actions with 📌 prefix now render with checkboxes. Completion state persists in localStorage per week.',phase:'Phase 4',status:'done'},
   {title:'Be able to move, update, delete a required action and have that update the weekly model and logic',notes:'Model-generated required actions can now be moved, relabeled, reset, or deleted where allowed, with validation, localStorage persistence, and full model recalculation.',phase:'Phase 4',status:'done'},
   // Phase 6 — planned
-  {title:'Authentication',notes:'Lock dashboard behind login — required before account connections',phase:'Phase 6',status:'planned'},
+  {title:'Authentication (Phase 6A)',notes:'Supabase Auth email+password. app_users allowlist table. is_allowed_user() SECURITY DEFINER function. 6-state auth machine (checking_session/unauthenticated/authenticated/unauthorized/session_expired/auth_error). Spec: docs/auth-spec-v1.4.md. Security backlog: docs/security-brittleness-backlog.md. Required before Goal Registry CRUD, Budget Rule UI, or any expanded write capability.',phase:'Phase 6',status:'planned'},
   {title:'Account connections (OAuth)',notes:'Connect Truist, AMEX, and other accounts',phase:'Phase 6',status:'planned'},
   {title:'Auto balance pre-fill',notes:'Pull current balance automatically when opening reconciliation drawer',phase:'Phase 6',status:'planned'},
   {title:'Last synced badge per account',notes:'Shows when each account balance was last pulled',phase:'Phase 6',status:'planned'},
@@ -4872,11 +5047,38 @@ var WISHLIST_SEED=[
   {title:'Date-based model internals',notes:'Replace week-number model with actual date math. Enables irregular paycheck timing and real calendar alignment.',phase:'Phase 6',status:'planned'},
   {title:'Full tax forecasting',notes:'W-2 + SE income projections, estimated quarterly payments, year-end true-up.',phase:'Phase 6',status:'planned'},
   {title:'Net worth dashboard',notes:'All accounts, balances, debts. Monthly snapshot tracking. Total net worth trend line.',phase:'Phase 6',status:'planned'},
+  // Security — post-auth near-term
+  {title:'MFA for owner Supabase account',notes:'Enable multi-factor authentication for aherndon6@gmail.com in Supabase Auth. Recommended shortly after auth v1 lands. Tracked in docs/security-brittleness-backlog.md item 8.',phase:'Security',status:'planned'},
+  {title:'Backup owner account (lockout prevention)',notes:'Create a second app_users owner row for a backup email. Prevents total lockout if primary account has an issue. Requires second Supabase Auth account. Tracked in docs/security-brittleness-backlog.md item 9.',phase:'Security',status:'planned'},
+  {title:'Migrate RLS authorization to auth.uid()',notes:'Replace email-based is_allowed_user() check with auth.uid() lookup. Email can change; auth.uid() is permanent UUID. Migration path: add auth_user_id NOT NULL constraint once all rows are populated. Tracked in docs/security-brittleness-backlog.md item 10.',phase:'Security',status:'planned'},
+  {title:'Role enforcement (owner / editor / viewer)',notes:'Enforce app_users.role in is_allowed_user(). owner=full access, editor=limited write, viewer=read-only. Schema and role column already seeded in auth v1. Required before giving Wendy/CPA/advisor access. Tracked in docs/security-brittleness-backlog.md item 11.',phase:'Security',status:'planned'},
+  {title:'CDN dependency hardening (supabase-js)',notes:'Pin exact supabase-js CDN version. Add Subresource Integrity (SRI) hash if practical. Vendor local UMD copy to tools/ if CDN reliability or security becomes a concern. Tracked in docs/security-brittleness-backlog.md item 13.',phase:'Security',status:'planned'},
+  {title:'Content Security Policy (CSP) and XSS hardening',notes:'Add <meta http-equiv="Content-Security-Policy"> to index.html. Restrict script sources, block unsafe-eval, prevent exfiltration to unknown origins. localStorage tokens are exposed to XSS — CSP is the mitigation layer. Tracked in docs/security-brittleness-backlog.md item 14.',phase:'Security',status:'planned'},
+  {title:'Session and token policy review',notes:'Review refresh token duration (currently 30d), inactivity timeout behavior, manual sign-out clearing localStorage, behavior on shared computers. Tracked in docs/security-brittleness-backlog.md item 15.',phase:'Security',status:'planned'},
+  {title:'Supabase audit and access logging',notes:'Track who accessed the app, failed logins, and table writes. Add audit_log table if multiple users are added. Review Supabase dashboard logs for anomalies. Tracked in docs/security-brittleness-backlog.md item 16.',phase:'Security',status:'planned'},
+  {title:'Supabase anon key rotation procedure',notes:'Anon key is permanently in git history. Document rotation procedure: generate new key in Supabase, update index.html, push, verify. Run if key is ever exposed or repo is made public. Tracked in docs/security-brittleness-backlog.md.',phase:'Security',status:'planned'},
+  {title:'Formal versioned SQL migration scripts',notes:'Move all RLS policy, table, and function changes into versioned .sql files under docs/sql/ or migrations/. Currently managed via Supabase dashboard SQL editor. Needed before multiple contributors or automated deploys. Tracked in docs/security-brittleness-backlog.md item 17.',phase:'Platform',status:'planned'},
+  {title:'Data export and backup plan',notes:'Define Supabase backup cadence, manual export option (CSV/JSON from all tables), and recovery procedure for bad writes. Tracked in docs/security-brittleness-backlog.md item 18.',phase:'Platform',status:'planned'},
+  // Auth+ — later, after role enforcement
+  {title:'In-app user management UI',notes:'Add/deactivate app_users rows from inside the dashboard. Currently managed via Supabase dashboard only. Requires role enforcement (owner-only action). Tracked in docs/security-brittleness-backlog.md item 19.',phase:'Auth+',status:'planned'},
+  {title:'User invite flow',notes:'Send email invite to a new user. Creates Supabase Auth account and app_users row. Requires in-app user management UI first. Tracked in docs/security-brittleness-backlog.md item 20.',phase:'Auth+',status:'planned'},
+  {title:'Forgot-password UI',notes:'In-app password reset via Supabase magic link. Currently handled via Supabase dashboard only — acceptable for single-user v1. Tracked in docs/security-brittleness-backlog.md item 21.',phase:'Auth+',status:'planned'},
+  {title:'Read-only viewer dashboard mode',notes:'Viewer role sees reconciliation and goal data but cannot write. Requires role enforcement. Tracked in docs/security-brittleness-backlog.md item 22.',phase:'Auth+',status:'planned'},
+  {title:'CPA / advisor access mode',notes:'Viewer or editor access for CPA or financial advisor. Scoped to tax and goal data only. Requires role enforcement and role-aware UI suppression. Tracked in docs/security-brittleness-backlog.md item 23.',phase:'Auth+',status:'planned'},
+  {title:'Wendy access mode',notes:'Viewer or editor access for Wendy. Define scope (reconciliation-only? full view?). Requires role enforcement. Tracked in docs/security-brittleness-backlog.md item 24.',phase:'Auth+',status:'planned'},
+  {title:'Role-aware UI suppression',notes:'UI hides or disables edit controls based on app_users.role (not just RLS enforcement). Viewer sees read-only dashboard. Editor sees limited write controls. Owner sees all. Tracked in docs/security-brittleness-backlog.md item 25.',phase:'Auth+',status:'planned'},
+  // Platform — architecture and brittleness
+  {title:'Auto-derive starting balances from reconciliation (TD-8)',notes:'START_CHK and START_SAV are hardcoded constants. Every reconciled week increases drift from reality. Fix: derive starting balances from the most recent reconciled week. Model-affecting change — requires spec and ChatGPT review. Tracked in docs/stabilization-roadmap-spec.md TD-8.',phase:'Platform',status:'planned'},
+  {title:'Write debouncing on toggleTask and saveNote',notes:'Fast user interaction (rapid task toggling, quick note edits) can spam Supabase with sequential writes and create race conditions on upserts. Add debounce wrapper (100-300ms) to both functions. Low risk, no model changes.',phase:'Platform',status:'planned'},
+  {title:'Input validation on Supabase write paths',notes:'saveRecon, toggleTask, and saveNote accept DOM input values directly with no type or range checks. Add validation layer before each write: numeric type checks on balance fields, max length on notes. Prevents corrupted data reaching Supabase.',phase:'Platform',status:'planned'},
+  {title:'Model re-baseline procedure for 2027',notes:'Current model window ends Cal Wk 53 (Jan 9, 2027). When the window closes, the app needs new constants (START_CHK, START_SAV, etc.), a new 31-week range, and a fresh goal registry state. Document and execute before Jan 2027. Model-affecting — requires spec and ChatGPT review.',phase:'Platform',status:'planned'},
+  {title:'updated_at triggers on write tables',notes:'weekly_reconciliations, weekly_tasks, and weekly_notes have no updated_at column or trigger. After auth, you know who wrote data. Adding updated_at (same BEFORE UPDATE trigger pattern as goal_registry) gives you when it last changed — useful for debugging and future audit trails.',phase:'Platform',status:'planned'},
 ];
 
 async function loadWishlist(){
   try{
-    var r=await fetch(SUPA_URL+'/rest/v1/wishlist_items?select=*&order=created_at.asc',{headers:SUPA_H});
+    var h=await getAuthHeaders();
+    var r=await fetch(SUPA_URL+'/rest/v1/wishlist_items?select=*&order=created_at.asc',{headers:h});
     if(r.ok){
       wishlistData=await r.json();
       wishlistLoaded=true;
@@ -4891,8 +5093,9 @@ async function mergeSeedWishlist(){
   var missing=WISHLIST_SEED.filter(function(s){return existing.indexOf(s.title)<0;});
   if(missing.length){
     try{
-      var rows=missing.map(function(item){return{title:item.title,notes:item.notes,phase:item.phase,status:item.status,priority:0};});
-      var r=await fetch(SUPA_URL+'/rest/v1/wishlist_items',{method:'POST',headers:Object.assign({},SUPA_H,{'Prefer':'return=representation'}),body:JSON.stringify(rows)});
+      var rows=missing.map(function(item){return{title:item.title,notes:item.notes,phase:item.phase,status:item.status,priority:0,item_type:'feature'};});
+      var mh=await getAuthHeaders();
+      var r=await fetch(SUPA_URL+'/rest/v1/wishlist_items',{method:'POST',headers:Object.assign({},mh,{'Prefer':'return=representation'}),body:JSON.stringify(rows)});
       if(r.ok){var added=await r.json();wishlistData=wishlistData.concat(added);console.log('Wishlist: merged '+added.length+' new seed items.');}
     }catch(e){console.warn('mergeSeedWishlist:',e);}
   }
@@ -4900,13 +5103,14 @@ async function mergeSeedWishlist(){
   renderApp();
 }
 async function phaseMigrateWishlist(){
+  var ph=await getAuthHeaders();
   // 1. Bulk-move ALL remaining Phase 4 planned items to Phase 5.
   //    Catches any items added by the user or seeded before the re-phase decision.
   var phase4planned=wishlistData.filter(function(x){return x.phase==='Phase 4'&&x.status==='planned';});
   for(var i=0;i<phase4planned.length;i++){
     var item=phase4planned[i];
     try{
-      await fetch(SUPA_URL+'/rest/v1/wishlist_items?id=eq.'+item.id,{method:'PATCH',headers:Object.assign({},SUPA_H,{'Prefer':'return=minimal'}),body:JSON.stringify({phase:'Phase 5'})});
+      await fetch(SUPA_URL+'/rest/v1/wishlist_items?id=eq.'+item.id,{method:'PATCH',headers:Object.assign({},ph,{'Prefer':'return=minimal'}),body:JSON.stringify({phase:'Phase 5'})});
       item.phase='Phase 5';
       console.log('Wishlist phase migration: "'+item.title+'" Phase 4 planned → Phase 5');
     }catch(e){console.warn('phaseMigrate error:',e);}
@@ -4914,7 +5118,6 @@ async function phaseMigrateWishlist(){
   // 2. Title-based corrections for items seeded with wrong phases from older code.
   var corrections=[
     {title:'Dynamic goal registry',          phase:'Phase 5'},
-    {title:'Dynamic goal registry (CRUD)',    phase:'Phase 5'},
     {title:'Goal dependency chain',           phase:'Phase 5'},
     {title:'Goal progress from actions',      phase:'Phase 5'},
     {title:'Authentication',                  phase:'Phase 6'},
@@ -4924,28 +5127,65 @@ async function phaseMigrateWishlist(){
     var match=wishlistData.find(function(x){return x.title===c.title;});
     if(match&&match.phase!==c.phase){
       try{
-        await fetch(SUPA_URL+'/rest/v1/wishlist_items?id=eq.'+match.id,{method:'PATCH',headers:Object.assign({},SUPA_H,{'Prefer':'return=minimal'}),body:JSON.stringify({phase:c.phase})});
+        await fetch(SUPA_URL+'/rest/v1/wishlist_items?id=eq.'+match.id,{method:'PATCH',headers:Object.assign({},ph,{'Prefer':'return=minimal'}),body:JSON.stringify({phase:c.phase})});
         match.phase=c.phase;
         console.log('Wishlist phase migration: "'+match.title+'" → '+c.phase);
       }catch(e){console.warn('phaseMigrate error:',e);}
     }
   }
+  // Title + phase corrections for renamed items
+  var titleCorrections=[
+    {oldTitle:'Dynamic goal registry (CRUD)',newTitle:'Goal Registry CRUD (Phase 6B)',phase:'Phase 6',
+     notes:'Add / edit / pause / archive / reprioritize goals via UI. Requires authentication (docs/auth-spec-v1.4.md) and write policy on goal_registry. Spec: docs/stabilization-roadmap-spec.md Phase 6B section.'},
+    {oldTitle:'Authentication',newTitle:'Authentication (Phase 6A)',phase:'Phase 6',
+     notes:'Supabase Auth email+password. app_users allowlist table. is_allowed_user() SECURITY DEFINER function. 6-state auth machine. Spec: docs/auth-spec-v1.4.md. Security backlog: docs/security-brittleness-backlog.md.'},
+  ];
+  for(var t=0;t<titleCorrections.length;t++){
+    var tc=titleCorrections[t];
+    var tm=wishlistData.find(function(x){return x.title===tc.oldTitle;});
+    if(tm){
+      try{
+        await fetch(SUPA_URL+'/rest/v1/wishlist_items?id=eq.'+tm.id,{method:'PATCH',headers:Object.assign({},ph,{'Prefer':'return=minimal'}),body:JSON.stringify({title:tc.newTitle,phase:tc.phase,notes:tc.notes})});
+        tm.title=tc.newTitle;tm.phase=tc.phase;tm.notes=tc.notes;
+        console.log('Wishlist title migration: "'+tc.oldTitle+'" → "'+tc.newTitle+'"');
+      }catch(e){console.warn('titleMigrate error:',e);}
+    }
+  }
+  // Status corrections for items now done
+  var statusCorrections=[
+    {title:'Playwright end-to-end smoke tests',status:'done',
+     notes:'54 Playwright tests (A-J + BR + WC + GR + AUTH). Run: node e2e.js from ~/Adam-Dashboard. Credentials via .env (gitignored). Push gate in push_to_github.sh.'},
+  ];
+  for(var s=0;s<statusCorrections.length;s++){
+    var sc=statusCorrections[s];
+    var sm=wishlistData.find(function(x){return x.title===sc.title;});
+    if(sm&&sm.status!==sc.status){
+      try{
+        await fetch(SUPA_URL+'/rest/v1/wishlist_items?id=eq.'+sm.id,{method:'PATCH',headers:Object.assign({},ph,{'Prefer':'return=minimal'}),body:JSON.stringify({status:sc.status,notes:sc.notes})});
+        sm.status=sc.status;sm.notes=sc.notes;
+        console.log('Wishlist status migration: "'+sm.title+'" → '+sc.status);
+      }catch(e){console.warn('statusMigrate error:',e);}
+    }
+  }
 }
 async function seedWishlist(){
   try{
-    var rows=WISHLIST_SEED.map(function(item){return{title:item.title,notes:item.notes,phase:item.phase,status:item.status,priority:0};});
-    var r=await fetch(SUPA_URL+'/rest/v1/wishlist_items',{method:'POST',headers:Object.assign({},SUPA_H,{'Prefer':'return=representation'}),body:JSON.stringify(rows)});
+    var sh=await getAuthHeaders();
+    var rows=WISHLIST_SEED.map(function(item){return{title:item.title,notes:item.notes,phase:item.phase,status:item.status,priority:0,item_type:'feature'};});
+    var r=await fetch(SUPA_URL+'/rest/v1/wishlist_items',{method:'POST',headers:Object.assign({},sh,{'Prefer':'return=representation'}),body:JSON.stringify(rows)});
     if(r.ok){wishlistData=await r.json();wishlistLoaded=true;renderApp();}
+    else{r.text().then(function(b){console.error('seedWishlist failed',r.status,b);}).catch(function(){});}
   }catch(e){console.error('seedWishlist:',e);}
 }
 async function saveWishlistItem(item){
   try{
+    var wh=await getAuthHeaders();
     if(item.id){
-      await fetch(SUPA_URL+'/rest/v1/wishlist_items?id=eq.'+item.id,{method:'PATCH',headers:Object.assign({},SUPA_H,{'Prefer':'return=minimal'}),body:JSON.stringify({title:item.title,notes:item.notes,phase:item.phase,status:item.status,item_type:item.item_type||'feature',updated_at:new Date().toISOString()})});
+      await fetch(SUPA_URL+'/rest/v1/wishlist_items?id=eq.'+item.id,{method:'PATCH',headers:Object.assign({},wh,{'Prefer':'return=minimal'}),body:JSON.stringify({title:item.title,notes:item.notes,phase:item.phase,status:item.status,item_type:item.item_type||'feature',updated_at:new Date().toISOString()})});
       var idx=wishlistData.findIndex(function(x){return x.id===item.id;});
       if(idx>=0)wishlistData[idx]=Object.assign({},wishlistData[idx],item);
     }else{
-      var r=await fetch(SUPA_URL+'/rest/v1/wishlist_items',{method:'POST',headers:Object.assign({},SUPA_H,{'Prefer':'return=representation'}),body:JSON.stringify({title:item.title,notes:item.notes||'',phase:item.phase||'Backlog',status:'idea',item_type:item.item_type||'feature',priority:0})});
+      var r=await fetch(SUPA_URL+'/rest/v1/wishlist_items',{method:'POST',headers:Object.assign({},wh,{'Prefer':'return=representation'}),body:JSON.stringify({title:item.title,notes:item.notes||'',phase:item.phase||'Backlog',status:'idea',item_type:item.item_type||'feature',priority:0})});
       if(r.ok){var created=await r.json();wishlistData=wishlistData.concat(created);}
     }
     wishlistAddOpen=false;wishlistEditId=null;renderApp();
@@ -4954,7 +5194,8 @@ async function saveWishlistItem(item){
 async function deleteWishlistItem(id){
   if(!confirm('Delete this item?'))return;
   try{
-    await fetch(SUPA_URL+'/rest/v1/wishlist_items?id=eq.'+id,{method:'DELETE',headers:SUPA_H});
+    var h=await getAuthHeaders();
+    await fetch(SUPA_URL+'/rest/v1/wishlist_items?id=eq.'+id,{method:'DELETE',headers:h});
     wishlistData=wishlistData.filter(function(x){return x.id!==id;});
     renderApp();
   }catch(e){console.error('deleteWishlistItem:',e);}
@@ -4965,7 +5206,8 @@ async function moveWishlistItem(id,newStatus){
   var upd={status:newStatus,updated_at:new Date().toISOString()};
   if(newStatus==='done')upd.completed_at=new Date().toISOString();
   try{
-    await fetch(SUPA_URL+'/rest/v1/wishlist_items?id=eq.'+id,{method:'PATCH',headers:Object.assign({},SUPA_H,{'Prefer':'return=minimal'}),body:JSON.stringify(upd)});
+    var mwh=await getAuthHeaders();
+    await fetch(SUPA_URL+'/rest/v1/wishlist_items?id=eq.'+id,{method:'PATCH',headers:Object.assign({},mwh,{'Prefer':'return=minimal'}),body:JSON.stringify(upd)});
     var idx=wishlistData.findIndex(function(x){return x.id===id;});
     if(idx>=0)wishlistData[idx]=Object.assign({},wishlistData[idx],upd);
     renderApp();
@@ -5097,7 +5339,8 @@ async function saveApiKey(key){
   anthropicKey=key.trim();
   localStorage.setItem('herndon_anthropic_key',anthropicKey);
   try{
-    await fetch(SUPA_URL+'/rest/v1/goals',{method:'POST',headers:Object.assign({},SUPA_H,{'Prefer':'resolution=merge-duplicates,return=minimal'}),body:JSON.stringify({key:'anthropic_key',value:anthropicKey})});
+    var h=await getAuthHeaders();
+    await fetch(SUPA_URL+'/rest/v1/goals',{method:'POST',headers:Object.assign({},h,{'Prefer':'resolution=merge-duplicates,return=minimal'}),body:JSON.stringify({key:'anthropic_key',value:anthropicKey})});
   }catch(e){console.error('saveApiKey:',e);}
   renderApp();
 }
@@ -5241,16 +5484,6 @@ async function sendAsk(){
   askLoading=false;renderAskClaude();
 }
 
-// Render immediately with defaults so the page isn't blank while Supabase loads
-try{
-  renderApp();
-}catch(e){
-  console.error('Initial render error:',e);
-  // Surface error visibly in the content area for debugging
-  var dbgEl=document.getElementById('overview-content');
-  if(dbgEl)dbgEl.innerHTML='<div style="padding:24px;color:#b91c1c;font-family:monospace;font-size:13px;background:#fef2f2;border-radius:8px;margin:16px"><strong>Render error:</strong><br>'+e.message+'<br><pre style="margin-top:8px;white-space:pre-wrap;font-size:11px">'+e.stack+'</pre></div>';
-}
-// Then load persisted data and re-render
 // Render build timestamp in nav footer using local time
 (function(){
   var el=document.getElementById('build-stamp');
@@ -5260,16 +5493,11 @@ try{
   var timePart=d.toLocaleTimeString('en-US',{hour:'numeric',minute:'2-digit'});
   el.textContent='Last build: '+datePart+' · '+timePart;
 })();
-loadAll().then(function(){
-  // After loadAll() resolves: if goalsLoadStatus is still 'not_configured', the goal registry
-  // section was skipped (e.g. loadAll threw before reaching it). Treat as fallback.
-  if(goalsLoadStatus==='not_configured'){
-    console.warn('[GoalRegistry] still not_configured after loadAll() — treating as loaded_fallback');
-    goalsLoadStatus='loaded_fallback';
-    applyGoalsFallback();
-    renderApp();
-  }
-});
+// Auth-first startup — overlay visible until auth + authorization pass.
+// loadAll() and renderApp() are called only after both gates succeed (inside checkAuthorization).
+// The initial renderApp() call is removed: the auth overlay covers the page until ready.
+setAuthState('checking_session');
+initAuth();
 </script>
 </body>
 </html>

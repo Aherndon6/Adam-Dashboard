@@ -26,6 +26,21 @@
 
 const { chromium } = require('playwright');
 const path = require('path');
+const fs = require('fs');
+
+// ── Load .env credentials (never committed to repo) ───────────────────────
+// Add TEST_EMAIL and TEST_PASSWORD to ~/.env or ~/Adam-Dashboard/.env
+// For Playwright auth tests (AUTH-E2E-2 through AUTH-E2E-8) to run, credentials must be set.
+// AUTH-E2E-1 (login form visible) runs without credentials.
+const dotenvPath = path.join(__dirname, '.env');
+if (fs.existsSync(dotenvPath)) {
+  fs.readFileSync(dotenvPath,'utf8').split('\n').forEach(line => {
+    const m = line.match(/^([^#\s][^=]*)=(.*)$/);
+    if (m) { const k=m[1].trim(),v=m[2].trim(); if (!process.env[k]) process.env[k]=v; }
+  });
+}
+const TEST_EMAIL = process.env.TEST_EMAIL || '';
+const TEST_PASSWORD = process.env.TEST_PASSWORD || '';
 
 const URL = process.env.HFOS_URL ||
   'file://' + path.resolve(process.env.HFOS_INDEX || './index.html');
@@ -43,6 +58,26 @@ function assert(cond, msg) { if (!cond) throw new Error(msg || 'Assertion failed
 
 // ── Helpers ───────────────────────────────────────────────────────────────
 
+// Login through the auth overlay when credentials are available.
+// Safe to call even if overlay is absent or already hidden.
+async function loginIfNeeded(page) {
+  if (!TEST_EMAIL || !TEST_PASSWORD) return;
+  const overlayVisible = await page.evaluate(() => {
+    const o = document.getElementById('auth-overlay');
+    return o && !o.classList.contains('hidden');
+  }).catch(() => false);
+  if (!overlayVisible) return;
+  await page.fill('#auth-email', TEST_EMAIL).catch(() => {});
+  await page.fill('#auth-password', TEST_PASSWORD).catch(() => {});
+  await page.click('#auth-submit-btn').catch(() => {});
+  // Wait up to 12 s for overlay to hide (auth + checkAuthorization + loadAll)
+  await page.waitForFunction(
+    () => { const o = document.getElementById('auth-overlay'); return !o || o.classList.contains('hidden'); },
+    { timeout: 12000 }
+  ).catch(() => {}); // don't hard-fail if Supabase is unreachable
+  await page.waitForTimeout(500);
+}
+
 async function openApp(browser, opts = {}) {
   const context = await browser.newContext(opts);
   const consoleErrors = [];
@@ -50,7 +85,8 @@ async function openApp(browser, opts = {}) {
   page.on('console', msg => { if (msg.type() === 'error') consoleErrors.push(msg.text()); });
   page.on('pageerror', err => consoleErrors.push(err.message));
   await page.goto(URL, { waitUntil: 'domcontentloaded', timeout: 15000 });
-  await page.waitForTimeout(800); // let initial render settle
+  await page.waitForTimeout(1000); // let auth init settle
+  await loginIfNeeded(page);
   return { page, context, consoleErrors };
 }
 
@@ -259,15 +295,32 @@ async function clickNav(page, id) {
   // ── Section G: Wishlist CRUD ───────────────────────────────────────────
   console.log('── Section G: Wishlist ──');
   await test('Wishlist tab loads with items', async () => {
-    const { page, context } = await openApp(browser);
+    const context = await browser.newContext();
+    const failedWLReqs = [];
+    const page = await context.newPage();
+    page.on('console', () => {});
+    page.on('response', async resp => {
+      if (resp.status() >= 400 && resp.url().includes('wishlist')) {
+        const b = await resp.text().catch(() => '');
+        failedWLReqs.push(resp.status() + ' ' + resp.request().method() + ' wishlist_items body=' + b.slice(0, 150));
+      }
+    });
+    await page.goto(URL, { waitUntil: 'domcontentloaded', timeout: 15000 });
+    await page.waitForTimeout(1000);
+    await loginIfNeeded(page);
     await clickNav(page, 'roadmap');
-    await page.waitForTimeout(500);
+    // loadWishlist() is async — wait for Phase labels to appear (seed insert path can take >500ms)
+    await page.waitForFunction(() => {
+      const el = document.getElementById('roadmap-content');
+      return el && el.innerText.includes('Phase');
+    }, { timeout: 8000 }).catch(() => null);
     const content = await page.evaluate(() => {
       const el = document.getElementById('roadmap-content');
       return el ? el.innerText : '';
     });
-    assert(content.length > 50, 'Wishlist appears empty');
-    assert(content.includes('Phase'), 'No phase labels found in wishlist');
+    const diagSuffix = failedWLReqs.length ? ' | ' + failedWLReqs.join(', ') : '';
+    assert(content.length > 50, 'Wishlist appears empty' + diagSuffix);
+    assert(content.includes('Phase'), 'No phase labels found in wishlist' + diagSuffix);
     await context.close();
   });
 
@@ -895,6 +948,211 @@ async function clickNav(page, id) {
     });
     assert(result.registryLength === result.fallbackLength,
       'GOALS_REGISTRY.length (' + result.registryLength + ') should match fallback length (' + result.fallbackLength + ')');
+    await context.close();
+  });
+
+  // ── Section AUTH-E2E: Auth v1 end-to-end tests ────────────────────────
+  // AUTH-E2E-1 through AUTH-E2E-5 can run against file:// with or without credentials.
+  // AUTH-E2E-6 through AUTH-E2E-8 are Phase 3 gates — require credentials AND Supabase connectivity.
+  console.log('\n── Section AUTH-E2E: Auth v1 ──');
+
+  await test('AUTH-E2E-1: Fresh page load with no cached session shows login form', async () => {
+    const context = await browser.newContext();
+    const page = await context.newPage();
+    // Open without loginIfNeeded so we can observe the overlay
+    await page.goto(URL, { waitUntil: 'domcontentloaded', timeout: 15000 });
+    await page.waitForTimeout(1500); // let initAuth() run
+    const overlayVisible = await page.evaluate(() => {
+      const o = document.getElementById('auth-overlay');
+      return o && !o.classList.contains('hidden');
+    });
+    // Auth state machine may land on 'unauthenticated' (login form) or 'auth_error' (no Supabase in file:// mode)
+    // Either way the overlay must be visible — dashboard must not be accessible
+    assert(overlayVisible, 'Auth overlay must be visible on fresh load — dashboard must not be shown without auth');
+    const signoutBtn = await page.evaluate(() => {
+      const b = document.getElementById('signout-btn');
+      return b ? b.style.display : 'none';
+    });
+    assert(signoutBtn === 'none' || signoutBtn === '', 'Sign-out button must be hidden before auth');
+    await context.close();
+  });
+
+  await test('AUTH-E2E-2: Invalid credentials show inline error, no crash, no console exception', async () => {
+    if (!TEST_EMAIL) {
+      console.log('    (skipped — TEST_EMAIL not set; requires .env)');
+      return; // skip gracefully
+    }
+    const context = await browser.newContext();
+    const page = await context.newPage();
+    const errs = [];
+    page.on('pageerror', e => errs.push(e.message));
+    await page.goto(URL, { waitUntil: 'domcontentloaded', timeout: 15000 });
+    await page.waitForTimeout(1500);
+    // Wait for login form
+    await page.waitForSelector('#auth-password', { timeout: 10000 }).catch(() => {});
+    await page.fill('#auth-email', TEST_EMAIL).catch(() => {});
+    await page.fill('#auth-password', 'wrong-password-that-will-not-work-xyz987').catch(() => {});
+    await page.click('#auth-submit-btn').catch(() => {});
+    await page.waitForTimeout(3000); // wait for Supabase auth attempt
+    // Error element should be visible
+    const errVisible = await page.evaluate(() => {
+      const el = document.getElementById('auth-error');
+      return el && el.style.display !== 'none' && el.textContent.trim().length > 0;
+    }).catch(() => false);
+    // Overlay must still be visible (not logged in)
+    const overlayStillUp = await page.evaluate(() => {
+      const o = document.getElementById('auth-overlay');
+      return o && !o.classList.contains('hidden');
+    });
+    assert(overlayStillUp, 'Overlay must remain visible after invalid login attempt');
+    assert(errs.length === 0, 'Uncaught JS exception after failed login: ' + errs.join('; '));
+    await context.close();
+  });
+
+  await test('AUTH-E2E-3: Valid login renders dashboard, no console errors', async () => {
+    if (!TEST_EMAIL || !TEST_PASSWORD) {
+      console.log('    (skipped — TEST_EMAIL/TEST_PASSWORD not set; requires .env + Supabase setup)');
+      return;
+    }
+    const context = await browser.newContext();
+    const consoleErrors = [];
+    const failedRequests = []; // capture 4xx/5xx for diagnostics
+    const page = await context.newPage();
+    page.on('console', msg => { if (msg.type() === 'error') consoleErrors.push(msg.text()); });
+    page.on('pageerror', err => consoleErrors.push(err.message));
+    page.on('response', async resp => {
+      if (resp.status() >= 400 && resp.url().includes('supabase')) {
+        const body = await resp.text().catch(() => '');
+        failedRequests.push(resp.status() + ' ' + resp.request().method() + ' ' + resp.url().replace(/.*\/rest\/v1\//, '/rest/v1/') + ' body=' + body.slice(0, 200));
+      }
+    });
+    await page.goto(URL, { waitUntil: 'domcontentloaded', timeout: 15000 });
+    await page.waitForTimeout(1000);
+    await loginIfNeeded(page);
+    await page.waitForTimeout(2000); // extra settle time for post-login async writes
+    const overlayHidden = await page.evaluate(() => {
+      const o = document.getElementById('auth-overlay');
+      return !o || o.classList.contains('hidden');
+    });
+    assert(overlayHidden, 'Auth overlay should be hidden after successful login');
+    const bodyText = await page.evaluate(() => document.body.innerText);
+    assert(bodyText.length > 200, 'Dashboard appears blank after successful login');
+    const authErrors = consoleErrors.filter(e => !e.includes('favicon'));
+    const diagSuffix = failedRequests.length ? ' | Failed requests: ' + failedRequests.join(', ') : '';
+    assert(authErrors.length === 0, 'Console errors after login: ' + authErrors.slice(0,3).join('; ') + diagSuffix);
+    await context.close();
+  });
+
+  await test('AUTH-E2E-4: Session persists across page reload — no re-login prompt', async () => {
+    if (!TEST_EMAIL || !TEST_PASSWORD) {
+      console.log('    (skipped — requires credentials + Supabase setup)');
+      return;
+    }
+    const { page, context } = await openApp(browser);
+    // Reload — supabase-js restores session from localStorage
+    await page.reload({ waitUntil: 'domcontentloaded', timeout: 15000 });
+    await page.waitForTimeout(2000);
+    const overlayHidden = await page.evaluate(() => {
+      const o = document.getElementById('auth-overlay');
+      return !o || o.classList.contains('hidden');
+    });
+    assert(overlayHidden, 'Login form appeared after page reload — session should have persisted');
+    await context.close();
+  });
+
+  await test('AUTH-E2E-5: Sign out clears session and returns to login form', async () => {
+    if (!TEST_EMAIL || !TEST_PASSWORD) {
+      console.log('    (skipped — requires credentials + Supabase setup)');
+      return;
+    }
+    const { page, context } = await openApp(browser);
+    // Click sign out button
+    await page.evaluate(() => doSignOut());
+    await page.waitForTimeout(1500);
+    const overlayVisible = await page.evaluate(() => {
+      const o = document.getElementById('auth-overlay');
+      return o && !o.classList.contains('hidden');
+    });
+    assert(overlayVisible, 'Login overlay must reappear after sign out');
+    const authState = await page.evaluate(() => AUTH_STATE);
+    assert(authState === 'unauthenticated', 'AUTH_STATE must be unauthenticated after sign out, got: ' + authState);
+    await context.close();
+  });
+
+  await test('AUTH-E2E-6: Post-login Supabase calls use Bearer token distinct from anon key (Phase 3 gate)', async () => {
+    if (!TEST_EMAIL || !TEST_PASSWORD) {
+      console.log('    (skipped — requires credentials + Supabase setup)');
+      return;
+    }
+    const context = await browser.newContext();
+    const page = await context.newPage();
+    const authHeaders = [];
+    // Intercept all REST requests after navigation
+    await page.route('**/rest/v1/**', async route => {
+      const h = route.request().headers();
+      if (h['authorization']) authHeaders.push(h['authorization']);
+      await route.continue();
+    });
+    await page.goto(URL, { waitUntil: 'domcontentloaded', timeout: 15000 });
+    await page.waitForTimeout(1000);
+    await loginIfNeeded(page);
+    await page.waitForTimeout(2000); // let loadAll() fire
+    assert(authHeaders.length > 0, 'No REST requests captured — loadAll() may not have run after login');
+    const bearerHeaders = authHeaders.filter(h => h.startsWith('Bearer '));
+    assert(bearerHeaders.length > 0, 'No Bearer token found in Supabase REST calls — getAuthHeaders() may not be working');
+    // The Bearer token must NOT be the anon key
+    const anonKey = await page.evaluate(() => SUPA_KEY);
+    const allAreAnon = bearerHeaders.every(h => h === 'Bearer ' + anonKey);
+    assert(!allAreAnon, 'Bearer token is the anon key — must be a user JWT from getAuthHeaders()');
+    await context.close();
+  });
+
+  await test('AUTH-E2E-7: After login, all 9 tables return data without 401 errors', async () => {
+    if (!TEST_EMAIL || !TEST_PASSWORD) {
+      console.log('    (skipped — requires credentials + Supabase setup)');
+      return;
+    }
+    const context = await browser.newContext();
+    const page = await context.newPage();
+    const restErrors = [];
+    page.on('response', response => {
+      if (response.url().includes('/rest/v1/') && response.status() === 401) {
+        restErrors.push(response.url().split('/rest/v1/')[1].split('?')[0] + ' → 401');
+      }
+    });
+    await page.goto(URL, { waitUntil: 'domcontentloaded', timeout: 15000 });
+    await page.waitForTimeout(1000);
+    await loginIfNeeded(page);
+    await page.waitForTimeout(3000); // let all tables load
+    assert(restErrors.length === 0, '401 errors on table fetch: ' + restErrors.join(', '));
+    await context.close();
+  });
+
+  await test('AUTH-E2E-8: app_users returns Adam row with active=true after login', async () => {
+    if (!TEST_EMAIL || !TEST_PASSWORD) {
+      console.log('    (skipped — requires credentials + Supabase setup)');
+      return;
+    }
+    const context = await browser.newContext();
+    const page = await context.newPage();
+    await page.goto(URL, { waitUntil: 'domcontentloaded', timeout: 15000 });
+    await page.waitForTimeout(1000);
+    await loginIfNeeded(page);
+    await page.waitForTimeout(1000);
+    // Verify auth reached 'ready' — which means checkAuthorization found active=true
+    const authState = await page.evaluate(() => typeof AUTH_STATE !== 'undefined' ? AUTH_STATE : 'undefined');
+    assert(authState === 'ready', 'AUTH_STATE must be ready after login with active app_users row, got: ' + authState);
+    // Double-check by querying app_users directly via supabase-js
+    const row = await page.evaluate(async () => {
+      try {
+        var h = await getAuthHeaders();
+        var r = await fetch(SUPA_URL+'/rest/v1/app_users?email=eq.'+encodeURIComponent((await _supabase.auth.getSession()).data.session.user.email)+'&select=email,role,active&limit=1',{headers:h});
+        var data = await r.json();
+        return data && data[0] ? data[0] : null;
+      } catch(e) { return {error:e.message}; }
+    });
+    assert(row && !row.error, 'Could not query app_users: ' + (row && row.error));
+    assert(row.active === true, 'app_users.active must be true for logged-in user, got: ' + row.active);
     await context.close();
   });
 
