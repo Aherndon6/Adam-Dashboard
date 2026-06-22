@@ -773,8 +773,10 @@ button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-vis
 .auth-state-deny{text-align:center;padding:20px 0;}
 .auth-state-deny p{font-size:13px;color:var(--ink);margin-bottom:12px;line-height:1.5;}
 .auth-state-deny a{font-size:12px;color:var(--blue);cursor:pointer;text-decoration:underline;}
-.auth-signout-btn{font-size:11px;font-weight:600;padding:5px 12px;border-radius:99px;border:1px solid var(--line2);background:var(--surface2);color:var(--muted);cursor:pointer;font-family:inherit;transition:all .1s;}
-.auth-signout-btn:hover{color:var(--red);border-color:var(--red);}
+.auth-user-bar{display:flex;align-items:center;gap:8px;}
+.auth-user-label{font-size:11px;color:var(--muted);max-width:160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.auth-signout-btn{font-size:11px;font-weight:600;padding:4px 10px;border-radius:99px;border:1px solid var(--line2);background:transparent;color:var(--ink);cursor:pointer;font-family:inherit;transition:all .15s;}
+.auth-signout-btn:hover{color:var(--red);border-color:var(--red);background:var(--surface2);}
 </style>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
@@ -819,7 +821,7 @@ button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-vis
   <div class="main">
     <header class="topbar">
       <div class="top-title"><h2 id="topbar-title">Overview</h2><p id="topbar-sub">Herndon Family · Jun 7, 2026 – Jan 9, 2027</p></div>
-      <div class="top-right" id="topbar-right"><div class="sync-badge"><div class="sync-dot" id="sync-dot"></div><span id="lastReconLabel">Connecting...</span></div><button class="auth-signout-btn" id="signout-btn" onclick="doSignOut()" style="display:none">Sign out</button></div>
+      <div class="top-right" id="topbar-right"><div class="sync-badge"><div class="sync-dot" id="sync-dot"></div><span id="lastReconLabel">Connecting...</span></div><div class="auth-user-bar" id="auth-user-bar" style="display:none"><span class="auth-user-label" id="auth-user-label"></span><button class="auth-signout-btn" id="signout-btn" onclick="doSignOut()">Sign out</button></div></div>
     </header>
     <div class="content">
       <div id="budget-rules-warn" style="display:none;background:#7f1d1d;color:#fca5a5;padding:8px 16px;font-size:12px;font-weight:600;text-align:center;">&#x26A0; Budget Rules failed to load — model running from WD baseline only</div>
@@ -2161,6 +2163,8 @@ function updateReconLabel(weeks){
   const lbl=document.getElementById('lastReconLabel');if(!lbl)return;
   const dot=document.getElementById('sync-dot');
   const right=document.getElementById('topbar-right');if(!right)return;
+  // Save auth user bar before innerHTML wipe (innerHTML replacement detaches child nodes)
+  const authBar=document.getElementById('auth-user-bar');
   // Rebuild top-right per section
   if(activeSection==='overview'||activeSection==='history'){
     const maxW=keys.length?Math.max.apply(null,keys):0;
@@ -2177,6 +2181,8 @@ function updateReconLabel(weeks){
   } else {
     right.innerHTML='<div class="sync-badge"><div class="sync-dot" id="sync-dot" style="background:'+(_supaConnected?'var(--green)':'#94a3b8')+'"></div><span id="lastReconLabel">Model live · Wk '+getCalWeek(currentW)+'</span></div>';
   }
+  // Restore auth user bar after innerHTML wipe
+  if(authBar)right.appendChild(authBar);
 }
 
 // ── setSection ─────────────────────────────────────────────────────────────
@@ -4310,14 +4316,21 @@ function setAuthState(state){
   var body=document.getElementById('auth-body');
   var banner=document.getElementById('auth-banner');
   var errEl=document.getElementById('auth-error');
-  var signoutBtn=document.getElementById('signout-btn');
+  var userBar=document.getElementById('auth-user-bar');
+  var userLabel=document.getElementById('auth-user-label');
   if(state==='ready'){
     if(overlay)overlay.classList.add('hidden');
-    if(signoutBtn)signoutBtn.style.display='';
+    if(userBar)userBar.style.display='flex';
+    if(userLabel){
+      _supabase.auth.getSession().then(function(s){
+        var email=s&&s.data&&s.data.session&&s.data.session.user&&s.data.session.user.email;
+        if(email)userLabel.textContent=email;
+      });
+    }
     return;
   }
   if(overlay)overlay.classList.remove('hidden');
-  if(signoutBtn)signoutBtn.style.display='none';
+  if(userBar)userBar.style.display='none';
   if(!body)return;
   if(banner)banner.style.display='none';
   if(errEl)errEl.style.display='none';

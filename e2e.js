@@ -1147,11 +1147,18 @@ async function clickNav(page, id) {
     // Auth state machine may land on 'unauthenticated' (login form) or 'auth_error' (no Supabase in file:// mode)
     // Either way the overlay must be visible — dashboard must not be accessible
     assert(overlayVisible, 'Auth overlay must be visible on fresh load — dashboard must not be shown without auth');
-    const signoutBtn = await page.evaluate(() => {
-      const b = document.getElementById('signout-btn');
-      return b ? b.style.display : 'none';
+    // #auth-user-bar wraps the email label + sign-out button — must be hidden before auth
+    const userBarHidden = await page.evaluate(() => {
+      const bar = document.getElementById('auth-user-bar');
+      return !bar || bar.style.display === 'none';
     });
-    assert(signoutBtn === 'none' || signoutBtn === '', 'Sign-out button must be hidden before auth');
+    assert(userBarHidden, '#auth-user-bar must be hidden before auth — sign-out controls must not show on login screen');
+    // #signout-btn must also not be visible (belt-and-suspenders)
+    const signoutBtnVisible = await page.evaluate(() => {
+      const btn = document.getElementById('signout-btn');
+      return btn ? btn.offsetParent !== null : false;
+    });
+    assert(!signoutBtnVisible, '#signout-btn must not be visible before auth');
     await context.close();
   });
 
@@ -1244,8 +1251,19 @@ async function clickNav(page, id) {
       return;
     }
     const { page, context } = await openApp(browser);
-    // Click sign out button
-    await page.evaluate(() => doSignOut());
+    // Wait for #auth-user-bar to become visible (Playwright native visibility check)
+    await page.locator('#auth-user-bar').waitFor({ state: 'visible', timeout: 10000 })
+      .catch(e => { throw new Error('AUTH-E2E-5: #auth-user-bar never became visible after login — ' + e.message); });
+    // Confirm #signout-btn is also visible inside the bar
+    const signoutBtnVisible = await page.evaluate(() => {
+      const btn = document.getElementById('signout-btn');
+      return btn ? btn.offsetParent !== null : false;
+    });
+    assert(signoutBtnVisible, 'AUTH-E2E-5: #signout-btn must be visible after login');
+    // Click the visible sign-out button (not programmatic call)
+    const signoutBtn = await page.$('#signout-btn');
+    assert(signoutBtn, 'AUTH-E2E-5: #signout-btn element not found');
+    await signoutBtn.click();
     await page.waitForTimeout(1500);
     const overlayVisible = await page.evaluate(() => {
       const o = document.getElementById('auth-overlay');
