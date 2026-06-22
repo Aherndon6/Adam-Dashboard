@@ -434,6 +434,74 @@ async function clickNav(page, id) {
     await context.close();
   });
 
+  // ── AUTH-ANON-1: Anon key blocked after RLS tightening ────────────────────
+  // NOTE: This test calls live Supabase directly using SUPA_URL + SUPA_KEY from
+  // page context. It runs against the production Supabase project regardless of
+  // whether e2e.js is targeting file:// or the live URL.
+  console.log('── AUTH-ANON-1: Anon key blocked on live Supabase ──');
+  await test('AUTH-ANON-1: Anon key returns no protected rows and cannot write', async () => {
+    const context = await browser.newContext();
+    const page = await context.newPage();
+    await page.goto(URL, { waitUntil: 'domcontentloaded', timeout: 15000 });
+    await page.waitForTimeout(500);
+
+    // Part 1: anon SELECT returns no protected rows
+    const readResults = await page.evaluate(async () => {
+      const tables = ['weekly_reconciliations','goals','model_week_overrides','wishlist_items'];
+      const out = [];
+      for (const t of tables) {
+        try {
+          const r = await fetch(SUPA_URL + '/rest/v1/' + t + '?limit=1', {
+            headers: { 'apikey': SUPA_KEY, 'Authorization': 'Bearer ' + SUPA_KEY }
+          });
+          const body = await r.json();
+          const rowCount = Array.isArray(body) ? body.length : -1;
+          out.push({ table: t, status: r.status, rows: rowCount });
+        } catch (e) {
+          out.push({ table: t, status: -1, rows: -1, error: e.message });
+        }
+      }
+      return out;
+    });
+    for (const r of readResults) {
+      const blocked = r.status === 401 || r.status === 403 || r.rows === 0;
+      assert(blocked, 'AUTH-ANON-1 SELECT: anon key returned protected rows on ' + r.table +
+        ' (status=' + r.status + ', rows=' + r.rows + (r.error ? ', error=' + r.error : '') + ')');
+    }
+
+    // Part 2: anon INSERT is blocked
+    const writeResult = await page.evaluate(async () => {
+      try {
+        const r = await fetch(SUPA_URL + '/rest/v1/wishlist_items', {
+          method: 'POST',
+          headers: {
+            'apikey': SUPA_KEY, 'Authorization': 'Bearer ' + SUPA_KEY,
+            'Content-Type': 'application/json', 'Prefer': 'return=representation'
+          },
+          body: JSON.stringify({ title: '__anon_write_test_should_be_blocked__',
+            phase: 'Backlog', status: 'idea', priority: 0, item_type: 'feature' })
+        });
+        const body = await r.json();
+        const rowCreated = r.ok && Array.isArray(body) && body.length > 0;
+        if (rowCreated && body[0] && body[0].id) {
+          await fetch(SUPA_URL + '/rest/v1/wishlist_items?id=eq.' + body[0].id, {
+            method: 'DELETE',
+            headers: { 'apikey': SUPA_KEY, 'Authorization': 'Bearer ' + SUPA_KEY }
+          });
+        }
+        return { status: r.status, rowCreated };
+      } catch (e) { return { status: -1, rowCreated: false, error: e.message }; }
+    });
+    assert(!writeResult.rowCreated,
+      'AUTH-ANON-1 INSERT: anon key successfully wrote a row to wishlist_items — ' +
+      'RLS is not blocking anon writes (status=' + writeResult.status + (writeResult.error ? ', error=' + writeResult.error : '') + '). ' +
+      'Cleanup attempted. Phase 4A SQL may not have been applied.');
+    // NOTE: If AUTH-ANON-1 fails because anon insert unexpectedly succeeded,
+    // check wishlist_items for title '__anon_write_test_should_be_blocked__' and
+    // manually delete it. The anon cleanup may fail depending on active policies.
+    await context.close();
+  });
+
   // ── Section H: XSS safety ─────────────────────────────────────────────
   console.log('── Section H: XSS safety ──');
   const xssPayload = '<script>window.__xss_fired=true<\/script>';
