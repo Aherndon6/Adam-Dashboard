@@ -43,7 +43,7 @@ sed -i '' "s/const BUILD_TS='[^']*'/const BUILD_TS='${BUILD_TIME}'/" index.html
 echo "Build timestamp updated: ${BUILD_TIME}"
 
 # ── 5. Stage, commit, push ────────────────────────────────────────────────────
-git add index.html test_regression.js e2e.js model_spec.md budget-rules-spec-v3.1.md budget-rules-prebuild-outputs.md
+git add -A   # stage everything — BUILD_TS already stamped above
 git status --short
 
 git commit -m "$COMMIT_MSG"

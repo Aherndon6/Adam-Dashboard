@@ -1,2 +1,18 @@
 node_modules/
 package-lock.json
+
+# Backup files
+*.bak
+
+# OS / editor
+.DS_Store
+*.log
+.env
+
+# Local scratch / Claude prebuild artifacts
+*-prebuild-outputs.md
+
+# Office documents that are not intentional repo artifacts
+*.docx
+*.xlsx
+*.pptx

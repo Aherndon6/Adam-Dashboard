@@ -1,8 +1,8 @@
 # Herndon Family Cash Flow Model — Full Specification
 
-**Version:** Phase 4 production  
-**Date:** Cal Wk 24 (Jun 14, 2026)  
-**Test status:** 310 tests passing, 0 failing (`node test_regression.js`)
+**Version:** Phase 6A + Stabilization S1
+**Date:** Cal Wk 25 (Jun 21, 2026)
+**Test status:** 596 regression / 46 Playwright — all passing (`node test_regression.js && node e2e.js`)
 
 ---
 
@@ -10,10 +10,11 @@
 
 Single-file HTML dashboard (`index.html`) running a 31-week forward-looking cash flow model from Cal Wk 23 (Jun 7, 2026) through Cal Wk 53 (Jan 9, 2027).
 
-- **Local only** — Supabase credentials embedded for reconciliation writes; waterfall model is pure client-side JavaScript.
-- **Vanilla JS, no frameworks, no build step** — everything in one `<script>` block.
-- **Week-indexed** — model weeks 1–31 map to calendar weeks 23–53 (cal wk = model wk + 22).
-- **Direct waterfall** — each week, surplus above the operating floor sweeps directly from Truist Checking to goals in priority order. No intermediate pool accounts.
+- **Vanilla JS, no frameworks, no build step** — everything in one `<script>` block inside `index.html`
+- **Week-indexed** — model weeks 1–31 map to calendar weeks 23–53 (cal wk = model wk + 22)
+- **Direct waterfall** — each week, surplus above the operating floor sweeps from Truist Checking to goals in priority order; no intermediate pool accounts
+- **Supabase REST backend** — all persistent data stored in Supabase; app reads on load, writes on user action
+- **GitHub Pages deployment** — live at https://dashboard.herndons.us
 
 ---
 
@@ -22,8 +23,8 @@ Single-file HTML dashboard (`index.html`) running a 31-week forward-looking cash
 | Account | Starting Balance | Role |
 |---|---|---|
 | Truist Checking (`chk`) | $18,037.73 | Primary operating account. All inflows and outflows run through here. |
-| Truist Savings (`sav`) | $3,772.77 | Alaska cruise savings staging. After Alaska funds, residual sweeps to AMEX via one-time `mvS`. |
-| AMEX Savings (`amx`) | $103.64 | IRA and 529 holding account. Receives $3,772.74 savings seed when Alaska completes; then accumulates waterfall contributions for IRA/529 goals. |
+| Truist Savings (`sav`) | $3,772.77 | Alaska cruise savings staging. Sweeps to AMEX when Alaska fully funds. |
+| AMEX Savings (`amx`) | $103.64 | IRA and 529 holding account. Receives savings seed on Alaska completion. |
 | Vio Bank — Tax Reserve (`tax`) | $0.00 | Commission and income tax reserve. 40% of commission income routes here. |
 | Lending Club / EF (`lc`) | $13,488.88 | Emergency fund. Static — no model transfers in or out. |
 
@@ -39,7 +40,7 @@ Single-file HTML dashboard (`index.html`) running a 31-week forward-looking cash
 ```javascript
 START_CHK    = 18037.73   // Truist Checking (post-setup)
 START_SAV    =  3772.77   // Truist Savings (post-setup)
-START_AMX    =   103.64   // AMEX Savings (initial IRA seed already in holding)
+START_AMX    =   103.64   // AMEX Savings (initial IRA seed)
 START_TAX    =     0.00   // Vio Bank Tax Reserve (empty at model start)
 START_LC     = 13488.88   // Lending Club / EF (static)
 
@@ -50,10 +51,7 @@ BASE_TAX     =   521.36   // Pre-existing tax liability — sweeps to Vio first 
 RET_SAV_XFR  =  3772.74   // One-time Truist Savings → AMEX when Alaska fully funds
 
 COMM_TAX     =   707.18   // Commission: 40% of $1,767.94 → Vio Bank Tax Reserve (Cal Wk 28)
-COMM_AK      =  1060.76   // Commission: 60% of $1,767.94 — labeled for Alaska; routes via waterfall
-
-// goalAk = $7,000; IRA targets = $7,000 each (adam_ira, wendy_ira)
-// adam_ira seeded at START_AMX = $103.64 in goalSaved at model start
+COMM_AK      =  1060.76   // Commission: 60% of $1,767.94 — routes via waterfall
 ```
 
 ---
@@ -69,468 +67,315 @@ COMM_AK      =  1060.76   // Commission: 60% of $1,767.94 — labeled for Alaska
 
 ---
 
-## 5. Week Definition Array (WD)
+## 5. Core Model Engine — `runModel(akGoal, rtGoal, flags)`
 
-Each week is an 8-element array: `[num, dates, [inflows], [bills], [events], ct, ca, calNote]`
+### 5.1 Signature
 
-`[inflows]` and `[bills]` are model calculation inputs. `[events]` are display labels only. When a user overrides a week, effective inflows/bills are re-derived from overridden events.
-
-### 5.1 All 31 Weeks
-
-| Wk | Cal Wk | Dates | Inflows | Bills | Notes |
-|---|---|---|---|---|---|
-| 1 | 23 | Jun 7–13 | — | $791 Kia | Setup week |
-| 2 | 24 | Jun 14–20 | $2,552.50 Wendy | — | |
-| 3 | 25 | Jun 21–27 | $5,816.50 Adam | $5,925.13 Disney Visa, $6,368.48 AMEX Plat | Last major Platinum bill |
-| 4 | 26 | Jun 28–Jul 4 | $2,152.50 Wendy | $5,300 rent (3 Zelle) | July rent |
-| 5 | 27 | Jul 5–11 | $5,816.50 Adam | $791 Kia | First waterfall week |
-| 6 | 28 | Jul 12–18 | $1,767.94 commission, $2,152.50 Wendy | $5,500 Gold | Commission week; ct=COMM_TAX, ca=COMM_AK |
-| 7 | 29 | Jul 19–25 | $5,816.50 Adam | $3,500 Disney Visa | |
-| 8 | 30 | Jul 26–Aug 1 | $2,552.50 Wendy | $200 Plat stragglers, $2,000+$2,000 rent | Aug rent split: $4,000 in W8, $1,300 in W9 |
-| 9 | 31 | Aug 2–8 | $5,816.50 Adam | $1,300 rent, $791 Kia | |
-| 10 | 32 | Aug 9–15 | $2,152.50 Wendy | — | |
-| 11 | 33 | Aug 16–22 | $5,816.50 Adam | $5,500 Gold, $3,500 Disney Visa | Double-bill week |
-| 12 | 34 | Aug 23–29 | $2,552.50 Wendy | — | No bills, no Alaska draw |
-| 13 | 35 | Aug 30–Sep 5 | — | $5,300 rent | Rent-only; lowest checking (~$4,908) |
-| 14 | 36 | Sep 6–12 | $5,816.50 Adam, $2,152.50 Wendy | $791 Kia | Double paycheck |
-| 15 | 37 | Sep 13–19 | — | $5,500 Gold | Code: `mvS(7000,'chk')` — $7k Alaska draw from savings |
-| 16 | 38 | Sep 20–26 | $5,816.50 Adam, $2,552.50 Wendy | $3,500 Disney Visa | |
-| 17 | 39 | Sep 27–Oct 3 | — | $5,300 rent | Rent-only |
-| 18 | 40 | Oct 4–10 | $5,816.50 Adam, $2,152.50 Wendy | $791 Kia | |
-| 19 | 41 | Oct 11–17 | — | $5,500 Gold | DCL due week |
-| 20 | 42 | Oct 18–24 | $5,816.50 Adam, $2,552.50 Wendy | $3,500 Disney Visa | |
-| 21 | 43 | Oct 25–31 | — | $2,000 rent (1 of 3) | Nov rent starts late Oct |
-| 22 | 44 | Nov 1–7 | $5,816.50 Adam, $2,152.50 Wendy | $2,000+$1,300 rent, $791 Kia | |
-| 23 | 45 | Nov 8–14 | — | — | Empty — no paycheck, no bills |
-| 24 | 46 | Nov 15–21 | $5,816.50 Adam, $2,552.50 Wendy | $5,500 Gold | |
-| 25 | 47 | Nov 22–28 | — | $3,500 Disney Visa | |
-| 26 | 48 | Nov 29–Dec 5 | $2,152.50 Wendy | $5,300 rent | |
-| 27 | 49 | Dec 6–12 | $5,816.50 Adam | $791 Kia | |
-| 28 | 50 | Dec 13–19 | $2,552.50 Wendy | $5,500 Gold | |
-| 29 | 51 | Dec 20–26 | $5,816.50 Adam | $3,500 Disney Visa | |
-| 30 | 52 | Dec 27–Jan 2 | $2,152.50 Wendy | $5,300 rent | |
-| 31 | 53 | Jan 3–9, 2027 | $5,816.50 Adam | $791 Kia | |
-
-**Known thin weeks (floor violations):** W6 (~$4,999), W8 (~$4,961), W13 (~$4,908). Exactly 3 violations — locked by regression test.
-
----
-
-## 6. Income Sources
-
-**Adam paycheck:** $5,816.50 net biweekly. Weeks 3,5,7,9,11,14,16,18,20,22,24,27,29,31. 401(k) $1,020.83/paycheck deducted pre-tax — no checking impact.
-
-**Wendy paycheck:** $2,152.50 (regular) or $2,552.50 (+$400 extra, alternating). Weeks 2,4,6,8,10,12,14,16,18,20,22,24,26,28,30.
-
-**Deep South Commission (Wendy, Cal Wk 28 / W6):** $1,767.94 gross → checking. 40% ($707.18) → Vio via `mv(ct,'tax')`; remainder flows through normal waterfall.
-
----
-
-## 7. Recurring Bills
-
-**Rent:** $5,300/month in three Zelle transfers ($2,000+$2,000+$1,300) to Tiffany Dye. Due 1st–3rd. Distributed across weeks containing those dates.
-
-**Kia:** $791/month, due 7th. Weeks 1,5,9,14,18,22,27,31.
-
-**AMEX Gold:** ~$5,500/month, due ~17th. Weeks 6,11,15,19,24,28. Alaska charges (Aug 23–Sep 26) will elevate Sep/Oct statements — the W15 $7k draw provides cash to cover at reconciliation.
-
-**Disney Visa:** ~$3,500/month, due ~23rd. Weeks 3 ($5,925.13 first statement — elevated), 7,11,16,20,25,29.
-
-**AMEX Platinum:** W3 $6,368.48 (last major), W8 ~$200 stragglers. Done after W8.
-
----
-
-## 8. Operating Floor and Look-Ahead
-
-**Hard floor:** `OP_FL = $6,500`. `mv()` enforces this — never pulls checking below it. Three display tiers: $6,500 hard gate / $10,000 warning / $12,000 target.
-
-**Look-ahead floor:**
 ```javascript
-_laNetOut = max(0, next_week_outflows - next_week_inflows)
-laFl = (_laNetOut > $3,000) ? OP_FL + _laNetOut : OP_FL
+runModel(akGoal, rtGoal, flags)
+// akGoal: Alaska funded amount (from Supabase or override)
+// rtGoal: retirement savings amount (AMEX balance)
+// flags:  optional {isCpaCleared: bool}
+// returns: array of 31 week objects
 ```
-Raises effective floor before large-outflow weeks. Example: week before rent-only ($5,300 out, $0 in): laFl = $6,500 + $5,300 = $11,800.
 
----
+### 5.2 Week Object Shape
 
-## 9. Transfer Helpers
+Each week object returned by `runModel()` includes:
 
-**`mv(amt, dst, allowFinal)`** — from Truist Checking, floor-enforced:
-```
-actual = min(amt, chk - laFl)
-if actual <= 0: return 0
-if actual < $100 and not allowFinal: suppress, return negative (carry forward)
-chk -= actual; dst += actual; return actual
-```
-Destinations: `sav`, `amx`, `tax`, `lc`, `surplus`, `goal`.
-
-**`mvS(amt, dst)`** — from Truist Savings, no floor:
-```
-sav -= amt; dst += amt
-```
-Destinations: `chk`, `amx`, `lc`.
-
----
-
-## 10. Special Model Events
-
-**W1 setup (historical):** Four completed EF injection transfers explain START_CHK. Shown as "done" in transfer log.
-
-**W15 Alaska draw:** `if(num===15){mvS(7000,'chk');}` — code event, not in WD[]. CalNote describes it. W15 events[] has only Gold $5,500.
-
-**IRA seed sweep (one-time, when Alaska completes):**
 ```javascript
-if (goalSaved['alaska'] >= akTarget - 0.01 && !rtSavSwept) {
-  const ms = mvS(RET_SAV_XFR, 'amx');   // $3,772.74 Savings → AMEX
-  goalSaved['adam_ira'] += ms;            // credited to adam_ira
-  rtSavSwept = true;
+{
+  num,          // model week number (1–31)
+  dates,        // display string e.g. "Jun 7-13"
+  startChk, startSav, startAmx, startTax, startLc,  // opening balances
+  endChk, endSav, endAmx, endTax, endLc,            // closing balances
+  mChk, mSav, mAmx, mTax, mLc,                     // model balances (before recon override)
+  inflows, bills, surplus,                           // weekly cash flow
+  tr,           // transfer log array (strings)
+  ac, acKeys,   // all actions + parallel key array
+  realActs, realActKeys,  // filtered actions (no sentinel) + keys
+  goalSaved,    // {goalId: amount} — per-goal funded totals at end of week
+  akSaved,      // alaska funded total (dedicated tracker)
+  reconciled, actualBals, variance,  // recon state
+  doneTasks, totalTasks,             // action completion counts
+  calNote, recActs, ruleAudit        // calendar note, recommended actions, audit log
 }
 ```
-Fires same week Alaska funds (typically W5). Zero checking impact.
 
-**401(k):** `PAYCHECK_WKS=[3,5,7,9,11,14,16,18,20,22,24,27,29,31]`, `PAY_401K=1020.83`. Pre-tax, no checking impact.
+### 5.3 Waterfall Mechanics
 
-**Monthly Vio→LC boost:** Weeks 1,5,9,14,18,22,27,31 — reminder to move $250 Vio→LC. Weeks 14,27 — also $750 LC→Vio return first.
+Each week (starting model week AK_START = 5):
 
----
+1. Calculate net surplus: `inflows − bills − budgetRuleDeltas`
+2. If surplus < OP_FL buffer: defer (not drop) minimum transfers
+3. Sweep surplus above OP_FL to `VARIABLE_WATERFALL` goals in priority order
+4. `mv(amount, from, to, label)` — core transfer function; never pulls checking below OP_FL
+5. Commission weeks: 40% to tax reserve, 60% routes through waterfall
 
-## 11. Goal Registry
+### 5.4 Alaska Draw
 
-| ID | Name | Tier | Target | Key Flags |
-|---|---|---|---|---|
-| `adam_401k` | Adam 401(k) | Retirement | $24,500 | auto=true; YTD $10,208 at model start |
-| `wendy_sep` | Wendy SEP | Retirement | $17,859 | complete=true |
-| `alaska` | Alaska Cruise | Travel | $7,000 | dest: sav |
-| `wewe_rccl` | Wewe RCCL | Travel | $600 | startsAfter: alaska; dueWeek: 8 |
-| `wewe_dcl` | Wewe DCL | Travel | $500 | startsAfter: alaska; dueWeek: 19 |
-| `adam_ira` | Adam IRA | Retirement | $7,000 | needsFlag: ira_cpa_cleared; startsAfter: wewe_dcl; dest: amx |
-| `wendy_ira` | Wendy IRA | Retirement | $7,000 | needsFlag: ira_cpa_cleared; dest: amx |
-| `bailey_529` | Bailey 529 | Education | $3,500 | dest: amx |
-| `bryce_529` | Bryce 529 | Education | $1,500 | dest: amx |
-| `preston_529` | Preston 529 | Education | $1,000 | dest: amx |
-| `bryce_vehicle` | Bryce Vehicle | Emerging | $8,000 | dest: external |
-| `christmas_cruise` | Christmas Cruise | Travel | $5,000 | milestone: $2,500; dest: external |
-| `taxable_etf` | Taxable ETF | Stretch | $4,999.79 | stretch=true; dest: external |
-
-`retirement_rebuild` was removed in Phase 4. AMEX Savings is now a direct IRA/529 holding account, not a pool goal. No `poolSource` / `poolDeploys` properties remain.
+Model week 15 (Cal Wk 37): Alaska fully funds. `RET_SAV_XFR = $3,772.74` moves Truist Savings → AMEX Savings (IRA holding seed).
 
 ---
 
-## 12. Priority Tiers (T1–T11)
+## 6. Goal Registry — Phase 6A
 
-T1 Alaska → T2 Wewe RCCL → T3 Wewe DCL → T4 Adam IRA → T5 Wendy IRA → T6 Bailey 529 → T7 Bryce 529 → T8 Preston 529 → T9 Bryce Vehicle → T10 Christmas Cruise → T11 Taxable ETF (stretch)
-
----
-
-## 13. Goal Waterfall
-
-### 13.1 Arrays
+### 6.1 State Variables
 
 ```javascript
-VARIABLE_WATERFALL = REGULAR_WATERFALL =
-  ['alaska','wewe_rccl','wewe_dcl','adam_ira','wendy_ira',
-   'bailey_529','bryce_529','preston_529','bryce_vehicle','christmas_cruise']
+const HARDCODED_GOALS_FALLBACK = [...];  // 13 goals — always-live fallback
+var goalsLoadStatus = 'not_configured';  // 4-state machine
+var GOALS_REGISTRY  = [];
+var VARIABLE_WATERFALL = [];
+var REGULAR_WATERFALL  = [];
+var PRIORITY_TIERS = [];
 ```
 
-### 13.2 Per-Week Execution Order
+### 6.2 Initialization Order
 
-1. Apply inflows/bills to `chk`
-2. W15: `mvS(7000,'chk')` — Alaska draw
-3. 401(k) auto-contribution (paycheck weeks)
-4. Commission tax → Vio; or tax backlog if non-commission week
-5. Compute look-ahead floor (`laFl`)
-6. **Waterfall loop** for each goal in order:
-   - Break if `chk - laFl < $0.005`
-   - Skip (continue) if `num < AK_START`
-   - Skip (continue) if `startsAfter` dependency not yet funded (checks `goalSaved` + `justFunded{}` for same-run allocations)
-   - **Break (strict)** if `needsFlag` not cleared → `hitGate=true`; all remaining shown as `hold` step
-   - Skip if already funded
-   - `mv(remaining, dst)` — allocate up to goal remaining or floor-limited surplus
-7. IRA seed sweep (once, after waterfall, when Alaska completes)
-8. Surplus: only if `!hitGate && remaining > $0.005`
-9. `allFunded` check: gated goals count as unfunded — surplus blocked while IRA gate is closed
+1. `applyGoalsFallback()` called at module level — GOALS_REGISTRY populated before first render
+2. `loadAll()` fetches `goal_registry` from Supabase (9th fetch in Promise.all)
+3. On success: `mapGoalFromDB()` → `validateLoadedGoals()` → if valid, `applyGoalsFromData()` → `goalsLoadStatus = 'loaded'`
+4. On any failure: `applyGoalsFallback()` → `goalsLoadStatus = 'loaded_fallback'` or `'failed_validation'`
+5. Post-`loadAll()` guard: if `goalsLoadStatus` is still `'not_configured'`, forces `'loaded_fallback'`
 
-### 13.3 IRA Gate Detail
+### 6.3 goalsLoadStatus State Machine
 
-When `ira_cpa_cleared = false`:
-- Waterfall reaches adam_ira → hard break
-- `hitGate = true`; gate step shows `type: 'hold'`, `amt: remaining` (full blocked amount)
-- No 529s, vehicle, cruise, or surplus receive funds
-- Toggle "IRA CPA Cleared" in Goals tab to lift gate
-
-### 13.4 justFunded Tracking
-
-`justFunded{}` accumulates same-run allocations so `startsAfter` resolves within one deposit. Example: if wewe_dcl funds to completion in W7, adam_ira becomes eligible immediately in that same week's waterfall pass.
-
----
-
-## 14. Decision Engine (runEngine)
-
-```javascript
-runEngine(amt, engineType, flags)
-// Returns: [{type, num, label, amt, note}]
-// type: 'goal' | 'hold' | 'surplus' | 'info'
-```
-
-Uses same waterfall arrays and gate logic as `runModel()`. Parity tested in Section 20.
-
----
-
-## 15. Reconciliation and Override System
-
-- **Reconciliation (`reconData`):** User enters actual end-of-week balances; model cascades forward from actuals.
-- **Week overrides (`overrideData`):** User edits any week's events; effective inflows/bills re-derived.
-- **Custom weeks:** User inserts new weeks for one-off events.
-
-All data persisted to Supabase REST API.
-
----
-
-## 16. Budget Rules System (Phase 5)
-
-Budget Rules are a delta-mode overlay on the WD baseline. They adjust `chk` for time-bounded or seasonal items without changing the WD array itself.
-
-### Source-of-Truth Precedence
-
-From highest to lowest priority per week:
-
-1. `weekly_reconciliations` — actual balances override everything
-2. `model_week_overrides` — user-edited week events
-3. `budget_rules` (delta only) — additive deltas on top of WD
-4. WD baseline — default source
-
-**Absolute mode** is schema-reserved but blocked in Phase 5. Any rule with `rule_mode='absolute'` is rejected at validation and never applied.
-
-### Override Precedence (Critical — Phase 5 Behavior)
-
-When `overrideData[weekNum]` is active, Budget Rules are **bypassed entirely** for that week. This prevents double-counting: the override already captures the user's full intent for that week.
-
-Bypassed rules are logged to `ruleAudit` with `action: 'bypassed_by_model_week_override'`. The bypass is logged per-rule so the audit trail is complete even when no delta is applied.
-
-Budget Rules resume normally in all non-overridden weeks — a bypass in week 5 does not affect week 6.
-
-### ruleAudit
-
-`ruleAudit` is a global array, reset at the top of each `runModel()` call. Each entry records:
-
-```javascript
-{ week, rule_id, label, date, mode, direction, amount, action }
-```
-
-`action` values: `'applied'` | `'bypassed_by_model_week_override'` | `'blocked_absolute_mode'`
-
-Not persisted — diagnostic only. Inspectable via browser console: `ruleAudit`.
-
-### budgetRulesLoadStatus
-
-| Value | Meaning |
-|---|---|
-| `'not_configured'` | Initial state; no fetch attempted yet |
-| `'loaded'` | Fetch succeeded, even if 0 active rules |
-| `'failed'` | Fetch errored; model runs from WD baseline only |
-
-`'loaded'` on an empty table is intentional — an empty active-rules table is a valid configuration, not a failure.
-
-### Failed-Load Warning Banner
-
-`#budget-rules-warn` is shown only when `budgetRulesLoadStatus === 'failed'`. It is hidden on `'loaded'` and `'not_configured'`. Model continues normally from WD baseline if rules fail to load.
-
-### Budget Rules Decision Framework
-
-**Use Budget Rules for:** time-bounded or seasonal adjustments (medical bills, sports fees, rent changes with a known end date, travel cash flows).
-
-**Update WD directly for:** permanent baseline shifts (new recurring bill, permanent salary change, permanent expense removal). Budget Rules are not the right tool for items that don't have a natural end date.
-
-**Credit card rule (standing):** Assume credit card unless explicitly told otherwise. AMEX Gold is primary; Disney Visa and AMEX Platinum are secondary. Budget Rules for credit card items should model at payment date, not charge date. The existing WD credit card payment estimates plus statement-close true-up overrides already handle the credit card cash flow correctly — Budget Rules layered on top would double-count unless the override bypass ensures they skip overridden payment weeks.
-
-### Recurrence
-
-- `one-time`: single occurrence at `start_date`
-- `monthly`: anchored to `start_date` day-of-month via `pinnedMonthlyDateStr(year, month, pinDay)` — no drift, no `setMonth()` bug. End-of-month clamping handled by `addMonthsToDateStr()` integer math.
-- `weekly` / `biweekly`: 7-day or 14-day cadence from `start_date`
-
-All occurrences must fall within the WD window (Jun 7, 2026 – Jan 9, 2027) to generate a model week entry.
-
-### Key Helper Functions
-
-| Function | Signature | Notes |
+| State | Meaning | Banner |
 |---|---|---|
-| `validateBudgetRule(rule)` | `(rule) → string[]` | Returns error strings; blocks absolute mode |
-| `addMonthsToDateStr(dateStr, n)` | `(str, int) → str` | Integer month math, no drift |
-| `pinnedMonthlyDateStr(year, month, pinDay)` | `(int, int, int) → str` | Clamps to EOM if pinDay > days in month |
-| `dateToModelWeek(dateStr)` | `(str) → int\|null` | Returns 1–31 or null if outside WD |
-| `generateOccurrenceDates(rule)` | `(rule) → str[]` | ISO date strings within WD window |
-| `buildBudgetRuleContext(rules)` | `(rules) → {byWeek}` | Validates + maps rules to week numbers |
-| `applyBudgetRulesForWeek(weekNum, weekRules, tr, audit)` | `(...) → number` | Returns chkDelta; mutates tr and audit |
+| `'not_configured'` | Before loadAll() completes | None (loading) |
+| `'loaded'` | Supabase data valid and applied | None |
+| `'loaded_fallback'` | Fetch error, empty response, or HTTP failure | Amber warning |
+| `'failed_validation'` | Data loaded but failed validateLoadedGoals() | Amber warning (validation) |
 
-### Test Coverage
+### 6.4 Waterfall Construction
 
-Sections BR-A through BR-K of `test_regression.js` — 98 tests (as of Phase 5):
+```javascript
+// VARIABLE_WATERFALL and REGULAR_WATERFALL (identical)
+goals.filter(g => !g.auto && !g.complete && !g.stretch
+                  && g.status !== 'paused' && g.status !== 'archived')
+     .sort((a,b) => a.priority - b.priority)
+     .map(g => g.id)
 
-| Section | Coverage |
-|---|---|
-| BR-A | Baseline equivalence — no rules = WD baseline |
-| BR-B | `isValidISODate` |
-| BR-C | `validateBudgetRule` — valid rules, blocked modes, field errors |
-| BR-D | `addMonthsToDateStr` — EOM clamping, year rollover, no drift |
-| BR-E | `pinnedMonthlyDateStr` — signature `(year, month, pinDay)` |
-| BR-F | `dateToModelWeek` — in-window, out-of-window, boundaries |
-| BR-G | `generateOccurrenceDates` — one-time, monthly, weekly, biweekly |
-| BR-H | `buildBudgetRuleContext` — byWeek mapping, inactive filter, unknown field warnings |
-| BR-I | `applyBudgetRulesForWeek` — delta math, tr mutation, audit entries |
-| BR-J | `runModel()` integration — rule impacts specific weeks, non-rule weeks unchanged |
-| BR-K | Override precedence — bypass logged, tr clean, rules resume after override |
+// PRIORITY_TIERS (display — non-auto, non-complete, priority order)
+goals.filter(g => !g.auto && !g.complete)
+     .sort((a,b) => a.priority - b.priority)
+```
+
+### 6.5 Current GOALS_REGISTRY (13 goals)
+
+| ID | Name | Priority | Status | Auto | Stretch | complete |
+|---|---|---|---|---|---|---|
+| adam_401k | Adam 401(k) | 0 | funding | true | false | false |
+| wendy_sep | Wendy SEP | 0 | executed | false | false | **true** |
+| alaska | Alaska Cruise | 1 | funding | false | false | false |
+| wewe_rccl | Wewe RCCL | 2 | funding | false | false | false |
+| wewe_dcl | Wewe DCL | 3 | funding | false | false | false |
+| adam_ira | Adam IRA | 4 | planned | false | false | false |
+| wendy_ira | Wendy IRA | 5 | planned | false | false | false |
+| bailey_529 | Bailey 529 | 6 | planned | false | false | false |
+| bryce_529 | Bryce 529 | 7 | planned | false | false | false |
+| preston_529 | Preston 529 | 8 | planned | false | false | false |
+| bryce_vehicle | Bryce Vehicle | 9 | planned | false | false | false |
+| christmas_cruise | Christmas Cruise | 10 | planned | false | false | false |
+| taxable_etf | Taxable ETF | 11 | planned | false | **true** | false |
+
+**VARIABLE_WATERFALL (10):** alaska → wewe_rccl → wewe_dcl → adam_ira → wendy_ira → bailey_529 → bryce_529 → preston_529 → bryce_vehicle → christmas_cruise
+
+**Excluded:** adam_401k (auto), wendy_sep (complete), taxable_etf (stretch)
+
+### 6.6 Validation Rules (9 checks)
+
+1. `id` present on every row
+2. `name` present
+3. `tier` present
+4. `target` numeric ≥ 0
+5. `priority` numeric
+6. `status` in `['planned','funding','funded','executed','paused','archived']`
+7. No duplicate priorities among non-auto active goals
+8. `starts_after` references an existing goal id (if set)
+9. No self-reference or circular `starts_after` chains
+
+### 6.7 `complete` Field
+
+Computed, not stored: `['funded','executed'].includes(g.status)`. Derived by `mapGoalFromDB()` on load.
 
 ---
 
-## 17. Model Output — Per-Week Object
+## 7. Budget Rules — Phase 5
+
+### 7.1 Overview
+
+Recurring and one-time cash flow adjustments loaded from Supabase `budget_rules` table. Applied per-week before surplus calculation. No in-app write UI — managed via Supabase dashboard.
+
+### 7.2 Rule Shape
 
 ```javascript
 {
-  num, dates,
-  chk, sav, amx, tax, lc,        // ending balances
-  mChk, mSav, mAmx, mTax, mLc,  // model-projected (pre-reconciliation)
-  goalSaved,                      // { goalId: cumulativeAmountFunded }
-  akSaved, akRem,                 // alaska shortcuts
-  retRem,                         // adam_ira remaining (backwards compat)
-  ol,                             // chk + sav
-  tr,                             // transfer log [{l, r, a, rsn}]
-  ac,                             // action checklist string[]
-  recActs,                        // monthly reminders
-  reconciled, variance, actualBals,
-  surplusSwept, surplusStart,
-  totalTasks, doneTasks
+  id, label, active,
+  amount,       // always positive
+  direction:    'inflow'|'outflow',
+  frequency:    'one-time'|'weekly'|'biweekly'|'monthly',
+  start_date:   'YYYY-MM-DD',
+  end_date:     'YYYY-MM-DD'|null,
+  rule_mode:    'delta',   // 'absolute' is blocked
+  category, source, day_of_month
 }
+```
+
+### 7.3 Application Logic
+
+- `applyBudgetRulesForWeek(weekNum, weekStartDate, rules)` → `{delta, tr, audit}`
+- Applied BEFORE surplus calculation in `runModel()`
+- **Override bypass**: budget rules are bypassed (not dropped) when a `model_week_override` exists for that week; logged to audit with `action: 'bypassed_by_model_week_override'`
+- `budgetRulesLoadStatus`: `'not_configured' | 'loaded' | 'failed'`
+- `'failed'` shows red banner
+
+---
+
+## 8. What-If Impact Calculator — Phase 5 (WC)
+
+Session-only scenario tool. Runs `diffModels(baseline, scenario, audit, akGoal)` and shows week-by-week goal impact, floor breach weeks, bypassed weeks, and caseType. Does not write to Supabase. `budgetRules` array is temporarily extended with a `what_if_temp` rule, then fully restored by `clearWhatIf()`.
+
+**Key invariants:**
+- What-If rule is bypassed in overridden weeks (same bypass logic as Budget Rules)
+- Date outside model window returns null from `dateToModelWeek()` → error state in UI
+- `caseType`: `'positive' | 'negative' | 'neutral'`
+
+---
+
+## 9. Supabase Tables and RLS Posture
+
+| Table | Purpose | anon read | anon write |
+|---|---|---|---|
+| `goals` | KV store — akFunded, IRA flags, misc state | ✓ | ✓ |
+| `weekly_reconciliations` | Per-week actual balances | ✓ | ✓ |
+| `weekly_tasks` | Per-task completion state | ✓ | ✓ |
+| `weekly_notes` | Per-week text notes | ✓ | ✓ |
+| `model_week_overrides` | Custom week event overrides | ✓ | ✓ |
+| `wishlist_items` | Feature wishlist (UI read-only) | ✓ | ✓ |
+| `custom_tasks` | User-created weekly tasks | ✓ | ✓ |
+| `budget_rules` | Recurring/one-time adjustments | ✓ | ✓ |
+| `goal_registry` | Goal definitions — Phase 6A | ✓ | **✗ SELECT only** |
+
+`goal_registry` has a BEFORE UPDATE trigger (`set_goal_registry_updated_at`) that auto-stamps `updated_at = NOW()` on any row update.
+
+**Security note:** Anon key is embedded in `index.html`. App is public with no authentication. All tables except `goal_registry` have anon write access. Authentication is required before Phase 6B (goal registry writes) goes to production.
+
+---
+
+## 10. Write Paths (Reconciliation and Tasks)
+
+### 10.1 `saveRecon(weekNum)` → POST `weekly_reconciliations`
+
+```javascript
+// Local state
+reconData[n] = { chk, sav, amx, tax, lc, date }
+
+// Supabase payload (merge-duplicates)
+{ week_num: n, chk, sav, amx, tax, lc, recorded_at: ISO }
+```
+
+`isWeekReconciled(n)` returns true when `reconData[n].chk !== undefined`.
+
+### 10.2 `toggleTask(weekNum, taskIdx, checked, actionKey, amount)` → POST `weekly_tasks`
+
+```javascript
+// Local state key: weekNum+'_'+taskIdx
+taskData[key] = { completed, completedAt, completedAmount, actionKey, completedLabel }
+
+// Supabase payload (merge-duplicates)
+{ week_num, task_idx, completed, completed_at, completed_amount, action_key, completed_label }
+```
+
+`applyCompletionSnapshots(weeks)` uses `taskData` to substitute `completedAmount` into action labels at render time.
+
+### 10.3 `saveNote(weekNum, el)` → POST `weekly_notes`
+
+```javascript
+noteData[weekNum] = el.value
+// Payload: { week_num: weekNum, note: el.value }
 ```
 
 ---
 
-## 18. Test Harness
+## 11. Defensive Behaviors (Phase S1)
 
-**File:** `test_regression.js`  
-**Run:** `node test_regression.js` (or `HFOS_INDEX=/path/to/index.html node test_regression.js`)  
-**Count:** 555 tests, 0 failing (as of Phase 5)
+### 11.1 renderApp() Error Boundary
 
-| Section | Coverage |
+`renderApp()` is wrapped in try/catch. On exception: logs to console, displays `#render-error-banner` with error message and stack trace. Banner is hidden on the next successful render.
+
+### 11.2 goalsLoadStatus not_configured Guard
+
+After `loadAll()` resolves, a `.then()` callback checks if `goalsLoadStatus` is still `'not_configured'`. If so: promotes to `'loaded_fallback'`, calls `applyGoalsFallback()`, re-renders. This catches cases where `loadAll()` threw before reaching the goal registry fetch.
+
+---
+
+## 12. Model Invariants (Review Gates)
+
+These must hold after every build. All are regression-tested.
+
+| Invariant | Test section |
 |---|---|
-| 1–17 | Constants, WD structure, account math, balance trajectories, waterfall, goal lifecycle, render functions, UI HTML |
-| 18 | Phase 4 regressions — bugs fixed in this build locked in |
-| 19 | IRA gate: locked vs cleared, 14 tests covering surplus suppression, goal blocking, clearing behavior |
-| 20 | Decision Engine / runModel parity (8 tests) |
-| 21 | Mutation guards — 6 intentional breaks, each must be caught |
-| BR-A–BR-K | Budget Rules — 98 tests covering helpers, occurrence generation, week mapping, runModel integration, override precedence |
+| Week 1 startChk = $18,037.73 | Section 2 |
+| OP_FL = $6,500 | Section 2 |
+| No week has negative checking | Section 2 |
+| Alaska fully funds by W31 at $7,000 | Section 2 |
+| GOALS_REGISTRY has 13 entries | Section 3 |
+| VARIABLE_WATERFALL has exactly 10 items | Section 3 |
+| Waterfall order: alaska→rccl→dcl→adam_ira | Section 3 |
+| PRIORITY_TIERS has 11 entries | Section 3 |
+| taxable_etf NOT in either waterfall | Section 3 |
+| GR-A1 gate: DB-mapped goals = identical model output to fallback | GR-A |
+| Budget rule delta applied before surplus | BR-J |
+| Budget rule bypassed in overridden week | BR-K |
+| What-If rule cleared after diffModels | WC-D |
+| reconData shape: {chk,sav,amx,tax,lc,date} | REC-A |
+| taskData shape: {completed,completedAt,completedAmount,actionKey,completedLabel} | REC-A |
 
-**Mutation guards (Section 21):** A) 529 before IRA reorder, B) AK_START=2, C) OP_FL=$8,000, D) needsFlag removed from adam_ira, E) adam_ira/wendy_ira waterfall swap, F) RET_SAV_XFR=0.
+---
 
-**E2E / Playwright:**  
-**File:** `e2e.js`  
-**Run:** `node e2e.js` (file:// mode) or `HFOS_URL=https://dashboard.herndons.us node e2e.js`  
-**Standing rule:** Playwright tests must be updated and run on every build. Any new feature that changes visible weekly transfer logs, warning banners, or override behavior requires corresponding e2e coverage before push.
+## 13. Test Suite
 
-| Section | Coverage |
+### 13.1 Regression (`node test_regression.js`) — 596 / 0
+
+| Section | Covers |
 |---|---|
-| A | Tab smoke — no blank panels, no [object Object] |
-| B | Console error check on initial load |
-| C–D | Decision Engine and IRA flag toggle |
-| E | Edit Week workflow |
-| F | Reconciliation workflow |
-| G | Wishlist CRUD |
-| H | XSS safety |
-| I | Supabase offline graceful failure |
-| J | Mobile viewport |
-| K–P | (various Phase 4/5 additions) |
-| BR | Budget Rules — 5 tests: rule in tr, override bypass, resume after bypass, banner hidden/visible |
+| 1–9 | Helpers, core model, goals registry, decision engine, edge cases, rendering |
+| Ph3/Ph4 | Phase 3/4 additions |
+| BR-A through BR-K | Budget Rules — validation, generation, engine, integration, override bypass |
+| WC-A through WC-D | What-If Calculator — entries, diffModels, floor breaches, restore |
+| GR-A through GR-E | Goal Registry — gate test, field mapping, validation, waterfall, restore |
+| REC-A | Reconciliation write path — data shapes and rehydration |
+
+### 13.2 Playwright E2E (`node e2e.js`) — 46 / 0
+
+Sections A–J (smoke, console, decision engine, IRA flag, edit week, recon, wishlist, XSS, offline, mobile) + BR (5 tests), WC (7 tests), GR (5 tests).
 
 ---
 
-## 19. Phase 5 Status
+## 14. Build and Push Process
 
-Phase 5 is complete. Delivered: Budget Rules delta foundation (Supabase table, delta engine, audit trail, load-failure banner, override precedence fix, 98 regression tests, 5 e2e tests).
-
-**Remaining backlog (Phase 6+):**
-1. Budget Rules admin UI (add/edit/deactivate/preview) — absorbs wishlist id 40
-2. Budget Rules absolute mode + baseline_match_key
-3. Ask Claude API key security (Supabase Edge Function proxy)
-4. Authentication + account connections (OAuth)
-5. Costco Visa modeling (pending date confirmation)
-6. Mobile UI polish
-
----
-
-## 20. Technology Stack
-
-| Component | Details |
-|---|---|
-| Frontend | Single HTML file, vanilla JS, inline CSS |
-| Backend | Supabase (PostgreSQL + REST API) |
-| Persisted | Reconciliation, overrides, task completion, notes, wishlist |
-| Computed | All model projections (recomputed each render) |
-| Unit tests | `test_regression.js` — Node.js, 310 tests |
-| E2E tests | `e2e.js` — Playwright (Phase 5) |
-
----
-
----
-
-## 23. Action Override System
-
-### Overview
-
-Model-generated required actions (tax_base, commission_tax, alaska_draw, costco_visa) are hardcoded into runModel() logic. The override system lets users move, relabel, or delete these actions without rewriting model code. Overrides are stored in `localStorage` under the key `hfos_action_overrides`.
-
-### Action Keys
-
-| Key | Default Week | Moveable | Deleteable | Notes |
-|---|---|---|---|---|
-| `tax_base` | 2 | Yes | No | Base $521.36 tax → Vio. Default week 2 because Vio Bank not active in week 1. |
-| `commission_tax` | 6 | Yes | No | 40% of commission → Vio. If moved, uses `commTaxPending` carry-forward. |
-| `alaska_draw` | 15 | Yes | No | $7,000 Savings → Checking for cruise card bills. |
-| `costco_visa` | 1 | Yes | Yes | Informational reminder only — no financial impact. |
-
-Setup actions (`setup_sav_2750`, `setup_lc_1000`, `setup_lc_2250`) are locked and appear in `LOCKED_MODEL_ACTIONS`. They cannot be moved or deleted.
-
-### Override Object Shape
-
-```json
-{
-  "tax_base": { "week_num": 3, "label": "Optional custom label" },
-  "costco_visa": { "deleted": true }
-}
+```bash
+bash push_to_github.sh "Your commit message"
 ```
 
-### Helper Functions (global scope)
+Steps: locate repo → `node test_regression.js` → `node e2e.js` → stamp BUILD_TS automatically → `git add -A` → commit → push.
 
-- `aoW(key)` — returns effective model week (override or default)
-- `aoLabel(key, fallback)` — returns override label or fallback string
-- `aoDeleted(key)` — returns true if action is deleted via override
-
-### Commission Tax Carry-Forward
-
-When `commission_tax` is moved to a different week:
-- On the commission income week: `commTaxPending += ct` (new defer path, labeled "scheduled override")
-- On the target week (or first eligible week after): `commTaxPending` fires via `mv(commTaxPending,'tax')`
-
-When commission fires but the floor blocks it (default model behavior): amount adds to `taxTodo`, picked up by the tax backlog loop.
-
-### Warning / Validation
-
-`validateActionOverride(id, proposedOverride)` simulates the model with the proposed change and returns `{errors:[], warnings:[], info:[]}`:
-
-- **errors**: negative checking, reconciled-week target
-- **warnings**: floor violation (< $6,500)
-- **info**: Alaska completion date shift
-
-### Test Coverage
-
-Section 22 of `test_regression.js` — 31 tests covering:
-- `aoW/aoLabel/aoDeleted` helper functions
-- `ACTION_KEYS`, `DELETEABLE_MODEL_ACTIONS`, `LOCKED_MODEL_ACTIONS` constants
-- `tax_base` move changes balances correctly
-- `commission_tax` carry-forward (default defer vs. schedule-override defer)
-- `alaska_draw` move changes week 15/16 balances
-- `costco_visa` delete and move
-- `acKeys` / `realActKeys` parallel arrays
-- `isWeekReconciled` correctness
+**The push script must run from Adam's local machine.** The sandbox can run regression but not e2e (Playwright browser deps unavailable in sandbox).
 
 ---
 
-*Source of truth: `index.html`. `curr_runModel.js` is a stale tombstone — do not use.*
+## 15. Known Risks and Open Items
+
+| ID | Item | Priority |
+|---|---|---|
+| TD-2 | No authentication — anon key embedded, app is public | High |
+| TD-3 | Budget rules have no in-app management UI | Medium |
+| TD-6 | index.html is 5,000+ lines, single file | Medium |
+| TD-7 | Floor breach projection weeks 35–51 visible in chart, no explanation overlay | Medium |
+| TD-8 | START_CHK / START_SAV hardcoded, not pulled from reconciliation | Medium |
+
+---
+
+*This spec is the review baseline for all future model-affecting build proposals.*

@@ -781,6 +781,7 @@ button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-vis
     <div class="content">
       <div id="budget-rules-warn" style="display:none;background:#7f1d1d;color:#fca5a5;padding:8px 16px;font-size:12px;font-weight:600;text-align:center;">&#x26A0; Budget Rules failed to load — model running from WD baseline only</div>
       <div id="goals-load-warn" style="display:none;background:#78350f;color:#fde68a;padding:8px 16px;font-size:12px;font-weight:600;text-align:center;">&#x26A0; Goals running from local fallback — Supabase unavailable</div>
+      <div id="render-error-banner" style="display:none;background:#fef2f2;color:#991b1b;padding:10px 16px;font-size:12px;font-family:monospace;border-bottom:2px solid #fca5a5;white-space:pre-wrap;word-break:break-all;"></div>
       <div id="s-overview" class="section active"><div id="overview-content"></div></div>
       <div id="s-weekly" class="section"><div id="weekly-content"></div></div>
       <div id="s-goals" class="section"><div id="goals-content"></div></div>
@@ -806,7 +807,7 @@ button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-vis
 // ── Constants (unchanged) ──────────────────────────────────────────────────
 // Simplified architecture — $8,250 total from LC · $6,500 operating floor · no legacy mechanics
 // Real-world moves: keep $2,250 in chk, move $2,750 sav→chk, move $1,000 LC→chk, move $2,250 LC→chk (Option 1 correction)
-const BUILD_TS='2026-06-21T18:40:00'; // updated each push — local time string
+const BUILD_TS='2026-06-21T22:34:12'; // updated each push — local time string
 const START_CHK=18037.73,START_SAV=3772.77,START_AMX=103.64,START_TAX=0,START_LC=13488.88;
 const EF_AMT=13488.88; // LC/EF balance — static this model year (no transfers in or out)
 const BASE_TAX=521.36,RET_SAV_XFR=3772.74;
@@ -3823,6 +3824,9 @@ function _DEAD_renderRoadmap_phase2(){
     {title:'Supabase live writes',notes:'All data persists across sessions and devices',phase:'Phase 2',status:'done'},
     {title:'Sync dot wired to connection state',notes:'Gray on load, green after successful Supabase connection',phase:'Phase 2',status:'done'},
     {title:'Feature wishlist page',notes:'This page — source of truth for what is coming. Full editing in Phase 3.',phase:'Phase 2',status:'done'},
+    {title:'Recurring Budget Rules engine',notes:'Supabase-backed recurring and one-time adjustments applied to weekly model. Bypassed (not dropped) when week is overridden. bannerLoad failure state.',phase:'Phase 5',status:'done'},
+    {title:'What-If Impact Calculator',notes:'Single inflow/outflow entry with date — diffModels() shows goal shifts, floor breaches, and bypassed weeks. Session-only, no Supabase write.',phase:'Phase 5',status:'done'},
+    {title:'Goal Registry foundation (Phase 6A)',notes:'goal_registry Supabase table (SELECT-only RLS). HARDCODED_GOALS_FALLBACK ensures model runs before DB load. Validation, 4-state goalsLoadStatus, fallback banner.',phase:'Phase 6',status:'done'},
     // ── Planned ──
     {title:'Scenario preview sandbox',notes:'Architecture that never writes to Supabase until user explicitly commits',phase:'Phase 3',status:'planned'},
     {title:'Commission scenario',notes:'Week, gross amount, taxable toggle, 40/60 split preview',phase:'Phase 3',status:'planned'},
@@ -3831,7 +3835,7 @@ function _DEAD_renderRoadmap_phase2(){
     {title:'Exact calendar dates on cash flows',notes:'Every transfer and action shows its calendar date, not just week number',phase:'Phase 3',status:'planned'},
     {title:'AI Q&A (read-only)',notes:'Ask plain-English questions about the model and get answers',phase:'Phase 3',status:'planned'},
     {title:'Wishlist full CRUD',notes:'Add ideas, edit cards, assign phases, move Planned → Done — all synced via Supabase',phase:'Phase 3',status:'planned'},
-    {title:'Dynamic goal registry',notes:'Add / edit / pause / archive / reprioritize goals',phase:'Phase 4',status:'planned'},
+    {title:'Goal Registry CRUD (Phase 6B)',notes:'Add / edit / pause / archive / reprioritize goals. Requires write policy on goal_registry and authentication before live deployment.',phase:'Phase 6',status:'planned'},
     {title:'Goal dependency chain',notes:'Start a goal after another goal completes',phase:'Phase 4',status:'planned'},
     {title:'Goal progress from actions',notes:'Progress gated on checked required actions, not model projection alone',phase:'Phase 4',status:'planned'},
     {title:'Goal funding source & destination account',notes:'Per-goal src/dest account + startsAfter dependency — display layer complete. Full CRUD editing deferred to dynamic registry.',phase:'Phase 4',status:'done'},
@@ -4154,6 +4158,7 @@ function applyCompletionSnapshots(weeks){
 
 // ── renderApp (central render, replaces render()) ──────────────────────────
 function renderApp(){
+  try{
   var g=getGoals();
   var weeks=applyCompletionSnapshots(getActiveModel());
   var vm=buildDashboardViewModel(weeks,g);
@@ -4208,6 +4213,13 @@ function renderApp(){
   else if(activeSection==='ask')renderAskClaude();
   renderEditDrawer();
   renderScenarioModal();
+  // Clear any previous render error
+  var _reb=document.getElementById('render-error-banner');if(_reb)_reb.style.display='none';
+  }catch(e){
+    console.error('[renderApp] Render error:',e);
+    var _reb=document.getElementById('render-error-banner');
+    if(_reb){_reb.textContent='⚠ Render error: '+e.message+'\n'+e.stack;_reb.style.display='block';}
+  }
 }
 // Backward-compat alias — all existing call sites use render()
 var render=renderApp;
@@ -5248,7 +5260,16 @@ try{
   var timePart=d.toLocaleTimeString('en-US',{hour:'numeric',minute:'2-digit'});
   el.textContent='Last build: '+datePart+' · '+timePart;
 })();
-loadAll();
+loadAll().then(function(){
+  // After loadAll() resolves: if goalsLoadStatus is still 'not_configured', the goal registry
+  // section was skipped (e.g. loadAll threw before reaching it). Treat as fallback.
+  if(goalsLoadStatus==='not_configured'){
+    console.warn('[GoalRegistry] still not_configured after loadAll() — treating as loaded_fallback');
+    goalsLoadStatus='loaded_fallback';
+    applyGoalsFallback();
+    renderApp();
+  }
+});
 </script>
 </body>
 </html>

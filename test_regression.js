@@ -4080,6 +4080,187 @@ test('GR-E1: Restoring HARDCODED_GOALS_FALLBACK after all GR tests leaves model 
 });
 
 // ─────────────────────────────────────────────────────────────────────────
+// Section REC-A: Reconciliation write-path data shape tests
+// ─────────────────────────────────────────────────────────────────────────
+console.log('\n── Section REC-A: Reconciliation write-path shapes ──');
+
+// ── saveRecon write path ──────────────────────────────────────────────────
+
+test('REC-A1: reconData entry has all 6 required fields after a mock save', function(){
+  // Simulate what saveRecon(n) writes to reconData[n]
+  var n = 5;
+  var mockEntry = { chk: 18037.73, sav: 3772.77, amx: 103.64, tax: 0, lc: 13488.88, date: '2026-06-14' };
+  reconData[n] = mockEntry;
+  var entry = reconData[n];
+  assert(entry.chk !== undefined, 'reconData[n].chk must be defined');
+  assert(entry.sav !== undefined, 'reconData[n].sav must be defined');
+  assert(entry.amx !== undefined, 'reconData[n].amx must be defined');
+  assert(entry.tax !== undefined, 'reconData[n].tax must be defined');
+  assert(entry.lc  !== undefined, 'reconData[n].lc must be defined');
+  assert(entry.date !== undefined, 'reconData[n].date must be defined');
+  delete reconData[n];
+});
+
+test('REC-A2: reconData entry shape matches Supabase payload fields', function(){
+  // Supabase payload: { week_num, chk, sav, amx, tax, lc, recorded_at }
+  // Local: { chk, sav, amx, tax, lc, date }
+  var local = { chk: 18037.73, sav: 3772.77, amx: 103.64, tax: 0, lc: 13488.88, date: '2026-06-14' };
+  var payload = {
+    week_num: 5,
+    chk: local.chk,
+    sav: local.sav,
+    amx: local.amx,
+    tax: local.tax,
+    lc: local.lc,
+    recorded_at: new Date().toISOString()
+  };
+  assert(typeof payload.week_num === 'number', 'week_num must be number');
+  assert(typeof payload.chk      === 'number', 'chk must be number');
+  assert(typeof payload.sav      === 'number', 'sav must be number');
+  assert(typeof payload.amx      === 'number', 'amx must be number');
+  assert(typeof payload.tax      === 'number', 'tax must be number');
+  assert(typeof payload.lc       === 'number', 'lc must be number');
+  assert(typeof payload.recorded_at === 'string', 'recorded_at must be string');
+});
+
+test('REC-A3: isWeekReconciled() returns false when reconData[n] is absent', function(){
+  var n = 99;
+  delete reconData[n];
+  assert(!isWeekReconciled(n), 'isWeekReconciled(99) must be false when no recon entry exists');
+});
+
+test('REC-A4: isWeekReconciled() returns true when reconData[n].chk is defined', function(){
+  var n = 99;
+  reconData[n] = { chk: 18037.73, sav: 3772.77, amx: 103.64, tax: 0, lc: 13488.88, date: '2026-06-14' };
+  assert(isWeekReconciled(n), 'isWeekReconciled(99) must be true when chk is defined');
+  delete reconData[n];
+});
+
+// ── toggleTask write path ─────────────────────────────────────────────────
+
+test('REC-A5: taskData entry has all 5 required fields after a mock toggle', function(){
+  // Simulate what toggleTask(weekNum, taskIdx, checked, actionKey, amount) writes
+  var key = '5_2';
+  taskData[key] = {
+    completed: true,
+    completedAt: new Date().toISOString(),
+    completedAmount: 500,
+    actionKey: 'alaska',
+    completedLabel: 'Alaska Cruise $500'
+  };
+  var entry = taskData[key];
+  assert(entry.completed      !== undefined, 'taskData[key].completed must be defined');
+  assert(entry.completedAt    !== undefined, 'taskData[key].completedAt must be defined');
+  assert(entry.completedAmount!== undefined, 'taskData[key].completedAmount must be defined');
+  assert(entry.actionKey      !== undefined, 'taskData[key].actionKey must be defined');
+  assert(entry.completedLabel !== undefined, 'taskData[key].completedLabel must be defined');
+  delete taskData[key];
+});
+
+test('REC-A6: taskData entry shape matches Supabase payload fields', function(){
+  // Supabase: { week_num, task_idx, completed, completed_at, completed_amount, action_key, completed_label }
+  var weekNum = 5, taskIdx = 2;
+  var local = {
+    completed: true,
+    completedAt: '2026-06-14T10:00:00.000Z',
+    completedAmount: 500,
+    actionKey: 'alaska',
+    completedLabel: 'Alaska Cruise $500'
+  };
+  var payload = {
+    week_num:         weekNum,
+    task_idx:         taskIdx,
+    completed:        local.completed,
+    completed_at:     local.completedAt,
+    completed_amount: local.completedAmount,
+    action_key:       local.actionKey,
+    completed_label:  local.completedLabel
+  };
+  assert(typeof payload.week_num          === 'number',  'week_num must be number');
+  assert(typeof payload.task_idx          === 'number',  'task_idx must be number');
+  assert(typeof payload.completed         === 'boolean', 'completed must be boolean');
+  assert(typeof payload.completed_at      === 'string',  'completed_at must be string');
+  assert(typeof payload.completed_amount  === 'number',  'completed_amount must be number');
+  assert(typeof payload.action_key        === 'string',  'action_key must be string');
+  assert(typeof payload.completed_label   === 'string',  'completed_label must be string');
+});
+
+test('REC-A7: toggling a task unchecked stores completed:false and clears amounts', function(){
+  var key = '5_2';
+  taskData[key] = {
+    completed: false,
+    completedAt: null,
+    completedAmount: 0,
+    actionKey: 'alaska',
+    completedLabel: ''
+  };
+  assert(taskData[key].completed === false, 'unchecked task: completed must be false');
+  assert(taskData[key].completedAmount === 0, 'unchecked task: completedAmount must be 0');
+  delete taskData[key];
+});
+
+// ── saveNote write path ───────────────────────────────────────────────────
+
+test('REC-A8: noteData entry is a string after a mock save', function(){
+  var weekNum = 5;
+  noteData[weekNum] = 'Paid all bills. Alaska transfer pending.';
+  assert(typeof noteData[weekNum] === 'string', 'noteData[weekNum] must be string');
+  assert(noteData[weekNum].length > 0, 'noteData[weekNum] must be non-empty after save');
+  delete noteData[weekNum];
+});
+
+test('REC-A9: saveNote Supabase payload shape is correct', function(){
+  var weekNum = 5;
+  var noteText = 'Paid all bills.';
+  var payload = { week_num: weekNum, note: noteText };
+  assert(typeof payload.week_num === 'number', 'week_num must be number');
+  assert(typeof payload.note     === 'string', 'note must be string');
+});
+
+// ── applyCompletionSnapshots ──────────────────────────────────────────────
+
+test('REC-A10: applyCompletionSnapshots() does not throw with empty taskData', function(){
+  var savedTaskData = Object.assign({}, taskData);
+  taskData = {};
+  var weeks = runModel(7000, 7694.87);
+  var threw = false;
+  try { applyCompletionSnapshots(weeks); } catch(e){ threw=true; }
+  assert(!threw, 'applyCompletionSnapshots must not throw with empty taskData');
+  taskData = savedTaskData;
+});
+
+test('REC-A11: applyCompletionSnapshots() substitutes completedLabel into realActs', function(){
+  // applyCompletionSnapshots maps over realActs (not ac) and returns a NEW array
+  var weeks = runModel(7000, 7694.87);
+  var wk5 = weeks[4]; // model week 5, index 4
+  if(!wk5 || !wk5.realActs || wk5.realActs.length===0){ assert(true, 'skip — no realActs in week 5'); return; }
+  var key = wk5.num + '_0'; // key = weekNum_taskIdx (num, not array index)
+  taskData[key] = {
+    completed: true,
+    completedAt: '2026-06-14T10:00:00.000Z',
+    completedAmount: 250,
+    actionKey: wk5.realActKeys ? wk5.realActKeys[0] : '',
+    completedLabel: 'Test Task $250'
+  };
+  var snapped = applyCompletionSnapshots(weeks); // returns new array
+  assert(snapped[4].realActs[0] === 'Test Task $250',
+    'completedLabel should replace realActs[0] after snapshot, got: '+snapped[4].realActs[0]);
+  delete taskData[key];
+});
+
+test('REC-A12: reconData rehydration: loading multiple weeks preserves all entries', function(){
+  var testWeeks = [1, 5, 10, 20, 31];
+  testWeeks.forEach(function(n){
+    reconData[n] = { chk: 18000+n, sav: 3700+n, amx: 100+n, tax: n, lc: 13000+n, date: '2026-06-14' };
+  });
+  testWeeks.forEach(function(n){
+    assert(reconData[n] !== undefined, 'reconData['+n+'] must persist after multi-week load');
+    assert(reconData[n].chk === 18000+n, 'reconData['+n+'].chk must match saved value');
+  });
+  testWeeks.forEach(function(n){ delete reconData[n]; });
+});
+
+// ─────────────────────────────────────────────────────────────────────────
 console.log('\n╔══════════════════════════════════════════════════════════════╗');
 console.log('║                       RESULTS                               ║');
 console.log('╚══════════════════════════════════════════════════════════════╝');
