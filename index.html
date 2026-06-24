@@ -1355,7 +1355,7 @@ function getAutoRemindersForWeek(weekNum){
   var _apEntry=_amexPlatClose.find(function(e){return e[0]===weekNum;});
   if(_agEntry){var _agRef=_agEntry[1]?'Cal Wk '+getCalWeek(_agEntry[1]):'next statement period';reminders.push({reminderKey:yr+'_w'+weekNum+'__amex_gold_close',label:'💳 AMEX Gold statement closes this week (23rd) — log in and confirm the actual bill amount due '+_agRef+' (~$5,500 estimated). Open Edit Week on '+_agRef+' and update the actual amount.',type:'action'});}
   if(_dvEntry){var _dvRef=_dvEntry[1]?'Cal Wk '+getCalWeek(_dvEntry[1]):'next statement period';reminders.push({reminderKey:yr+'_w'+weekNum+'__disney_visa_close',label:'💳 Disney Visa statement closes this week (26th) — log in and confirm the actual bill amount due '+_dvRef+' (~$3,500 estimated). Open Edit Week on '+_dvRef+' and update the actual amount.',type:'action'});}
-  if(_apEntry){var _apRef=_apEntry[1]?'Cal Wk '+getCalWeek(_apEntry[1]):'next statement period';reminders.push({reminderKey:yr+'_w'+weekNum+'__amex_plat_close',label:'💳 AMEX Platinum statement closes this week (2nd) — log in and confirm any straggler charges due '+_apRef+'. Update Edit Week if actual is more than $25.',type:'action'});}
+  if(_apEntry){var _apRef=_apEntry[1]?'Cal Wk '+getCalWeek(_apEntry[1]):'next statement period';reminders.push({reminderKey:yr+'_w'+weekNum+'__amex_plat_close',label:'💳 AMEX Platinum statement closes this week (2nd) — log in and confirm any straggler charges due '+_apRef+' and update the actual amount.',type:'action'});}
   return reminders;
 }
 function ensureAutoReminders(weekNum){
@@ -1894,7 +1894,7 @@ function runModel(akGoal,rtGoal,flags){
       recActs.push('💳 Disney Visa statement closes this week (26th) — log in and confirm the actual bill amount due '+_dvBillRef+' (~$3,500 estimated). Open Edit Week on '+_dvBillRef+' and update the actual amount.');}
     if(_apEntry){
       var _apBillRef=_apEntry[1]?'Cal Wk '+getCalWeek(_apEntry[1]):'next statement period';
-      recActs.push('💳 AMEX Platinum statement closes this week (2nd) — log in and confirm any straggler charges due '+_apBillRef+'. Update Edit Week if actual is more than $25.');}
+      recActs.push('💳 AMEX Platinum statement closes this week (2nd) — log in and confirm any straggler charges due '+_apBillRef+' and update the actual amount.');}
     // Snapshot goal savings for this week (deep copy)
     var gSnap={};Object.keys(goalSaved).forEach(function(k){gSnap[k]=goalSaved[k];});
     weeks.push({num,dates,trough:false,managed:false,calNote,evs,tr,ac,acKeys,recActs,realActs,realActKeys,totalTasks,doneTasks,
