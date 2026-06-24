@@ -187,6 +187,7 @@ Ideas (further out): mobile improvements (id: 39), variables/settings page (id: 
 ## Open Issues / Known Gaps
 
 - Phase 5A complete — no open issues
+- Auto-reminder label changes require Supabase cleanup: auto-generated tasks (source='auto_reminder') are stored in custom_tasks with lockedLabel=true. If the label text is changed in code, any week that already has the task stored in Supabase will continue showing the old text — the reminder regeneration logic skips tasks whose reminderKey already exists. Fix: DELETE FROM custom_tasks WHERE label LIKE '%<old text pattern>%' in Supabase SQL Editor, then reload the dashboard.
 - If push fails with "HEAD.lock exists", run rm ~/Adam-Dashboard/.git/HEAD.lock then retry
 - No automated tests run before push (test_regression.js and e2e.js exist but are run manually)
 - Mobile sync for custom tasks now works via Supabase, but actions added before June 2026 still only exist in localStorage on the device they were created on
