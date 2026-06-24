@@ -1245,6 +1245,7 @@ function editCustomTaskDate(id, date){
 // actionEditState: {type:'model'|'custom', id, weekNum, saving, warnings} | null
 var actionEditState=null;
 var editOpen=null;
+var USER_ROLE='viewer'; // fail closed — set during checkAuthorization; 'owner'|'editor'|'viewer'
 // Phase 2 state
 var reconDeleteConfirm=false;
 var editDeleteConfirm=false;
@@ -2752,7 +2753,7 @@ function renderWeekDetail(w,weeks){
         (nextW?'<button class="wnav-arrow" onclick="activeW='+(w.num+1)+';renderApp()" title="Wk '+getCalWeek(w.num+1)+' · '+nextW.dates+'">→</button>':'<span class="wnav-arrow-ph"></span>')+
       '</div>'+
       '<div class="wk-action-row">'+
-        '<button class="btn" onclick="openEdit('+w.num+')">Edit week</button>'+
+        (canWriteFinancials()?'<button class="btn" onclick="openEdit('+w.num+')">Edit week</button>':'')+
         (isPastWeek||isNowWeek?'<button class="btn primary" onclick="openRecon('+w.num+')">'+
           (w.reconciled?'Update actuals':'Reconcile')+'</button>':'')+
       '</div>'+
@@ -3187,8 +3188,11 @@ function _gProgCls(pct,locked,stretch){
 function _renderGoalsSavings(vm){
   var flagBar='<div class="goals-flag-bar">'+
     '<span class="goals-flag-label">Flags</span>'+
-    '<button class="flag-toggle '+(goalFlags.ira_cpa_cleared?'on':'off')+'" onclick="toggleGoalFlag(\'ira_cpa_cleared\')">'+
-      (goalFlags.ira_cpa_cleared?'✓ IRA CPA Cleared':'🔒 IRA CPA Pending')+'</button>'+
+    (canWriteFinancials()?
+      '<button class="flag-toggle '+(goalFlags.ira_cpa_cleared?'on':'off')+'" onclick="toggleGoalFlag(\'ira_cpa_cleared\')">'+
+        (goalFlags.ira_cpa_cleared?'✓ IRA CPA Cleared':'🔒 IRA CPA Pending')+'</button>':
+      '<span class="flag-toggle '+(goalFlags.ira_cpa_cleared?'on':'off')+'" style="cursor:default;opacity:0.65;">'+
+        (goalFlags.ira_cpa_cleared?'✓ IRA CPA Cleared':'🔒 IRA CPA Pending')+'</span>')+
     '<span style="font-size:11px;color:var(--muted)">Toggle once your CPA clears IRA contributions for 2026</span>'+
   '</div>';
   var TIER_ORDER=['Retirement','Travel','Education','Emerging','Stretch'];
@@ -4134,6 +4138,7 @@ function renderEditDrawer(){
   var backdrop=document.getElementById('drawer-backdrop');
   var drawer=document.getElementById('edit-drawer');
   if(editOpen!==null){
+    if(!canWriteFinancials()){closeEdit();return;} // defense-in-depth: viewers cannot edit weeks
     backdrop.style.display='block';
     var isNew=(editOpen===0);
     var wdEntry=WD.find(function(wd){return wd[0]===editOpen;});
@@ -4396,10 +4401,11 @@ async function checkAuthorization(session){
     // Read own app_users row — direct table read, not RPC.
     // is_allowed_user() is used only by RLS policies, not called here.
     var h={apikey:SUPA_KEY,Authorization:'Bearer '+token,'Content-Type':'application/json'};
-    var r=await fetch(SUPA_URL+'/rest/v1/app_users?email=eq.'+encodeURIComponent(email.toLowerCase())+'&select=active&limit=1',{headers:h});
+    var r=await fetch(SUPA_URL+'/rest/v1/app_users?email=eq.'+encodeURIComponent(email.toLowerCase())+'&select=active,role&limit=1',{headers:h});
     if(!r.ok){setAuthState('auth_error');return;}
     var rows=await r.json();
     if(!rows||!rows.length||!rows[0].active){setAuthState('unauthorized');return;}
+    USER_ROLE=(rows[0].role&&rows[0].role.length)?rows[0].role:'viewer'; // fail closed
     // Both gates passed: valid session + active app_users row
     await loadAll();
     if(goalsLoadStatus==='not_configured'){
@@ -4414,6 +4420,8 @@ async function checkAuthorization(session){
     setAuthState('auth_error');
   }
 }
+function isOwnerUser(){return USER_ROLE==='owner';}
+function canWriteFinancials(){return USER_ROLE==='owner'||USER_ROLE==='household_admin';}
 
 async function doSignOut(){
   try{await _supabase.auth.signOut();}catch(e){console.error('signOut:',e);}
@@ -5450,18 +5458,22 @@ function renderAskClaude(){
   var el=document.getElementById('ask-content');if(!el)return;
   var html='<div class="ask-page">';
   if(!anthropicKey){
-    html+='<div class="ask-setup-card">'+
-      '<h3>Connect your Anthropic API key</h3>'+
-      '<p>Paste your API key from <strong>console.anthropic.com</strong> → API Keys. It will be stored in Supabase so it syncs across devices. Claude will only use it to answer questions about your model — it never modifies your data.</p>'+
-      '<div class="ask-key-row">'+
-        '<input class="ask-key-input" id="ask-key-field" type="password" placeholder="sk-ant-...">'+
-        '<button class="ask-key-save" onclick="saveApiKey(document.getElementById(\'ask-key-field\').value)">Save key</button>'+
-      '</div>'+
-    '</div>';
+    if(isOwnerUser()){
+      html+='<div class="ask-setup-card">'+
+        '<h3>Connect your Anthropic API key</h3>'+
+        '<p>Paste your API key from <strong>console.anthropic.com</strong> → API Keys. It will be stored in Supabase so it syncs across devices. Claude will only use it to answer questions about your model — it never modifies your data.</p>'+
+        '<div class="ask-key-row">'+
+          '<input class="ask-key-input" id="ask-key-field" type="password" placeholder="sk-ant-...">'+
+          '<button class="ask-key-save" onclick="saveApiKey(document.getElementById(\'ask-key-field\').value)">Save key</button>'+
+        '</div>'+
+      '</div>';
+    }else{
+      html+='<div class="ask-setup-card"><p style="color:var(--muted);font-size:13px">API key not configured. Ask the account owner to add a key.</p></div>';
+    }
   }else{
     html+='<div class="ask-setup-card" style="padding:10px 14px;display:flex;align-items:center;justify-content:space-between">'+
       '<span class="ask-key-status">✓ API key connected</span>'+
-      '<button class="wl-cancel-btn" onclick="anthropicKey=\'\';renderApp()" style="font-size:11px">Change key</button>'+
+      (isOwnerUser()?'<button class="wl-cancel-btn" onclick="anthropicKey=\'\';renderApp()" style="font-size:11px">Change key</button>':'')+
     '</div>';
   }
   // Chat area

@@ -4553,6 +4553,174 @@ test('WL-V2-6: phaseMigrateWishlist does NOT contain a statusCorrections array',
 });
 
 // ─────────────────────────────────────────────────────────────────────────
+// ── ROLE-A: USER_ROLE global and isOwnerUser() helper ─────────────────────
+// ─────────────────────────────────────────────────────────────────────────
+console.log('\n── ROLE-A: USER_ROLE global and isOwnerUser() helper ──');
+
+test('ROLE-A1: USER_ROLE global is declared and defaults to viewer',()=>{
+  assert(typeof USER_ROLE !== 'undefined', 'USER_ROLE global not declared');
+  // In test context auth has not run, so default must be viewer (fail-closed)
+  assert(USER_ROLE === 'viewer', 'USER_ROLE default must be viewer, got: '+USER_ROLE);
+});
+
+test('ROLE-A2: isOwnerUser() is a function',()=>{
+  assert(typeof isOwnerUser === 'function', 'isOwnerUser is not a function');
+});
+
+test('ROLE-A3: isOwnerUser() returns true when USER_ROLE = owner',()=>{
+  var prev=USER_ROLE; USER_ROLE='owner';
+  assert(isOwnerUser()===true,'expected true for owner');
+  USER_ROLE=prev;
+});
+
+test('ROLE-A4: isOwnerUser() returns false when USER_ROLE = viewer',()=>{
+  var prev=USER_ROLE; USER_ROLE='viewer';
+  assert(isOwnerUser()===false,'expected false for viewer');
+  USER_ROLE=prev;
+});
+
+test('ROLE-A5: isOwnerUser() returns false when USER_ROLE = editor',()=>{
+  var prev=USER_ROLE; USER_ROLE='editor';
+  assert(isOwnerUser()===false,'expected false for editor');
+  USER_ROLE=prev;
+});
+
+test('ROLE-A6: isOwnerUser() returns false for empty string (fail closed)',()=>{
+  var prev=USER_ROLE; USER_ROLE='';
+  assert(isOwnerUser()===false,'expected false for empty string');
+  USER_ROLE=prev;
+});
+
+test('ROLE-A7: canWriteFinancials() is a function',()=>{
+  assert(typeof canWriteFinancials === 'function','canWriteFinancials is not a function');
+});
+
+test('ROLE-A8: canWriteFinancials() returns true for owner',()=>{
+  var prev=USER_ROLE; USER_ROLE='owner';
+  assert(canWriteFinancials()===true,'expected true for owner');
+  USER_ROLE=prev;
+});
+
+test('ROLE-A9: canWriteFinancials() returns true for household_admin',()=>{
+  var prev=USER_ROLE; USER_ROLE='household_admin';
+  assert(canWriteFinancials()===true,'expected true for household_admin');
+  USER_ROLE=prev;
+});
+
+test('ROLE-A10: canWriteFinancials() returns false for viewer',()=>{
+  var prev=USER_ROLE; USER_ROLE='viewer';
+  assert(canWriteFinancials()===false,'expected false for viewer');
+  USER_ROLE=prev;
+});
+
+test('ROLE-A11: canWriteFinancials() returns false for empty string (fail closed)',()=>{
+  var prev=USER_ROLE; USER_ROLE='';
+  assert(canWriteFinancials()===false,'expected false for empty string');
+  USER_ROLE=prev;
+});
+
+// ── ROLE-B: UI suppression — source-level checks ──────────────────────────
+console.log('\n── ROLE-B: UI suppression source checks ──');
+
+test('ROLE-B1: checkAuthorization fetches active,role (not active only)',()=>{
+  var htmlSrc='';
+  try{htmlSrc=require('fs').readFileSync(require('path').join(__dirname,'index.html'),'utf8');}catch(e){}
+  assert(htmlSrc.length>0,'Could not read index.html');
+  assert(/select=active,role/.test(htmlSrc),'checkAuthorization must fetch active,role from app_users');
+});
+
+test('ROLE-B2: USER_ROLE is set from app_users row after authorization',()=>{
+  var htmlSrc='';
+  try{htmlSrc=require('fs').readFileSync(require('path').join(__dirname,'index.html'),'utf8');}catch(e){}
+  assert(htmlSrc.length>0,'Could not read index.html');
+  assert(/USER_ROLE=\(rows\[0\]\.role/.test(htmlSrc),'USER_ROLE must be set from rows[0].role in checkAuthorization');
+});
+
+test('ROLE-B3: USER_ROLE fails closed to viewer when role is missing',()=>{
+  var htmlSrc='';
+  try{htmlSrc=require('fs').readFileSync(require('path').join(__dirname,'index.html'),'utf8');}catch(e){}
+  assert(htmlSrc.length>0,'Could not read index.html');
+  assert(/USER_ROLE=\(rows\[0\]\.role.*\?.*rows\[0\]\.role.*:.*'viewer'/.test(htmlSrc)||
+         /\?rows\[0\]\.role:'viewer'/.test(htmlSrc),
+         'USER_ROLE must fallback to viewer (fail closed)');
+});
+
+test('ROLE-B4: Edit week button is gated on canWriteFinancials()',()=>{
+  var htmlSrc='';
+  try{htmlSrc=require('fs').readFileSync(require('path').join(__dirname,'index.html'),'utf8');}catch(e){}
+  assert(htmlSrc.length>0,'Could not read index.html');
+  assert(/canWriteFinancials\(\)\?'<button[^']*openEdit/.test(htmlSrc),'Edit week button must be gated on canWriteFinancials()');
+});
+
+test('ROLE-B5: IRA flag toggle is gated on canWriteFinancials()',()=>{
+  var htmlSrc='';
+  try{htmlSrc=require('fs').readFileSync(require('path').join(__dirname,'index.html'),'utf8');}catch(e){}
+  assert(htmlSrc.length>0,'Could not read index.html');
+  var flagIdx=htmlSrc.indexOf('_renderGoalsSavings');
+  var flagSection=htmlSrc.slice(flagIdx,flagIdx+800);
+  assert(/canWriteFinancials\(\)/.test(flagSection),'canWriteFinancials() must gate IRA flag in _renderGoalsSavings');
+  assert(/toggleGoalFlag/.test(flagSection),'toggleGoalFlag must be inside _renderGoalsSavings');
+});
+
+test('ROLE-B6: Anthropic key save/change is gated on isOwnerUser()',()=>{
+  var htmlSrc='';
+  try{htmlSrc=require('fs').readFileSync(require('path').join(__dirname,'index.html'),'utf8');}catch(e){}
+  assert(htmlSrc.length>0,'Could not read index.html');
+  assert(/isOwnerUser\(\)\{/.test(htmlSrc),'saveApiKey UI must be gated on isOwnerUser()');
+});
+
+test('ROLE-B7: renderEditDrawer has defense-in-depth guard for non-financial-writers',()=>{
+  var htmlSrc='';
+  try{htmlSrc=require('fs').readFileSync(require('path').join(__dirname,'index.html'),'utf8');}catch(e){}
+  assert(htmlSrc.length>0,'Could not read index.html');
+  assert(/if\(!canWriteFinancials\(\)\)\{closeEdit\(\);return;\}/.test(htmlSrc),'renderEditDrawer must guard against viewer access');
+});
+
+test('ROLE-B9-SQL: goals RLS uses row-qualified split — financial policy excludes anthropic_key',()=>{
+  var sqlSrc='';
+  try{sqlSrc=require('fs').readFileSync(require('path').join(__dirname,'docs','phase-5a-role-enforcement.sql'),'utf8');}catch(e){}
+  assert(sqlSrc.length>0,'Could not read phase-5a-role-enforcement.sql');
+  assert(/goals_financial_insert/.test(sqlSrc),'goals_financial_insert policy must exist in SQL');
+  assert(/goals_owner_insert/.test(sqlSrc),'goals_owner_insert policy must exist in SQL');
+  assert(/goals_financial_update/.test(sqlSrc),'goals_financial_update policy must exist in SQL');
+  assert(/goals_owner_update/.test(sqlSrc),'goals_owner_update policy must exist in SQL');
+  assert(/key != 'anthropic_key'/.test(sqlSrc),'financial policy must have key != anthropic_key row qualifier');
+  assert(/is_owner\(\)/.test(sqlSrc),'owner policy must use is_owner()');
+  // Ensure the old single-policy is gone
+  assert(!/^CREATE POLICY "goals_insert_app_users"/.test(sqlSrc),'old goals_insert_app_users must not be created in Phase 5A SQL');
+});
+
+test('ROLE-B10: WITH CHECK on goals_financial_update prevents renaming a row to anthropic_key',()=>{
+  var sqlSrc='';
+  try{sqlSrc=require('fs').readFileSync(require('path').join(__dirname,'docs','phase-5a-role-enforcement.sql'),'utf8');}catch(e){}
+  assert(sqlSrc.length>0,'Could not read phase-5a-role-enforcement.sql');
+  // financial_update must have BOTH USING and WITH CHECK referencing key != anthropic_key
+  var createIdx=sqlSrc.indexOf('CREATE POLICY "goals_financial_update"');
+  var ownerCreateIdx=sqlSrc.indexOf('CREATE POLICY "goals_owner_update"');
+  var updateBlock=sqlSrc.slice(createIdx,ownerCreateIdx);
+  assert(/USING.*can_write_financials/.test(updateBlock),'financial_update must have USING clause');
+  assert(/WITH CHECK.*can_write_financials/.test(updateBlock),'financial_update must have WITH CHECK clause');
+  assert((updateBlock.match(/key != 'anthropic_key'/g)||[]).length>=2,'both USING and WITH CHECK must include key qualifier');
+});
+
+test('ROLE-B9: Anthropic key setup/change is still gated on isOwnerUser() (platform-only)',()=>{
+  var htmlSrc='';
+  try{htmlSrc=require('fs').readFileSync(require('path').join(__dirname,'index.html'),'utf8');}catch(e){}
+  assert(htmlSrc.length>0,'Could not read index.html');
+  // isOwnerUser() must gate the Anthropic key section (not canWriteFinancials)
+  var askIdx=htmlSrc.indexOf('function renderAskClaude');
+  var askSection=htmlSrc.slice(askIdx,askIdx+1200);
+  assert(/isOwnerUser\(\)/.test(askSection),'Anthropic key setup must be gated on isOwnerUser() inside renderAskClaude');
+  assert(!/canWriteFinancials/.test(askSection),'Anthropic key section must not use canWriteFinancials — must stay owner-only');
+});
+
+test('ROLE-B8: Model behavior unchanged — runModel() output identical after role build',()=>{
+  var wks=runModel(0,0);
+  assert(wks.length===31,'runModel must still return 31 weeks');
+  assertApprox(wks[0].startChk,18037.73,'W1 startChk must be unchanged');
+});
+
+// ─────────────────────────────────────────────────────────────────────────
 console.log('\n╔══════════════════════════════════════════════════════════════╗');
 console.log('║                       RESULTS                               ║');
 console.log('╚══════════════════════════════════════════════════════════════╝');
