@@ -344,9 +344,15 @@ test('_renderGoalsSavings: monthly income = $15,938',()=>{
   const h=_renderGoalsSavings(fullVm);
   assertIncludes(h,'15,938','Monthly income $15,938 not found');
 });
-test('_renderGoalsSavings: monthly bills = $15,091',()=>{
+test('_renderGoalsSavings: monthly living expenses correct for current week',()=>{
   const h=_renderGoalsSavings(fullVm);
-  assertIncludes(h,'15,091','Monthly bills $15,091 not found');
+  const w=getCurrentWeek();
+  const base=13638;
+  const rent=(w>=4)?100:0;
+  const diablos=(w>=4&&w<=30)?750:0;
+  const glp=(w>=8&&w<=30)?404:0;
+  const expected=(base+rent+diablos+glp).toLocaleString();
+  assertIncludes(h,expected,'Monthly living expenses '+expected+' not found for week '+w);
 });
 test('_renderGoalsSavings: funded definition present',()=>{
   const h=_renderGoalsSavings(fullVm);
@@ -4718,6 +4724,455 @@ test('ROLE-B8: Model behavior unchanged — runModel() output identical after ro
   var wks=runModel(0,0);
   assert(wks.length===31,'runModel must still return 31 weeks');
   assertApprox(wks[0].startChk,18037.73,'W1 startChk must be unchanged');
+});
+
+// ═════════════════════════════════════════════════════════════════════════
+// Section 29: Phase 5B — Budget Module
+// ═════════════════════════════════════════════════════════════════════════
+
+test('5B-1: BUDGET_CATEGORY_REGISTRY exists and has expected keys',()=>{
+  assert(Array.isArray(BUDGET_CATEGORY_REGISTRY),'BUDGET_CATEGORY_REGISTRY must be an array');
+  assert(BUDGET_CATEGORY_REGISTRY.length>=30,'registry must have at least 30 entries');
+  var keys=BUDGET_CATEGORY_REGISTRY.map(function(c){return c.key;});
+  ['income','income.net_salary','income.net_salary_spouse',
+   'auto_transport','auto_transport.auto_insurance',
+   'bills_utilities','bills_utilities.apple',
+   'entertainment',
+   'food_dining.groceries',
+   'health_fitness.diablos_preston_fee','health_fitness.wendy_glp_meds',
+   'home.mortgage_rent',
+   'misc.goal_sweep','misc.extra',
+   'personal_care.hair'].forEach(function(k){
+    assert(keys.includes(k),'BUDGET_CATEGORY_REGISTRY must include key: '+k);
+  });
+});
+
+test('5B-2: misc.goal_sweep is not assignable',()=>{
+  var gs=BUDGET_CATEGORY_REGISTRY.find(function(c){return c.key==='misc.goal_sweep';});
+  assert(gs,'misc.goal_sweep must exist in registry');
+  assert(gs.assignable===false,'misc.goal_sweep must not be assignable');
+  assert(gs.leaf===true,'misc.goal_sweep must be a leaf');
+});
+
+test('5B-3: Income keys are not assignable',()=>{
+  var incomeLeaves=BUDGET_CATEGORY_REGISTRY.filter(function(c){return c.isIncome&&c.leaf;});
+  assert(incomeLeaves.length>=2,'must have at least 2 income leaf rows');
+  incomeLeaves.forEach(function(c){
+    assert(c.assignable===false,'income leaf '+c.key+' must not be assignable');
+  });
+});
+
+test('5B-4: _getBudgetLivingExpenses falls back to JS constants when cache is not loaded',()=>{
+  var origStatus=_budgetLineRulesLoadStatus;
+  var origCache=_budgetLineRulesCache;
+  _budgetLineRulesLoadStatus='not_loaded';
+  _budgetLineRulesCache=null;
+  // Fallback now uses monthIso from week start date — not weekNum thresholds.
+  // Wk1=Jun 7, Wk4=Jun 28 (still June!), Wk5=Jul 5, Wk8=Jul 26, Wk9=Aug 2, Wk30=Dec 27, Wk31=Jan 3 2027
+  // June: base $13,638
+  assert(_getBudgetLivingExpenses(1)===13638,'Wk1 (Jun 7) fallback must be $13,638');
+  assert(_getBudgetLivingExpenses(4)===13638,'Wk4 (Jun 28) fallback must be $13,638 — still June, not July');
+  // July: base + rent $100 + Diablos $750 = $14,488 (Wk5=Jul 5, Wk8=Jul 26 both July)
+  assert(_getBudgetLivingExpenses(5)===14488,'Wk5 (Jul 5) fallback must be $14,488');
+  assert(_getBudgetLivingExpenses(8)===14488,'Wk8 (Jul 26) fallback must be $14,488 — still July, GLP starts Aug');
+  // Aug-Dec: + GLP $404 = $14,892 (Wk9=Aug 2)
+  assert(_getBudgetLivingExpenses(9)===14892,'Wk9 (Aug 2) fallback must be $14,892');
+  assert(_getBudgetLivingExpenses(30)===14892,'Wk30 (Dec 27) fallback must be $14,892');
+  // Jan 2027: base + rent $100 = $13,738 (no Diablos, no GLP)
+  assert(_getBudgetLivingExpenses(31)===13738,'Wk31 (Jan 3 2027) fallback must be $13,738');
+  _budgetLineRulesLoadStatus=origStatus;
+  _budgetLineRulesCache=origCache;
+});
+
+test('5B-5: _getBudgetLivingExpenses reads from cache when loaded',()=>{
+  var origStatus=_budgetLineRulesLoadStatus;
+  var origCache=_budgetLineRulesCache;
+  try{
+    // Simulate a loaded cache with two rules (June only)
+    _budgetLineRulesLoadStatus='loaded';
+    _budgetLineRulesCache=[
+      {is_active:true,category_key:'home.mortgage_rent',amount:5300,start_month:'2026-06-01',end_month:'2026-06-01'},
+      {is_active:true,category_key:'food_dining.groceries',amount:2000,start_month:'2026-06-01',end_month:null},
+      {is_active:true,category_key:'misc.goal_sweep',amount:2300,start_month:'2026-06-01',end_month:null}, // must be excluded
+      {is_active:true,category_key:'income.net_salary',amount:11633,start_month:'2026-06-01',end_month:null} // must be excluded
+    ];
+    // Wk 1 = June 7 → June 2026 → should sum mortgage + groceries = 7300 (goal_sweep and income excluded)
+    assert(_getBudgetLivingExpenses(1)===7300,'cache sum must exclude goal_sweep and income, Wk1=7300');
+    // Wk 5 = July 5 (calendar month July) → mortgage end_month 2026-06-01 < 2026-07-01, so excluded; only groceries = 2000
+    // Note: Wk 4 starts June 28 (still June), so Wk 5 (July 5) is the first true July week
+    assert(_getBudgetLivingExpenses(5)===2000,'cache sum for Jul must exclude June-only rent; Wk5 (Jul 5)=2000');
+  }finally{
+    _budgetLineRulesLoadStatus=origStatus;
+    _budgetLineRulesCache=origCache;
+  }
+});
+
+test('5B-6: _getBudgetAmount returns 0 for inactive or future rules',()=>{
+  var origStatus=_budgetLineRulesLoadStatus;
+  var origCache=_budgetLineRulesCache;
+  try{
+    _budgetLineRulesLoadStatus='loaded';
+    _budgetLineRulesCache=[
+      {is_active:false,category_key:'entertainment',amount:1500,start_month:'2026-06-01',end_month:null},
+      {is_active:true, category_key:'entertainment',amount:1500,start_month:'2026-08-01',end_month:null}
+    ];
+    // June 2026: inactive rule should return 0; future rule (Aug) should also return 0
+    assert(_getBudgetAmount('entertainment','2026-06-01')===0,'inactive rule must return 0');
+    // Aug 2026: future rule now active
+    assert(_getBudgetAmount('entertainment','2026-08-01')===1500,'Aug rule must return 1500');
+  }finally{
+    _budgetLineRulesLoadStatus=origStatus;
+    _budgetLineRulesCache=origCache;
+  }
+});
+
+test('5B-7: _getBudgetAmount correctly handles end_month boundary',()=>{
+  var origStatus=_budgetLineRulesLoadStatus;
+  var origCache=_budgetLineRulesCache;
+  try{
+    _budgetLineRulesLoadStatus='loaded';
+    _budgetLineRulesCache=[
+      {is_active:true,category_key:'health_fitness.diablos_preston_fee',amount:750,start_month:'2026-07-01',end_month:'2026-12-01'}
+    ];
+    assert(_getBudgetAmount('health_fitness.diablos_preston_fee','2026-06-01')===0,'Diablos must not appear in June');
+    assert(_getBudgetAmount('health_fitness.diablos_preston_fee','2026-07-01')===750,'Diablos must appear in July');
+    assert(_getBudgetAmount('health_fitness.diablos_preston_fee','2026-12-01')===750,'Diablos must appear in December');
+    assert(_getBudgetAmount('health_fitness.diablos_preston_fee','2027-01-01')===0,'Diablos must not appear in January 2027');
+  }finally{
+    _budgetLineRulesLoadStatus=origStatus;
+    _budgetLineRulesCache=origCache;
+  }
+});
+
+test('5B-8: No overlapping active budget_line_rules in seed SQL for same category/month',()=>{
+  // Parse the seed SQL and verify rent has non-overlapping months
+  var sqlSrc='';
+  try{sqlSrc=require('fs').readFileSync(require('path').join(__dirname,'docs','phase-5b-seed.sql'),'utf8');}catch(e){}
+  assert(sqlSrc.length>0,'Could not read phase-5b-seed.sql');
+  // Check that rent $5300 ends 2026-06-01 (first-of-month) and $5400 starts 2026-07-01
+  assert(sqlSrc.includes("'home.mortgage_rent', 'Mortgage & Rent', 5300"),'rent $5300 row must exist');
+  assert(sqlSrc.includes("'home.mortgage_rent', 'Mortgage & Rent', 5400"),'rent $5400 row must exist');
+  // end_month for $5300 must be 2026-06-01, not 2026-06-30 or 2026-07-01
+  var rent5300idx=sqlSrc.indexOf("5300, '2026-06-01', '2026-06-01'");
+  assert(rent5300idx>-1,'rent $5300 end_month must be first-of-month: 2026-06-01');
+  // $5400 starts 2026-07-01 with null end
+  var rent5400idx=sqlSrc.indexOf("5400, '2026-07-01', NULL");
+  assert(rent5400idx>-1,'rent $5400 must start 2026-07-01 with null end_month');
+});
+
+test('5B-9: budget_transactions schema includes is_cleared and cleared_date',()=>{
+  var sqlSrc='';
+  try{sqlSrc=require('fs').readFileSync(require('path').join(__dirname,'docs','phase-5b-budget-schema.sql'),'utf8');}catch(e){}
+  assert(sqlSrc.length>0,'Could not read phase-5b-budget-schema.sql');
+  assert(sqlSrc.includes('is_cleared'),'schema must include is_cleared column');
+  assert(sqlSrc.includes('cleared_date'),'schema must include cleared_date column');
+  assert(sqlSrc.includes('boolean NOT NULL DEFAULT false'),'is_cleared must be boolean NOT NULL DEFAULT false');
+});
+
+test('5B-10: budget_transactions schema has CHECK constraint for transaction_type_rules',()=>{
+  var sqlSrc='';
+  try{sqlSrc=require('fs').readFileSync(require('path').join(__dirname,'docs','phase-5b-budget-schema.sql'),'utf8');}catch(e){}
+  assert(sqlSrc.length>0,'Could not read phase-5b-budget-schema.sql');
+  assert(sqlSrc.includes("budget_transactions_type_rules"),'schema must include budget_transactions_type_rules CHECK constraint');
+  assert(sqlSrc.includes("household_expense")&&sqlSrc.includes("reimbursable_expense")&&sqlSrc.includes("reimbursement_income"),'CHECK constraint must cover all three transaction_type values');
+  assert(sqlSrc.includes('excluded_from_budget = false'),'household_expense rule must enforce excluded_from_budget=false');
+  assert(sqlSrc.includes('excluded_from_budget = true'),'reimbursable/income rules must enforce excluded_from_budget=true');
+});
+
+test('5B-11: budget schema triggers use COALESCE for created_by (spoof-proof for app, seed-safe for SQL Editor)',()=>{
+  var sqlSrc='';
+  try{sqlSrc=require('fs').readFileSync(require('path').join(__dirname,'docs','phase-5b-budget-schema.sql'),'utf8');}catch(e){}
+  assert(sqlSrc.length>0,'Could not read phase-5b-budget-schema.sql');
+  // Insert triggers must exist on both tables
+  assert(sqlSrc.includes('budget_line_rules_set_created'),'line_rules must have insert trigger function');
+  assert(sqlSrc.includes('budget_transactions_set_created'),'transactions must have insert trigger function');
+  // Insert triggers must use COALESCE(auth.uid(), NEW.created_by) — not hard-set to auth.uid()
+  // This allows seed scripts (auth.uid()=null) to supply their own UUID while app writes use auth.uid()
+  assert((sqlSrc.match(/COALESCE\(auth\.uid\(\),\s*NEW\.created_by\)/g)||[]).length>=2,'both insert triggers must use COALESCE(auth.uid(), NEW.created_by)');
+  // Update triggers must lock created_by so it cannot be changed after insert
+  assert((sqlSrc.match(/NEW\.created_by := OLD\.created_by/g)||[]).length>=2,'both tables must restore created_by on UPDATE');
+  // Migration must be rerunnable — DROP IF EXISTS before triggers
+  assert(sqlSrc.includes('DROP TRIGGER IF EXISTS budget_line_rules_created'),'must drop trigger before creating it (idempotent)');
+  assert(sqlSrc.includes('DROP TRIGGER IF EXISTS budget_transactions_created'),'must drop trigger before creating it (idempotent)');
+});
+
+test('5B-12: budget RLS restricts line_rules writes to owner only and migration is idempotent',()=>{
+  var sqlSrc='';
+  try{sqlSrc=require('fs').readFileSync(require('path').join(__dirname,'docs','phase-5b-budget-schema.sql'),'utf8');}catch(e){}
+  assert(sqlSrc.length>0,'Could not read phase-5b-budget-schema.sql');
+  // budget_line_rules INSERT/UPDATE/DELETE must use is_owner()
+  assert(sqlSrc.includes('"budget_line_rules_insert"'),'INSERT policy for line_rules must exist');
+  assert(sqlSrc.includes('"budget_line_rules_update"'),'UPDATE policy for line_rules must exist');
+  assert(sqlSrc.includes('"budget_line_rules_delete"'),'DELETE policy for line_rules must exist');
+  var lineRulesBlock=sqlSrc.slice(sqlSrc.indexOf('"budget_line_rules_insert"'),sqlSrc.indexOf('"budget_transactions_select"'));
+  assert((lineRulesBlock.match(/is_owner\(\)/g)||[]).length>=3,'all write policies on line_rules must use is_owner()');
+  // Idempotent: DROP POLICY IF EXISTS before each CREATE POLICY
+  assert(sqlSrc.includes('DROP POLICY IF EXISTS "budget_line_rules_select"'),'must drop line_rules SELECT policy before creating (idempotent)');
+  assert(sqlSrc.includes('DROP POLICY IF EXISTS "budget_line_rules_delete"'),'must drop line_rules DELETE policy before creating (idempotent)');
+  // Indexes must use CREATE INDEX IF NOT EXISTS
+  assert(sqlSrc.includes('CREATE INDEX IF NOT EXISTS'),'indexes must use IF NOT EXISTS for idempotency');
+});
+
+test('5B-13: budget RLS transactions use can_write_financials() and is_allowed_user() — not bare auth.uid()',()=>{
+  var sqlSrc='';
+  try{sqlSrc=require('fs').readFileSync(require('path').join(__dirname,'docs','phase-5b-budget-schema.sql'),'utf8');}catch(e){}
+  assert(sqlSrc.length>0,'Could not read phase-5b-budget-schema.sql');
+  assert(sqlSrc.includes('"budget_transactions_insert"'),'INSERT policy for transactions must exist');
+  assert(sqlSrc.includes('"budget_transactions_update"'),'UPDATE policy for transactions must exist');
+  assert(sqlSrc.includes('"budget_transactions_delete"'),'DELETE policy for transactions must exist');
+  // Transactions write policies must use can_write_financials() (owner + household_admin only)
+  var txBlock=sqlSrc.slice(sqlSrc.indexOf('"budget_transactions_select"'));
+  assert((txBlock.match(/can_write_financials\(\)/g)||[]).length>=3,'transactions INSERT/UPDATE/DELETE must use can_write_financials()');
+  // SELECT policies must use is_allowed_user() — not bare authenticated USING (true)
+  assert(sqlSrc.includes('is_allowed_user()'),'SELECT policies must restrict to allowed users via is_allowed_user()');
+  // DROP IF EXISTS must appear before policies (idempotent migration)
+  assert(sqlSrc.includes('DROP POLICY IF EXISTS "budget_transactions_insert"'),'must drop policy before creating it (idempotent)');
+  assert(sqlSrc.includes('DROP POLICY IF EXISTS "budget_line_rules_insert"'),'must drop policy before creating it (idempotent)');
+});
+
+test('5B-14: renderBudget function exists in index.html',()=>{
+  var htmlSrc='';
+  try{htmlSrc=require('fs').readFileSync(require('path').join(__dirname,'index.html'),'utf8');}catch(e){}
+  assert(htmlSrc.length>0,'Could not read index.html');
+  assert(htmlSrc.includes('function renderBudget()'),'renderBudget() function must exist');
+  assert(htmlSrc.includes("activeSection==='budget'"),'renderApp must dispatch to renderBudget for budget section');
+  assert(htmlSrc.includes('id="s-budget"'),'budget section div must exist');
+  assert(htmlSrc.includes("setSection('budget')"),'nav must include budget link');
+});
+
+test('5B-15: Budget UI shows Spent | Budget | Remaining columns in correct order',()=>{
+  var htmlSrc='';
+  try{htmlSrc=require('fs').readFileSync(require('path').join(__dirname,'index.html'),'utf8');}catch(e){}
+  assert(htmlSrc.length>0,'Could not read index.html');
+  var budgetFnIdx=htmlSrc.indexOf('function renderBudget()');
+  var budgetFnSrc=htmlSrc.slice(budgetFnIdx,budgetFnIdx+8000);
+  // Use </th> to distinguish column headers from section headings like <h2>Budget</h2>
+  var spentIdx=budgetFnSrc.indexOf('>Spent</th>');
+  var budgetIdx=budgetFnSrc.indexOf('>Budget</th>');
+  var remainIdx=budgetFnSrc.indexOf('>Remaining</th>');
+  assert(spentIdx>-1,'Budget table must include Spent column header');
+  assert(budgetIdx>-1,'Budget table must include Budget column header');
+  assert(remainIdx>-1,'Budget table must include Remaining column header');
+  assert(spentIdx<budgetIdx,'Spent column must appear before Budget column in table header');
+  assert(budgetIdx<remainIdx,'Budget column must appear before Remaining column in table header');
+});
+
+test('5B-16: misc.goal_sweep is excluded from living expense total in _getBudgetLivingExpenses',()=>{
+  var origStatus=_budgetLineRulesLoadStatus;
+  var origCache=_budgetLineRulesCache;
+  _budgetLineRulesLoadStatus='loaded';
+  _budgetLineRulesCache=[
+    {is_active:true,category_key:'misc.goal_sweep',amount:2300,start_month:'2026-06-01',end_month:null},
+    {is_active:true,category_key:'misc.extra',amount:1869,start_month:'2026-06-01',end_month:null}
+  ];
+  var result=_getBudgetLivingExpenses(1);
+  assert(result===1869,'goal_sweep must be excluded; only misc.extra counts toward living expenses');
+  _budgetLineRulesLoadStatus=origStatus;
+  _budgetLineRulesCache=origCache;
+});
+
+test('5B-17: _budgetGetMonthIso returns current month when no selection made',()=>{
+  var orig=_budgetSelectedMonth;
+  _budgetSelectedMonth='';
+  var iso=_budgetGetMonthIso();
+  var now=new Date();
+  var expected=now.getFullYear()+'-'+String(now.getMonth()+1).padStart(2,'0')+'-01';
+  assert(iso===expected,'_budgetGetMonthIso must return current month when none selected: '+expected);
+  _budgetSelectedMonth=orig;
+});
+
+test('5B-18: _budgetMonthLabel formats correctly',()=>{
+  assert(_budgetMonthLabel('2026-06-01')==='June 2026','June label must format correctly');
+  assert(_budgetMonthLabel('2027-01-01')==='January 2027','January 2027 label must format correctly');
+  assert(_budgetMonthLabel('2026-12-01')==='December 2026','December label must format correctly');
+});
+
+test('5B-19: _budgetAvailableMonths returns 8 months Jun 2026 through Jan 2027',()=>{
+  var months=_budgetAvailableMonths();
+  assert(months.length===8,'must return exactly 8 months');
+  assert(months[0].iso==='2026-06-01','first month must be June 2026');
+  assert(months[7].iso==='2027-01-01','last month must be January 2027');
+});
+
+test('5B-20: _renderGoalsSavings uses _getBudgetLivingExpenses (not hardcoded constants)',()=>{
+  // Verify the stats panel no longer contains the old hardcoded constant pattern
+  var htmlSrc='';
+  try{htmlSrc=require('fs').readFileSync(require('path').join(__dirname,'index.html'),'utf8');}catch(e){}
+  assert(htmlSrc.length>0,'Could not read index.html');
+  assert(!htmlSrc.includes('_baseExpenses=1792+674'),'stats panel must not use old hardcoded _baseExpenses pattern');
+  assert(htmlSrc.includes('_getBudgetLivingExpenses(currentW)'),'stats panel must call _getBudgetLivingExpenses(currentW)');
+});
+
+test('5B-21: _getBudgetLivingExpenses: stats panel monthly living expenses correct for current week',()=>{
+  const w=getCurrentWeek();
+  const origStatus=_budgetLineRulesLoadStatus;
+  const origCache=_budgetLineRulesCache;
+  try{
+    // Force fallback path. Expected value uses monthIso logic (matching the fixed fallback).
+    _budgetLineRulesLoadStatus='not_loaded';
+    _budgetLineRulesCache=null;
+    const fallback=_getBudgetLivingExpenses(w);
+    // Compute expected using same monthIso logic as the fixed fallback
+    var wsd=getWeekStartDate(w);
+    var mo=wsd.getFullYear()+'-'+String(wsd.getMonth()+1).padStart(2,'0')+'-01';
+    const base=13638;
+    const rentD=(mo>='2026-07-01')?100:0;
+    const diablosD=(mo>='2026-07-01'&&mo<='2026-12-01')?750:0;
+    const glpD=(mo>='2026-08-01'&&mo<='2026-12-01')?404:0;
+    const expected=base+rentD+diablosD+glpD;
+    assert(fallback===expected,'fallback for week '+w+' (month '+mo+') must equal '+expected+', got '+fallback);
+    assert(typeof fallback==='number'&&fallback>10000&&fallback<20000,'living expenses must be $10k-$20k, got: '+fallback);
+  }finally{
+    _budgetLineRulesLoadStatus=origStatus;
+    _budgetLineRulesCache=origCache;
+  }
+});
+
+test('5B-22: seed SQL uses DO block with adam_id lookup and supplies created_by explicitly',()=>{
+  var sqlSrc='';
+  try{sqlSrc=require('fs').readFileSync(require('path').join(__dirname,'docs','phase-5b-seed.sql'),'utf8');}catch(e){}
+  assert(sqlSrc.length>0,'Could not read phase-5b-seed.sql');
+  // Must use a DO block (not bare INSERT) to handle null auth.uid() in SQL Editor
+  assert(sqlSrc.includes('DO $$'),'seed must use a DO block for adam_id lookup');
+  assert(/adam_id\s+uuid/.test(sqlSrc),'seed must declare adam_id variable');
+  assert(sqlSrc.includes("email = 'adam@herndons.us'"),'seed must look up Adam by email in auth.users');
+  assert(sqlSrc.includes('IF adam_id IS NULL'),'seed must fail loudly if Adam not found');
+  // All inserts must supply created_by and updated_by explicitly
+  assert(sqlSrc.includes('adam_id, adam_id'),'seed must supply adam_id as created_by/updated_by on all inserts');
+});
+
+test('5B-23: renderBudget shows empty-rules warning when cache is loaded but has zero rows',()=>{
+  var htmlSrc='';
+  try{htmlSrc=require('fs').readFileSync(require('path').join(__dirname,'index.html'),'utf8');}catch(e){}
+  assert(htmlSrc.length>0,'Could not read index.html');
+  // Must show a distinct warning when rules load successfully but return 0 rows
+  assert(htmlSrc.includes('No budget rules found'),'renderBudget must warn when cache is loaded but empty');
+  assert(htmlSrc.includes('phase-5b-seed.sql'),'empty-rules warning must reference the seed file to run');
+  assert(htmlSrc.includes('_budgetLineRulesCache.length===0'),'must check cache length explicitly');
+});
+
+test('5B-24: Budget printout total row label says "Monthly Living Expenses (excl. goal sweep)"',()=>{
+  var htmlSrc='';
+  try{htmlSrc=require('fs').readFileSync(require('path').join(__dirname,'index.html'),'utf8');}catch(e){}
+  assert(htmlSrc.length>0,'Could not read index.html');
+  var budgetFnIdx=htmlSrc.indexOf('function renderBudget()');
+  var budgetFnSrc=htmlSrc.slice(budgetFnIdx,budgetFnIdx+12000);
+  assert(budgetFnSrc.includes('Monthly Living Expenses'),'total row must say Monthly Living Expenses');
+  assert(budgetFnSrc.includes('excl. goal sweep'),'total row must note exclusion of goal sweep');
+  assert(budgetFnSrc.includes('Available for Goals'),'must show Available for Goals row below total');
+  // Footnote must explain goal_sweep exclusion for Wendy
+  assert(budgetFnSrc.includes('Extra Pay Going to Spreadsheet')&&budgetFnSrc.includes('excluded from living expenses'),'footnote must explain goal_sweep is excluded from living expenses totals');
+});
+
+test('5B-25: appendChild guard prevents regression render errors',()=>{
+  var htmlSrc='';
+  try{htmlSrc=require('fs').readFileSync(require('path').join(__dirname,'index.html'),'utf8');}catch(e){}
+  assert(htmlSrc.length>0,'Could not read index.html');
+  // Must have the guarded form, not the unguarded form
+  assert(htmlSrc.includes('if(authBar&&right.appendChild)'),'appendChild must be guarded: if(authBar&&right.appendChild)');
+  assert(!htmlSrc.includes('if(authBar)right.appendChild(authBar)'),'unguarded if(authBar)right.appendChild must not exist');
+});
+
+test('5B-26: e2e.js includes budget in tab smoke test',()=>{
+  var e2eSrc='';
+  try{e2eSrc=require('fs').readFileSync(require('path').join(__dirname,'e2e.js'),'utf8');}catch(e){}
+  assert(e2eSrc.length>0,'Could not read e2e.js');
+  var tabListIdx=e2eSrc.indexOf("const tabs = [");
+  var tabListSrc=e2eSrc.slice(tabListIdx,tabListIdx+200);
+  assert(tabListSrc.includes("'budget'"),'e2e tabs array must include budget tab');
+});
+
+test('5B-27: seed SQL has fail-loudly idempotency guard before any INSERT',()=>{
+  var sqlSrc='';
+  try{sqlSrc=require('fs').readFileSync(require('path').join(__dirname,'docs','phase-5b-seed.sql'),'utf8');}catch(e){}
+  assert(sqlSrc.length>0,'Could not read phase-5b-seed.sql');
+  var guardIdx=sqlSrc.indexOf('Phase 5B budget seed rows already exist');
+  assert(guardIdx>-1,'seed must contain fail-loudly idempotency exception message');
+  var firstInsertIdx=sqlSrc.indexOf('INSERT INTO budget_line_rules');
+  assert(guardIdx<firstInsertIdx,'idempotency guard must appear before first INSERT');
+  assert(sqlSrc.includes('income.net_salary')&&sqlSrc.includes('home.mortgage_rent')&&sqlSrc.includes('misc.goal_sweep'),
+    'idempotency guard must check known Phase 5B category keys');
+  var exceptionIdx=sqlSrc.indexOf('RAISE EXCEPTION');
+  assert(exceptionIdx>-1&&exceptionIdx<firstInsertIdx,'RAISE EXCEPTION must appear before first INSERT');
+});
+
+test('5B-28: schema CHECK requires reimbursement_source and reimbursement_status for reimbursable_expense',()=>{
+  var sqlSrc='';
+  try{sqlSrc=require('fs').readFileSync(require('path').join(__dirname,'docs','phase-5b-budget-schema.sql'),'utf8');}catch(e){}
+  assert(sqlSrc.length>0,'Could not read phase-5b-budget-schema.sql');
+  var typeRulesIdx=sqlSrc.indexOf('budget_transactions_type_rules');
+  var typeRulesSrc=sqlSrc.slice(typeRulesIdx,typeRulesIdx+800);
+  assert(typeRulesSrc.includes("transaction_type = 'reimbursable_expense'"),'type_rules must handle reimbursable_expense');
+  assert(typeRulesSrc.includes('reimbursement_source IS NOT NULL'),'reimbursable_expense must require reimbursement_source NOT NULL');
+  assert(typeRulesSrc.includes('reimbursement_status IS NOT NULL'),'reimbursable_expense must require reimbursement_status NOT NULL');
+});
+
+test('5B-29: schema has cleared_date consistency CHECK and SET search_path on SECURITY DEFINER functions',()=>{
+  var sqlSrc='';
+  try{sqlSrc=require('fs').readFileSync(require('path').join(__dirname,'docs','phase-5b-budget-schema.sql'),'utf8');}catch(e){}
+  assert(sqlSrc.length>0,'Could not read phase-5b-budget-schema.sql');
+  assert(sqlSrc.includes('budget_transactions_cleared_date_consistency'),
+    'schema must include cleared_date consistency CHECK constraint');
+  assert(sqlSrc.includes('is_cleared = true OR cleared_date IS NULL'),
+    'cleared_date CHECK must enforce: is_cleared=true OR cleared_date IS NULL');
+  var searchPathCount=(sqlSrc.match(/SET search_path = public, auth/g)||[]).length;
+  assert(searchPathCount>=4,
+    'all 4 SECURITY DEFINER trigger functions must have SET search_path = public, auth (found '+searchPathCount+')');
+});
+
+test('5B-30: reimbursable type switch sets source/status defaults and category=null in form handler',()=>{
+  var htmlSrc='';
+  try{htmlSrc=require('fs').readFileSync(require('path').join(__dirname,'index.html'),'utf8');}catch(e){}
+  assert(htmlSrc.length>0,'Could not read index.html');
+  // onchange on the Type dropdown must set reimbursement_source and reimbursement_status defaults
+  assert(htmlSrc.includes("reimbursement_source=\\'Jabian\\'"),'type switch must default reimbursement_source to Jabian');
+  assert(htmlSrc.includes("reimbursement_status=\\'pending\\'"),'type switch must default reimbursement_status to pending');
+  assert(htmlSrc.includes('_budgetFormData.category_key=null'),'type switch to reimbursable must set category_key=null');
+});
+
+test('5B-31: submit validation blocks save for missing payment_account and reimbursable source/status',()=>{
+  var htmlSrc='';
+  try{htmlSrc=require('fs').readFileSync(require('path').join(__dirname,'index.html'),'utf8');}catch(e){}
+  assert(htmlSrc.length>0,'Could not read index.html');
+  // payment_account required
+  assert(htmlSrc.includes("!fd.payment_account"),'submit must check payment_account');
+  assert(htmlSrc.includes('Payment account is required'),'submit must alert when payment_account missing');
+  // reimbursable source and status required
+  assert(htmlSrc.includes("reimbursable_expense'&&(!fd.reimbursement_source||!fd.reimbursement_status)"),'submit must validate reimbursable source+status');
+  assert(htmlSrc.includes('Source and status are required'),'submit must alert when reimbursable source/status missing');
+});
+
+test('5B-32: reimbursables included in main transaction list (not filtered out)',()=>{
+  var htmlSrc='';
+  try{htmlSrc=require('fs').readFileSync(require('path').join(__dirname,'index.html'),'utf8');}catch(e){}
+  assert(htmlSrc.length>0,'Could not read index.html');
+  // The old exclusion line must not exist
+  assert(!htmlSrc.includes("transaction_type==='reimbursable_expense')return false; // shown in reimbursables section"),
+    'reimbursables must NOT be filtered from main transaction list');
+  // Type/status badge must be rendered in the transaction row
+  assert(htmlSrc.includes('isReimbRow'),'transaction rows must have reimbursable row detection');
+  assert(htmlSrc.includes('>REIMB</span>'),'reimbursable transactions must show REIMB badge in list');
+});
+
+test('5B-33: cleared checkbox shown for all transaction types (not just household)',()=>{
+  var htmlSrc='';
+  try{htmlSrc=require('fs').readFileSync(require('path').join(__dirname,'index.html'),'utf8');}catch(e){}
+  assert(htmlSrc.length>0,'Could not read index.html');
+  // The old household-only gate must not exist
+  assert(!htmlSrc.includes('// Cleared (household only)'),'cleared checkbox must not be gated to household type only');
+  assert(htmlSrc.includes('// Cleared (all transaction types'),'cleared checkbox must be documented as applying to all types');
+});
+
+test('5B-34: fallback monthIso comment present — no weekNum threshold logic',()=>{
+  var htmlSrc='';
+  try{htmlSrc=require('fs').readFileSync(require('path').join(__dirname,'index.html'),'utf8');}catch(e){}
+  assert(htmlSrc.length>0,'Could not read index.html');
+  // New monthIso-based fallback
+  assert(htmlSrc.includes("monthIso>='2026-07-01'"),'fallback must gate rent increase on monthIso >= 2026-07-01');
+  assert(htmlSrc.includes("monthIso>='2026-08-01'&&monthIso<='2026-12-01'"),'fallback must gate GLP on monthIso 2026-08-01 to 2026-12-01');
+  // Old weekNum-based thresholds must be gone from the fallback
+  assert(!htmlSrc.includes('weekNum>=4)?100:0'),'old weekNum>=4 rent threshold must not exist in fallback');
+  assert(!htmlSrc.includes('weekNum>=8&&weekNum<=30)?404:0'),'old weekNum>=8 GLP threshold must not exist in fallback');
 });
 
 // ─────────────────────────────────────────────────────────────────────────

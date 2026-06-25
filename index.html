@@ -808,6 +808,7 @@ button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-vis
     <div class="nav-label">Records</div>
     <button class="nav-item" id="nav-history" onclick="setSection('history')"><span class="nav-icon">◑</span>History</button>
     <button class="nav-item" id="nav-assumptions" onclick="setSection('assumptions')"><span class="nav-icon">≡</span>Assumptions</button>
+    <button class="nav-item" id="nav-budget" onclick="setSection('budget')"><span class="nav-icon">$</span>Budget</button>
     <button class="nav-item" id="nav-roadmap" onclick="setSection('roadmap')"><span class="nav-icon">⬡</span>Wishlist</button>
     <button class="nav-item" id="nav-ask" onclick="setSection('ask')"><span class="nav-icon">✦</span>Ask Claude</button>
     <div class="sidebar-footer">
@@ -835,6 +836,7 @@ button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-vis
       <div id="s-history" class="section"><div id="historyContent"></div></div>
       <div id="s-assumptions" class="section"><div id="assumptions-content"></div></div>
       <div id="s-roadmap" class="section"><div id="roadmap-content"></div></div>
+      <div id="s-budget" class="section"><div id="budget-content"></div></div>
     </div>
   </div>
 </div>
@@ -1269,6 +1271,17 @@ var vm_snapshot=null;
 // ── What-If Impact Calculator state (Phase 5) ─────────────────────────────
 var whatIfState={label:'',amount:'',direction:'outflow',date:'',recurrence:'one-time',endDate:''};
 var whatIfResult=null;
+// ── Budget Module state (Phase 5B) ────────────────────────────────────────
+var _budgetLineRulesCache=null;           // null=not loaded; []=empty; [...]= rules array
+var _budgetLineRulesLoadStatus='not_loaded'; // 'not_loaded'|'loaded'|'failed'
+var _budgetTransactions=[];               // loaded for selected month
+var _budgetTransLoadStatus='not_loaded';  // 'not_loaded'|'loaded'|'failed'
+var _budgetSelectedMonth='';             // ISO first-of-month e.g. '2026-06-01'; '' = current month
+var _budgetShowAddForm=false;
+var _budgetEditId=null;                   // uuid of transaction being edited
+var _budgetDeleteConfirmId=null;          // uuid of transaction pending delete confirm
+var _budgetFormData={};                   // working state for add/edit form
+var _budgetSaving=false;
 
 // ── Custom task state (Supabase-backed) ────────────────────────────────────
 var customTaskData={};  // weekNum → [{id, label, completed}]
@@ -2183,11 +2196,11 @@ function updateReconLabel(weeks){
     right.innerHTML='<div class="sync-badge"><div class="sync-dot" id="sync-dot" style="background:'+(_supaConnected?'var(--green)':'#94a3b8')+'"></div><span id="lastReconLabel">Model live · Wk '+getCalWeek(currentW)+'</span></div>';
   }
   // Restore auth user bar after innerHTML wipe
-  if(authBar)right.appendChild(authBar);
+  if(authBar&&right.appendChild)right.appendChild(authBar);
 }
 
 // ── setSection ─────────────────────────────────────────────────────────────
-const SECTION_TITLES={overview:'Overview',weekly:'Weekly Model',goals:'Goals',scenarios:'Scenarios',history:'History',assumptions:'Assumptions',roadmap:'Wishlist',ask:'Ask Claude'};
+const SECTION_TITLES={overview:'Overview',weekly:'Weekly Model',goals:'Goals',scenarios:'Scenarios',history:'History',assumptions:'Assumptions',roadmap:'Wishlist',ask:'Ask Claude',budget:'Budget'};
 function setSection(s){
   if(s!=='roadmap'){wishlistPhaseFilter=[];wishlistDoneId=null;}
   activeSection=s;
@@ -3274,9 +3287,9 @@ function _renderGoalsSavings(vm){
   var _adamMo=Math.round(5816.5*2);   // 2 paychecks/month
   var _wendyMo=Math.round(2152.5*2);  // 2 paychecks/month
   var _incomeMo=_adamMo+_wendyMo;
-  // Monthly recurring bills (steady state)
-  var _billsMo=5300+5500+3500+791;    // rent + AMEX Gold + Disney Visa + Kia
-  var _netMo=_incomeMo-_billsMo;
+  // Monthly living expenses — read from budget_line_rules cache; fallback to JS constants
+  var _billsMo=_getBudgetLivingExpenses(currentW);
+  var _netMo=_incomeMo-_billsMo; // Available for goals, varies by period
   // Current week data for live numbers
   var _cw=_weeks.find(function(w){return w.num===currentW;})||_weeks[_weeks.length-1]||_weeks[0];
   var _curChk=_cw?_cw.chk:0;
@@ -3330,14 +3343,14 @@ function _renderGoalsSavings(vm){
         '<div style="font-size:10px;color:var(--muted)">Adam $'+fc(_adamMo)+' + Wendy $'+fc(_wendyMo)+'</div>'+
       '</div>'+
       '<div style="background:var(--bg);border:1px solid var(--border);border-radius:6px;padding:8px 10px">'+
-        '<div style="font-size:10px;color:var(--muted);font-weight:600;text-transform:uppercase;letter-spacing:.05em">Monthly Bills (Recurring)</div>'+
+        '<div style="font-size:10px;color:var(--muted);font-weight:600;text-transform:uppercase;letter-spacing:.05em">Monthly Living Expenses</div>'+
         '<div style="font-size:18px;font-weight:700;color:#ef4444;margin:2px 0">'+f(_billsMo)+'</div>'+
-        '<div style="font-size:10px;color:var(--muted)">Rent $5,300 · Gold $5,500 · Visa $3,500 · Kia $791</div>'+
+        '<div style="font-size:10px;color:var(--muted)">All budget categories excl. goal sweep</div>'+
       '</div>'+
       '<div style="background:var(--bg);border:1px solid var(--border);border-radius:6px;padding:8px 10px">'+
-        '<div style="font-size:10px;color:var(--muted);font-weight:600;text-transform:uppercase;letter-spacing:.05em">Net Surplus / Month</div>'+
+        '<div style="font-size:10px;color:var(--muted);font-weight:600;text-transform:uppercase;letter-spacing:.05em">Available for Goals / Month</div>'+
         '<div style="font-size:18px;font-weight:700;color:var(--green);margin:2px 0">'+f(_netMo)+'</div>'+
-        '<div style="font-size:10px;color:var(--muted)">Before floor — actual sweep depends on bill timing</div>'+
+        '<div style="font-size:10px;color:var(--muted)">Baseline — reduces with active budget rules</div>'+
       '</div>'+
     '</div>'+
     '<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:12px">'+
@@ -4220,6 +4233,526 @@ function applyCompletionSnapshots(weeks){
   });
 }
 
+// ── Budget Module — renderBudget and sub-functions (Phase 5B) ────────────
+
+// Load budget transactions for selected month and re-render
+async function _budgetLoadTransactions(monthIso){
+  _budgetTransLoadStatus='loading';
+  try{
+    var h=await getAuthHeaders();
+    var d=new Date(monthIso);
+    var y=d.getFullYear();
+    var m=d.getMonth();
+    var startIso=monthIso; // already first of month
+    var endD=new Date(y,m+1,0); // last day of month
+    var endIso=endD.getFullYear()+'-'+String(endD.getMonth()+1).padStart(2,'0')+'-'+String(endD.getDate()).padStart(2,'0');
+    var r=await fetch(
+      SUPA_URL+'/rest/v1/budget_transactions?transaction_date=gte.'+startIso+'&transaction_date=lte.'+endIso+'&select=*&order=transaction_date.asc,created_at.asc',
+      {headers:h}
+    );
+    if(r.ok){
+      _budgetTransactions=await r.json();
+      _budgetTransLoadStatus='loaded';
+    } else {
+      _budgetTransLoadStatus='failed';
+      console.error('[Budget] Failed to load transactions: HTTP '+r.status);
+    }
+  }catch(e){
+    _budgetTransLoadStatus='failed';
+    console.error('[Budget] Exception loading transactions:',e);
+  }
+  renderApp();
+}
+
+// Save (insert or update) a budget transaction
+async function _budgetSaveTransaction(formData, editId){
+  _budgetSaving=true;renderApp();
+  try{
+    var h=await getAuthHeaders();
+    var payload={
+      transaction_date:formData.transaction_date,
+      amount:parseFloat(formData.amount),
+      transaction_type:formData.transaction_type,
+      category_key:formData.category_key||null,
+      description:formData.description||null,
+      payment_account:formData.payment_account||null,
+      excluded_from_budget:formData.excluded_from_budget||false,
+      is_cleared:formData.is_cleared||false,
+      cleared_date:formData.cleared_date||null,
+      reimbursement_source:formData.reimbursement_source||null,
+      reimbursement_status:formData.reimbursement_status||null,
+      expected_reimbursement_month:formData.expected_reimbursement_month||null,
+      notes:formData.notes||null
+    };
+    var method=editId?'PATCH':'POST';
+    var url=SUPA_URL+'/rest/v1/budget_transactions'+(editId?'?id=eq.'+editId:'');
+    var hdrs=Object.assign({},h,{'Content-Type':'application/json','Prefer':editId?'return=minimal':'return=minimal'});
+    var r=await fetch(url,{method:method,headers:hdrs,body:JSON.stringify(editId?payload:[payload])});
+    if(!r.ok){throw new Error('HTTP '+r.status);}
+    _budgetShowAddForm=false;_budgetEditId=null;_budgetFormData={};
+    await _budgetLoadTransactions(_budgetGetMonthIso());
+  }catch(e){
+    console.error('[Budget] Save transaction error:',e);
+    alert('Save failed: '+e.message);
+  }finally{
+    _budgetSaving=false;renderApp();
+  }
+}
+
+// Toggle cleared status
+async function _budgetToggleCleared(txId,currentCleared){
+  try{
+    var h=await getAuthHeaders();
+    var nowIso=new Date().toISOString().split('T')[0];
+    var patch={is_cleared:!currentCleared,cleared_date:currentCleared?null:nowIso};
+    await fetch(SUPA_URL+'/rest/v1/budget_transactions?id=eq.'+txId,{method:'PATCH',headers:Object.assign({},h,{'Content-Type':'application/json','Prefer':'return=minimal'}),body:JSON.stringify(patch)});
+    _budgetTransactions=_budgetTransactions.map(function(t){return t.id===txId?Object.assign({},t,patch):t;});
+    renderApp();
+  }catch(e){console.error('[Budget] Toggle cleared error:',e);}
+}
+
+// Delete a budget transaction
+async function _budgetDeleteTransaction(txId){
+  try{
+    var h=await getAuthHeaders();
+    await fetch(SUPA_URL+'/rest/v1/budget_transactions?id=eq.'+txId,{method:'DELETE',headers:h});
+    _budgetTransactions=_budgetTransactions.filter(function(t){return t.id!==txId;});
+    _budgetDeleteConfirmId=null;
+    renderApp();
+  }catch(e){console.error('[Budget] Delete transaction error:',e);}
+}
+
+// Budget filter state
+var _budgetFilterAccount='all'; // 'all' or account name
+var _budgetFilterCleared='all'; // 'all'|'cleared'|'uncleared'
+var _budgetReconAccount='AMEX Gold'; // account for reconciliation panel
+var _budgetReconBalance=''; // statement balance entered by Wendy
+
+function renderBudget(){
+  var el=document.getElementById('budget-content');
+  if(!el)return;
+
+  var monthIso=_budgetGetMonthIso();
+
+  // Load transactions on first access or month change
+  if(_budgetTransLoadStatus==='not_loaded'){
+    _budgetTransLoadStatus='loading';
+    _budgetLoadTransactions(monthIso);
+    el.innerHTML='<div style="padding:24px;color:var(--muted);font-size:13px">Loading budget data...</div>';
+    return;
+  }
+
+  var activeBudgetCats=_getActiveBudgetCategories(monthIso);
+  var html='';
+
+  // ── Header bar ─────────────────────────────────────────────────────────────
+  html+='<div style="display:flex;align-items:center;gap:12px;margin-bottom:16px;flex-wrap:wrap">';
+  html+='<h2 style="margin:0;font-size:17px;font-weight:700;color:var(--ink)">Budget</h2>';
+  // Month selector
+  html+='<select style="padding:5px 10px;border:1px solid var(--border);border-radius:6px;font-size:13px;background:var(--surface2);color:var(--ink)" onchange="window._budgetChangeMonth(this.value)">';
+  _budgetAvailableMonths().forEach(function(mo){
+    html+='<option value="'+mo.iso+'"'+(mo.iso===monthIso?' selected':'')+'>'+mo.label+'</option>';
+  });
+  html+='</select>';
+  if(_budgetLineRulesLoadStatus!=='loaded'){
+    html+='<span style="font-size:11px;color:#f59e0b;font-weight:600">⚠ Budget rules not loaded — amounts may be estimates</span>';
+  } else if(_budgetLineRulesCache&&_budgetLineRulesCache.length===0){
+    html+='<span style="font-size:11px;color:#ef4444;font-weight:600">⚠ No budget rules found — run phase-5b-seed.sql in Supabase</span>';
+  }
+  html+='<div style="margin-left:auto">';
+  html+='<button onclick="window._budgetOpenAddForm()" style="padding:6px 14px;background:var(--blue);color:#fff;border:none;border-radius:6px;font-size:12px;font-weight:600;cursor:pointer">+ Add Transaction</button>';
+  html+='</div>';
+  html+='</div>';
+
+  // ── Add / Edit Form ────────────────────────────────────────────────────────
+  if(_budgetShowAddForm||_budgetEditId){
+    html+=_renderBudgetForm(monthIso);
+  }
+
+  // ── Budget Printout (Spent | Budget | Remaining) ───────────────────────────
+  html+='<div class="panel" style="margin-bottom:16px;overflow-x:auto">';
+  html+='<h3 style="margin:0 0 10px;font-size:13px;font-weight:700;color:var(--ink)">'+_budgetMonthLabel(monthIso)+' Budget</h3>';
+  html+='<table style="width:100%;border-collapse:collapse;font-size:12px">';
+  html+='<thead><tr style="border-bottom:2px solid var(--border)">';
+  html+='<th style="text-align:left;padding:5px 8px;color:var(--muted);font-weight:600">Category</th>';
+  html+='<th style="text-align:right;padding:5px 8px;color:var(--muted);font-weight:600">Spent</th>';
+  html+='<th style="text-align:right;padding:5px 8px;color:var(--muted);font-weight:600">Budget</th>';
+  html+='<th style="text-align:right;padding:5px 8px;color:var(--muted);font-weight:600">Remaining</th>';
+  html+='</tr></thead><tbody>';
+
+  // Compute spent by category_key from transactions
+  var spentByKey={};
+  _budgetTransactions.forEach(function(t){
+    if(t.transaction_type!=='household_expense')return;
+    if(t.excluded_from_budget)return;
+    if(!t.category_key)return;
+    spentByKey[t.category_key]=(spentByKey[t.category_key]||0)+parseFloat(t.amount);
+  });
+
+  // Render INCOME section
+  html+='<tr><td colspan="4" style="padding:6px 8px 2px;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);border-top:1px solid var(--border)">Income</td></tr>';
+  var incomeTotal=0;
+  BUDGET_CATEGORY_REGISTRY.filter(function(c){return c.isIncome&&c.leaf;}).forEach(function(c){
+    var bud=_getBudgetAmount(c.key,monthIso);
+    incomeTotal+=bud;
+    html+='<tr style="border-bottom:1px solid var(--border)">';
+    html+='<td style="padding:5px 8px 5px 20px;color:var(--muted)">'+c.label+'</td>';
+    html+='<td style="text-align:right;padding:5px 8px;color:var(--muted)">—</td>';
+    html+='<td style="text-align:right;padding:5px 8px;color:var(--blue)">'+f(bud)+'</td>';
+    html+='<td style="text-align:right;padding:5px 8px;color:var(--muted)">—</td>';
+    html+='</tr>';
+  });
+  html+='<tr style="border-bottom:2px solid var(--border);background:var(--bg)">';
+  html+='<td style="padding:5px 8px;font-weight:700">Total Income</td>';
+  html+='<td style="text-align:right;padding:5px 8px">—</td>';
+  html+='<td style="text-align:right;padding:5px 8px;font-weight:700;color:var(--blue)">'+f(incomeTotal)+'</td>';
+  html+='<td style="text-align:right;padding:5px 8px">—</td>';
+  html+='</tr>';
+
+  // Render EXPENSE sections
+  var totalExpSpent=0,totalExpBudget=0;
+  // Get top-level expense parents (in order)
+  var expenseParents=BUDGET_CATEGORY_REGISTRY.filter(function(c){
+    return !c.isIncome&&!c.parent&&c.key!=='misc'; // misc rendered last
+  });
+  expenseParents.push(BUDGET_CATEGORY_REGISTRY.find(function(c){return c.key==='misc';}));
+
+  expenseParents.forEach(function(parent){
+    if(!parent)return;
+    // Check if this parent has any children in registry
+    var children=BUDGET_CATEGORY_REGISTRY.filter(function(c){return c.parent===parent.key&&!c.isIncome;});
+    var isStandalone=children.length===0; // entertainment is standalone
+    var rows=isStandalone?[parent]:children;
+
+    // Compute parent totals
+    var pSpent=0,pBudget=0;
+    rows.forEach(function(c){
+      var s=spentByKey[c.key]||0;
+      var b=_getBudgetAmount(c.key,monthIso);
+      pSpent+=s;pBudget+=b;
+    });
+
+    // Skip if no budget and no spending for this month (time-bounded rows)
+    if(pBudget===0&&pSpent===0&&!isStandalone){
+      // Still render if any child has a rule
+      var hasRule=rows.some(function(c){return activeBudgetCats[c.key]!==undefined;});
+      if(!hasRule)return;
+    }
+
+    // Section header row (bold parent, not for standalone leaves)
+    if(!isStandalone){
+      html+='<tr style="background:var(--bg);border-top:1px solid var(--border)">';
+      html+='<td style="padding:6px 8px 3px;font-weight:700;font-size:12px;color:var(--ink)">'+parent.label+'</td>';
+      html+='<td style="text-align:right;padding:6px 8px 3px;font-weight:700">'+f(pSpent)+'</td>';
+      html+='<td style="text-align:right;padding:6px 8px 3px;font-weight:700;color:var(--blue)">'+f(pBudget)+'</td>';
+      var pRem=pBudget-pSpent;
+      html+='<td style="text-align:right;padding:6px 8px 3px;font-weight:700;color:'+(pRem<0?'#ef4444':'var(--green)')+'">'+f(pRem)+'</td>';
+      html+='</tr>';
+    }
+
+    rows.forEach(function(c){
+      // goal_sweep: display-only row, styled differently
+      if(c.key==='misc.goal_sweep'){
+        var gsAmt=_getBudgetAmount(c.key,monthIso);
+        html+='<tr style="border-bottom:1px solid var(--border)">';
+        html+='<td style="padding:5px 8px 5px 20px;color:var(--muted);font-style:italic">'+c.label+'</td>';
+        html+='<td style="text-align:right;padding:5px 8px;color:var(--muted)">—</td>';
+        html+='<td style="text-align:right;padding:5px 8px;color:var(--muted);font-style:italic">'+f(gsAmt)+'</td>';
+        html+='<td style="text-align:right;padding:5px 8px;color:var(--muted)">—</td>';
+        html+='</tr>';
+        return;
+      }
+      var s=spentByKey[c.key]||0;
+      var b=_getBudgetAmount(c.key,monthIso);
+      if(b===0&&s===0)return; // skip zero rows
+      var rem=b-s;
+      var indent=isStandalone?'8px':'20px';
+      html+='<tr style="border-bottom:1px solid var(--border)">';
+      html+='<td style="padding:5px 8px 5px '+indent+'">'+c.label+'</td>';
+      html+='<td style="text-align:right;padding:5px 8px">'+(s>0?f(s):'—')+'</td>';
+      html+='<td style="text-align:right;padding:5px 8px;color:var(--blue)">'+(b>0?f(b):'—')+'</td>';
+      html+='<td style="text-align:right;padding:5px 8px;color:'+(rem<0?'#ef4444':(rem===b&&s===0)?'var(--muted)':'var(--green)')+'">'+f(rem)+'</td>';
+      html+='</tr>';
+      if(c.key!=='misc.goal_sweep'){totalExpSpent+=s;totalExpBudget+=b;}
+    });
+  });
+
+  // Grand total expenses row — excludes misc.goal_sweep (display-only)
+  var totalRem=totalExpBudget-totalExpSpent;
+  var gsAmt=_getBudgetAmount('misc.goal_sweep',monthIso);
+  html+='<tr style="border-top:2px solid var(--border);background:var(--bg)">';
+  html+='<td style="padding:6px 8px;font-weight:700">Monthly Living Expenses <span style="font-size:10px;font-weight:400;color:var(--muted)">(excl. goal sweep)</span></td>';
+  html+='<td style="text-align:right;padding:6px 8px;font-weight:700">'+f(totalExpSpent)+'</td>';
+  html+='<td style="text-align:right;padding:6px 8px;font-weight:700;color:var(--blue)">'+f(totalExpBudget)+'</td>';
+  html+='<td style="text-align:right;padding:6px 8px;font-weight:700;color:'+(totalRem<0?'#ef4444':'var(--green)')+'">'+f(totalRem)+'</td>';
+  html+='</tr>';
+  // Available for Goals row — mirrors Goals stats panel
+  var afg=15938-totalExpBudget;
+  html+='<tr style="background:var(--greenSoft)">';
+  html+='<td style="padding:5px 8px;font-size:11px;color:#166534;font-weight:600">Available for Goals <span style="font-size:10px;font-weight:400">(Income $15,938 − Living Expenses)</span></td>';
+  html+='<td colspan="2" style="text-align:right;padding:5px 8px;font-size:11px;color:#166534">—</td>';
+  html+='<td style="text-align:right;padding:5px 8px;font-size:13px;font-weight:700;color:#166534">'+f(afg)+'</td>';
+  html+='</tr>';
+  if(gsAmt>0){
+    html+='<tr style="background:var(--bg)">';
+    html+='<td colspan="4" style="padding:4px 8px;font-size:10px;color:var(--muted)">* "Extra Pay Going to Spreadsheet" ($'+fc(gsAmt)+') shown under Misc. is the goal sweep allocation. It is excluded from living expenses and from all Spent/Remaining calculations.</td>';
+    html+='</tr>';
+  }
+  html+='</tbody></table></div>';
+
+
+  // ── Reconciliation Panel ───────────────────────────────────────────────────
+  html+=_renderBudgetRecon(monthIso);
+
+  // ── Transaction List ───────────────────────────────────────────────────────
+  html+='<div class="panel" style="margin-bottom:16px">';
+  html+='<div style="display:flex;align-items:center;gap:10px;margin-bottom:10px;flex-wrap:wrap">';
+  html+='<h3 style="margin:0;font-size:13px;font-weight:700;color:var(--ink)">Transactions</h3>';
+  // Filter by account
+  html+='<select style="padding:4px 8px;border:1px solid var(--border);border-radius:6px;font-size:11px;background:var(--surface2);color:var(--ink)" onchange="window._budgetSetFilterAccount(this.value)">';
+  html+='<option value="all"'+((_budgetFilterAccount==='all')?' selected':'')+'>All Accounts</option>';
+  BUDGET_PAYMENT_ACCOUNTS.forEach(function(a){html+='<option value="'+esc(a)+'"'+(_budgetFilterAccount===a?' selected':'')+'>'+esc(a)+'</option>';});
+  html+='</select>';
+  // Filter by cleared
+  html+='<select style="padding:4px 8px;border:1px solid var(--border);border-radius:6px;font-size:11px;background:var(--surface2);color:var(--ink)" onchange="window._budgetSetFilterCleared(this.value)">';
+  ['all','cleared','uncleared'].forEach(function(v){html+='<option value="'+v+'"'+(_budgetFilterCleared===v?' selected':'')+'>'+v.charAt(0).toUpperCase()+v.slice(1)+'</option>';});
+  html+='</select>';
+  html+='</div>';
+
+  var txns=_budgetTransactions.filter(function(t){
+    if(_budgetFilterAccount!=='all'&&t.payment_account!==_budgetFilterAccount)return false;
+    if(_budgetFilterCleared==='cleared'&&!t.is_cleared)return false;
+    if(_budgetFilterCleared==='uncleared'&&t.is_cleared)return false;
+    return true;
+  });
+
+  if(!txns.length){
+    html+='<div style="padding:12px;color:var(--muted);font-size:12px;text-align:center">No transactions for this period</div>';
+  } else {
+    html+='<table style="width:100%;border-collapse:collapse;font-size:12px">';
+    html+='<thead><tr style="border-bottom:1px solid var(--border)"><th style="text-align:left;padding:4px 8px;color:var(--muted);font-weight:600">Date</th><th style="text-align:left;padding:4px 8px;color:var(--muted);font-weight:600">Description</th><th style="text-align:left;padding:4px 8px;color:var(--muted);font-weight:600">Category / Type</th><th style="text-align:left;padding:4px 8px;color:var(--muted);font-weight:600">Account</th><th style="text-align:right;padding:4px 8px;color:var(--muted);font-weight:600">Amount</th><th style="text-align:center;padding:4px 8px;color:var(--muted);font-weight:600">Cleared</th><th style="padding:4px 8px"></th></tr></thead><tbody>';
+    txns.forEach(function(t){
+      var isEdit=_budgetDeleteConfirmId===t.id;
+      var isReimbRow=t.transaction_type==='reimbursable_expense';
+      var statusColor={'pending':'#f59e0b','submitted':'#3b82f6','reimbursed':'var(--green)'}[t.reimbursement_status]||'var(--muted)';
+      var catCell=isReimbRow
+        ? '<span style="font-size:10px;font-weight:700;background:#fef3c7;color:#92400e;padding:1px 6px;border-radius:4px">REIMB</span>'+(t.reimbursement_status?'<span style="font-size:10px;font-weight:700;color:'+statusColor+';margin-left:4px">'+t.reimbursement_status.toUpperCase()+'</span>':'')
+        : getBudgetCatLabel(t.category_key||'');
+      html+='<tr style="border-bottom:1px solid var(--border)'+(isEdit?';background:var(--amberSoft)':'')+'">';
+      html+='<td style="padding:4px 8px;color:var(--muted);white-space:nowrap">'+t.transaction_date+'</td>';
+      html+='<td style="padding:4px 8px">'+esc(t.description||'')+'</td>';
+      html+='<td style="padding:4px 8px;color:var(--muted)">'+catCell+'</td>';
+      html+='<td style="padding:4px 8px;color:var(--muted)">'+esc(t.payment_account||'')+'</td>';
+      html+='<td style="text-align:right;padding:4px 8px;font-weight:600">'+f(parseFloat(t.amount))+'</td>';
+      html+='<td style="text-align:center;padding:4px 8px"><input type="checkbox"'+(t.is_cleared?' checked':'')+' onchange="window._budgetToggleCleared(\''+t.id+'\','+t.is_cleared+')" style="cursor:pointer;width:15px;height:15px"></td>';
+      html+='<td style="padding:4px 8px;text-align:right;white-space:nowrap">';
+      if(isEdit){
+        html+='<span style="font-size:11px;color:#ef4444;font-weight:600">Delete? </span>';
+        html+='<button onclick="window._budgetDeleteTransaction(\''+t.id+'\')" style="font-size:11px;padding:2px 7px;border:1px solid #ef4444;border-radius:4px;background:#fef2f2;color:#ef4444;cursor:pointer">Yes</button> ';
+        html+='<button onclick="window._budgetDeleteConfirmId=null;renderApp()" style="font-size:11px;padding:2px 7px;border:1px solid var(--border);border-radius:4px;background:var(--surface2);cursor:pointer">No</button>';
+      } else {
+        html+='<button onclick="window._budgetStartEdit(\''+t.id+'\')" style="font-size:11px;padding:2px 8px;border:1px solid var(--border);border-radius:4px;background:var(--surface2);cursor:pointer;color:var(--ink)">Edit</button> ';
+        html+='<button onclick="window._budgetDeleteConfirmId=\''+t.id+'\';renderApp()" style="font-size:11px;padding:2px 8px;border:1px solid var(--border);border-radius:4px;background:var(--surface2);cursor:pointer;color:#ef4444">Del</button>';
+      }
+      html+='</td></tr>';
+    });
+    html+='</tbody></table>';
+  }
+  html+='</div>';
+
+  el.innerHTML=html;
+}
+
+// ── Budget Form ────────────────────────────────────────────────────────────
+function _renderBudgetForm(monthIso){
+  var isEdit=!!_budgetEditId;
+  var fd=_budgetFormData;
+  // If editing, find the transaction
+  if(isEdit&&!fd.transaction_date){
+    var tx=_budgetTransactions.find(function(t){return t.id===_budgetEditId;});
+    if(tx){_budgetFormData=Object.assign({},tx);fd=_budgetFormData;}
+  }
+  var isReimb=fd.transaction_type==='reimbursable_expense';
+  var isHousehold=!fd.transaction_type||fd.transaction_type==='household_expense';
+
+  var html='<div class="panel" style="margin-bottom:16px;border:2px solid var(--blue)">';
+  html+='<h3 style="margin:0 0 12px;font-size:13px;font-weight:700;color:var(--blue)">'+(isEdit?'Edit':'Add')+' Transaction</h3>';
+  html+='<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:10px;margin-bottom:12px">';
+
+  // Date
+  html+='<div><label style="font-size:11px;font-weight:600;color:var(--muted);display:block;margin-bottom:3px">Date</label>';
+  html+='<input type="date" value="'+(fd.transaction_date||monthIso.substring(0,7)+'-01')+'" style="width:100%;box-sizing:border-box;padding:6px 8px;border:1px solid var(--border);border-radius:6px;font-size:12px;background:var(--surface2);color:var(--ink)" onchange="_budgetFormData.transaction_date=this.value"></div>';
+
+  // Amount
+  html+='<div><label style="font-size:11px;font-weight:600;color:var(--muted);display:block;margin-bottom:3px">Amount</label>';
+  html+='<input type="number" min="0.01" step="0.01" value="'+(fd.amount||'')+'" placeholder="0.00" style="width:100%;box-sizing:border-box;padding:6px 8px;border:1px solid var(--border);border-radius:6px;font-size:12px;background:var(--surface2);color:var(--ink)" onchange="_budgetFormData.amount=this.value"></div>';
+
+  // Transaction type
+  html+='<div><label style="font-size:11px;font-weight:600;color:var(--muted);display:block;margin-bottom:3px">Type</label>';
+  html+='<select style="width:100%;box-sizing:border-box;padding:6px 8px;border:1px solid var(--border);border-radius:6px;font-size:12px;background:var(--surface2);color:var(--ink)" onchange="_budgetFormData.transaction_type=this.value;_budgetFormData.excluded_from_budget=(this.value!==\'household_expense\');if(this.value===\'reimbursable_expense\'){if(!_budgetFormData.reimbursement_source)_budgetFormData.reimbursement_source=\'Jabian\';if(!_budgetFormData.reimbursement_status)_budgetFormData.reimbursement_status=\'pending\';_budgetFormData.category_key=null;}renderApp()">';
+  [['household_expense','Household Expense'],['reimbursable_expense','Reimbursable (Business)']].forEach(function(opt){
+    html+='<option value="'+opt[0]+'"'+((fd.transaction_type||'household_expense')===opt[0]?' selected':'')+'>'+opt[1]+'</option>';
+  });
+  html+='</select></div>';
+
+  // Category (only for household_expense)
+  if(isHousehold){
+    html+='<div><label style="font-size:11px;font-weight:600;color:var(--muted);display:block;margin-bottom:3px">Category</label>';
+    html+='<select style="width:100%;box-sizing:border-box;padding:6px 8px;border:1px solid var(--border);border-radius:6px;font-size:12px;background:var(--surface2);color:var(--ink)" onchange="_budgetFormData.category_key=this.value">';
+    html+='<option value="">-- Select --</option>';
+    // Render selectable leaf nodes in hierarchy order
+    var lastParent=null;
+    BUDGET_CATEGORY_REGISTRY.filter(function(c){return !c.isIncome&&c.leaf&&c.assignable;}).forEach(function(c){
+      var parentKey=c.parent;
+      if(parentKey&&parentKey!==lastParent){
+        var pCat=_budgetCatByKey[parentKey];
+        if(pCat)html+='<optgroup label="'+pCat.label+'">';
+        lastParent=parentKey;
+      } else if(!parentKey&&lastParent){
+        html+='</optgroup>';lastParent=null;
+      }
+      html+='<option value="'+c.key+'"'+(fd.category_key===c.key?' selected':'')+'>'+c.label+'</option>';
+    });
+    html+='</select></div>';
+  }
+
+  // Payment account
+  html+='<div><label style="font-size:11px;font-weight:600;color:var(--muted);display:block;margin-bottom:3px">Payment Account</label>';
+  html+='<select style="width:100%;box-sizing:border-box;padding:6px 8px;border:1px solid var(--border);border-radius:6px;font-size:12px;background:var(--surface2);color:var(--ink)" onchange="_budgetFormData.payment_account=this.value">';
+  html+='<option value="">-- Select --</option>';
+  BUDGET_PAYMENT_ACCOUNTS.forEach(function(a){html+='<option value="'+esc(a)+'"'+(fd.payment_account===a?' selected':'')+'>'+esc(a)+'</option>';});
+  html+='</select></div>';
+
+  // Description
+  html+='<div style="grid-column:1/-1"><label style="font-size:11px;font-weight:600;color:var(--muted);display:block;margin-bottom:3px">Description</label>';
+  html+='<input type="text" value="'+esc(fd.description||'')+'" maxlength="200" placeholder="e.g. Publix weekly grocery run" style="width:100%;box-sizing:border-box;padding:6px 8px;border:1px solid var(--border);border-radius:6px;font-size:12px;background:var(--surface2);color:var(--ink)" oninput="_budgetFormData.description=this.value"></div>';
+
+  // Cleared (all transaction types — reimbursables hit real card accounts too)
+  html+='<div style="display:flex;align-items:center;gap:8px"><input type="checkbox" id="bd-cleared"'+(fd.is_cleared?' checked':'')+' onchange="_budgetFormData.is_cleared=this.checked" style="width:15px;height:15px;cursor:pointer"><label for="bd-cleared" style="font-size:12px;color:var(--ink);cursor:pointer">Transaction cleared on card/account</label></div>';
+
+  // Reimbursable fields
+  if(isReimb){
+    html+='<div><label style="font-size:11px;font-weight:600;color:var(--muted);display:block;margin-bottom:3px">Source</label>';
+    html+='<select style="width:100%;box-sizing:border-box;padding:6px 8px;border:1px solid var(--border);border-radius:6px;font-size:12px;background:var(--surface2);color:var(--ink)" onchange="_budgetFormData.reimbursement_source=this.value">';
+    ['Jabian','Other'].forEach(function(s){html+='<option value="'+s+'"'+(fd.reimbursement_source===s?' selected':'')+'>'+s+'</option>';});
+    html+='</select></div>';
+    html+='<div><label style="font-size:11px;font-weight:600;color:var(--muted);display:block;margin-bottom:3px">Status</label>';
+    html+='<select style="width:100%;box-sizing:border-box;padding:6px 8px;border:1px solid var(--border);border-radius:6px;font-size:12px;background:var(--surface2);color:var(--ink)" onchange="_budgetFormData.reimbursement_status=this.value">';
+    ['pending','submitted','reimbursed'].forEach(function(s){html+='<option value="'+s+'"'+(fd.reimbursement_status===s?' selected':'')+'>'+s.charAt(0).toUpperCase()+s.slice(1)+'</option>';});
+    html+='</select></div>';
+  }
+
+  html+='</div>'; // end grid
+
+  // Buttons
+  html+='<div style="display:flex;gap:8px">';
+  html+='<button onclick="window._budgetSubmitForm()" style="padding:7px 18px;background:var(--blue);color:#fff;border:none;border-radius:6px;font-size:12px;font-weight:600;cursor:pointer"'+(  _budgetSaving?' disabled':'')+'>'+(_budgetSaving?'Saving...':'Save')+'</button>';
+  html+='<button onclick="window._budgetCancelForm()" style="padding:7px 14px;background:var(--surface2);color:var(--muted);border:1px solid var(--border);border-radius:6px;font-size:12px;cursor:pointer">Cancel</button>';
+  html+='</div>';
+  html+='</div>';
+  return html;
+}
+
+// ── Reconciliation Panel ───────────────────────────────────────────────────
+function _renderBudgetRecon(monthIso){
+  var html='<div class="panel" style="margin-bottom:16px">';
+  html+='<h3 style="margin:0 0 10px;font-size:13px;font-weight:700;color:var(--ink)">Reconciliation</h3>';
+
+  // Account picker
+  html+='<div style="display:flex;align-items:center;gap:10px;margin-bottom:10px;flex-wrap:wrap">';
+  html+='<label style="font-size:11px;font-weight:600;color:var(--muted)">Account:</label>';
+  html+='<select style="padding:5px 8px;border:1px solid var(--border);border-radius:6px;font-size:12px;background:var(--surface2);color:var(--ink)" onchange="window._budgetSetReconAccount(this.value)">';
+  BUDGET_PAYMENT_ACCOUNTS.forEach(function(a){html+='<option value="'+esc(a)+'"'+(_budgetReconAccount===a?' selected':'')+'>'+esc(a)+'</option>';});
+  html+='</select>';
+  html+='<label style="font-size:11px;font-weight:600;color:var(--muted)">Statement balance:</label>';
+  html+='<input type="number" min="0" step="0.01" value="'+(_budgetReconBalance||'')+'" placeholder="0.00" style="width:110px;padding:5px 8px;border:1px solid var(--border);border-radius:6px;font-size:12px;background:var(--surface2);color:var(--ink)" oninput="window._budgetSetReconBalance(this.value)">';
+  html+='</div>';
+
+  // Compute totals for selected account
+  var acct=_budgetReconAccount;
+  var entered=0,clearedAmt=0,unclearedAmt=0,householdAmt=0,reimbAmt=0;
+  _budgetTransactions.forEach(function(t){
+    if(t.payment_account!==acct)return;
+    var a=parseFloat(t.amount)||0;
+    entered+=a;
+    if(t.is_cleared)clearedAmt+=a; else unclearedAmt+=a;
+    if(t.transaction_type==='reimbursable_expense')reimbAmt+=a;
+    else if(t.transaction_type==='household_expense'&&!t.excluded_from_budget)householdAmt+=a;
+  });
+
+  var stmtBal=parseFloat(_budgetReconBalance)||0;
+  var diff=stmtBal-clearedAmt;
+  var diffColor=Math.abs(diff)<0.01?'var(--green)':(diff<0?'#ef4444':'var(--blue)');
+
+  html+='<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:8px;font-size:12px">';
+  var statItems=[
+    ['Entered Total',f(entered),'var(--ink)'],
+    ['Cleared',f(clearedAmt),'var(--green)'],
+    ['Uncleared',f(unclearedAmt),'#f59e0b'],
+    ['Household Charges',f(householdAmt),'var(--ink)'],
+    ['Reimbursable Charges',f(reimbAmt),'var(--muted)'],
+    ['Statement Balance',stmtBal?f(stmtBal):'Not entered','var(--blue)'],
+    ['Difference (Stmt - Cleared)',stmtBal?f(diff):'—',diffColor]
+  ];
+  statItems.forEach(function(item){
+    html+='<div style="background:var(--bg);border:1px solid var(--border);border-radius:6px;padding:7px 10px">';
+    html+='<div style="font-size:10px;color:var(--muted);font-weight:600;margin-bottom:2px">'+item[0]+'</div>';
+    html+='<div style="font-size:15px;font-weight:700;color:'+item[2]+'">'+item[1]+'</div>';
+    html+='</div>';
+  });
+  if(stmtBal&&Math.abs(diff)<0.01){
+    html+='<div style="background:var(--greenSoft);border:1px solid var(--green);border-radius:6px;padding:7px 10px;display:flex;align-items:center;gap:6px">';
+    html+='<span style="font-size:14px">✓</span><span style="font-size:12px;font-weight:700;color:var(--green)">Reconciled</span></div>';
+  }
+  html+='</div></div>';
+  return html;
+}
+
+// ── Budget event handlers (window-scoped for inline onclick) ───────────────
+window._budgetChangeMonth=function(iso){
+  _budgetSelectedMonth=iso;
+  _budgetTransLoadStatus='not_loaded';
+  _budgetTransactions=[];
+  _budgetShowAddForm=false;_budgetEditId=null;_budgetFormData={};
+  renderApp();
+};
+window._budgetOpenAddForm=function(){
+  _budgetShowAddForm=true;_budgetEditId=null;_budgetFormData={transaction_type:'household_expense',excluded_from_budget:false};
+  renderApp();
+};
+window._budgetStartEdit=function(id){
+  var tx=_budgetTransactions.find(function(t){return t.id===id;});
+  if(!tx)return;
+  _budgetEditId=id;_budgetShowAddForm=false;_budgetFormData=Object.assign({},tx);
+  renderApp();
+};
+window._budgetCancelForm=function(){
+  _budgetShowAddForm=false;_budgetEditId=null;_budgetFormData={};renderApp();
+};
+window._budgetSubmitForm=function(){
+  var fd=_budgetFormData;
+  if(!fd.transaction_date||!fd.amount||parseFloat(fd.amount)<=0){
+    alert('Date and amount are required.');return;
+  }
+  if(!fd.payment_account){
+    alert('Payment account is required.');return;
+  }
+  if(fd.transaction_type==='household_expense'&&!fd.category_key){
+    alert('Category is required for household expenses.');return;
+  }
+  if(fd.transaction_type==='reimbursable_expense'&&(!fd.reimbursement_source||!fd.reimbursement_status)){
+    alert('Source and status are required for reimbursable expenses.');return;
+  }
+  _budgetSaveTransaction(fd,_budgetEditId||null);
+};
+window._budgetToggleCleared=function(id,currentCleared){_budgetToggleCleared(id,currentCleared);};
+window._budgetDeleteTransaction=function(id){_budgetDeleteTransaction(id);};
+window._budgetDeleteConfirmId=null;
+window._budgetSetFilterAccount=function(v){_budgetFilterAccount=v;renderApp();};
+window._budgetSetFilterCleared=function(v){_budgetFilterCleared=v;renderApp();};
+window._budgetSetReconAccount=function(v){_budgetReconAccount=v;renderApp();};
+window._budgetSetReconBalance=function(v){_budgetReconBalance=v;renderApp();};
+
 // ── renderApp (central render, replaces render()) ──────────────────────────
 function renderApp(){
   try{
@@ -4275,6 +4808,7 @@ function renderApp(){
   else if(activeSection==='roadmap')renderRoadmap();
   else if(activeSection==='scenarios')renderScenarios(vm);
   else if(activeSection==='ask')renderAskClaude();
+  else if(activeSection==='budget')renderBudget();
   renderEditDrawer();
   renderScenarioModal();
   // Clear any previous render error
@@ -4456,7 +4990,7 @@ async function saveGoal(key,value){
 async function loadAll(){
   try{
     var h=await getAuthHeaders();
-    var[reconR,tasksR,notesR,overridesR,goalsR,wishlistR,customTasksR,budgetRulesR,goalRegistryR]=await Promise.all([
+    var[reconR,tasksR,notesR,overridesR,goalsR,wishlistR,customTasksR,budgetRulesR,goalRegistryR,budgetLineRulesR]=await Promise.all([
       fetch(SUPA_URL+'/rest/v1/weekly_reconciliations?select=*',{headers:h}),
       fetch(SUPA_URL+'/rest/v1/weekly_tasks?select=*',{headers:h}),
       fetch(SUPA_URL+'/rest/v1/weekly_notes?select=*',{headers:h}),
@@ -4465,7 +4999,8 @@ async function loadAll(){
       fetch(SUPA_URL+'/rest/v1/wishlist_items?select=*&order=created_at.asc',{headers:h}),
       fetch(SUPA_URL+'/rest/v1/custom_tasks?select=*&order=created_at.asc',{headers:h}),
       fetch(SUPA_URL+'/rest/v1/budget_rules?active=eq.true&order=start_date.asc',{headers:h}),
-      fetch(SUPA_URL+'/rest/v1/goal_registry?order=priority.asc',{headers:h})
+      fetch(SUPA_URL+'/rest/v1/goal_registry?order=priority.asc',{headers:h}),
+      fetch(SUPA_URL+'/rest/v1/budget_line_rules?is_active=eq.true&select=*&order=category_key.asc',{headers:h})
     ]);
     if(reconR.ok){(await reconR.json()).forEach(function(row){reconData[row.week_num]={chk:row.chk,sav:row.sav,amx:row.amx,tax:row.tax,lc:row.lc,date:new Date(row.recorded_at).toLocaleDateString('en-US',{month:'short',day:'numeric'})};});}
     if(tasksR.ok){(await tasksR.json()).forEach(function(row){taskData[row.week_num+'_'+row.task_idx]={completed:row.completed,completedAt:row.completed_at,completedAmount:row.completed_amount!=null?parseFloat(row.completed_amount):null,actionKey:row.action_key||null,completedLabel:row.completed_label||null};});}
@@ -4511,13 +5046,22 @@ async function loadAll(){
     }
     // Run type migration for any custom tasks missing version field
     migrateCustomTaskMeta();
-    // ── Budget Rules load ──────────────────────────────────────────────────
+    // ── Budget Rules load (cash-flow delta overlays) ───────────────────────
     if(budgetRulesR.ok){
       budgetRules=await budgetRulesR.json();
       budgetRulesLoadStatus='loaded'; // successful fetch, even if 0 active rules
     } else {
       budgetRulesLoadStatus='failed';
       console.warn('[BudgetRules] Load failed: HTTP '+budgetRulesR.status);
+    }
+    // ── Budget Line Rules load (Phase 5B budget module) ───────────────────
+    if(budgetLineRulesR.ok){
+      _budgetLineRulesCache=await budgetLineRulesR.json();
+      _budgetLineRulesLoadStatus='loaded';
+      console.log('[BudgetLineRules] Loaded '+_budgetLineRulesCache.length+' active rules');
+    } else {
+      _budgetLineRulesLoadStatus='failed';
+      console.warn('[BudgetLineRules] Load failed: HTTP '+budgetLineRulesR.status+' — stats panel will use fallback constants');
     }
     // ── Goal Registry load (Phase 6A) ─────────────────────────────────────
     if(goalRegistryR.ok){
@@ -4572,7 +5116,156 @@ function getWeekStartDate(n){return new Date(2026,5,7+(n-1)*7);}
 function fmtDate(d){var M=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];return M[d.getMonth()]+' '+d.getDate();}
 function getWeekDate(n){return fmtDate(getWeekStartDate(n));}
 
-// ── Budget Rules — Phase 5 helper module ─────────────────────────────────
+// ── Budget Module — Phase 5B ──────────────────────────────────────────────
+// Category registry (hardcoded source of truth).
+// Format: parent_key.child_key for subcategories; bare key for standalone leaves.
+// assignable=false: display-only, cannot be chosen for transactions.
+// leaf=true: bottom of hierarchy, selectable if also assignable=true.
+var BUDGET_CATEGORY_REGISTRY=[
+  // Income (display-only)
+  {key:'income',             label:'Income',                      parent:null,           leaf:false, assignable:false, isIncome:true},
+  {key:'income.net_salary',  label:'Net Salary',                  parent:'income',       leaf:true,  assignable:false, isIncome:true},
+  {key:'income.net_salary_spouse',label:'Net Salary Spouse',      parent:'income',       leaf:true,  assignable:false, isIncome:true},
+  // Auto & Transport
+  {key:'auto_transport',                label:'Auto & Transport',        parent:null,                 leaf:false, assignable:false, isIncome:false},
+  {key:'auto_transport.auto_insurance', label:'Auto Insurance',          parent:'auto_transport',     leaf:true,  assignable:true,  isIncome:false},
+  {key:'auto_transport.auto_payment',   label:'Auto Payment',            parent:'auto_transport',     leaf:true,  assignable:true,  isIncome:false},
+  {key:'auto_transport.gas_fuel',       label:'Gas & Fuel',              parent:'auto_transport',     leaf:true,  assignable:true,  isIncome:false},
+  // Bills & Utilities
+  {key:'bills_utilities',               label:'Bills & Utilities',       parent:null,                 leaf:false, assignable:false, isIncome:false},
+  {key:'bills_utilities.apple',         label:'Apple',                   parent:'bills_utilities',    leaf:true,  assignable:true,  isIncome:false},
+  {key:'bills_utilities.gas_power',     label:'Gas and Power',           parent:'bills_utilities',    leaf:true,  assignable:true,  isIncome:false},
+  {key:'bills_utilities.mobile_phone',  label:'Mobile Phone',            parent:'bills_utilities',    leaf:true,  assignable:true,  isIncome:false},
+  {key:'bills_utilities.water',         label:'Water',                   parent:'bills_utilities',    leaf:true,  assignable:true,  isIncome:false},
+  // Entertainment (standalone leaf)
+  {key:'entertainment',                 label:'Entertainment',           parent:null,                 leaf:true,  assignable:true,  isIncome:false},
+  // Food & Dining
+  {key:'food_dining',                   label:'Food & Dining',           parent:null,                 leaf:false, assignable:false, isIncome:false},
+  {key:'food_dining.groceries',         label:'Groceries',               parent:'food_dining',        leaf:true,  assignable:true,  isIncome:false},
+  // Health & Fitness
+  {key:'health_fitness',                        label:'Health & Fitness',        parent:null,                 leaf:false, assignable:false, isIncome:false},
+  {key:'health_fitness.ymca',                   label:'YMCA',                    parent:'health_fitness',     leaf:true,  assignable:true,  isIncome:false},
+  {key:'health_fitness.f_training',             label:'F Training',              parent:'health_fitness',     leaf:true,  assignable:true,  isIncome:false},
+  {key:'health_fitness.peloton',                label:'Peloton',                 parent:'health_fitness',     leaf:true,  assignable:true,  isIncome:false},
+  {key:'health_fitness.diablos_preston_fee',    label:'Diablos (Preston) Fee',   parent:'health_fitness',     leaf:true,  assignable:true,  isIncome:false},
+  {key:'health_fitness.wendy_glp_meds',         label:'Wendy GLP Meds',          parent:'health_fitness',     leaf:true,  assignable:true,  isIncome:false},
+  // Home
+  {key:'home',                          label:'Home',                    parent:null,                 leaf:false, assignable:false, isIncome:false},
+  {key:'home.claudai',                  label:'ClaudAI',                 parent:'home',               leaf:true,  assignable:true,  isIncome:false},
+  {key:'home.google',                   label:'Google',                  parent:'home',               leaf:true,  assignable:true,  isIncome:false},
+  {key:'home.mortgage_rent',            label:'Mortgage & Rent',         parent:'home',               leaf:true,  assignable:true,  isIncome:false},
+  {key:'home.openai',                   label:'OpenAI',                  parent:'home',               leaf:true,  assignable:true,  isIncome:false},
+  // Misc
+  {key:'misc',                          label:'Misc.',                   parent:null,                 leaf:false, assignable:false, isIncome:false},
+  {key:'misc.extra',                    label:'Extra',                   parent:'misc',               leaf:true,  assignable:true,  isIncome:false},
+  {key:'misc.goal_sweep',               label:'Extra Pay Going to Spreadsheet', parent:'misc',        leaf:true,  assignable:false, isIncome:false},
+  // Personal Care
+  {key:'personal_care',                 label:'Personal Care',           parent:null,                 leaf:false, assignable:false, isIncome:false},
+  {key:'personal_care.hair',            label:'Hair',                    parent:'personal_care',      leaf:true,  assignable:true,  isIncome:false}
+];
+
+// Lookup helpers
+var _budgetCatByKey={};
+BUDGET_CATEGORY_REGISTRY.forEach(function(c){_budgetCatByKey[c.key]=c;});
+
+function getBudgetCatLabel(key){
+  return (_budgetCatByKey[key]&&_budgetCatByKey[key].label)||key;
+}
+
+// Hardcoded payment account options
+var BUDGET_PAYMENT_ACCOUNTS=['AMEX Gold','Disney Visa','Costco Visa','AMEX Platinum','Truist Checking','Cash / Other'];
+
+// _getBudgetLivingExpenses(weekNum)
+// Returns monthly living expenses for the month containing weekNum.
+// Reads from _budgetLineRulesCache; falls back to JS constants on miss.
+// Excludes income.* and misc.goal_sweep from total.
+function _getBudgetLivingExpenses(weekNum){
+  var wsd=getWeekStartDate(weekNum);
+  var monthIso=wsd.getFullYear()+'-'+String(wsd.getMonth()+1).padStart(2,'0')+'-01';
+  if(_budgetLineRulesLoadStatus==='loaded'&&_budgetLineRulesCache&&_budgetLineRulesCache.length>0){
+    var total=0;
+    _budgetLineRulesCache.forEach(function(r){
+      if(!r.is_active)return;
+      if(r.category_key.startsWith('income.'))return;
+      if(r.category_key==='misc.goal_sweep')return;
+      if(r.start_month>monthIso)return;
+      if(r.end_month!==null&&r.end_month!==undefined&&r.end_month<monthIso)return;
+      total+=parseFloat(r.amount)||0;
+    });
+    return Math.round(total);
+  }
+  // Fallback — JS constants; log warning only if a load was attempted
+  if(_budgetLineRulesLoadStatus!=='not_loaded'){
+    console.warn('[BudgetLineRules] budget_line_rules unavailable (status:'+_budgetLineRulesLoadStatus+'); using stats fallback constants.');
+  }
+  // Fallback uses monthIso (already computed above) to match live cache behavior.
+  // weekNum thresholds would disagree with live: Wk4 starts June 28 (still June),
+  // so rent+100 / Diablos must gate on calendar month, not week number.
+  var base=13638;
+  var rentD=(monthIso>='2026-07-01')?100:0;
+  var diablosD=(monthIso>='2026-07-01'&&monthIso<='2026-12-01')?750:0;
+  var glpD=(monthIso>='2026-08-01'&&monthIso<='2026-12-01')?404:0;
+  return base+rentD+diablosD+glpD;
+}
+
+// _getBudgetAmount(categoryKey, monthIso)
+// Returns the budgeted amount for a single category key in a given ISO month.
+// Used by the Budget printout UI to populate the Budget column.
+function _getBudgetAmount(categoryKey, monthIso){
+  if(!_budgetLineRulesCache||_budgetLineRulesLoadStatus!=='loaded')return 0;
+  var total=0;
+  _budgetLineRulesCache.forEach(function(r){
+    if(!r.is_active||r.category_key!==categoryKey)return;
+    if(r.start_month>monthIso)return;
+    if(r.end_month!==null&&r.end_month!==undefined&&r.end_month<monthIso)return;
+    total+=parseFloat(r.amount)||0;
+  });
+  return total;
+}
+
+// _getActiveBudgetCategories(monthIso)
+// Returns the set of category keys that have an active line rule for the given month.
+// Used to avoid showing zero-budget rows in the Budget UI.
+function _getActiveBudgetCategories(monthIso){
+  var active={};
+  if(!_budgetLineRulesCache||_budgetLineRulesLoadStatus!=='loaded')return active;
+  _budgetLineRulesCache.forEach(function(r){
+    if(!r.is_active)return;
+    if(r.start_month>monthIso)return;
+    if(r.end_month!==null&&r.end_month!==undefined&&r.end_month<monthIso)return;
+    active[r.category_key]=(active[r.category_key]||0)+(parseFloat(r.amount)||0);
+  });
+  return active;
+}
+
+// _budgetGetMonthIso()
+// Returns the selected budget month as ISO first-of-month string.
+// Defaults to the current calendar month if none selected.
+function _budgetGetMonthIso(){
+  if(_budgetSelectedMonth)return _budgetSelectedMonth;
+  var now=new Date();
+  return now.getFullYear()+'-'+String(now.getMonth()+1).padStart(2,'0')+'-01';
+}
+
+// _budgetMonthLabel(iso) — e.g. '2026-06-01' → 'June 2026'
+function _budgetMonthLabel(iso){
+  var months=['January','February','March','April','May','June','July','August','September','October','November','December'];
+  var parts=iso.split('-');
+  return months[parseInt(parts[1],10)-1]+' '+parts[0];
+}
+
+// _budgetAvailableMonths() — returns array of {iso, label} from Jun 2026 through Jan 2027
+function _budgetAvailableMonths(){
+  var months=[];
+  var dates=[
+    '2026-06-01','2026-07-01','2026-08-01','2026-09-01','2026-10-01',
+    '2026-11-01','2026-12-01','2027-01-01'
+  ];
+  dates.forEach(function(iso){months.push({iso:iso,label:_budgetMonthLabel(iso)});});
+  return months;
+}
+
+// ── Budget Rules — Phase 5 helper module (cash-flow delta overlays) ─────────
 // Constants
 var BUDGET_RULE_CATEGORIES=['income','rent','auto','medical','sports','credit_card','tax','savings','travel','education','insurance','utilities','other'];
 var BUDGET_RULE_APPLIES_TO=['truist_checking','vio_tax','lending_club_ef','fidelity','amex_savings'];

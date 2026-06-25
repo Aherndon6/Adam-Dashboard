@@ -107,7 +107,7 @@ async function clickNav(page, id) {
 
   // ── Section A: Tab smoke test ──────────────────────────────────────────
   console.log('── Section A: Tab smoke test ──');
-  const tabs = ['overview','weekly','goals','history','assumptions','roadmap','ask'];
+  const tabs = ['overview','weekly','goals','history','assumptions','roadmap','ask','budget'];
   for (const tab of tabs) {
     await test('Tab renders without blank panel: ' + tab, async () => {
       const { page, context } = await openApp(browser);
