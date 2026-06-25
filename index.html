@@ -4310,17 +4310,26 @@ async function _budgetSaveTransaction(formData, editId){
   }
 }
 
-// Toggle cleared status
+// Toggle cleared status — optimistic update so reconciliation reflects instantly on click
 async function _budgetToggleCleared(txId,currentCleared){
+  var _nc=new Date();
+  var nowIso=_nc.getFullYear()+'-'+String(_nc.getMonth()+1).padStart(2,'0')+'-'+String(_nc.getDate()).padStart(2,'0');
+  var patch={is_cleared:!currentCleared,cleared_date:currentCleared?null:nowIso};
+  // Apply locally first — reconciliation panel updates immediately, no network wait
+  _budgetTransactions=_budgetTransactions.map(function(t){return t.id===txId?Object.assign({},t,patch):t;});
+  renderApp();
+  // Sync to Supabase in background; reload from server if PATCH fails
   try{
     var h=await getAuthHeaders();
-    var _nc=new Date();
-    var nowIso=_nc.getFullYear()+'-'+String(_nc.getMonth()+1).padStart(2,'0')+'-'+String(_nc.getDate()).padStart(2,'0');
-    var patch={is_cleared:!currentCleared,cleared_date:currentCleared?null:nowIso};
-    await fetch(SUPA_URL+'/rest/v1/budget_transactions?id=eq.'+txId,{method:'PATCH',headers:Object.assign({},h,{'Content-Type':'application/json','Prefer':'return=minimal'}),body:JSON.stringify(patch)});
-    _budgetTransactions=_budgetTransactions.map(function(t){return t.id===txId?Object.assign({},t,patch):t;});
-    renderApp();
-  }catch(e){console.error('[Budget] Toggle cleared error:',e);}
+    var r=await fetch(SUPA_URL+'/rest/v1/budget_transactions?id=eq.'+txId,{method:'PATCH',headers:Object.assign({},h,{'Content-Type':'application/json','Prefer':'return=minimal'}),body:JSON.stringify(patch)});
+    if(!r.ok){
+      console.error('[Budget] Toggle cleared PATCH failed: HTTP '+r.status+' — reloading from server');
+      await _budgetLoadTransactions(_budgetGetMonthIso());
+    }
+  }catch(e){
+    console.error('[Budget] Toggle cleared error:',e,' — reloading from server');
+    await _budgetLoadTransactions(_budgetGetMonthIso());
+  }
 }
 
 // Delete a budget transaction
