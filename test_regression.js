@@ -4507,12 +4507,12 @@ test('GOALS TEXT: custom_task_meta read handles both string and object (backward
 // ─────────────────────────────────────────────────────────────────────────
 console.log('\n── WL-V2: Wishlist v2 structural checks ──');
 
-test('WL-V2-1: WISHLIST_BUILD_TAGS is defined and [0] === Auth v1',()=>{
+test('WL-V2-1: WISHLIST_BUILD_TAGS is defined and [0] === Phase 5B Budget Module',()=>{
   var htmlSrc='';
   try{htmlSrc=require('fs').readFileSync(require('path').join(__dirname,'index.html'),'utf8');}catch(e){}
   assert(htmlSrc.length>0,'Could not read index.html');
   assert(/var WISHLIST_BUILD_TAGS=/.test(htmlSrc),'WISHLIST_BUILD_TAGS constant not found');
-  assert(/WISHLIST_BUILD_TAGS=\['Auth v1'/.test(htmlSrc),'WISHLIST_BUILD_TAGS[0] must be \'Auth v1\'');
+  assert(/WISHLIST_BUILD_TAGS=\['Phase 5B Budget Module'/.test(htmlSrc),'WISHLIST_BUILD_TAGS[0] must be \'Phase 5B Budget Module\'');
 });
 
 test('WL-V2-2: WISHLIST_PHASE_ORDER includes Security, Platform, Auth+',()=>{

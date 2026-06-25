@@ -854,7 +854,7 @@ button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-vis
 // ── Constants (unchanged) ──────────────────────────────────────────────────
 // Simplified architecture — $8,250 total from LC · $6,500 operating floor · no legacy mechanics
 // Real-world moves: keep $2,250 in chk, move $2,750 sav→chk, move $1,000 LC→chk, move $2,250 LC→chk (Option 1 correction)
-const BUILD_TS='2026-06-24T23:37:37'; // updated each push — local time string
+const BUILD_TS='2026-06-24T23:45:45'; // updated each push — local time string
 const START_CHK=18037.73,START_SAV=3772.77,START_AMX=103.64,START_TAX=0,START_LC=13488.88;
 const EF_AMT=13488.88; // LC/EF balance — static this model year (no transfers in or out)
 const BASE_TAX=521.36,RET_SAV_XFR=3772.74;
@@ -5175,7 +5175,7 @@ var wishlistAddOpen=false;
 var wishlistEditId=null;
 var wishlistDoneId=null;
 var wishlistPhaseFilter=[];
-var WISHLIST_BUILD_TAGS=['Auth v1','Stabilization S1','Phase 6A Goal Registry','Phase 5 What-If','Phase 5 Budget Rules','Phase 4','Phase 3'];
+var WISHLIST_BUILD_TAGS=['Phase 5B Budget Module','Phase 5A Role Enforcement','Auth v1','Stabilization S1','Phase 6A Goal Registry','Phase 5 What-If','Phase 5 Budget Rules','Phase 4','Phase 3'];
 var WISHLIST_PHASE_ORDER=['Phase 1','Phase 2','Phase 3','Phase 4','Phase 5','Phase 6','Phase 7','Security','Auth+','Platform','Backlog'];
 var scenarioState={active:false,type:null,weekNum:1,params:{},previewOverride:null,previewGoal:null,commitModal:false};
 var anthropicKey=localStorage.getItem('herndon_anthropic_key')||'';
@@ -5814,6 +5814,8 @@ var WISHLIST_SEED=[
   {title:'Goal funding source & destination account',notes:'Per-goal src/dest account + startsAfter dependency. IRA/529 dest updated to AMEX Savings (holding). poolSource architecture removed.',phase:'Phase 4',status:'done'},
   {title:'Required action override system',notes:'Model-generated required actions can now be moved, relabeled, reset, or deleted where allowed, with validation, localStorage persistence, and full model recalculation.',phase:'Phase 4',status:'done'},
   {title:'IRA/529 AMEX 5-week lookahead',notes:'Checking → AMEX holding sweeps for IRA/529 goals use a 5-week scheduled cash-flow lookahead and max-safe-sweep binary search to prevent new floor violations. CPA flag is display/deployment status only and no longer gates accumulation.',phase:'Phase 4',status:'done'},
+  // Phase 5B — done
+  {title:'Budget Module v1',notes:'Monthly budget printout (Spent / Budget / Remaining by category, parent/child hierarchy, goal sweep display-only). Manual transaction entry with date, amount, category, payment account, and description. Household expense vs. reimbursable transaction types. Reimbursement status flow: pending → submitted → reimbursed. Account reconciliation with cleared checkbox per transaction and statement balance entry. Collapsible help panel in the Budget tab for Wendy onboarding. RLS enforced via is_allowed_user() and can_write_financials(). budget_transactions and budget_line_rules tables. Shipped Phase 5B, June 24 2026.',phase:'Phase 5',status:'done'},
   // Phase 5 — planned
   {title:'Goal Registry CRUD (Phase 6B)',notes:'Add / edit / pause / archive / reprioritize goals via UI. Requires authentication (docs/auth-spec-v1.4.md) and write policy on goal_registry before live deployment. Architecture: docs/stabilization-roadmap-spec.md Phase 6B section.',phase:'Phase 6',status:'planned'},
   {title:'Goal dependency chain',notes:'Start a goal after another goal completes (startsAfter). Display layer exists; full UI deferred from Phase 4.',phase:'Phase 5',status:'planned'},
