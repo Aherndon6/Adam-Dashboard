@@ -841,6 +841,11 @@ async function clickNav(page, id) {
   await test('BR-3: Budget Rules resume (action=applied) in non-overridden week after overridden week', async () => {
     const { page, context } = await openApp(browser);
     const result = await page.evaluate(() => {
+      // Save and replace overrideData to isolate from live DB state.
+      // Live DB has a week 6 override (Jul 12-18) which would cause the rule to be
+      // bypassed. We control the full overrideData for this test.
+      var savedOverrideData = JSON.parse(JSON.stringify(overrideData));
+      overrideData = {};
       // Rule fires in week 6 (Jul 12-18); override only on week 5
       budgetRules = [{
         id: 97, label: 'Resume check rule', amount: '150', direction: 'outflow',
@@ -855,7 +860,10 @@ async function clickNav(page, id) {
       var g = getGoals();
       runModel(g.ak, g.rt);
       var entry = ruleAudit.find(function(e) { return e.label === 'Resume check rule'; });
-      return entry ? { action: entry.action, week: entry.week } : null;
+      var testResult = entry ? { action: entry.action, week: entry.week } : null;
+      // Restore live DB state before returning
+      overrideData = savedOverrideData;
+      return testResult;
     });
     assert(result !== null, 'Resume check rule should appear in ruleAudit');
     assert(result.action === 'applied',
@@ -863,7 +871,7 @@ async function clickNav(page, id) {
     assert(result.week !== 5,
       'Resume rule should fire in week 6+, not week 5 (which is overridden)');
     // Cleanup
-    await page.evaluate(() => { budgetRules = []; delete overrideData[5]; renderApp(); });
+    await page.evaluate(() => { budgetRules = []; renderApp(); });
     await context.close();
   });
 
