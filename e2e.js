@@ -11,16 +11,17 @@
 //   HFOS_URL=https://your-url node e2e.js  # runs against a live deployment
 //
 // What this covers:
-//   Section A — Tab smoke test (no blank panels, no layout breaks)
-//   Section B — Console error check (no uncaught exceptions)
-//   Section C — Decision Engine (locked + cleared IRA gate)
-//   Section D — IRA flag toggle (Goals tab)
-//   Section E — Edit Week workflow (add inflow, save, verify)
-//   Section F — Reconciliation workflow (save, update, delete)
-//   Section G — Wishlist CRUD (add, edit, delete item)
-//   Section H — XSS safety (script injection in all user inputs)
-//   Section I — Supabase offline graceful failure
-//   Section J — Mobile viewport (nav, panels, no overflow)
+//   Section A   — Tab smoke test (no blank panels, no layout breaks)
+//   Section B   — Console error check (no uncaught exceptions)
+//   Section C   — Decision Engine (locked + cleared IRA gate)
+//   Section D   — IRA flag toggle (Goals tab)
+//   Section E   — Edit Week workflow (add inflow, save, verify)
+//   Section F   — Reconciliation workflow (save, update, delete)
+//   Section G   — Wishlist CRUD (add, edit, delete item)
+//   Section H   — XSS safety (script injection in all user inputs)
+//   Section I   — Supabase offline graceful failure
+//   Section J   — Mobile viewport (nav, panels, no overflow)
+//   Section BUD — Budget module: no recursive wrappers, optimistic cleared toggle, delete confirm
 //
 // ─────────────────────────────────────────────────────────────────────────
 
@@ -1349,6 +1350,154 @@ async function clickNav(page, id) {
     });
     assert(row && !row.error, 'Could not query app_users: ' + (row && row.error));
     assert(row.active === true, 'app_users.active must be true for logged-in user, got: ' + row.active);
+    await context.close();
+  });
+
+  // ── Section BUD: Budget Module interactive tests ──────────────────────
+  // Tests use page.evaluate() so they work in file:// mode without Supabase.
+  // They inject state directly and verify DOM outcomes.
+  console.log('\n── Section BUD: Budget Module ──');
+
+  await test('BUD-1: _budgetToggleCleared is an async function, not a recursive wrapper', async () => {
+    // Guards against the infinite recursion bug (fixed Jun 24 2026): a window wrapper
+    // that called _budgetToggleCleared() would recurse into itself → stack overflow →
+    // checkbox checked natively but DOM/state never updated.
+    const { page, context } = await openApp(browser);
+    const result = await page.evaluate(() => {
+      var fn = window._budgetToggleCleared;
+      if (!fn) return { error: 'window._budgetToggleCleared not found' };
+      var src = fn.toString();
+      // An async function's toString() starts with "async function" or "async ("
+      var isAsync = src.startsWith('async');
+      // A recursive wrapper would contain a call to _budgetToggleCleared( inside its body
+      // after the function signature — detect by stripping the declaration and checking the body
+      var bodyStart = src.indexOf('{');
+      var body = bodyStart >= 0 ? src.slice(bodyStart) : src;
+      var isRecursive = body.includes('_budgetToggleCleared(');
+      return { isAsync, isRecursive, srcPreview: src.slice(0, 80) };
+    });
+    assert(!result.error, result.error);
+    assert(result.isAsync, 'window._budgetToggleCleared is not async — expected async function. Got: ' + result.srcPreview);
+    assert(!result.isRecursive, 'window._budgetToggleCleared body calls _budgetToggleCleared() — infinite recursion bug has returned');
+    await context.close();
+  });
+
+  await test('BUD-2: _budgetDeleteTransaction is an async function, not a recursive wrapper', async () => {
+    const { page, context } = await openApp(browser);
+    const result = await page.evaluate(() => {
+      var fn = window._budgetDeleteTransaction;
+      if (!fn) return { error: 'window._budgetDeleteTransaction not found' };
+      var src = fn.toString();
+      var isAsync = src.startsWith('async');
+      var bodyStart = src.indexOf('{');
+      var body = bodyStart >= 0 ? src.slice(bodyStart) : src;
+      var isRecursive = body.includes('_budgetDeleteTransaction(');
+      return { isAsync, isRecursive, srcPreview: src.slice(0, 80) };
+    });
+    assert(!result.error, result.error);
+    assert(result.isAsync, 'window._budgetDeleteTransaction is not async — expected async function. Got: ' + result.srcPreview);
+    assert(!result.isRecursive, 'window._budgetDeleteTransaction body calls _budgetDeleteTransaction() — infinite recursion bug has returned');
+    await context.close();
+  });
+
+  await test('BUD-3: Budget tab renders reconciliation panel and transaction header', async () => {
+    const { page, context } = await openApp(browser);
+    await clickNav(page, 'budget');
+    await page.waitForTimeout(500);
+    const text = await page.evaluate(() => {
+      const el = document.getElementById('budget-content');
+      return el ? el.innerText : '';
+    });
+    assert(text.includes('Reconciliation'), 'Reconciliation panel not found in budget-content');
+    assert(text.includes('Transactions'), 'Transactions header not found in budget-content');
+    await context.close();
+  });
+
+  await test('BUD-4: Optimistic cleared toggle updates reconciliation immediately (no network)', async () => {
+    // Simulates the optimistic update without a Supabase call to verify the state machine works.
+    // This is the core logic that was broken by the infinite recursion bug.
+    const { page, context } = await openApp(browser);
+    const result = await page.evaluate(() => {
+      // Inject one test transaction for AMEX Gold, not cleared
+      var testId = 'bud4-test-uuid-1234';
+      _budgetTransactions = [{
+        id: testId,
+        transaction_date: '2026-06-01',
+        amount: '50.00',
+        transaction_type: 'household_expense',
+        category_key: 'entertainment',
+        description: 'BUD-4 test',
+        payment_account: 'AMEX Gold',
+        is_cleared: false,
+        cleared_date: null,
+        excluded_from_budget: false,
+        reimbursement_source: null,
+        reimbursement_status: null,
+        created_at: new Date().toISOString()
+      }];
+      _budgetTransLoadStatus = 'loaded';
+      _budgetReconAccount = 'AMEX Gold';
+      _budgetReconBalance = '';
+      activeSection = 'budget';
+      renderApp();
+      // Read cleared total before toggle
+      var beforeText = document.getElementById('budget-content') ? document.getElementById('budget-content').innerText : '';
+      var clearedBefore = beforeText.match(/Cleared\s*\$([0-9.,]+)/);
+      var clearedBeforeAmt = clearedBefore ? clearedBefore[1] : 'not found';
+      // Apply optimistic update (the same pattern _budgetToggleCleared uses)
+      _budgetTransactions = _budgetTransactions.map(function(t){
+        return t.id === testId ? Object.assign({}, t, { is_cleared: true, cleared_date: '2026-06-24' }) : t;
+      });
+      renderApp();
+      // Read cleared total after toggle
+      var afterText = document.getElementById('budget-content') ? document.getElementById('budget-content').innerText : '';
+      var clearedAfter = afterText.match(/Cleared\s*\$([0-9.,]+)/);
+      var clearedAfterAmt = clearedAfter ? clearedAfter[1] : 'not found';
+      // Restore state
+      _budgetTransactions = [];
+      _budgetTransLoadStatus = 'not_loaded';
+      return { clearedBeforeAmt, clearedAfterAmt };
+    });
+    assert(result.clearedBeforeAmt === '0.00', 'Cleared should be $0.00 before toggle, got: ' + result.clearedBeforeAmt);
+    assert(result.clearedAfterAmt === '50.00', 'Cleared should be $50.00 after toggle, got: ' + result.clearedAfterAmt);
+    await context.close();
+  });
+
+  await test('BUD-5: Delete confirm flow renders Yes/No buttons when _budgetDeleteConfirmId is set', async () => {
+    const { page, context } = await openApp(browser);
+    const result = await page.evaluate(() => {
+      var testId = 'bud5-delete-test-uuid';
+      _budgetTransactions = [{
+        id: testId,
+        transaction_date: '2026-06-01',
+        amount: '25.00',
+        transaction_type: 'household_expense',
+        category_key: 'groceries',
+        description: 'BUD-5 delete test',
+        payment_account: 'AMEX Gold',
+        is_cleared: false,
+        cleared_date: null,
+        excluded_from_budget: false,
+        reimbursement_source: null,
+        reimbursement_status: null,
+        created_at: new Date().toISOString()
+      }];
+      _budgetTransLoadStatus = 'loaded';
+      activeSection = 'budget';
+      // Trigger delete confirm state
+      _budgetDeleteConfirmId = testId;
+      renderApp();
+      var content = document.getElementById('budget-content') ? document.getElementById('budget-content').innerHTML : '';
+      var hasYes = content.includes('>Yes<');
+      var hasNo  = content.includes('>No<');
+      // Restore
+      _budgetDeleteConfirmId = null;
+      _budgetTransactions = [];
+      _budgetTransLoadStatus = 'not_loaded';
+      return { hasYes, hasNo };
+    });
+    assert(result.hasYes, 'Yes button not found in delete confirm UI');
+    assert(result.hasNo,  'No button not found in delete confirm UI');
     await context.close();
   });
 
