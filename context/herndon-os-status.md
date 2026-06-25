@@ -1,5 +1,5 @@
 # Herndon OS — Status & Context
-_Last updated: June 24, 2026 (Phase 5B complete + BR-3 resolved)_
+_Last updated: June 25, 2026 (session close — Wendy help panel, wishlist housekeeping, all done)_
 
 > Update this file at the end of any Cowork session that touches the OS. Keep it short — it is a handoff doc, not a changelog.
 
@@ -24,8 +24,15 @@ Phase 5B COMPLETE (June 24, 2026):
 - Fallback constants now use monthIso (not weekNum thresholds) so fallback and live cache agree on boundaries (Wk4 Jun 28 = June $13,638, not July).
 - SQL hardening after ChatGPT review (Batch 1): seed fail-loudly idempotency guard; seed DO block with adam_id lookup; COALESCE triggers; DROP IF EXISTS idempotency; SET search_path on all SECURITY DEFINER functions; cleared_date consistency CHECK; reimbursable_expense requires source+status at DB level; RLS uses is_allowed_user() / can_write_financials() / is_owner(); appendChild guard; empty-rules warning; goal_sweep labeled clearly; e2e budget tab added.
 - 687/0 regression tests passing (42 Phase 5B tests: 5B-1 through 5B-42).
-- SQL executed, code pushed, hotfixes applied (see Recent Work below).
-- ST-1 through ST-8 passed manually. Live rerun of ST-5 through ST-8 post-deploy + SQL cleanup (delete smoke test rows) still pending before Phase 5B is called complete.
+- e2e 63/0: BUD-1 through BUD-5 added and passing. BR-3 resolved (was environment-sensitive — model_week_overrides DB row for week 6 caused false bypass; fixed by save/replace/restore of overrideData inside test evaluate).
+- ST-1 through ST-8 all passed live. Smoke test rows cleaned from DB.
+- Collapsible help panel added to Budget tab for Wendy onboarding (commit 44282f4). Covers: adding transactions, reimbursables and status flow, clearing/reconciling, reading the budget printout.
+- Wishlist housekeeping complete (commit d24729a): WISHLIST_BUILD_TAGS[0] = Phase 5B Budget Module, [1] = Phase 5A Role Enforcement; Budget Module v1 seed entry added; three live Supabase wishlist rows closed out (Role enforcement, Migrate RLS to auth.uid(), Wendy access mode — all status=done with correct completed_in).
+
+Operating note — Wendy Budget tab rollout:
+- Official start: 2026-07-01
+- June: testing only (Adam entry, no Wendy live use)
+- July: parallel run alongside Quicken — do not cancel Quicken until parallel run confirms the Budget tab covers Wendy's full workflow
 
 Phase 5A COMPLETE (June 24, 2026):
 - index.html changes complete — USER_ROLE global, isOwnerUser() helper, checkAuthorization role fetch, Edit Week gate, IRA flag gate, Anthropic key gate, renderEditDrawer defense-in-depth guard.
@@ -136,6 +143,8 @@ Guardrails:
 ---
 
 ## Recent Work (June 2026)
+
+**Jun 25 (session close — commits 44282f4, d24729a):** Wendy help panel added to Budget tab — collapsible "How to use this tab" covering all four workflows (add transaction, reimbursables, clearing/reconciling, reading the printout). Wishlist housekeeping: WISHLIST_BUILD_TAGS updated (Phase 5B Budget Module now at [0], Phase 5A Role Enforcement at [1]); Budget Module v1 seed entry added; three live Supabase wishlist rows closed out (Role enforcement, Migrate RLS to auth.uid(), Wendy access mode — all marked done with correct completed_in tags). 687/0 regression, 63/0 e2e. Dashboard stable for 7/1 Wendy start.
 
 **Jun 24 (BR-3 resolved — commit 62de228):** BR-3 was a pre-existing e2e failure caused by environment sensitivity, not a code bug. `model_week_overrides` DB has rows for weeks 2, 3, 6, and 7. BR-3's rule targets week 6 (2026-07-14). After login, `loadAll()` populates `overrideData[6]` from the DB, causing `runModel()` to log the rule as `bypassed_by_model_week_override` instead of `applied`. Fix: save/replace/restore `overrideData` inside the BR-3 `page.evaluate()` so the test is fully isolated from live DB state. e2e now 63/0. BUD-1 through BUD-5 all pass.
 
