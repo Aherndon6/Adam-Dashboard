@@ -1,5 +1,5 @@
 # Herndon OS — Status & Context
-_Last updated: June 24, 2026 (Phase 5B — smoke tests pending post-deploy)_
+_Last updated: June 24, 2026 (Phase 5B complete + BR-3 resolved)_
 
 > Update this file at the end of any Cowork session that touches the OS. Keep it short — it is a handoff doc, not a changelog.
 
@@ -7,7 +7,7 @@ _Last updated: June 24, 2026 (Phase 5B — smoke tests pending post-deploy)_
 
 ## Current Phase
 
-**Phase 5B in final validation — Budget Module live, hotfixes pushed, live ST-5 through ST-8 rerun and SQL cleanup pending.**
+**Phase 5B COMPLETE. Budget Module v1 live, all smoke tests passing, e2e 63/0, BR-3 resolved. Dashboard stable — next milestone is Wendy's 7/1 Budget tab start.**
 
 Phase 4 delivered (complete):
 - Phase 4A — RLS tightened across all 11 Supabase tables; authenticated-only.
@@ -136,6 +136,8 @@ Guardrails:
 ---
 
 ## Recent Work (June 2026)
+
+**Jun 24 (BR-3 resolved — commit 62de228):** BR-3 was a pre-existing e2e failure caused by environment sensitivity, not a code bug. `model_week_overrides` DB has rows for weeks 2, 3, 6, and 7. BR-3's rule targets week 6 (2026-07-14). After login, `loadAll()` populates `overrideData[6]` from the DB, causing `runModel()` to log the rule as `bypassed_by_model_week_override` instead of `applied`. Fix: save/replace/restore `overrideData` inside the BR-3 `page.evaluate()` so the test is fully isolated from live DB state. e2e now 63/0. BUD-1 through BUD-5 all pass.
 
 **Jun 24 (Phase 5B post-ship hotfixes — session 2):** Three additional bugs found and fixed during manual smoke testing.
 

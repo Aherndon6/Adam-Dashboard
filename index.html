@@ -854,7 +854,7 @@ button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-vis
 // ── Constants (unchanged) ──────────────────────────────────────────────────
 // Simplified architecture — $8,250 total from LC · $6,500 operating floor · no legacy mechanics
 // Real-world moves: keep $2,250 in chk, move $2,750 sav→chk, move $1,000 LC→chk, move $2,250 LC→chk (Option 1 correction)
-const BUILD_TS='2026-06-24T23:25:13'; // updated each push — local time string
+const BUILD_TS='2026-06-24T23:37:37'; // updated each push — local time string
 const START_CHK=18037.73,START_SAV=3772.77,START_AMX=103.64,START_TAX=0,START_LC=13488.88;
 const EF_AMT=13488.88; // LC/EF balance — static this model year (no transfers in or out)
 const BASE_TAX=521.36,RET_SAV_XFR=3772.74;
@@ -4348,6 +4348,8 @@ var _budgetFilterAccount='all'; // 'all' or account name
 var _budgetFilterCleared='all'; // 'all'|'cleared'|'uncleared'
 var _budgetReconAccount='AMEX Gold'; // account for reconciliation panel
 var _budgetReconBalance=''; // statement balance entered by Wendy
+var _budgetShowHelp=false; // collapsible help panel
+window._budgetToggleHelp=function(){_budgetShowHelp=!_budgetShowHelp;renderApp();};
 
 function renderBudget(){
   var el=document.getElementById('budget-content');
@@ -4383,6 +4385,53 @@ function renderBudget(){
   html+='<div style="margin-left:auto">';
   html+='<button onclick="window._budgetOpenAddForm()" style="padding:6px 14px;background:var(--blue);color:#fff;border:none;border-radius:6px;font-size:12px;font-weight:600;cursor:pointer">+ Add Transaction</button>';
   html+='</div>';
+  html+='</div>';
+
+  // ── Help Panel (collapsible) ───────────────────────────────────────────────
+  html+='<div style="margin-bottom:12px">';
+  html+='<button onclick="window._budgetToggleHelp()" style="background:none;border:none;padding:0;font-size:12px;color:var(--blue);cursor:pointer;font-weight:600;display:flex;align-items:center;gap:5px">';
+  html+=(_budgetShowHelp?'▾':'▸')+' How to use this tab';
+  html+='</button>';
+  if(_budgetShowHelp){
+    html+='<div style="margin-top:10px;padding:14px 16px;background:var(--surface2);border:1px solid var(--border);border-radius:8px;font-size:12px;line-height:1.7;color:var(--ink)">';
+
+    html+='<div style="font-weight:700;font-size:12px;margin-bottom:6px;color:var(--ink)">Adding a transaction</div>';
+    html+='<ol style="margin:0 0 14px 18px;padding:0">';
+    html+='<li>Click <strong>+ Add Transaction</strong> (top right).</li>';
+    html+='<li>Fill in Date, Amount, Type, Category, and Payment Account. Description is optional but helpful.</li>';
+    html+='<li>For <strong>Type</strong>, choose <em>Household Expense</em> for anything paid from household money (groceries, gas, utilities, etc.). The category you pick is what shows up in the budget printout above.</li>';
+    html+='<li>Payment Account is required — pick the card or account you used.</li>';
+    html+='<li>Click <strong>Save</strong>. The transaction appears in the list and the budget printout updates immediately.</li>';
+    html+='</ol>';
+
+    html+='<div style="font-weight:700;font-size:12px;margin-bottom:6px;color:var(--ink)">Logging a Jabian reimbursable</div>';
+    html+='<ol style="margin:0 0 14px 18px;padding:0">';
+    html+='<li>Click <strong>+ Add Transaction</strong> and set Type to <em>Reimbursable (Business)</em>.</li>';
+    html+='<li>Reimbursement source defaults to Jabian. Status starts as <em>Pending</em> — leave it there until you submit the expense report.</li>';
+    html+='<li>When you submit to Jabian, edit the row and change Status to <em>Submitted</em>. When the check arrives, change it to <em>Reimbursed</em>.</li>';
+    html+='<li>Reimbursables show a <strong style="background:#fef3c7;color:#92400e;padding:1px 5px;border-radius:3px">REIMB</strong> badge and are <em>excluded</em> from budget totals — they do not count against your Spent or Remaining amounts.</li>';
+    html+='</ol>';
+
+    html+='<div style="font-weight:700;font-size:12px;margin-bottom:6px;color:var(--ink)">Clearing transactions against your statement</div>';
+    html+='<ol style="margin:0 0 14px 18px;padding:0">';
+    html+='<li>When your credit card or bank statement arrives, go through each transaction in the list and check the <strong>Cleared</strong> box for anything that appears on the statement.</li>';
+    html+='<li>Use the <strong>Account</strong> filter (top of the list) to show only one card at a time — makes it easier to work through one statement at a time.</li>';
+    html+='<li>In the <strong>Reconciliation</strong> panel, select the account and enter the statement ending balance. The panel shows your total cleared amount for that account vs the balance you entered.</li>';
+    html+='<li>When Cleared matches Statement Balance, you are reconciled. A green checkmark appears in the panel.</li>';
+    html+='<li>If they do not match, filter by that account and look for a missing or duplicate entry.</li>';
+    html+='</ol>';
+
+    html+='<div style="font-weight:700;font-size:12px;margin-bottom:6px;color:var(--ink)">Reading the budget printout</div>';
+    html+='<ul style="margin:0 0 6px 18px;padding:0">';
+    html+='<li><strong>Spent</strong> — what has been logged so far this month in that category.</li>';
+    html+='<li><strong>Budget</strong> — the planned amount for the month (set by Adam in the financial model).</li>';
+    html+='<li><strong>Remaining</strong> — Budget minus Spent. <span style="color:var(--green);font-weight:600">Green</span> means within budget, <span style="color:#ef4444;font-weight:600">red</span> means over.</li>';
+    html+='<li><em>Extra Pay Going to Spreadsheet</em> (under Misc) is the goal sweep — automatic and excluded from all totals.</li>';
+    html+='<li><strong>Available for Goals</strong> (bottom row) is income minus total living expenses — this feeds the savings and goals model.</li>';
+    html+='</ul>';
+
+    html+='</div>';
+  }
   html+='</div>';
 
   // ── Add / Edit Form ────────────────────────────────────────────────────────

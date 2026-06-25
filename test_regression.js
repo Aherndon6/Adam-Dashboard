@@ -5056,7 +5056,7 @@ test('5B-24: Budget printout total row label says "Monthly Living Expenses (excl
   try{htmlSrc=require('fs').readFileSync(require('path').join(__dirname,'index.html'),'utf8');}catch(e){}
   assert(htmlSrc.length>0,'Could not read index.html');
   var budgetFnIdx=htmlSrc.indexOf('function renderBudget()');
-  var budgetFnSrc=htmlSrc.slice(budgetFnIdx,budgetFnIdx+12000);
+  var budgetFnSrc=htmlSrc.slice(budgetFnIdx,budgetFnIdx+18000);
   assert(budgetFnSrc.includes('Monthly Living Expenses'),'total row must say Monthly Living Expenses');
   assert(budgetFnSrc.includes('excl. goal sweep'),'total row must note exclusion of goal sweep');
   assert(budgetFnSrc.includes('Available for Goals'),'must show Available for Goals row below total');
