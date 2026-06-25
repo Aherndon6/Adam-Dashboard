@@ -5259,6 +5259,26 @@ test('5B-40: _budgetLoadTransactions date boundary never produces end < start fo
   });
 });
 
+// ── 5B-41 / 5B-42: Guard against recursive window wrapper pattern ──────────
+// Root cause of ST-5: window._budgetToggleCleared was reassigned to a wrapper
+// that called _budgetToggleCleared() — which at runtime resolved to window.*
+// (same binding in global scope) → infinite recursion → stack overflow →
+// onchange handler failed silently → reconciliation never updated.
+test('5B-41: no recursive window wrapper for _budgetToggleCleared',()=>{
+  // The pattern "window._budgetToggleCleared=function(...){_budgetToggleCleared(" must not appear.
+  // Presence means the wrapper is calling itself (infinite recursion) because the async
+  // function declaration already sets window._budgetToggleCleared.
+  var match=html.match(/window\._budgetToggleCleared\s*=\s*function[^{]*\{[^}]*_budgetToggleCleared\s*\(/);
+  assert(!match,'window._budgetToggleCleared recursive wrapper found — causes infinite recursion and silently breaks the cleared toggle. Remove the wrapper; the async function declaration already exposes it on window.');
+});
+
+test('5B-42: no recursive window wrapper for _budgetDeleteTransaction',()=>{
+  // Same pattern for delete. The async function declaration at line ~4336 already sets
+  // window._budgetDeleteTransaction. A wrapper that calls _budgetDeleteTransaction() recurses.
+  var match=html.match(/window\._budgetDeleteTransaction\s*=\s*function[^{]*\{[^}]*_budgetDeleteTransaction\s*\(/);
+  assert(!match,'window._budgetDeleteTransaction recursive wrapper found — causes infinite recursion and silently breaks the delete confirm flow. Remove the wrapper; the async function declaration already exposes it on window.');
+});
+
 // ─────────────────────────────────────────────────────────────────────────
 console.log('\n╔══════════════════════════════════════════════════════════════╗');
 console.log('║                       RESULTS                               ║');
