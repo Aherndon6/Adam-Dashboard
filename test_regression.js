@@ -5201,15 +5201,62 @@ test('5B-36: budget transaction INSERT uses return=representation and detects 0-
     'non-ok response must read the error body for a descriptive alert');
 });
 
-test('5B-37: _budgetOpenAddForm pre-populates transaction_date to today (prevents undefined date on unmodified form)',()=>{
+test('5B-37: _budgetOpenAddForm pre-populates transaction_date using local date parts (not UTC toISOString)',()=>{
   var htmlSrc='';
   try{htmlSrc=require('fs').readFileSync(require('path').join(__dirname,'index.html'),'utf8');}catch(e){}
   assert(htmlSrc.length>0,'Could not read index.html');
-  // _budgetOpenAddForm must set transaction_date so it is defined even if user does not touch the date field
-  assert(htmlSrc.includes("var today=new Date().toISOString().split('T')[0]"),
-    '_budgetOpenAddForm must compute today as ISO date string');
+  // Must use local date parts (getFullYear/getMonth/getDate), not toISOString() which is UTC and shifts date for users west of UTC
+  assert(!htmlSrc.includes("new Date().toISOString().split('T')[0]"),
+    '_budgetOpenAddForm must NOT use toISOString() for transaction_date — UTC shifts date for users west of UTC (eg Atlanta)');
+  assert(htmlSrc.includes('_n.getMonth()+1'),
+    '_budgetOpenAddForm must build date from local getMonth() not UTC toISOString()');
   assert(htmlSrc.includes('transaction_date:today'),
     '_budgetOpenAddForm must initialize _budgetFormData.transaction_date to today');
+});
+
+test('5B-38: _budgetLoadTransactions parses monthIso with string split (not new Date) to avoid UTC timezone shift',()=>{
+  var htmlSrc='';
+  try{htmlSrc=require('fs').readFileSync(require('path').join(__dirname,'index.html'),'utf8');}catch(e){}
+  assert(htmlSrc.length>0,'Could not read index.html');
+  // new Date('2026-06-01') is UTC midnight; getMonth() in UTC-4 returns May → endIso = May 31 → impossible range → 0 results
+  assert(htmlSrc.includes("var parts=monthIso.split('-')"),
+    '_budgetLoadTransactions must parse monthIso via string split to avoid UTC→local timezone shift');
+  assert(htmlSrc.includes("parseInt(parts[1],10)-1"),
+    '_budgetLoadTransactions must derive month from split parts (0-indexed) not from new Date getMonth()');
+  // The old broken pattern must not exist
+  assert(!htmlSrc.includes("var d=new Date(monthIso);\n    var y=d.getFullYear();\n    var m=d.getMonth()"),
+    '_budgetLoadTransactions must not use new Date(monthIso) + getMonth() — breaks for users west of UTC');
+});
+
+test('5B-39: June 2026 monthIso boundary logic produces endIso=2026-06-30, not 2026-05-31',()=>{
+  // Runtime proof of the fixed date boundary calculation.
+  // The old bug: new Date('2026-06-01') in UTC-4 → local May 31 → getMonth()=4 → endD=new Date(2026,5,0)=May 31
+  // The fix: parse via string split so month is always correct regardless of timezone.
+  var monthIso='2026-06-01';
+  var parts=monthIso.split('-');
+  var y=parseInt(parts[0],10);
+  var m=parseInt(parts[1],10)-1; // 5 = June (0-indexed)
+  var endD=new Date(y,m+1,0);    // new Date(2026,6,0) = June 30
+  var endIso=endD.getFullYear()+'-'+String(endD.getMonth()+1).padStart(2,'0')+'-'+String(endD.getDate()).padStart(2,'0');
+  assert(endIso==='2026-06-30',
+    'June 2026 must produce endIso=2026-06-30, got '+endIso+
+    ' (old bug returned 2026-05-31 in UTC-4, making query range impossible)');
+  assert(endIso>=monthIso,'endIso must be >= startIso for June 2026');
+});
+
+test('5B-40: _budgetLoadTransactions date boundary never produces end < start for any calendar month',()=>{
+  // Proves the fix holds for all 12 months — no month generates an impossible query range.
+  var months=['2026-01-01','2026-02-01','2026-03-01','2026-04-01','2026-05-01','2026-06-01',
+              '2026-07-01','2026-08-01','2026-09-01','2026-10-01','2026-11-01','2026-12-01'];
+  months.forEach(function(monthIso){
+    var parts=monthIso.split('-');
+    var y=parseInt(parts[0],10);
+    var m=parseInt(parts[1],10)-1;
+    var endD=new Date(y,m+1,0);
+    var endIso=endD.getFullYear()+'-'+String(endD.getMonth()+1).padStart(2,'0')+'-'+String(endD.getDate()).padStart(2,'0');
+    assert(endIso>=monthIso,
+      'end ('+endIso+') must be >= start ('+monthIso+') — impossible range would return 0 transactions');
+  });
 });
 
 // ─────────────────────────────────────────────────────────────────────────

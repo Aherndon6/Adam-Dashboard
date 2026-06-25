@@ -4240,11 +4240,13 @@ async function _budgetLoadTransactions(monthIso){
   _budgetTransLoadStatus='loading';
   try{
     var h=await getAuthHeaders();
-    var d=new Date(monthIso);
-    var y=d.getFullYear();
-    var m=d.getMonth();
+    // Parse monthIso ('2026-06-01') as local date parts to avoid UTC→local timezone shift.
+    // new Date('2026-06-01') is UTC midnight; in UTC-4 getMonth() returns May, breaking the range.
+    var parts=monthIso.split('-');
+    var y=parseInt(parts[0],10);
+    var m=parseInt(parts[1],10)-1; // 0-indexed local month
     var startIso=monthIso; // already first of month
-    var endD=new Date(y,m+1,0); // last day of month
+    var endD=new Date(y,m+1,0); // last day of month (local)
     var endIso=endD.getFullYear()+'-'+String(endD.getMonth()+1).padStart(2,'0')+'-'+String(endD.getDate()).padStart(2,'0');
     var r=await fetch(
       SUPA_URL+'/rest/v1/budget_transactions?transaction_date=gte.'+startIso+'&transaction_date=lte.'+endIso+'&select=*&order=transaction_date.asc,created_at.asc',
@@ -4312,7 +4314,8 @@ async function _budgetSaveTransaction(formData, editId){
 async function _budgetToggleCleared(txId,currentCleared){
   try{
     var h=await getAuthHeaders();
-    var nowIso=new Date().toISOString().split('T')[0];
+    var _nc=new Date();
+    var nowIso=_nc.getFullYear()+'-'+String(_nc.getMonth()+1).padStart(2,'0')+'-'+String(_nc.getDate()).padStart(2,'0');
     var patch={is_cleared:!currentCleared,cleared_date:currentCleared?null:nowIso};
     await fetch(SUPA_URL+'/rest/v1/budget_transactions?id=eq.'+txId,{method:'PATCH',headers:Object.assign({},h,{'Content-Type':'application/json','Prefer':'return=minimal'}),body:JSON.stringify(patch)});
     _budgetTransactions=_budgetTransactions.map(function(t){return t.id===txId?Object.assign({},t,patch):t;});
@@ -4726,7 +4729,8 @@ window._budgetChangeMonth=function(iso){
   renderApp();
 };
 window._budgetOpenAddForm=function(){
-  var today=new Date().toISOString().split('T')[0];
+  var _n=new Date();
+  var today=_n.getFullYear()+'-'+String(_n.getMonth()+1).padStart(2,'0')+'-'+String(_n.getDate()).padStart(2,'0');
   _budgetShowAddForm=true;_budgetEditId=null;_budgetFormData={transaction_type:'household_expense',excluded_from_budget:false,transaction_date:today};
   renderApp();
 };
