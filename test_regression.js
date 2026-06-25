@@ -5175,6 +5175,43 @@ test('5B-34: fallback monthIso comment present — no weekNum threshold logic',(
   assert(!htmlSrc.includes('weekNum>=8&&weekNum<=30)?404:0'),'old weekNum>=8 GLP threshold must not exist in fallback');
 });
 
+test('5B-35: reconciliation statement balance input uses onchange (not oninput) — prevents focus loss on every keystroke',()=>{
+  var htmlSrc='';
+  try{htmlSrc=require('fs').readFileSync(require('path').join(__dirname,'index.html'),'utf8');}catch(e){}
+  assert(htmlSrc.length>0,'Could not read index.html');
+  // onchange fires on blur/enter only — does not re-render on every keystroke
+  assert(htmlSrc.includes('onchange="window._budgetSetReconBalance(this.value)"'),
+    'statement balance input must use onchange (not oninput) to avoid focus loss');
+  assert(!htmlSrc.includes('oninput="window._budgetSetReconBalance(this.value)"'),
+    'statement balance input must NOT use oninput (causes renderApp on every keystroke)');
+});
+
+test('5B-36: budget transaction INSERT uses return=representation and detects 0-row silent failure',()=>{
+  var htmlSrc='';
+  try{htmlSrc=require('fs').readFileSync(require('path').join(__dirname,'index.html'),'utf8');}catch(e){}
+  assert(htmlSrc.length>0,'Could not read index.html');
+  // return=representation (not return=minimal) so Supabase returns the inserted row
+  assert(htmlSrc.includes("editId?'return=minimal':'return=representation'"),
+    'budget transaction INSERT must use return=representation (not return=minimal) so 0-row inserts are detectable');
+  // 0-row detection
+  assert(htmlSrc.includes('0 rows inserted'),
+    'save must throw a descriptive error when 0 rows are inserted (RLS block detection)');
+  // Full error body captured on non-ok response
+  assert(htmlSrc.includes('errBody=await r.text()'),
+    'non-ok response must read the error body for a descriptive alert');
+});
+
+test('5B-37: _budgetOpenAddForm pre-populates transaction_date to today (prevents undefined date on unmodified form)',()=>{
+  var htmlSrc='';
+  try{htmlSrc=require('fs').readFileSync(require('path').join(__dirname,'index.html'),'utf8');}catch(e){}
+  assert(htmlSrc.length>0,'Could not read index.html');
+  // _budgetOpenAddForm must set transaction_date so it is defined even if user does not touch the date field
+  assert(htmlSrc.includes("var today=new Date().toISOString().split('T')[0]"),
+    '_budgetOpenAddForm must compute today as ISO date string');
+  assert(htmlSrc.includes('transaction_date:today'),
+    '_budgetOpenAddForm must initialize _budgetFormData.transaction_date to today');
+});
+
 // ─────────────────────────────────────────────────────────────────────────
 console.log('\n╔══════════════════════════════════════════════════════════════╗');
 console.log('║                       RESULTS                               ║');

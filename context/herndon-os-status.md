@@ -7,7 +7,7 @@ _Last updated: June 24, 2026 (Phase 5B)_
 
 ## Current Phase
 
-**Phase 5B IN PROGRESS — Budget Module built, SQL not yet executed, code not yet pushed.**
+**Phase 5B IN PROGRESS — Budget Module live. Two critical bugs fixed (not yet pushed).**
 
 Phase 4 delivered (complete):
 - Phase 4A — RLS tightened across all 11 Supabase tables; authenticated-only.
@@ -30,7 +30,7 @@ Phase 5B IN PROGRESS (June 24, 2026):
 Phase 5A COMPLETE (June 24, 2026):
 - index.html changes complete — USER_ROLE global, isOwnerUser() helper, checkAuthorization role fetch, Edit Week gate, IRA flag gate, Anthropic key gate, renderEditDrawer defense-in-depth guard.
 - 645/0 regression tests passing (21 new ROLE-A and ROLE-B tests added).
-- Supabase SQL executed (docs/phase-5a-role-enforcement.sql) — app_users roles set (adam@herndons.us = owner, wherndon22@gmail.com = household_admin), helper functions created (can_write_financials, is_owner, is_editor_or_owner dropped), write policies updated across 7 tables, goals row-qualified RLS live.
+- Supabase SQL executed (docs/phase-5a-role-enforcement.sql) — app_users roles set (aherndon6@gmail.com = owner, wherndon22@gmail.com = household_admin), helper functions created. Note: adam@herndons.us is in auth.users (seed uses this UUID for created_by) but is NOT in app_users and is NOT the live login identity. (can_write_financials, is_owner, is_editor_or_owner dropped), write policies updated across 7 tables, goals row-qualified RLS live.
 - Role model: Adam (owner) = full financial + platform/admin access. Wendy (household_admin) = full financial operating access, cannot write anthropic_key row. Unauthenticated = no access.
 - Manual RLS verification PASSED (docs/phase-5a-rls-manual-tests.md) — 5/5 curl tests:
   - Test 1: Wendy INSERT anthropic_key blocked (403)
@@ -137,6 +137,8 @@ Guardrails:
 
 ## Recent Work (June 2026)
 
+**Jun 24 (Phase 5B bugs):** Two critical bugs fixed. (1) Reconciliation statement balance input changed from oninput to onchange — was calling renderApp() on every keystroke, dropping input focus before each digit. (2) Transaction INSERT changed from return=minimal to return=representation — Supabase returns HTTP 201 even for RLS-blocked inserts with return=minimal so the code couldn't detect a 0-row save. Added 0-row detection with descriptive error. Also pre-populated transaction_date in _budgetOpenAddForm so it's never undefined if user doesn't touch the date field. 682/0 regression tests (3 new tests: 5B-35, 5B-36, 5B-37). Not yet pushed.
+
 **Jun 24 (Phase 5B):** Budget Module v1 built. SQL migration + seed files written (docs/phase-5b-budget-schema.sql, docs/phase-5b-seed.sql, docs/phase-5b-budget-rollback.sql). index.html: Budget nav tab, s-budget section, renderBudget() with full printout (Spent | Budget | Remaining, parent/child hierarchy, goal_sweep display-only), transaction add/edit/delete form, reimbursables integrated into main Transactions table (REIMB badge + status + cleared checkbox), reconciliation panel (cleared totals vs statement balance). BUDGET_CATEGORY_REGISTRY and BUDGET_PAYMENT_ACCOUNTS hardcoded. _getBudgetLivingExpenses() reads from Supabase budget_line_rules cache with monthIso-based JS fallback. is_cleared + cleared_date added to schema for reconciliation; cleared checkbox available for all transaction types. Payment account required; reimbursable type auto-defaults source=Jabian/status=pending. SQL hardened: seed idempotency guard, COALESCE triggers, SET search_path on SECURITY DEFINER functions, cleared_date CHECK, DB-level reimbursement source+status required. 679/0 regression tests (34 Phase 5B tests: 5B-1 through 5B-34). SQL not executed, code not pushed.
 
 **Jun 24 (Phase 5B prep):** Stats panel fix — _billsMo changed from hardcoded 4-item constant ($15,091) to _getBudgetLivingExpenses(currentW) with dynamic period logic: June $13,638 / July $14,488 / Aug-Dec $14,892 / Jan $13,738. Label updated to "Monthly Living Expenses" / "Available for Goals / Month". Regression test updated (dynamic expected value).
@@ -196,6 +198,7 @@ Ideas (further out): mobile improvements (id: 39), variables/settings page (id: 
 - Supabase project: usayoldrawwmjsmretin
 - Repo: Aherndon6/Adam-Dashboard
 - Single file: /Users/aherndon/Adam-Dashboard/index.html
+- **OS owner login: `aherndon6@gmail.com` (role=owner, active=true in app_users). Do NOT assume `adam@herndons.us` is the owner — it is in auth.users (seed uses it for created_by UUID) but NOT in app_users. Wendy: `wherndon22@gmail.com` (household_admin).**
 
 ---
 
@@ -204,8 +207,20 @@ Ideas (further out): mobile improvements (id: 39), variables/settings page (id: 
 - **IMMEDIATE ACTION REQUIRED — Adam must:**
   1. ~~Run docs/phase-5b-budget-schema.sql~~ DONE (Jun 24)
   2. ~~Run docs/phase-5b-seed.sql~~ DONE (Jun 24)
-  3. Push: `git add index.html test_regression.js e2e.js context/herndon-os-status.md docs/phase-5b-budget-schema.sql docs/phase-5b-seed.sql docs/phase-5b-budget-rollback.sql && git commit -m "Phase 5B: Budget module v1 — schema, seed, UI, reconciliation, stats panel migration" && git push`
-  4. Run verification queries at bottom of phase-5b-seed.sql to confirm June/July/Aug/Dec/Jan amounts
+  3. ~~Push Phase 5B initial commit~~ DONE (Jun 24, commit b4003b6)
+  4. ~~Run verification queries~~ DONE — June/July/Aug/Jan all passed
+  5. **NEXT: Run diagnostics SQL below, then push the two bug fixes**
+  6. Diagnostics SQL (run in Supabase SQL Editor — paste as single block):
+     ```sql
+     -- Check your account's write role
+     SELECT au.email, app.role, app.active
+     FROM app_users app
+     JOIN auth.users au ON au.id = app.auth_id
+     ORDER BY app.role;
+     -- Check if any transactions were inserted during smoke test
+     SELECT COUNT(*), transaction_type FROM budget_transactions GROUP BY transaction_type;
+     ```
+  7. Push bug fixes: `git add index.html test_regression.js context/herndon-os-status.md && git commit -m "Phase 5B bugs: fix recon balance focus loss (oninput→onchange), fix silent INSERT failure (return=representation + 0-row detection), pre-populate transaction_date" && git push`
 - **KNOWN E2E EXCEPTION — BR-3 pre-existing failure:** E2E test BR-3 ("Budget Rules resume (action=applied) in non-overridden week after overridden week") fails with `got action: bypassed_by_model_week_override`. This test has been failing since commit 72f6db3 ("Phase 5: Budget Rules delta foundation"), which predates Phase 5A and Phase 5B. Phase 5B changes make zero modifications to model_week_override, ruleAudit, or bypassed_by_model logic — confirmed by git diff. Phase 5B e2e areas (Budget tab smoke, no console errors, tab renders) all passed in the 57/1 run. Push proceeded with documented exception. BR-3 to be investigated separately as a standalone Budget Rules / override behavior issue.
 - **Diablos/GLP not in cash-flow model:** Diablos ($750/mo Jul-Dec) and Wendy GLP ($404/mo Aug-Dec) are now in budget_line_rules and affect Budget view and Goals stats panel. They are NOT in the 31-week cash-flow checking balance model. The week-by-week cash-flow projections are still understated for July onward. Separate task — update WD array or add cash-flow budget_rules rows.
 - **Budget parallel run starts:** Wendy runs Budget OS alongside Quicken through August-September. Success criteria before canceling Quicken (September 2026): one full month where category totals match, card totals reconcile, reimbursables tracked separately, misc.goal_sweep handled correctly.

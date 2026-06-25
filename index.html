@@ -4286,9 +4286,18 @@ async function _budgetSaveTransaction(formData, editId){
     };
     var method=editId?'PATCH':'POST';
     var url=SUPA_URL+'/rest/v1/budget_transactions'+(editId?'?id=eq.'+editId:'');
-    var hdrs=Object.assign({},h,{'Content-Type':'application/json','Prefer':editId?'return=minimal':'return=minimal'});
+    var hdrs=Object.assign({},h,{'Content-Type':'application/json','Prefer':editId?'return=minimal':'return=representation'});
     var r=await fetch(url,{method:method,headers:hdrs,body:JSON.stringify(editId?payload:[payload])});
-    if(!r.ok){throw new Error('HTTP '+r.status);}
+    if(!r.ok){
+      var errBody='';try{errBody=await r.text();}catch(e2){}
+      throw new Error('HTTP '+r.status+(errBody?' — '+errBody:''));
+    }
+    if(!editId){
+      var inserted=await r.json();
+      if(!inserted||!inserted.length){
+        throw new Error('0 rows inserted — your account may not have write access. Run this in Supabase SQL Editor: SELECT au.email, app.role, app.active FROM app_users app JOIN auth.users au ON au.id = app.auth_id ORDER BY app.role;');
+      }
+    }
     _budgetShowAddForm=false;_budgetEditId=null;_budgetFormData={};
     await _budgetLoadTransactions(_budgetGetMonthIso());
   }catch(e){
@@ -4665,7 +4674,7 @@ function _renderBudgetRecon(monthIso){
   BUDGET_PAYMENT_ACCOUNTS.forEach(function(a){html+='<option value="'+esc(a)+'"'+(_budgetReconAccount===a?' selected':'')+'>'+esc(a)+'</option>';});
   html+='</select>';
   html+='<label style="font-size:11px;font-weight:600;color:var(--muted)">Statement balance:</label>';
-  html+='<input type="number" min="0" step="0.01" value="'+(_budgetReconBalance||'')+'" placeholder="0.00" style="width:110px;padding:5px 8px;border:1px solid var(--border);border-radius:6px;font-size:12px;background:var(--surface2);color:var(--ink)" oninput="window._budgetSetReconBalance(this.value)">';
+  html+='<input type="number" min="0" step="0.01" value="'+(_budgetReconBalance||'')+'" placeholder="0.00" style="width:110px;padding:5px 8px;border:1px solid var(--border);border-radius:6px;font-size:12px;background:var(--surface2);color:var(--ink)" onchange="window._budgetSetReconBalance(this.value)">';
   html+='</div>';
 
   // Compute totals for selected account
@@ -4717,7 +4726,8 @@ window._budgetChangeMonth=function(iso){
   renderApp();
 };
 window._budgetOpenAddForm=function(){
-  _budgetShowAddForm=true;_budgetEditId=null;_budgetFormData={transaction_type:'household_expense',excluded_from_budget:false};
+  var today=new Date().toISOString().split('T')[0];
+  _budgetShowAddForm=true;_budgetEditId=null;_budgetFormData={transaction_type:'household_expense',excluded_from_budget:false,transaction_date:today};
   renderApp();
 };
 window._budgetStartEdit=function(id){
