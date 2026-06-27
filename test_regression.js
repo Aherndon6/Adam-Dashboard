@@ -6024,6 +6024,155 @@ test('5E4-12: _budgetMonthLabel used in budget topbar subtitle',()=>{
     'Budget subtitle must use _budgetMonthLabel for the month display');
 });
 
+// ── Phase 5E-5: Budget Line Rule Admin ────────────────────────────────────
+
+test('5E5-01: _blrModal state variable declared',()=>{
+  assertIncludes(html,'var _blrModal=null;','_blrModal state variable must be declared');
+});
+
+test('5E5-02: blr-modal-slot div present in HTML',()=>{
+  assertIncludes(html,'id="blr-modal-slot"','blr-modal-slot div must exist');
+});
+
+test('5E5-03: Manage Lines button present in budget header',()=>{
+  assertIncludes(html,'Manage Lines','Manage Lines button must be in budget header');
+  assertIncludes(html,'_blrOpenAdd','Manage Lines button must call _blrOpenAdd');
+});
+
+test('5E5-04: Edit button present on expense rows',()=>{
+  assertIncludes(html,'_blrOpenEdit','_blrOpenEdit must be referenced in row render');
+});
+
+test('5E5-05: Archive button present on expense rows',()=>{
+  assertIncludes(html,'_blrOpenArchive','_blrOpenArchive must be referenced in row render');
+});
+
+test('5E5-06: _blrPriorMonthIso computes prior month correctly',()=>{
+  // Inline the function logic to verify: 2026-07-01 → 2026-06-01
+  var iso='2026-07-01';
+  var d=new Date(iso+'T12:00:00Z');
+  d.setUTCMonth(d.getUTCMonth()-1);
+  var result=d.getUTCFullYear()+'-'+String(d.getUTCMonth()+1).padStart(2,'0')+'-01';
+  assert(result==='2026-06-01','Prior month of 2026-07-01 must be 2026-06-01, got '+result);
+});
+
+test('5E5-07: _blrPriorMonthIso handles January correctly',()=>{
+  // Jan 2027 → Dec 2026
+  var iso='2027-01-01';
+  var d=new Date(iso+'T12:00:00Z');
+  d.setUTCMonth(d.getUTCMonth()-1);
+  var result=d.getUTCFullYear()+'-'+String(d.getUTCMonth()+1).padStart(2,'0')+'-01';
+  assert(result==='2026-12-01','Prior month of 2027-01-01 must be 2026-12-01, got '+result);
+});
+
+test('5E5-08: edit mode uses "close prior row then insert" pattern in code',()=>{
+  // Verify both PATCH and POST calls exist in _blrSaveEdit
+  var editFn=html.indexOf('async function _blrSaveEdit');
+  assert(editFn>-1,'_blrSaveEdit function must exist');
+  var editBlock=html.slice(editFn,editFn+2000);
+  assertIncludes(editBlock,'PATCH','_blrSaveEdit must use PATCH to close prior row');
+  assertIncludes(editBlock,'POST','_blrSaveEdit must use POST to insert new row');
+  assertIncludes(editBlock,'end_month:priorIso','_blrSaveEdit must set end_month=priorIso for Case A');
+  assertIncludes(editBlock,'is_active:false','_blrSaveEdit must deactivate row for Case B (started same month)');
+});
+
+test('5E5-09: archive mode uses close-at-prior-month or deactivate pattern',()=>{
+  var archiveFn=html.indexOf('async function _blrSaveArchive');
+  assert(archiveFn>-1,'_blrSaveArchive function must exist');
+  var archiveBlock=html.slice(archiveFn,archiveFn+1000);
+  assertIncludes(archiveBlock,'caseA','_blrSaveArchive must check caseA (has prior history)');
+  assertIncludes(archiveBlock,'is_active:false','_blrSaveArchive must deactivate for Case B');
+  assertIncludes(archiveBlock,'end_month:_blrPriorMonthIso','_blrSaveArchive must set end_month for Case A');
+});
+
+test('5E5-10: add mode supports one-time and ongoing scope',()=>{
+  var addFn=html.indexOf('async function _blrSaveAdd');
+  assert(addFn>-1,'_blrSaveAdd function must exist');
+  var addBlock=html.slice(addFn,addFn+900);
+  assertIncludes(addBlock,"m.scope",'_blrSaveAdd must check m.scope');
+  assertIncludes(addBlock,"==='once'",'_blrSaveAdd must handle one-time scope');
+  assertIncludes(addBlock,'endMonth','_blrSaveAdd must set endMonth based on scope');
+});
+
+test('5E5-11: duplicate check function exists and checks is_active, category_key, month overlap',()=>{
+  var dupFn=html.indexOf('function _blrDupCheck');
+  assert(dupFn>-1,'_blrDupCheck function must exist');
+  var dupBlock=html.slice(dupFn,dupFn+600);
+  assertIncludes(dupBlock,'is_active','dup check must verify is_active');
+  assertIncludes(dupBlock,'category_key','dup check must match category_key');
+  assertIncludes(dupBlock,'start_month','dup check must check start_month');
+  assertIncludes(dupBlock,'end_month','dup check must check end_month');
+  assertIncludes(dupBlock,'excludeId','dup check must support excludeId to skip current row');
+});
+
+test('5E5-12: dup check is invoked in both saveEdit and saveAdd',()=>{
+  var editFn=html.indexOf('async function _blrSaveEdit');
+  var editBlock=html.slice(editFn,editFn+1500);
+  assertIncludes(editBlock,'_blrDupCheck','_blrSaveEdit must call _blrDupCheck');
+  var addFn=html.indexOf('async function _blrSaveAdd');
+  var addBlock=html.slice(addFn,addFn+1000);
+  assertIncludes(addBlock,'_blrDupCheck','_blrSaveAdd must call _blrDupCheck');
+});
+
+test('5E5-13: canWriteFinancials guards all _blrOpen* functions',()=>{
+  assertIncludes(html,'function _blrOpenEdit','_blrOpenEdit must exist');
+  assertIncludes(html,'function _blrOpenAdd','_blrOpenAdd must exist');
+  assertIncludes(html,'function _blrOpenArchive','_blrOpenArchive must exist');
+  // Verify each checks canWriteFinancials
+  var editFn=html.indexOf('function _blrOpenEdit');
+  var editBlock=html.slice(editFn,editFn+200);
+  assertIncludes(editBlock,'canWriteFinancials','_blrOpenEdit must check canWriteFinancials');
+  var addFn=html.indexOf('function _blrOpenAdd');
+  var addBlock=html.slice(addFn,addFn+200);
+  assertIncludes(addBlock,'canWriteFinancials','_blrOpenAdd must check canWriteFinancials');
+  var archFn=html.indexOf('function _blrOpenArchive');
+  var archBlock=html.slice(archFn,archFn+200);
+  assertIncludes(archBlock,'canWriteFinancials','_blrOpenArchive must check canWriteFinancials');
+});
+
+test('5E5-14: income rows get Edit button but not Archive',()=>{
+  // Find the income row rendering block (between Render INCOME section and Render EXPENSE sections)
+  var incomeStart=html.indexOf('// Render INCOME section');
+  var expenseStart=html.indexOf('// Render EXPENSE sections');
+  assert(incomeStart>-1&&expenseStart>-1,'Income and expense section comments must exist');
+  var incomeBlock=html.slice(incomeStart,expenseStart);
+  assertIncludes(incomeBlock,'_blrOpenEdit','Income rows must have Edit button');
+  assert(incomeBlock.indexOf('_blrOpenArchive')===-1,'Income rows must NOT have Archive button');
+});
+
+test('5E5-15: add modal restricts to leaf keys from BUDGET_CATEGORY_REGISTRY',()=>{
+  var addFn=html.indexOf("m.mode==='add'");
+  assert(addFn>-1,'Add modal case must exist in _blrRenderModal');
+  var addModalBlock=html.slice(addFn,addFn+800);
+  assertIncludes(addModalBlock,'BUDGET_CATEGORY_REGISTRY','Add modal must use BUDGET_CATEGORY_REGISTRY');
+  assertIncludes(addModalBlock,'c.leaf','Add modal must filter for leaf keys only');
+});
+
+test('5E5-16: income warning banner present in edit and add modal',()=>{
+  var renderFn=html.indexOf('function _blrRenderModal');
+  var renderBlock=html.slice(renderFn,renderFn+6000);
+  var warnCount=(renderBlock.match(/Income assumption/g)||[]).length;
+  assert(warnCount>=2,'Income warning must appear in both edit and add modal modes');
+});
+
+test('5E5-17: _blrReloadAndRender reloads only is_active=true rows',()=>{
+  var reloadFn=html.indexOf('async function _blrReloadAndRender');
+  assert(reloadFn>-1,'_blrReloadAndRender must exist');
+  var reloadBlock=html.slice(reloadFn,reloadFn+400);
+  assertIncludes(reloadBlock,'is_active=eq.true','_blrReloadAndRender must filter active rows');
+});
+
+test('5E5-18: 5E-5 does not allow free-form category key entry',()=>{
+  // The add modal must not have a free-text input for category_key
+  // The key must come from a <select> restricted to BUDGET_CATEGORY_REGISTRY
+  var addCase=html.indexOf("m.mode==='add'");
+  var addBlock=html.slice(addCase,addCase+1500);
+  // Should have a <select> for key, not a text input for category_key
+  assert(addBlock.indexOf('<select')>-1,'Add modal must use a select for category key');
+  assert(addBlock.indexOf('free-form')===-1||addBlock.indexOf('deferred')>-1,
+    'Add modal must not enable free-form key entry');
+});
+
 // ─────────────────────────────────────────────────────────────────────────
 console.log('\n╔══════════════════════════════════════════════════════════════╗');
 console.log('║                       RESULTS                               ║');

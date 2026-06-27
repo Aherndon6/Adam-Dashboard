@@ -843,6 +843,7 @@ button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-vis
   </div>
 </div>
 <div id="scenario-modal-slot"></div>
+<div id="blr-modal-slot"></div>
 <div class="mob-bottom-nav" id="mob-bottom-nav">
   <button class="mob-nav-btn active" id="mob-nav-overview" onclick="setSection('overview')"><span class="icon">◉</span><span>Overview</span></button>
   <button class="mob-nav-btn" id="mob-nav-weekly" onclick="setSection('weekly')"><span class="icon">◈</span><span>Weekly</span></button>
@@ -1276,6 +1277,7 @@ var whatIfResult=null;
 // ── Budget Module state (Phase 5B) ────────────────────────────────────────
 var _budgetLineRulesCache=null;           // null=not loaded; []=empty; [...]= rules array
 var _budgetLineRulesLoadStatus='not_loaded'; // 'not_loaded'|'loaded'|'failed'
+var _blrModal=null; // Phase 5E-5: Budget Line Rule Admin modal state; null=closed
 var _budgetTransactions=[];               // loaded for selected month
 var _budgetTransLoadStatus='not_loaded';  // 'not_loaded'|'loaded'|'failed'
 var _budgetSelectedMonth='';             // ISO first-of-month e.g. '2026-06-01'; '' = current month
@@ -5139,7 +5141,10 @@ function renderBudget(){
   } else if(_budgetLineRulesCache&&_budgetLineRulesCache.length===0){
     html+='<span style="font-size:11px;color:#ef4444;font-weight:600">⚠ No budget rules found — run phase-5b-seed.sql in Supabase</span>';
   }
-  html+='<div style="margin-left:auto">';
+  html+='<div style="margin-left:auto;display:flex;gap:8px;align-items:center">';
+  if(canWriteFinancials()){
+    html+='<button onclick="window._blrOpenAdd(\''+monthIso+'\')" style="padding:6px 12px;background:var(--surface2);color:var(--ink);border:1px solid var(--border);border-radius:6px;font-size:12px;font-weight:600;cursor:pointer">Manage Lines</button>';
+  }
   html+='<button onclick="window._budgetOpenAddForm()" style="padding:6px 14px;background:var(--blue);color:#fff;border:none;border-radius:6px;font-size:12px;font-weight:600;cursor:pointer">+ Add Transaction</button>';
   html+='</div>';
   html+='</div>';
@@ -5223,7 +5228,12 @@ function renderBudget(){
     var bud=_getBudgetAmount(c.key,monthIso);
     incomeTotal+=bud;
     html+='<tr style="border-bottom:1px solid var(--border)">';
-    html+='<td style="padding:5px 8px 5px 20px;color:var(--muted)">'+c.label+'</td>';
+    var _blrIncomeActions=canWriteFinancials()
+      ?'<span style="float:right;margin-left:6px">'
+        +'<button onclick="window._blrOpenEdit(\''+c.key+'\',\''+monthIso+'\')" style="font-size:10px;padding:1px 5px;border:1px solid var(--border);border-radius:3px;background:var(--surface2);cursor:pointer;color:var(--ink)">Edit</button>'
+        +'</span>'
+      :'';
+    html+='<td style="padding:5px 8px 5px 20px;color:var(--muted)">'+_blrIncomeActions+c.label+'</td>';
     html+='<td style="text-align:right;padding:5px 8px;color:var(--muted)">—</td>';
     html+='<td style="text-align:right;padding:5px 8px;color:var(--blue)">'+f(bud)+'</td>';
     html+='<td style="text-align:right;padding:5px 8px;color:var(--muted)">—</td>';
@@ -5285,9 +5295,15 @@ function renderBudget(){
       var indent=isStandalone?'8px':'20px';
       // misc.goal_sweep: included in totals but marked as the flexible sweep line
       var isGoalSweep=c.key==='misc.goal_sweep';
+      var _blrExpActions=canWriteFinancials()
+        ?'<span style="float:right;margin-left:6px">'
+          +'<button onclick="window._blrOpenArchive(\''+c.key+'\',\''+monthIso+'\')" style="font-size:10px;padding:1px 5px;border:1px solid #fca5a5;border-radius:3px;background:var(--redSoft);cursor:pointer;color:#dc2626">Archive</button>'
+          +' <button onclick="window._blrOpenEdit(\''+c.key+'\',\''+monthIso+'\')" style="font-size:10px;padding:1px 5px;border:1px solid var(--border);border-radius:3px;background:var(--surface2);cursor:pointer;color:var(--ink)">Edit</button>'
+          +'</span>'
+        :'';
       html+='<tr style="border-bottom:1px solid var(--border)'+(isGoalSweep?';background:var(--bg)':'')+'">';
       html+='<td style="padding:5px 8px 5px '+indent+(isGoalSweep?';font-style:italic':'')+'">'
-        +c.label+(isGoalSweep?' <span style="font-size:10px;color:var(--muted)">(flexible sweep line)</span>':'')+'</td>';
+        +_blrExpActions+c.label+(isGoalSweep?' <span style="font-size:10px;color:var(--muted)">(flexible sweep line)</span>':'')+'</td>';
       html+='<td style="text-align:right;padding:5px 8px">'+(s>0?f(s):'—')+'</td>';
       html+='<td style="text-align:right;padding:5px 8px;color:var(--blue)">'+(b>0?f(b):'—')+'</td>';
       html+='<td style="text-align:right;padding:5px 8px;color:'+(rem<0?'#ef4444':(rem===b&&s===0)?'var(--muted)':'var(--green)')+'">'+f(rem)+'</td>';
@@ -6243,6 +6259,309 @@ function _budgetAvailableMonths(){
   dates.forEach(function(iso){months.push({iso:iso,label:_budgetMonthLabel(iso)});});
   return months;
 }
+
+// ── Phase 5E-5: Budget Line Rule Admin ──────────────────────────────────────
+// Manages budget_line_rules rows via modal UI in the Budget tab.
+// Scope: existing BUDGET_CATEGORY_REGISTRY leaf keys only (no free-form keys).
+// Edit: "from selected month forward" only. No "selected month only" in 5E-5.
+// Add: one-time (start=end=month) or ongoing (start=month, end=null).
+// Archive: close at prior month (has history), or set is_active=false (no history).
+// New category creation deferred to Phase 5E-6 / Category Registry Admin.
+
+// Returns ISO first-of-prior-month. '2026-07-01' → '2026-06-01'
+function _blrPriorMonthIso(monthIso){
+  var d=new Date(monthIso+'T12:00:00Z');
+  d.setUTCMonth(d.getUTCMonth()-1);
+  return d.getUTCFullYear()+'-'+String(d.getUTCMonth()+1).padStart(2,'0')+'-01';
+}
+
+// Find first active row for key active in monthIso, or null
+function _blrFindActive(key,monthIso){
+  if(!_budgetLineRulesCache)return null;
+  return _budgetLineRulesCache.find(function(r){
+    if(!r.is_active)return false;
+    if(r.category_key!==key)return false;
+    if(r.start_month>monthIso)return false;
+    if(r.end_month!==null&&r.end_month!==undefined&&r.end_month<monthIso)return false;
+    return true;
+  })||null;
+}
+
+// Returns duplicate active row for key in monthIso (excluding excludeId), or null
+function _blrDupCheck(key,monthIso,excludeId){
+  if(!_budgetLineRulesCache)return null;
+  return _budgetLineRulesCache.find(function(r){
+    if(!r.is_active)return false;
+    if(r.category_key!==key)return false;
+    if(excludeId&&r.id===excludeId)return false;
+    if(r.start_month>monthIso)return false;
+    if(r.end_month!==null&&r.end_month!==undefined&&r.end_month<monthIso)return false;
+    return true;
+  })||null;
+}
+
+function _blrCloseModal(){
+  _blrModal=null;
+  var slot=document.getElementById('blr-modal-slot');
+  if(slot)slot.innerHTML='';
+}
+
+function _blrRenderModal(){
+  var slot=document.getElementById('blr-modal-slot');
+  if(!slot)return;
+  if(!_blrModal){slot.innerHTML='';return;}
+  var m=_blrModal;
+  var html='<div class="sc-modal-overlay" onclick="if(event.target===this&&!window._blrModal.saving)window._blrCloseModal()">';
+  html+='<div class="sc-modal" style="width:460px;max-width:96vw;max-height:90vh;overflow-y:auto">';
+
+  if(m.mode==='edit'){
+    var cat=BUDGET_CATEGORY_REGISTRY.find(function(c){return c.key===m.key;})||{};
+    var parentCat=cat.parent?BUDGET_CATEGORY_REGISTRY.find(function(c){return c.key===cat.parent;}):null;
+    var monthLabel=_budgetMonthLabel(m.monthIso);
+    var currentAmt=m.currentRow?parseFloat(m.currentRow.amount):null;
+    html+='<div class="sc-modal-title">Edit Budget Rule</div>';
+    if(m.isIncome){
+      html+='<div style="background:#fef3c7;border:1px solid #f59e0b;border-radius:6px;padding:8px 10px;font-size:11px;color:#92400e;margin-bottom:12px">⚠ <strong>Income assumption.</strong> Editing this changes Total Income and budget balance.</div>';
+    }
+    html+='<div class="sc-modal-body" style="margin-bottom:4px">';
+    html+='<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:12px;font-size:12px">';
+    html+='<div><span style="font-size:10px;color:var(--muted);font-weight:700;text-transform:uppercase;letter-spacing:.05em">Category</span><br>'+esc(cat.label||m.key)+'</div>';
+    html+='<div><span style="font-size:10px;color:var(--muted);font-weight:700;text-transform:uppercase;letter-spacing:.05em">Group</span><br>'+esc(parentCat?parentCat.label:'(standalone)')+'</div>';
+    html+='<div><span style="font-size:10px;color:var(--muted);font-weight:700;text-transform:uppercase;letter-spacing:.05em">Scope</span><br>From '+monthLabel+' forward</div>';
+    html+='<div><span style="font-size:10px;color:var(--muted);font-weight:700;text-transform:uppercase;letter-spacing:.05em">Current Amount</span><br>'+(currentAmt!==null?f(currentAmt):'none')+'</div>';
+    html+='</div>';
+    html+='<div class="modal-field"><label class="modal-label">Line Label</label>';
+    html+='<input class="modal-input" id="blr-label" type="text" value="'+esc(m.label)+'" oninput="window._blrModal.label=this.value"></div>';
+    html+='<div class="modal-field"><label class="modal-label">Amount ($)</label>';
+    html+='<input class="modal-input" id="blr-amount" type="number" min="0" step="1" value="'+esc(String(m.amount))+'" oninput="window._blrModal.amount=this.value"></div>';
+    html+='<div style="background:var(--surface2);border-radius:6px;padding:8px 10px;font-size:11px;color:var(--muted);margin-bottom:12px">';
+    html+='Prior months unchanged. A new rule starting '+monthLabel+' will replace the current amount.';
+    html+='</div>';
+    if(m.error){html+='<div style="color:#ef4444;font-size:12px;margin-bottom:8px">'+esc(m.error)+'</div>';}
+    html+='</div>';
+    html+='<div class="sc-modal-btns">';
+    html+='<button class="sc-modal-cancel" onclick="window._blrCloseModal()">Cancel</button>';
+    if(m.saving){html+='<button class="sc-modal-confirm" disabled style="opacity:.6;cursor:default">Saving…</button>';}
+    else{html+='<button class="sc-modal-confirm" onclick="window._blrSaveEdit()">Save</button>';}
+    html+='</div>';
+
+  } else if(m.mode==='add'){
+    var monthLabel=_budgetMonthLabel(m.monthIso);
+    var leafKeys=BUDGET_CATEGORY_REGISTRY.filter(function(c){return c.leaf;});
+    html+='<div class="sc-modal-title">Add Budget Rule</div>';
+    html+='<div class="sc-modal-body" style="margin-bottom:4px">';
+    html+='<div class="modal-field"><label class="modal-label">Category (existing registry keys only)</label>';
+    html+='<select class="modal-input" id="blr-key" onchange="window._blrOnAddKeyChange(this.value)">';
+    html+='<option value="">— Select category —</option>';
+    var lastParent='';
+    leafKeys.forEach(function(c){
+      var parentCat=c.parent?BUDGET_CATEGORY_REGISTRY.find(function(p){return p.key===c.parent;}):null;
+      var parentLabel=parentCat?parentCat.label:(c.isIncome?'Income':'Standalone');
+      if(parentLabel!==lastParent){
+        if(lastParent!=='')html+='</optgroup>';
+        html+='<optgroup label="'+esc(parentLabel)+'">';
+        lastParent=parentLabel;
+      }
+      var alreadyActive=!!_blrDupCheck(c.key,m.monthIso,null);
+      html+='<option value="'+esc(c.key)+'"'+(m.key===c.key?' selected':'')+(alreadyActive?' disabled':'')+'>';
+      html+=esc(c.label)+(alreadyActive?' (active this month)':'');
+      html+='</option>';
+    });
+    if(lastParent!=='')html+='</optgroup>';
+    html+='</select></div>';
+    if(m.isIncome){
+      html+='<div style="background:#fef3c7;border:1px solid #f59e0b;border-radius:6px;padding:8px 10px;font-size:11px;color:#92400e;margin-bottom:10px">⚠ <strong>Income assumption.</strong> This adds to Total Income.</div>';
+    }
+    html+='<div class="modal-field"><label class="modal-label">Line Label</label>';
+    html+='<input class="modal-input" id="blr-label" type="text" value="'+esc(m.label)+'" oninput="window._blrModal.label=this.value"></div>';
+    html+='<div class="modal-field"><label class="modal-label">Amount ($)</label>';
+    html+='<input class="modal-input" id="blr-amount" type="number" min="0" step="1" value="'+esc(String(m.amount))+'" oninput="window._blrModal.amount=this.value"></div>';
+    html+='<div class="modal-field"><label class="modal-label">Scope</label>';
+    html+='<div style="display:flex;flex-direction:column;gap:6px;margin-top:4px">';
+    html+='<label style="display:flex;align-items:center;gap:8px;font-size:13px;cursor:pointer">';
+    html+='<input type="radio" name="blr-scope" value="forward"'+(m.scope==='forward'?' checked':'');
+    html+=' onchange="window._blrModal.scope=\'forward\';window._blrRenderModal()"> From '+monthLabel+' forward (ongoing)';
+    html+='</label>';
+    html+='<label style="display:flex;align-items:center;gap:8px;font-size:13px;cursor:pointer">';
+    html+='<input type="radio" name="blr-scope" value="once"'+(m.scope==='once'?' checked':'');
+    html+=' onchange="window._blrModal.scope=\'once\';window._blrRenderModal()"> One-time ('+monthLabel+' only)';
+    html+='</label>';
+    html+='</div></div>';
+    if(m.error){html+='<div style="color:#ef4444;font-size:12px;margin-bottom:8px">'+esc(m.error)+'</div>';}
+    html+='</div>';
+    html+='<div class="sc-modal-btns">';
+    html+='<button class="sc-modal-cancel" onclick="window._blrCloseModal()">Cancel</button>';
+    if(m.saving){html+='<button class="sc-modal-confirm" disabled style="opacity:.6;cursor:default">Saving…</button>';}
+    else{html+='<button class="sc-modal-confirm" onclick="window._blrSaveAdd()">Add Rule</button>';}
+    html+='</div>';
+
+  } else if(m.mode==='archive'){
+    var monthLabel=_budgetMonthLabel(m.monthIso);
+    var row=m.currentRow;
+    var caseA=row&&row.start_month<m.monthIso;
+    var priorLabel=_budgetMonthLabel(_blrPriorMonthIso(m.monthIso));
+    html+='<div class="sc-modal-title">Archive Budget Rule</div>';
+    html+='<div class="sc-modal-body">';
+    if(!row){
+      html+='<div style="color:#ef4444;font-size:13px">No active rule found for "'+esc(m.label)+'" in '+monthLabel+'. Nothing to archive.</div>';
+    } else {
+      html+='<div style="background:var(--surface2);border-radius:6px;padding:10px;font-size:12px;margin-bottom:12px">';
+      html+='<strong>'+esc(row.line_label||m.label)+'</strong><br>';
+      html+='Amount: '+f(parseFloat(row.amount))+'&nbsp;&nbsp;Active since: '+row.start_month+'<br><br>';
+      if(caseA){
+        html+='This rule has history before '+monthLabel+'. It will be <strong>closed at end of '+priorLabel+'</strong> and remain visible in all prior months.';
+      } else {
+        html+='This rule started in '+monthLabel+' with no prior history. It will be <strong>deactivated</strong> (set is_active = false).';
+      }
+      html+='</div>';
+      html+='<div style="color:#92400e;background:#fef3c7;border-radius:6px;padding:8px 10px;font-size:12px;margin-bottom:12px">This rule will no longer appear from '+monthLabel+' onward. To restore, edit the row directly in Supabase.</div>';
+    }
+    if(m.error){html+='<div style="color:#ef4444;font-size:12px;margin-bottom:8px">'+esc(m.error)+'</div>';}
+    html+='</div>';
+    html+='<div class="sc-modal-btns">';
+    html+='<button class="sc-modal-cancel" onclick="window._blrCloseModal()">Cancel</button>';
+    if(row){
+      if(m.saving){html+='<button style="padding:7px 16px;border-radius:8px;border:none;background:#dc2626;color:#fff;font-size:13px;font-weight:700;cursor:default;opacity:.6">Archiving…</button>';}
+      else{html+='<button style="padding:7px 16px;border-radius:8px;border:none;background:#dc2626;color:#fff;font-size:13px;font-weight:700;cursor:pointer" onclick="window._blrSaveArchive()">Archive Rule</button>';}
+    }
+    html+='</div>';
+  }
+
+  html+='</div></div>';
+  slot.innerHTML=html;
+}
+
+function _blrOnAddKeyChange(key){
+  if(!_blrModal)return;
+  _blrModal.key=key;
+  var cat=BUDGET_CATEGORY_REGISTRY.find(function(c){return c.key===key;})||{};
+  _blrModal.label=cat.label||'';
+  _blrModal.isIncome=cat.isIncome||false;
+  _blrModal.error=null;
+  _blrRenderModal();
+}
+
+function _blrOpenEdit(key,monthIso){
+  if(!canWriteFinancials())return;
+  var active=_blrFindActive(key,monthIso);
+  var cat=BUDGET_CATEGORY_REGISTRY.find(function(c){return c.key===key;})||{};
+  _blrModal={
+    mode:'edit',key:key,monthIso:monthIso,
+    label:active?active.line_label:(cat.label||key),
+    amount:active?String(Math.round(parseFloat(active.amount))):'0',
+    scope:'forward',saving:false,error:null,
+    isIncome:cat.isIncome||false,
+    currentRow:active||null
+  };
+  _blrRenderModal();
+}
+
+function _blrOpenAdd(monthIso){
+  if(!canWriteFinancials())return;
+  _blrModal={mode:'add',key:'',monthIso:monthIso,label:'',amount:'',
+    scope:'forward',saving:false,error:null,isIncome:false};
+  _blrRenderModal();
+}
+
+function _blrOpenArchive(key,monthIso){
+  if(!canWriteFinancials())return;
+  var active=_blrFindActive(key,monthIso);
+  var cat=BUDGET_CATEGORY_REGISTRY.find(function(c){return c.key===key;})||{};
+  _blrModal={
+    mode:'archive',key:key,monthIso:monthIso,
+    label:active?active.line_label:(cat.label||key),
+    saving:false,error:null,currentRow:active||null
+  };
+  _blrRenderModal();
+}
+
+async function _blrReloadAndRender(){
+  try{
+    var h=await getAuthHeaders();
+    var r=await fetch(SUPA_URL+'/rest/v1/budget_line_rules?is_active=eq.true&select=*&order=category_key.asc',{headers:h});
+    if(r.ok){_budgetLineRulesCache=await r.json();_budgetLineRulesLoadStatus='loaded';}
+  }catch(e){console.error('[BLR] reload error:',e);}
+  _blrModal=null;
+  var slot=document.getElementById('blr-modal-slot');
+  if(slot)slot.innerHTML='';
+  renderApp();
+}
+
+async function _blrSaveEdit(){
+  if(!_blrModal||_blrModal.mode!=='edit'||_blrModal.saving)return;
+  var m=_blrModal;
+  if(!m.label||!m.label.trim()){m.error='Line label is required.';_blrRenderModal();return;}
+  var amt=parseFloat(m.amount);
+  if(isNaN(amt)||amt<0){m.error='Amount must be a number ≥ 0.';_blrRenderModal();return;}
+  var dup=_blrDupCheck(m.key,m.monthIso,m.currentRow?m.currentRow.id:null);
+  if(dup){m.error='Another active rule already exists for this category in '+_budgetMonthLabel(m.monthIso)+'. Archive or edit it first.';_blrRenderModal();return;}
+  m.saving=true;_blrRenderModal();
+  try{
+    var h=await getAuthHeaders();
+    // Step 1: close prior row if exists
+    if(m.currentRow){
+      var priorIso=_blrPriorMonthIso(m.monthIso);
+      // If row started this month, deactivate it (no prior history); else close at prior month
+      var closePatch=m.currentRow.start_month<m.monthIso?{end_month:priorIso}:{is_active:false};
+      var pr=await fetch(SUPA_URL+'/rest/v1/budget_line_rules?id=eq.'+encodeURIComponent(m.currentRow.id),
+        {method:'PATCH',headers:Object.assign({},h,{'Prefer':'return=minimal'}),body:JSON.stringify(closePatch)});
+      if(!pr.ok){var et=await pr.text();throw new Error('Close prior row HTTP '+pr.status+': '+et);}
+    }
+    // Step 2: insert new row
+    var ir=await fetch(SUPA_URL+'/rest/v1/budget_line_rules',
+      {method:'POST',headers:Object.assign({},h,{'Prefer':'return=minimal'}),
+       body:JSON.stringify({category_key:m.key,line_label:m.label.trim(),amount:amt,start_month:m.monthIso,end_month:null})});
+    if(!ir.ok){var et2=await ir.text();throw new Error('Insert new row HTTP '+ir.status+': '+et2);}
+    await _blrReloadAndRender();
+  }catch(e){
+    console.error('[BLR] saveEdit:',e);
+    m.saving=false;m.error='Save failed: '+e.message;_blrRenderModal();
+  }
+}
+
+async function _blrSaveAdd(){
+  if(!_blrModal||_blrModal.mode!=='add'||_blrModal.saving)return;
+  var m=_blrModal;
+  if(!m.key){m.error='Please select a category.';_blrRenderModal();return;}
+  if(!m.label||!m.label.trim()){m.error='Line label is required.';_blrRenderModal();return;}
+  var amt=parseFloat(m.amount);
+  if(isNaN(amt)||amt<0){m.error='Amount must be a number ≥ 0.';_blrRenderModal();return;}
+  var dup=_blrDupCheck(m.key,m.monthIso,null);
+  if(dup){m.error='An active rule already exists for this category in '+_budgetMonthLabel(m.monthIso)+'. Edit or archive it first.';_blrRenderModal();return;}
+  m.saving=true;_blrRenderModal();
+  try{
+    var h=await getAuthHeaders();
+    var endMonth=m.scope==='once'?m.monthIso:null;
+    var r=await fetch(SUPA_URL+'/rest/v1/budget_line_rules',
+      {method:'POST',headers:Object.assign({},h,{'Prefer':'return=minimal'}),
+       body:JSON.stringify({category_key:m.key,line_label:m.label.trim(),amount:amt,start_month:m.monthIso,end_month:endMonth})});
+    if(!r.ok){var et=await r.text();throw new Error('Insert HTTP '+r.status+': '+et);}
+    await _blrReloadAndRender();
+  }catch(e){
+    console.error('[BLR] saveAdd:',e);
+    m.saving=false;m.error='Save failed: '+e.message;_blrRenderModal();
+  }
+}
+
+async function _blrSaveArchive(){
+  if(!_blrModal||_blrModal.mode!=='archive'||_blrModal.saving||!_blrModal.currentRow)return;
+  var m=_blrModal;
+  m.saving=true;_blrRenderModal();
+  try{
+    var h=await getAuthHeaders();
+    var row=m.currentRow;
+    var caseA=row.start_month<m.monthIso;
+    var patch=caseA?{end_month:_blrPriorMonthIso(m.monthIso)}:{is_active:false};
+    var r=await fetch(SUPA_URL+'/rest/v1/budget_line_rules?id=eq.'+encodeURIComponent(row.id),
+      {method:'PATCH',headers:Object.assign({},h,{'Prefer':'return=minimal'}),body:JSON.stringify(patch)});
+    if(!r.ok){var et=await r.text();throw new Error('Archive HTTP '+r.status+': '+et);}
+    await _blrReloadAndRender();
+  }catch(e){
+    console.error('[BLR] saveArchive:',e);
+    m.saving=false;m.error='Archive failed: '+e.message;_blrRenderModal();
+  }
+}
+// ── End Phase 5E-5: Budget Line Rule Admin ───────────────────────────────────
 
 // ── Budget Rules — Phase 5 helper module (cash-flow delta overlays) ─────────
 // Constants
