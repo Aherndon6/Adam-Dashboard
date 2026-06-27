@@ -1,8 +1,50 @@
 # Herndon Financial OS — Phase Status
 
+## Phase 5E-2 — Transaction Writes
+**Status:** Not started
+**Planned scope (narrow — confirm before coding):**
+- DB: write policies (`owner_insert`, `owner_delete`) + `GRANT INSERT, DELETE` to authenticated
+- UI: Add Transaction form (date, payee, memo, amount, category, account)
+- UI: Delete transaction (with confirmation)
+- UI: Cleared toggle (checkbox → writes `cleared` column)
+- Tests: static + Playwright coverage for all three write paths
+- Edit transaction deferred to 5E-3 unless explicitly scoped into 5E-2
+
+**Non-negotiable constraints carry forward from 5E-1:**
+- No changes to `runModel()` or any Budget math function
+- No changes to `budget_transactions` table, schema, or queries
+- No reconciliation workflow
+- No migration or mapping between `budget_transactions` and `transactions`
+- No `transaction_splits` table
+- No mobile layout changes
+
+---
+
 ## Phase 5E-1 — SQL Foundation + Read-Only Register Shell
-**Status:** Draft — pending approval and execution
-**Date:** 2026-06-26
+**Status:** Complete
+**Date:** 2026-06-27
+**Commit:** 1675548
+
+### Final confirmed state
+- Static regression: 733/733 passed
+- Playwright E2E: 90/90 passed
+- Preflight (P1–P7, P5a, P6a): all passed
+- Migration: passed (fail-loud, no IF NOT EXISTS)
+- Post-migration validations (V1–V10, V3a, V3b): all passed
+- Live smoke on dashboard.herndons.us: passed
+- `showTransactionLedger` returned to default `false` after smoke
+- Production default behavior restored
+- Working tree: clean
+
+### What shipped
+- `transactions` table live in production with RLS enabled
+- `allow_read` SELECT-only policy using `is_allowed_user()`
+- `GRANT SELECT` only — no write policies or grants
+- `showTransactionLedger` feature flag (default `false`)
+- Read-only Register shell: account selector, starting balance warning, empty/loading/error states, category label resolution, topbar subtitle
+- 20 static regression tests (5E1-01 through 5E1-20)
+- 17 Playwright E2E tests (RG-1 through RG-16 + RG-7b)
+- `docs/phase-5e-preflight.sql`, `docs/phase-5e-migration.sql`, `docs/phase-5e-rollback.sql`
 
 ### Scope (5E-1 only)
 - `transactions` table, indexes, constraints, RLS (1 SELECT policy — least privilege), trigger, `GRANT SELECT` only
@@ -25,7 +67,7 @@
 - `budget_transactions` changes — non-negotiable exclusion
 - Mobile layout — non-negotiable exclusion
 
-### Draft files (review only — not yet executed or committed)
+### Files shipped (commit 1675548)
 - `docs/phase-5e-preflight.sql` — 9 pre-checks (P1–P7 + P5a/P6a FK constraint validation)
 - `docs/phase-5e-migration.sql` — table, indexes, 1 RLS policy (SELECT only), trigger, SELECT grant, 13 post-migration validation queries (V1–V10 + V3a/V3b policy name/expression checks)
 - `docs/phase-5e-rollback.sql` — safe teardown with Phase 5F warning
@@ -33,28 +75,7 @@
 - `test_regression.js` — 20 new tests (5E1-01 through 5E1-20)
 - `e2e.js` — 16 new tests (RG-1 through RG-16, Section RG)
 
-### Execution gate (ordered — do not skip steps)
-1. Run `docs/phase-5e-preflight.sql` — all P1–P7, P5a, P6a must return expected values
-2. Run `docs/phase-5e-migration.sql` — migration is intentionally fail-loud (no IF NOT EXISTS)
-3. Confirm all V1–V10, V3a, V3b return expected values
-4. Only after all validations pass: enable flag in console for smoke test (do not change default)
-5. Run manual smoke test below
-6. Commit/push only after smoke is clean
-
-**Do not enable `showTransactionLedger=true` in the live app (console or code) until steps 1–3 above are complete.**
-
-### Manual smoke test (after migration + validations confirmed)
-```js
-FEATURE_FLAGS.showTransactionLedger = true;
-await _loadSupabaseRegistries();
-_rebuildBudgetCatByKey();
-renderApp();
-setSection('transactions');
-setTxSubNav('register');
-```
-Expected: Transactions nav visible, Register tab active, account selector shows active accounts, empty state (no transactions yet), starting balance warning if null.
-
-### Release gates (non-negotiable for all of Phase 5E)
+### Standing constraints (non-negotiable for all of Phase 5E)
 - No changes to `runModel()` or any Budget math function
 - No changes to `budget_transactions` table, schema, or queries
 - No reconciliation workflow of any kind
