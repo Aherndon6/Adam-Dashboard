@@ -1,5 +1,52 @@
 # Herndon Financial OS — Phase Status
 
+## Phase 5D-2 Slice 1 — Read-Only Transactions Section
+**Status:** Complete (pending your push after manual smoke)
+**Date:** 2026-06-26
+
+### What was built
+- `FEATURE_FLAGS.showTransactionSection` — default `false`; all new UI hidden when off
+- Supabase registry load condition updated: fires when `useSupabaseRegistries || showTransactionSection`
+- Transactions nav item in sidebar only (desktop-only, Slice 1 decision — no `mob-bottom-nav` entry)
+- `s-transactions` section div + `SECTION_TITLES.transactions`
+- Topbar subtitle for Transactions section (accounts count / active category count)
+- `renderTransactions()` — shell + sub-nav (Accounts | Categories | Register — Phase 5E | Reconciliation — Phase 5F)
+- `_renderTxAccounts()` — read-only table: label, institution, type, lifecycle badge, in budget, in cashflow, starting balance ("Balance not set" for null), notes row
+- `_renderTxCategories()` — read-only table: key, label, status, behavior, budget treatment, cashflow, budget_line_key, budget_group_key; lifecycle toggle (active-only default / show all); merged row badge with merged_into_key arrow
+- `_txLifecycleBadge()` — inline badge for active/hidden/view_only/closed/excluded/archived/merged
+- 26 new regression tests added to `test_regression.js` (5D2-01 through 5D2-26)
+
+### No DB changes
+Phase 5D-2 Slice 1 is pure JS/HTML. No schema changes, no seeds, no migrations. Rollback = set `showTransactionSection: false` in console or revert `index.html`.
+
+### Test results
+- **Syntax check:** PASS
+- **713/713 regression tests passed** (687 pre-existing + 26 new 5D2 tests)
+- **Production behavior unchanged:** both flags default false, no Supabase load fires, no Transactions nav visible
+
+### Manual smoke test
+In console after login:
+```js
+FEATURE_FLAGS.showTransactionSection = true;
+await _loadSupabaseRegistries();
+renderApp();
+setSection('transactions');
+```
+
+Expected:
+- Accounts tab: 14 rows, Costco Visa = "hidden" badge, Fidelity = "view only" badge, all show "Balance not set"
+- Categories tab active-only: 50 rows, `business.jabian_2026_dup` absent
+- Categories tab "Show all lifecycle states": 51 rows, `business.jabian_2026_dup` visible with merged badge + `→ business.jabian_consulting_2026` arrow
+- `health_fitness.flexible_spending_2026`: `reimbursable_expense`, `excluded`, `reimbursable`, no budget_line_key
+- Register tab: disabled, labeled "Register — Phase 5E"
+- Reconciliation tab: disabled, labeled "Reconciliation — Phase 5F"
+- Switch back to `showTransactionSection=false`: Transactions nav disappears, no Supabase load on next page reload
+
+### Mobile handling decision (Slice 1)
+Transactions is desktop-only. The sidebar (containing `nav-transactions-wrap`) is hidden at ≤900px viewport via CSS; `mob-bottom-nav` has no Transactions entry. Mobile users cannot navigate to the section. This is intentional for Slice 1. Phase 5E or later should evaluate mobile-appropriate layout before adding a mob-nav entry.
+
+---
+
 ## Phase 5D-1 — Supabase Registry Foundation
 **Status:** Complete  
 **Date:** 2026-06-26

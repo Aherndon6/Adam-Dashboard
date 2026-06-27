@@ -811,6 +811,7 @@ button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-vis
     <button class="nav-item" id="nav-budget" onclick="setSection('budget')"><span class="nav-icon">$</span>Budget</button>
     <button class="nav-item" id="nav-roadmap" onclick="setSection('roadmap')"><span class="nav-icon">⬡</span>Wishlist</button>
     <button class="nav-item" id="nav-ask" onclick="setSection('ask')"><span class="nav-icon">✦</span>Ask Claude</button>
+    <span id="nav-transactions-wrap" style="display:none"><button class="nav-item" id="nav-transactions" onclick="setSection('transactions')"><span class="nav-icon">⊞</span>Transactions</button></span>
     <div class="sidebar-footer">
       <div class="model-card">
         <div class="mc-title">Model</div>
@@ -837,6 +838,7 @@ button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-vis
       <div id="s-assumptions" class="section"><div id="assumptions-content"></div></div>
       <div id="s-roadmap" class="section"><div id="roadmap-content"></div></div>
       <div id="s-budget" class="section"><div id="budget-content"></div></div>
+      <div id="s-transactions" class="section"><div id="transactions-content"></div></div>
     </div>
   </div>
 </div>
@@ -2200,7 +2202,7 @@ function updateReconLabel(weeks){
 }
 
 // ── setSection ─────────────────────────────────────────────────────────────
-const SECTION_TITLES={overview:'Overview',weekly:'Weekly Model',goals:'Goals',scenarios:'Scenarios',history:'History',assumptions:'Assumptions',roadmap:'Wishlist',ask:'Ask Claude',budget:'Budget'};
+const SECTION_TITLES={overview:'Overview',weekly:'Weekly Model',goals:'Goals',scenarios:'Scenarios',history:'History',assumptions:'Assumptions',roadmap:'Wishlist',ask:'Ask Claude',budget:'Budget',transactions:'Transactions'};
 function setSection(s){
   if(s!=='roadmap'){wishlistPhaseFilter=[];wishlistDoneId=null;}
   activeSection=s;
@@ -4233,6 +4235,187 @@ function applyCompletionSnapshots(weeks){
   });
 }
 
+// ── Transactions Module — Phase 5D-2 ─────────────────────────────────────
+// Read-only Accounts and Categories views behind FEATURE_FLAGS.showTransactionSection.
+// No add/edit/archive in Slice 1. All new UI hidden when flag=false.
+
+var _txSubNav='accounts';    // 'accounts' | 'categories'
+var _txCatShowAll=false;     // categories lifecycle toggle
+
+function setTxSubNav(tab){_txSubNav=tab;renderApp();}
+function toggleTxCatShowAll(){_txCatShowAll=!_txCatShowAll;renderApp();}
+
+// _txLifecycleBadge — returns a styled inline-badge span for lifecycle_status values
+function _txLifecycleBadge(status){
+  var map={
+    active:   {bg:'var(--greenSoft)', color:'var(--green)',  dot:'●'},
+    hidden:   {bg:'var(--surface3)',  color:'var(--muted)',  dot:'○'},
+    view_only:{bg:'var(--blueSoft)', color:'var(--blue)',   dot:'◎'},
+    closed:   {bg:'var(--redSoft)',  color:'var(--red)',    dot:'✕'},
+    excluded: {bg:'var(--redSoft)',  color:'var(--red)',    dot:'✕'},
+    archived: {bg:'var(--surface3)', color:'var(--muted)',  dot:'○'},
+    merged:   {bg:'var(--amberSoft)',color:'var(--amber)',  dot:'→'}
+  };
+  var s=map[status]||{bg:'var(--surface3)',color:'var(--muted)',dot:'?'};
+  return '<span style="display:inline-flex;align-items:center;gap:4px;font-size:10px;font-weight:700;padding:2px 8px;border-radius:99px;background:'+s.bg+';color:'+s.color+';text-transform:uppercase;letter-spacing:.05em;white-space:nowrap">'+s.dot+' '+_esc(status.replace(/_/g,' '))+'</span>';
+}
+
+// _renderTxAccounts — read-only accounts table from _accountsCache
+function _renderTxAccounts(){
+  if(_registriesLoadStatus!=='loaded'||!_accountsCache){
+    var msg=_registriesLoadStatus==='loading'?'Loading accounts…'
+      :_registriesLoadStatus==='failed'?'Registry load failed — check console. Reload to retry.'
+      :'Accounts not loaded.';
+    return '<div style="padding:40px;text-align:center;color:var(--muted);font-size:13px">'+msg+'</div>';
+  }
+  var rows=_accountsCache.slice().sort(function(a,b){
+    return((a.display_order||0)-(b.display_order||0))||((a.label||'').localeCompare(b.label||''));
+  });
+  var th='<th style="text-align:left;padding:8px 12px;font-size:10px;text-transform:uppercase;letter-spacing:.07em;color:var(--muted);font-weight:600;white-space:nowrap;border-bottom:2px solid var(--line)">';
+  var thR='<th style="text-align:right;padding:8px 12px;font-size:10px;text-transform:uppercase;letter-spacing:.07em;color:var(--muted);font-weight:600;white-space:nowrap;border-bottom:2px solid var(--line)">';
+  var thC='<th style="text-align:center;padding:8px 12px;font-size:10px;text-transform:uppercase;letter-spacing:.07em;color:var(--muted);font-weight:600;white-space:nowrap;border-bottom:2px solid var(--line)">';
+  var html='<div style="overflow-x:auto">'
+    +'<table style="width:100%;border-collapse:collapse;font-size:12px"><thead><tr>'
+    +th+'Label</th>'+th+'Institution</th>'+th+'Type</th>'+th+'Status</th>'
+    +thC+'In Budget</th>'+thC+'In Cashflow</th>'+thR+'Starting Balance</th>'
+    +'</tr></thead><tbody>';
+  rows.forEach(function(a,i){
+    var bg=i%2===0?'var(--surface)':'var(--surface2)';
+    var balTxt=a.starting_balance!=null
+      ?'$'+Number(a.starting_balance).toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2})
+      :'<span style="font-style:italic;color:var(--muted2)">Balance not set</span>';
+    html+='<tr style="background:'+bg+';border-bottom:1px solid var(--line)">'
+      +'<td style="padding:9px 12px;font-weight:600;color:var(--ink)">'+_esc(a.label||a.key)+'</td>'
+      +'<td style="padding:9px 12px;color:var(--muted)">'+_esc(a.institution||'')+'</td>'
+      +'<td style="padding:9px 12px;color:var(--ink)">'+_esc((a.account_type||'').replace(/_/g,' '))+'</td>'
+      +'<td style="padding:9px 12px">'+_txLifecycleBadge(a.lifecycle_status||'active')+'</td>'
+      +'<td style="padding:9px 12px;text-align:center;color:var(--ink)">'+(a.include_in_budget?'✓':'–')+'</td>'
+      +'<td style="padding:9px 12px;text-align:center;color:var(--ink)">'+(a.include_in_cashflow?'✓':'–')+'</td>'
+      +'<td style="padding:9px 12px;text-align:right">'+balTxt+'</td>'
+      +'</tr>';
+    if(a.notes){
+      html+='<tr style="background:'+bg+';border-bottom:1px solid var(--line)">'
+        +'<td colspan="7" style="padding:2px 12px 8px 12px;font-size:11px;color:var(--muted);font-style:italic">'
+        +_esc(a.notes)+'</td></tr>';
+    }
+  });
+  html+='</tbody></table></div>'
+    +'<div style="padding:8px 12px;font-size:10px;color:var(--muted2)">'+rows.length+' accounts · Read only · Phase 5D-2</div>';
+  return html;
+}
+
+// _renderTxCategories — read-only categories table from _categoriesCache
+function _renderTxCategories(){
+  if(_registriesLoadStatus!=='loaded'||!_categoriesCache){
+    var msg=_registriesLoadStatus==='loading'?'Loading categories…'
+      :_registriesLoadStatus==='failed'?'Registry load failed — check console. Reload to retry.'
+      :'Categories not loaded.';
+    return '<div style="padding:40px;text-align:center;color:var(--muted);font-size:13px">'+msg+'</div>';
+  }
+  var all=_categoriesCache.slice().sort(function(a,b){
+    return((a.display_order||0)-(b.display_order||0))||((a.key||'').localeCompare(b.key||''));
+  });
+  var visible=_txCatShowAll?all:all.filter(function(c){return c.lifecycle_status==='active';});
+  var toggleBtn='<button onclick="toggleTxCatShowAll()" style="font-size:11px;font-weight:600;padding:4px 12px;border-radius:99px;border:1px solid var(--line2);background:var(--surface2);color:var(--ink);cursor:pointer;font-family:inherit">'
+    +(_txCatShowAll?'Show active only':'Show all lifecycle states')+'</button>';
+  var header='<div style="display:flex;align-items:center;justify-content:space-between;padding:10px 12px 8px">'
+    +'<span style="font-size:11px;color:var(--muted)">'+visible.length+' of '+all.length+' categories'
+    +(_txCatShowAll?' (all lifecycle states)':' (active only)')+'</span>'+toggleBtn+'</div>';
+
+  var th='<th style="text-align:left;padding:7px 12px;font-size:10px;text-transform:uppercase;letter-spacing:.07em;color:var(--muted);font-weight:600;white-space:nowrap;border-bottom:2px solid var(--line)">';
+  var html=header+'<div style="overflow-x:auto">'
+    +'<table style="width:100%;border-collapse:collapse;font-size:12px"><thead><tr>'
+    +th+'Key</th>'+th+'Label</th>'+th+'Status</th>'
+    +th+'Behavior</th>'+th+'Budget Treatment</th>'+th+'Cashflow</th>'+th+'Budget Line Key</th>'+th+'Budget Group Key</th>'
+    +'</tr></thead><tbody>';
+
+  var parents=visible.filter(function(c){return !c.is_leaf;});
+  var rowIdx=0;
+  parents.forEach(function(p){
+    var bg='var(--surface3)';
+    html+='<tr style="background:'+bg+';border-bottom:1px solid var(--line)">'
+      +'<td colspan="2" style="padding:7px 12px;font-weight:700;color:var(--ink);font-size:11px">'
+      +'▸ '+_esc(p.label||p.key)
+      +'<span style="font-size:9px;font-weight:400;color:var(--muted2);margin-left:8px">'+_esc(p.key)+'</span></td>'
+      +'<td style="padding:7px 12px">'+_txLifecycleBadge(p.lifecycle_status||'active')+'</td>'
+      +'<td colspan="5" style="padding:7px 12px;font-size:11px;color:var(--muted);font-style:italic">parent group</td>'
+      +'</tr>';
+    var leaves=visible.filter(function(c){return c.is_leaf&&c.parent_key===p.key;});
+    leaves.forEach(function(c){
+      var lbg=rowIdx%2===0?'var(--surface)':'var(--surface2)'; rowIdx++;
+      var mergedNote='';
+      if(c.merged_into_key){
+        mergedNote+=' <span style="font-size:9px;color:var(--amber)">→ '+_esc(c.merged_into_key)+'</span>';
+      }
+      html+='<tr style="background:'+lbg+';border-bottom:1px solid var(--line)">'
+        +'<td style="padding:7px 12px 7px 28px;color:var(--muted2);font-size:11px">'+_esc(c.key)+'</td>'
+        +'<td style="padding:7px 12px;color:var(--ink);font-weight:500">'+_esc(c.label||c.key)+mergedNote+'</td>'
+        +'<td style="padding:7px 12px">'+_txLifecycleBadge(c.lifecycle_status||'active')+'</td>'
+        +'<td style="padding:7px 12px;color:var(--ink)">'+_esc((c.behavior_class||'').replace(/_/g,' '))+'</td>'
+        +'<td style="padding:7px 12px;color:var(--ink)">'+_esc((c.budget_treatment||'').replace(/_/g,' '))+'</td>'
+        +'<td style="padding:7px 12px;color:var(--ink)">'+_esc((c.cashflow_treatment||'').replace(/_/g,' '))+'</td>'
+        +'<td style="padding:7px 12px;color:var(--muted2);font-size:11px">'+_esc(c.budget_line_key||'')+'</td>'
+        +'<td style="padding:7px 12px;color:var(--muted2);font-size:11px">'+_esc(c.budget_group_key||'')+'</td>'
+        +'</tr>';
+    });
+  });
+  // Orphaned leaves (parent absent in current visible set)
+  var visParentKeys={};
+  parents.forEach(function(p){visParentKeys[p.key]=true;});
+  var orphans=visible.filter(function(c){return c.is_leaf&&(!c.parent_key||!visParentKeys[c.parent_key]);});
+  if(orphans.length){
+    html+='<tr style="background:var(--surface3);border-bottom:1px solid var(--line)">'
+      +'<td colspan="8" style="padding:7px 12px;font-weight:700;color:var(--muted);font-size:11px">▸ (no parent in current view)</td></tr>';
+    orphans.forEach(function(c){
+      var lbg=rowIdx%2===0?'var(--surface)':'var(--surface2)'; rowIdx++;
+      html+='<tr style="background:'+lbg+';border-bottom:1px solid var(--line)">'
+        +'<td style="padding:7px 12px 7px 28px;color:var(--muted2);font-size:11px">'+_esc(c.key)+'</td>'
+        +'<td style="padding:7px 12px;color:var(--ink);font-weight:500">'+_esc(c.label||c.key)+'</td>'
+        +'<td style="padding:7px 12px">'+_txLifecycleBadge(c.lifecycle_status||'active')+'</td>'
+        +'<td style="padding:7px 12px;color:var(--ink)">'+_esc((c.behavior_class||'').replace(/_/g,' '))+'</td>'
+        +'<td style="padding:7px 12px;color:var(--ink)">'+_esc((c.budget_treatment||'').replace(/_/g,' '))+'</td>'
+        +'<td style="padding:7px 12px;color:var(--ink)">'+_esc((c.cashflow_treatment||'').replace(/_/g,' '))+'</td>'
+        +'<td style="padding:7px 12px;color:var(--muted2);font-size:11px">'+_esc(c.budget_line_key||'')+'</td>'
+        +'<td style="padding:7px 12px;color:var(--muted2);font-size:11px">'+_esc(c.budget_group_key||'')+'</td>'
+        +'</tr>';
+    });
+  }
+  html+='</tbody></table></div>'
+    +'<div style="padding:8px 12px;font-size:10px;color:var(--muted2)">'+visible.length+' rows shown · Read only · Phase 5D-2</div>';
+  return html;
+}
+
+// renderTransactions — shell, sub-nav, and routing
+function renderTransactions(){
+  var el=document.getElementById('transactions-content');
+  if(!el)return;
+  var subTabs=[
+    {id:'accounts',   label:'Accounts'},
+    {id:'categories', label:'Categories'},
+    {id:'register',   label:'Register — Phase 5E',    future:true},
+    {id:'reconciliation',label:'Reconciliation — Phase 5F',future:true}
+  ];
+  var nav='<div style="display:flex;gap:2px;padding:16px 16px 0;background:var(--surface);border-bottom:1px solid var(--line);flex-wrap:wrap">';
+  subTabs.forEach(function(t){
+    var isActive=_txSubNav===t.id;
+    if(t.future){
+      nav+='<span title="Coming in a future phase" style="padding:8px 14px;font-size:12px;font-weight:600;color:var(--muted2);border-bottom:2px solid transparent;cursor:not-allowed;user-select:none;border-radius:6px 6px 0 0;opacity:.6">'+_esc(t.label)+'</span>';
+    }else{
+      nav+='<button onclick="setTxSubNav(\''+t.id+'\')" style="padding:8px 14px;font-size:12px;font-weight:600;cursor:pointer;font-family:inherit;border:none;border-bottom:2px solid '
+        +(isActive?'var(--blue)':'transparent')+';border-radius:6px 6px 0 0;background:'
+        +(isActive?'var(--blueSoft)':'transparent')+';color:'
+        +(isActive?'var(--blue)':'var(--muted)')+'">'+_esc(t.label)+'</button>';
+    }
+  });
+  nav+='</div>';
+  var body='';
+  if(_txSubNav==='accounts')body=_renderTxAccounts();
+  else if(_txSubNav==='categories')body=_renderTxCategories();
+  el.innerHTML='<div style="padding:20px;max-width:1200px">'
+    +'<div style="background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);overflow:hidden">'
+    +nav+'<div>'+body+'</div></div></div>';
+}
+
 // ── Budget Module — renderBudget and sub-functions (Phase 5B) ────────────
 
 // Load budget transactions for selected month and re-render
@@ -4868,6 +5051,15 @@ function renderApp(){
       _ts.textContent=scenarioState.active?'Preview active — '+scenarioState.type+' scenario':'What-if modeling — preview never writes until committed';
     } else if(activeSection==='ask'){
       _ts.textContent='Ask questions about your model in plain English';
+    } else if(activeSection==='transactions'){
+      if(_txSubNav==='accounts'){
+        _ts.textContent=_accountsCache?_accountsCache.length+' accounts · Read only':'Accounts loading…';
+      }else if(_txSubNav==='categories'){
+        var _visCatCount=_categoriesCache
+          ?(_txCatShowAll?_categoriesCache.length:_categoriesCache.filter(function(c){return c.lifecycle_status==='active';}).length)
+          :0;
+        _ts.textContent=_categoriesCache?_visCatCount+' categories'+(_txCatShowAll?' (all)':' (active)')+' · Read only':'Categories loading…';
+      }
     }
   })();
   // Update topbar subtitle for weekly section to show active week
@@ -4880,6 +5072,10 @@ function renderApp(){
   else if(activeSection==='scenarios')renderScenarios(vm);
   else if(activeSection==='ask')renderAskClaude();
   else if(activeSection==='budget')renderBudget();
+  else if(activeSection==='transactions')renderTransactions();
+  // Show/hide Transactions nav based on feature flag
+  var _tnw=document.getElementById('nav-transactions-wrap');
+  if(_tnw)_tnw.style.display=FEATURE_FLAGS.showTransactionSection?'block':'none';
   renderEditDrawer();
   renderScenarioModal();
   // Clear any previous render error
@@ -4914,11 +5110,14 @@ const SUPA_URL='https://usayoldrawwmjsmretin.supabase.co';
 const SUPA_KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InVzYXlvbGRyYXd3bWpzbXJldGluIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzc0NjI0MzIsImV4cCI6MjA5MzAzODQzMn0.7dpPsXdQy2aIYYsm1yWK7D5WJH0tB32ixERMBf5HRWA';
 const SUPA_H={'apikey':SUPA_KEY,'Authorization':'Bearer '+SUPA_KEY,'Content-Type':'application/json'};
 
-// ── Feature Flags (Phase 5D-1) ────────────────────────────────────────────────
+// ── Feature Flags ─────────────────────────────────────────────────────────────
 // useSupabaseRegistries: false = production default; JS constants used throughout.
 //                        true  = load accounts + categories from Supabase on login.
-// Set flag=true in console then await _loadSupabaseRegistries() for manual testing.
-var FEATURE_FLAGS={useSupabaseRegistries:false};
+// showTransactionSection: false = production default; Transactions nav hidden.
+//                         true  = show Transactions section (Accounts + Categories views).
+//                                 Forces Supabase registry load regardless of useSupabaseRegistries.
+// Set flags in console for manual testing.
+var FEATURE_FLAGS={useSupabaseRegistries:false,showTransactionSection:false};
 
 // ── Auth state machine ────────────────────────────────────────────────────────
 // SUPA_H is retained as a const for reference but is no longer used in any fetch() call.
@@ -5169,10 +5368,12 @@ async function loadAll(){
   }catch(e){console.error('loadAll:',e);_supaConnected=false;budgetRulesLoadStatus='failed';goalsLoadStatus='loaded_fallback';applyGoalsFallback();}
   // Rebuild category lookup from JS registry (immediate, synchronous).
   _rebuildBudgetCatByKey();
-  // Phase 5D-1: if flag is on, await Supabase registry load before first render.
-  // If load fails, _registriesLoadStatus='failed' and getters fall back to JS constants.
-  if(FEATURE_FLAGS.useSupabaseRegistries){
-    _loadSupabaseRegistries().then(function(){_rebuildBudgetCatByKey();renderApp();}).catch(function(e){console.error('[5D-1] registry load error in loadAll:',e);renderApp();});
+  // Phase 5D-1/5D-2: load Supabase registries if either flag needs the data.
+  // useSupabaseRegistries=true  → Budget module uses Supabase data.
+  // showTransactionSection=true → Transactions UI needs Supabase data even if Budget still uses JS constants.
+  // Both flags false (production default) → no Supabase load, existing behavior unchanged.
+  if(FEATURE_FLAGS.useSupabaseRegistries||FEATURE_FLAGS.showTransactionSection){
+    _loadSupabaseRegistries().then(function(){_rebuildBudgetCatByKey();renderApp();}).catch(function(e){console.error('[5D] registry load error in loadAll:',e);renderApp();});
   }else{
     renderApp();
   }

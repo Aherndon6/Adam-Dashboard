@@ -5279,6 +5279,136 @@ test('5B-42: no recursive window wrapper for _budgetDeleteTransaction',()=>{
   assert(!match,'window._budgetDeleteTransaction recursive wrapper found — causes infinite recursion and silently breaks the delete confirm flow. Remove the wrapper; the async function declaration already exposes it on window.');
 });
 
+// ── Phase 5D-2: Transactions Module — read-only Accounts + Categories ────
+// All tests below must pass with both flags at default false (production).
+
+test('5D2-01: FEATURE_FLAGS.showTransactionSection defaults false',()=>{
+  assert(FEATURE_FLAGS.hasOwnProperty('showTransactionSection'),'showTransactionSection key missing from FEATURE_FLAGS');
+  assert(FEATURE_FLAGS.showTransactionSection===false,'showTransactionSection must default to false');
+});
+
+test('5D2-02: FEATURE_FLAGS.useSupabaseRegistries still defaults false',()=>{
+  // Ensure Phase 5D-2 did not accidentally change the 5D-1 default.
+  assert(FEATURE_FLAGS.useSupabaseRegistries===false,'useSupabaseRegistries must still default to false');
+});
+
+test('5D2-03: loadAll condition updated to OR both flags',()=>{
+  assertIncludes(html,'FEATURE_FLAGS.useSupabaseRegistries||FEATURE_FLAGS.showTransactionSection',
+    'loadAll must trigger Supabase load when either flag is true');
+});
+
+test('5D2-04: nav-transactions-wrap hidden by default in HTML',()=>{
+  assertIncludes(html,'id="nav-transactions-wrap" style="display:none"',
+    'Transactions nav wrapper must be hidden (display:none) by default');
+});
+
+test('5D2-05: s-transactions section div present in HTML',()=>{
+  assertIncludes(html,'id="s-transactions"','s-transactions section div must exist in HTML');
+});
+
+test('5D2-06: SECTION_TITLES includes transactions key',()=>{
+  assertIncludes(html,"transactions:'Transactions'",'SECTION_TITLES must include transactions entry');
+});
+
+test('5D2-07: renderApp dispatches to renderTransactions',()=>{
+  assertIncludes(html,"else if(activeSection==='transactions')renderTransactions()",
+    'renderApp must dispatch to renderTransactions for transactions section');
+});
+
+test('5D2-08: renderApp shows/hides Transactions nav based on flag',()=>{
+  assertIncludes(html,'FEATURE_FLAGS.showTransactionSection?',
+    'renderApp must conditionally show nav-transactions-wrap based on flag');
+});
+
+test('5D2-09: renderTransactions function exists',()=>{
+  assert(typeof renderTransactions==='function','renderTransactions must be a function');
+});
+
+test('5D2-10: _renderTxAccounts function exists',()=>{
+  assert(typeof _renderTxAccounts==='function','_renderTxAccounts must be a function');
+});
+
+test('5D2-11: _renderTxCategories function exists',()=>{
+  assert(typeof _renderTxCategories==='function','_renderTxCategories must be a function');
+});
+
+test('5D2-12: _txLifecycleBadge function exists',()=>{
+  assert(typeof _txLifecycleBadge==='function','_txLifecycleBadge must be a function');
+});
+
+test('5D2-13: _txLifecycleBadge returns correct classes for known statuses',()=>{
+  var active=_txLifecycleBadge('active');
+  assertIncludes(active,'greenSoft','active badge must use greenSoft background');
+  var merged=_txLifecycleBadge('merged');
+  assertIncludes(merged,'amberSoft','merged badge must use amberSoft background');
+  var hidden=_txLifecycleBadge('hidden');
+  assertIncludes(hidden,'surface3','hidden badge must use surface3 background');
+});
+
+test('5D2-14: Balance not set text present in HTML',()=>{
+  assertIncludes(html,'Balance not set','_renderTxAccounts must include "Balance not set" text for null starting_balance');
+});
+
+test('5D2-15: lifecycle toggle labels present in HTML',()=>{
+  assertIncludes(html,'Show all lifecycle states','categories toggle must include "Show all lifecycle states"');
+  assertIncludes(html,'Show active only','categories toggle must include "Show active only"');
+});
+
+test('5D2-16: future tab labels include phase references',()=>{
+  assertIncludes(html,'Register — Phase 5E','future Register tab must reference Phase 5E');
+  assertIncludes(html,'Reconciliation — Phase 5F','future Reconciliation tab must reference Phase 5F');
+});
+
+test('5D2-17: budget_group_key column present in categories view',()=>{
+  assertIncludes(html,'budget_group_key','_renderTxCategories must render budget_group_key column');
+});
+
+test('5D2-18: merged_into_key shown in categories view',()=>{
+  assertIncludes(html,'merged_into_key','_renderTxCategories must display merged_into_key for merged rows');
+});
+
+test('5D2-19: _txSubNav defaults to accounts',()=>{
+  assert(_txSubNav==='accounts',"_txSubNav must default to 'accounts'");
+});
+
+test('5D2-20: _txCatShowAll defaults to false',()=>{
+  assert(_txCatShowAll===false,'_txCatShowAll must default to false (active-only view)');
+});
+
+test('5D2-21: no add/edit/archive functions introduced in transactions module',()=>{
+  var noEdit=!html.includes('_renderTxEdit')&&!html.includes('_txAddAccount')&&!html.includes('_txArchive')&&!html.includes('_txSave');
+  assert(noEdit,'Slice 1 must not contain add/edit/archive functions in transactions module');
+});
+
+test('5D2-22: BUDGET_CATEGORY_REGISTRY JS fallback still present',()=>{
+  assertIncludes(html,'var BUDGET_CATEGORY_REGISTRY=','JS fallback registry must remain intact');
+});
+
+test('5D2-23: BUDGET_PAYMENT_ACCOUNTS JS fallback still present',()=>{
+  assertIncludes(html,'var BUDGET_PAYMENT_ACCOUNTS=','JS fallback payment accounts must remain intact');
+});
+
+test('5D2-24: transactions section desktop-only (not in mob-bottom-nav)',()=>{
+  // Transactions is Slice 1 desktop-only: nav item is in sidebar (hidden on mobile),
+  // not in mob-bottom-nav. Confirm mob-nav-transactions does not exist.
+  assert(!html.includes('mob-nav-transactions'),'mob-nav-transactions must not exist — Transactions is desktop-only in Slice 1');
+});
+
+test('5D2-25: topbar subtitle handles transactions section',()=>{
+  // Verify the topbar subtitle block includes a transactions branch.
+  assertIncludes(html,"activeSection==='transactions'",'topbar subtitle must handle transactions activeSection');
+});
+
+test('5D2-26: orphan category header colspan matches 8-column category table',()=>{
+  // The category table has 8 columns (Key, Label, Status, Behavior, Budget Treatment,
+  // Cashflow, Budget Line Key, Budget Group Key). The orphan group header must span all 8.
+  // colspan="7" would leave the last column header unspanned — visual misalignment.
+  assert(!html.includes('<td colspan="7" style="padding:7px 12px;font-weight:700;color:var(--muted);font-size:11px">▸ (no parent in current view)'),
+    'Orphan group header must not use colspan="7" — categories table has 8 columns');
+  assertIncludes(html,'<td colspan="8" style="padding:7px 12px;font-weight:700;color:var(--muted);font-size:11px">▸ (no parent in current view)',
+    'Orphan group header must use colspan="8" to span all 8 category columns');
+});
+
 // ─────────────────────────────────────────────────────────────────────────
 console.log('\n╔══════════════════════════════════════════════════════════════╗');
 console.log('║                       RESULTS                               ║');
