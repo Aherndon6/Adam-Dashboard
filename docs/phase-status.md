@@ -8,10 +8,11 @@
 | 5E-2   | Transaction Writes                             | Complete           |
 | 5E-3   | Register Live by Default                       | Complete           |
 | 5E-4   | Budget Correctness + Display Fixes             | Complete           |
-| 5E-5   | Budget Line Admin (required before 7/1)        | Complete (pending browser smoke) |
-| 5E-6   | Role Enforcement / Security Maturity Gate      | Not started        |
-| 5E-7   | 7/1 Wendy Operating Readiness                  | Not started        |
-| 5E-8   | Category Registry Admin                        | Deferred (unless 7/1 blocker found) |
+| 5E-5   | Budget Line Admin (required before 7/1)        | Complete                         |
+| 5E-6   | Monthly Entertainment Buckets                  | Not started        |
+| 5E-7   | Role Enforcement / Security Maturity Gate      | Not started        |
+| 5E-8   | 7/1 Wendy Operating Readiness                  | Not started        |
+| 5E-9   | Category Registry Admin                        | Deferred (unless 7/1 blocker found) |
 | 5F-0   | Needs Attention / Dashboard Usefulness         | Not started        |
 | 5F-1   | Reconciliation Design + Read-Only Scaffold     | Not started        |
 | 5F-2   | Reconciliation Writes                          | Not started        |
@@ -20,7 +21,7 @@
 | 5I     | Import Readiness                               | Not started        |
 | 5J     | Budget Integration / Actuals                  | Not started        |
 
-### Phase 5E-5 — Budget Line Admin (COMPLETE + HARDENED, 2026-06-27)
+### Phase 5E-5 — Budget Line Admin (COMPLETE + HARDENED, 2026-06-27 — browser smoke PASSED)
 Minimal Budget Rule Admin UI inside the Budget tab.
 
 **What shipped (base):**
@@ -60,15 +61,20 @@ Minimal Budget Rule Admin UI inside the Budget tab.
 - 10 hardening tests (5E5-H01 through 5E5-H10)
 - **28 total 5E-5 tests; 813/813 full suite passing**
 
-**Explicit scope limitations (documented, deferred to 5E-6):**
-- "Selected month only" edit (three-row split) NOT in 5E-5 — too risky for 7/1
+**Explicit scope limitations (documented, deferred):**
+- "Selected month only" edit (three-row split) NOT in 5E-5 — deferred to future phase
 - New category creation (keys not in `BUDGET_CATEGORY_REGISTRY`) NOT in 5E-5
-  - New category creation requires Category Registry Admin (Phase 5E-6 or later)
   - Any key not in BUDGET_CATEGORY_REGISTRY will not render in the Budget table
+  - Full Category Registry Admin deferred to 5E-8 or later
+- Entertainment sub-buckets (e.g. streaming, events) NOT in 5E-5
+  - `entertainment` is currently a standalone leaf key with no parent/child structure
+  - Adding sub-buckets requires converting it to a parent node + adding child keys in BUDGET_CATEGORY_REGISTRY + DB migration
+  - Deferred to 5E-6 (Monthly Entertainment Buckets)
 
 **No schema change.** All operations use existing `budget_line_rules` table and REST API.
 
-**Gate:** Must complete browser smoke checklist (AC-1 through AC-10a) before 5E-6.
+**Browser smoke result (2026-06-27):** PASSED — AC-1 through AC-10a all passed.
+Post-smoke state: Total Income $15,938, Total Planned $15,938, Balance $0, misc.goal_sweep $1,450, misc.extra $1,869, Diablos $750.
 
 ---
 
@@ -91,7 +97,24 @@ Minimal Budget Rule Admin UI inside the Budget tab.
 
 ---
 
-### Phase 5E-6 — Role Enforcement / Security Maturity Gate (PLANNED, NOT STARTED)
+### Phase 5E-6 — Monthly Entertainment Buckets (PLANNED, NOT STARTED)
+Split the `entertainment` standalone leaf into weekly/event sub-buckets for July 1 Wendy budget usability. Scoped narrowly — not full Category Registry Admin.
+
+**Purpose:** Wendy needs to track entertainment spending by sub-type (e.g. streaming, outings/events) starting July 2026. The current single `entertainment` line is too coarse.
+
+**Scope (to be confirmed before build):**
+- Convert `entertainment` from standalone leaf → parent node in `BUDGET_CATEGORY_REGISTRY`
+- Add new child leaf keys (e.g. `entertainment.streaming`, `entertainment.outings`)
+- Migrate existing `entertainment` budget_line_rules row to a child key
+- Update any transaction category references if needed
+- No free-form key creation — keys hardcoded in JS registry
+- No full Category Registry Admin UI
+
+**Gate:** Unblocked. Start after 5E-5 closeout commit is pushed.
+
+---
+
+### Phase 5E-7 — Role Enforcement / Security Maturity Gate (PLANNED, NOT STARTED)
 Absorbs deferred Phase 4C. Must complete before reconciliation, splits, imports, transfers, or budget integration.
 
 **Purpose:** Formalize and verify role-based write access across all current policies before the schema grows further.
@@ -114,13 +137,13 @@ Absorbs deferred Phase 4C. Must complete before reconciliation, splits, imports,
 - No Budget math changes
 - No `budget_transactions` changes unless audit proves a policy is wrong and change is explicitly approved
 
-**Gate:** 5E-6 must pass before any of 5F-0, 5F-1, 5F-2, 5G, 5H, 5I, or 5J begins.
+**Gate:** 5E-7 must pass before any of 5F-0, 5F-1, 5F-2, 5G, 5H, 5I, or 5J begins.
 
-**Do not start until 5E-5 browser smoke passes.**
+**Do not start until explicitly approved.**
 
 ---
 
-### Phase 5E-7 — 7/1 Wendy Operating Readiness (PLANNED, NOT STARTED)
+### Phase 5E-8 — 7/1 Wendy Operating Readiness (PLANNED, NOT STARTED)
 Confirm the system is operationally ready for Wendy to use as of July 1.
 
 **Scope:**
