@@ -1637,7 +1637,7 @@ async function clickNav(page, id) {
 
   await test('TX-5: Categories active-only default — merged row absent, active rows present', async () => {
     const { page, context } = await openApp(browser);
-    const result = await page.evaluate((mockAccounts, mockCategories) => {
+    const result = await page.evaluate(([mockAccounts, mockCategories]) => {
       FEATURE_FLAGS.showTransactionSection = true;
       _accountsCache = mockAccounts;
       _categoriesCache = mockCategories;
@@ -1654,7 +1654,7 @@ async function clickNav(page, id) {
         showAllTogglePresent: html.includes('Show all lifecycle states'),
         countLabel: html.includes('5 of 6') // 5 active of 6 total
       };
-    }, TX_MOCK_ACCOUNTS, TX_MOCK_CATEGORIES);
+    }, [TX_MOCK_ACCOUNTS, TX_MOCK_CATEGORIES]);
     assert(result.jabianDupAbsent, 'Merged row (jabian_2026_dup) must be absent in active-only view');
     assert(result.netSalaryPresent, 'Active leaf rows must appear in active-only view');
     assert(result.flexSpendPresent, 'Flexible Spending 2026 must appear in active-only view');
@@ -1664,7 +1664,7 @@ async function clickNav(page, id) {
 
   await test('TX-6: Categories show-all toggle — merged row visible with merged badge and merged_into_key', async () => {
     const { page, context } = await openApp(browser);
-    const result = await page.evaluate((mockAccounts, mockCategories) => {
+    const result = await page.evaluate(([mockAccounts, mockCategories]) => {
       FEATURE_FLAGS.showTransactionSection = true;
       _accountsCache = mockAccounts;
       _categoriesCache = mockCategories;
@@ -1681,7 +1681,7 @@ async function clickNav(page, id) {
         showActiveOnlyToggle: html.includes('Show active only'),
         countLabel: html.includes('6 of 6')
       };
-    }, TX_MOCK_ACCOUNTS, TX_MOCK_CATEGORIES);
+    }, [TX_MOCK_ACCOUNTS, TX_MOCK_CATEGORIES]);
     assert(result.jabianDupPresent, 'Merged row must be visible in show-all mode');
     assert(result.mergedBadgePresent, 'Merged badge must use amberSoft background');
     assert(result.mergedIntoKeyPresent, 'merged_into_key target must appear in show-all mode');
@@ -1691,7 +1691,7 @@ async function clickNav(page, id) {
 
   await test('TX-7: Categories table has 8 columns including budget_group_key', async () => {
     const { page, context } = await openApp(browser);
-    const result = await page.evaluate((mockAccounts, mockCategories) => {
+    const result = await page.evaluate(([mockAccounts, mockCategories]) => {
       FEATURE_FLAGS.showTransactionSection = true;
       _accountsCache = mockAccounts;
       _categoriesCache = mockCategories;
@@ -1705,7 +1705,7 @@ async function clickNav(page, id) {
         hasBudgetGroupKey: html.includes('Budget Group Key'),
         orphanColspan8: html.includes('colspan="8"') || !html.includes('no parent in current view'), // orphan section only if orphans exist
       };
-    }, TX_MOCK_ACCOUNTS, TX_MOCK_CATEGORIES);
+    }, [TX_MOCK_ACCOUNTS, TX_MOCK_CATEGORIES]);
     assert(result.hasBudgetLineKey, 'Categories table must have Budget Line Key column');
     assert(result.hasBudgetGroupKey, 'Categories table must have Budget Group Key column (8th column)');
     await context.close();
