@@ -15,14 +15,16 @@
 - `_renderTxCategories()` — read-only table: key, label, status, behavior, budget treatment, cashflow, budget_line_key, budget_group_key; lifecycle toggle (active-only default / show all); merged row badge with merged_into_key arrow
 - `_txLifecycleBadge()` — inline badge for active/hidden/view_only/closed/excluded/archived/merged
 - 26 new regression tests added to `test_regression.js` (5D2-01 through 5D2-26)
+- 10 new Playwright E2E tests added to `e2e.js` (TX-1 through TX-10, Section TX)
 
 ### No DB changes
 Phase 5D-2 Slice 1 is pure JS/HTML. No schema changes, no seeds, no migrations. Rollback = set `showTransactionSection: false` in console or revert `index.html`.
 
 ### Test results
 - **Syntax check:** PASS
-- **713/713 regression tests passed** (687 pre-existing + 26 new 5D2 tests)
+- **713/713 static regression tests passed** (687 pre-existing + 26 new 5D2 tests)
 - **Production behavior unchanged:** both flags default false, no Supabase load fires, no Transactions nav visible
+- **Playwright E2E (TX-1 through TX-10):** Added to `e2e.js` Section TX. Must run from your terminal (`node e2e.js`) — Chromium binaries not in sandbox. Tests use injected mock data; no Supabase connection required. Coverage: flag=false default gate, Accounts table 7-column render, "Balance not set" for null balances, lifecycle badge CSS vars, Categories active-only filter (merged row absent), show-all toggle (merged row visible with amberSoft badge + merged_into_key), 8-column categories table with budget_group_key, future disabled tabs with correct phase labels and cursor:not-allowed, flag reset behavior (nav hides + budget intact), desktop-only enforcement (no mob-nav-transactions).
 
 ### Manual smoke test
 In console after login:

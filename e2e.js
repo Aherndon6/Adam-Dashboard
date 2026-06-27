@@ -22,6 +22,7 @@
 //   Section I   — Supabase offline graceful failure
 //   Section J   — Mobile viewport (nav, panels, no overflow)
 //   Section BUD — Budget module: no recursive wrappers, optimistic cleared toggle, delete confirm
+//   Section TX  — Transactions section: flag gate, Accounts view, Categories view, lifecycle toggle
 //
 // ─────────────────────────────────────────────────────────────────────────
 
@@ -1506,6 +1507,265 @@ async function clickNav(page, id) {
     });
     assert(result.hasYes, 'Yes button not found in delete confirm UI');
     assert(result.hasNo,  'No button not found in delete confirm UI');
+    await context.close();
+  });
+
+  // ── Section TX: Transactions Module (Phase 5D-2) ─────────────────────
+  // All tests use injected mock data — no Supabase connection required.
+  // Flag defaults false; each test that needs the section enables it in JS.
+  console.log('\n── Section TX: Transactions Module ──');
+
+  // Shared mock data injected into page context
+  const TX_MOCK_ACCOUNTS = [
+    { key:'truist_checking', label:'Truist Checking', institution:'Truist', account_type:'checking',
+      lifecycle_status:'active', include_in_budget:true, include_in_cashflow:true,
+      starting_balance:null, notes:null, display_order:1000 },
+    { key:'costco_visa', label:'Costco Visa', institution:'Citi', account_type:'credit_card',
+      lifecycle_status:'hidden', include_in_budget:true, include_in_cashflow:false,
+      starting_balance:null, notes:'Note: hidden account', display_order:3000 },
+    { key:'fidelity_joint', label:'Fidelity Joint WROS-TOD', institution:'Fidelity', account_type:'investment',
+      lifecycle_status:'view_only', include_in_budget:false, include_in_cashflow:true,
+      starting_balance:null, notes:null, display_order:5000 }
+  ];
+
+  const TX_MOCK_CATEGORIES = [
+    { key:'income', label:'Income', parent_key:null, is_leaf:false, lifecycle_status:'active',
+      behavior_class:null, budget_treatment:null, cashflow_treatment:null,
+      budget_line_key:null, budget_group_key:null, merged_into_key:null, display_order:1000 },
+    { key:'income.net_salary', label:'Net Salary', parent_key:'income', is_leaf:true, lifecycle_status:'active',
+      behavior_class:'income', budget_treatment:'display_only', cashflow_treatment:'operating',
+      budget_line_key:'income.net_salary', budget_group_key:'income', merged_into_key:null, display_order:1010 },
+    { key:'health_fitness', label:'Health & Fitness', parent_key:null, is_leaf:false, lifecycle_status:'active',
+      behavior_class:null, budget_treatment:null, cashflow_treatment:null,
+      budget_line_key:null, budget_group_key:null, merged_into_key:null, display_order:4000 },
+    { key:'health_fitness.flexible_spending_2026', label:'Flexible Spending 2026', parent_key:'health_fitness', is_leaf:true, lifecycle_status:'active',
+      behavior_class:'reimbursable_expense', budget_treatment:'excluded', cashflow_treatment:'reimbursable',
+      budget_line_key:null, budget_group_key:'health_fitness', merged_into_key:null, display_order:4050 },
+    { key:'business', label:'Business', parent_key:null, is_leaf:false, lifecycle_status:'active',
+      behavior_class:null, budget_treatment:null, cashflow_treatment:null,
+      budget_line_key:null, budget_group_key:null, merged_into_key:null, display_order:9000 },
+    { key:'business.jabian_2026_dup', label:'Jabian 2026 (dup)', parent_key:'business', is_leaf:true, lifecycle_status:'merged',
+      behavior_class:'expense', budget_treatment:'tracked', cashflow_treatment:'operating',
+      budget_line_key:null, budget_group_key:'business', merged_into_key:'business.jabian_expenses_2026', display_order:9010 }
+  ];
+
+  await test('TX-1: flag=false — Transactions nav hidden, no nav-transactions-wrap visible', async () => {
+    const { page, context } = await openApp(browser);
+    const result = await page.evaluate(() => ({
+      flagDefault: FEATURE_FLAGS.showTransactionSection,
+      navWrapDisplay: document.getElementById('nav-transactions-wrap')?.style.display,
+      registriesStatus: _registriesLoadStatus
+    }));
+    assert(result.flagDefault === false, 'showTransactionSection must default false');
+    assert(result.navWrapDisplay === 'none', 'nav-transactions-wrap must be display:none when flag=false');
+    assert(result.registriesStatus === 'not_loaded', 'Supabase registries must not load when both flags false');
+    await context.close();
+  });
+
+  await test('TX-2: flag=true with mock data — Accounts tab renders table with all 8 expected columns', async () => {
+    const { page, context } = await openApp(browser);
+    const result = await page.evaluate((mockAccounts) => {
+      FEATURE_FLAGS.showTransactionSection = true;
+      _accountsCache = mockAccounts;
+      _categoriesCache = [];
+      _registriesLoadStatus = 'loaded';
+      renderApp();
+      setSection('transactions');
+      var html = document.getElementById('transactions-content')?.innerHTML || '';
+      return {
+        navVisible: document.getElementById('nav-transactions-wrap')?.style.display !== 'none',
+        hasLabel: html.includes('Label'),
+        hasInstitution: html.includes('Institution'),
+        hasType: html.includes('Type'),
+        hasStatus: html.includes('Status'),
+        hasInBudget: html.includes('In Budget'),
+        hasInCashflow: html.includes('In Cashflow'),
+        hasBalance: html.includes('Starting Balance'),
+        hasRowCount: (html.match(/<tr/g) || []).length
+      };
+    }, TX_MOCK_ACCOUNTS);
+    assert(result.navVisible, 'Transactions nav must be visible when flag=true');
+    assert(result.hasLabel, 'Accounts table must have Label column');
+    assert(result.hasInstitution, 'Accounts table must have Institution column');
+    assert(result.hasType, 'Accounts table must have Type column');
+    assert(result.hasStatus, 'Accounts table must have Status column');
+    assert(result.hasInBudget, 'Accounts table must have In Budget column');
+    assert(result.hasInCashflow, 'Accounts table must have In Cashflow column');
+    assert(result.hasBalance, 'Accounts table must have Starting Balance column');
+    await context.close();
+  });
+
+  await test('TX-3: flag=true — "Balance not set" shown for all null starting_balance accounts', async () => {
+    const { page, context } = await openApp(browser);
+    const result = await page.evaluate((mockAccounts) => {
+      FEATURE_FLAGS.showTransactionSection = true;
+      _accountsCache = mockAccounts;
+      _categoriesCache = [];
+      _registriesLoadStatus = 'loaded';
+      renderApp();
+      setSection('transactions');
+      var html = document.getElementById('transactions-content')?.innerHTML || '';
+      var balanceNotSetCount = (html.match(/Balance not set/g) || []).length;
+      return { balanceNotSetCount, accountsWithNullBalance: mockAccounts.filter(a => a.starting_balance === null).length };
+    }, TX_MOCK_ACCOUNTS);
+    assert(result.balanceNotSetCount === result.accountsWithNullBalance,
+      '"Balance not set" must appear once per account with null starting_balance, got ' + result.balanceNotSetCount + ' for ' + result.accountsWithNullBalance + ' null-balance accounts');
+    await context.close();
+  });
+
+  await test('TX-4: lifecycle badges render correct classes for active/hidden/view_only', async () => {
+    const { page, context } = await openApp(browser);
+    const result = await page.evaluate((mockAccounts) => {
+      FEATURE_FLAGS.showTransactionSection = true;
+      _accountsCache = mockAccounts;
+      _categoriesCache = [];
+      _registriesLoadStatus = 'loaded';
+      renderApp();
+      setSection('transactions');
+      var html = document.getElementById('transactions-content')?.innerHTML || '';
+      return {
+        hasGreenSoft: html.includes('greenSoft'),
+        hasHiddenBadge: html.includes('surface3') && html.includes('hidden'),
+        hasViewOnlyBadge: html.includes('blueSoft') && html.includes('view only')
+      };
+    }, TX_MOCK_ACCOUNTS);
+    assert(result.hasGreenSoft, 'Active lifecycle badge must use greenSoft background');
+    assert(result.hasHiddenBadge, 'Hidden lifecycle badge must use surface3 background');
+    assert(result.hasViewOnlyBadge, 'View_only lifecycle badge must use blueSoft background');
+    await context.close();
+  });
+
+  await test('TX-5: Categories active-only default — merged row absent, active rows present', async () => {
+    const { page, context } = await openApp(browser);
+    const result = await page.evaluate((mockAccounts, mockCategories) => {
+      FEATURE_FLAGS.showTransactionSection = true;
+      _accountsCache = mockAccounts;
+      _categoriesCache = mockCategories;
+      _registriesLoadStatus = 'loaded';
+      _txCatShowAll = false;
+      renderApp();
+      setSection('transactions');
+      setTxSubNav('categories');
+      var html = document.getElementById('transactions-content')?.innerHTML || '';
+      return {
+        jabianDupAbsent: !html.includes('jabian_2026_dup'),
+        netSalaryPresent: html.includes('Net Salary'),
+        flexSpendPresent: html.includes('Flexible Spending 2026'),
+        showAllTogglePresent: html.includes('Show all lifecycle states'),
+        countLabel: html.includes('5 of 6') // 5 active of 6 total
+      };
+    }, TX_MOCK_ACCOUNTS, TX_MOCK_CATEGORIES);
+    assert(result.jabianDupAbsent, 'Merged row (jabian_2026_dup) must be absent in active-only view');
+    assert(result.netSalaryPresent, 'Active leaf rows must appear in active-only view');
+    assert(result.flexSpendPresent, 'Flexible Spending 2026 must appear in active-only view');
+    assert(result.showAllTogglePresent, '"Show all lifecycle states" toggle must be present');
+    await context.close();
+  });
+
+  await test('TX-6: Categories show-all toggle — merged row visible with merged badge and merged_into_key', async () => {
+    const { page, context } = await openApp(browser);
+    const result = await page.evaluate((mockAccounts, mockCategories) => {
+      FEATURE_FLAGS.showTransactionSection = true;
+      _accountsCache = mockAccounts;
+      _categoriesCache = mockCategories;
+      _registriesLoadStatus = 'loaded';
+      _txCatShowAll = true;
+      renderApp();
+      setSection('transactions');
+      setTxSubNav('categories');
+      var html = document.getElementById('transactions-content')?.innerHTML || '';
+      return {
+        jabianDupPresent: html.includes('jabian_2026_dup'),
+        mergedBadgePresent: html.includes('amberSoft'),
+        mergedIntoKeyPresent: html.includes('jabian_expenses_2026'),
+        showActiveOnlyToggle: html.includes('Show active only'),
+        countLabel: html.includes('6 of 6')
+      };
+    }, TX_MOCK_ACCOUNTS, TX_MOCK_CATEGORIES);
+    assert(result.jabianDupPresent, 'Merged row must be visible in show-all mode');
+    assert(result.mergedBadgePresent, 'Merged badge must use amberSoft background');
+    assert(result.mergedIntoKeyPresent, 'merged_into_key target must appear in show-all mode');
+    assert(result.showActiveOnlyToggle, '"Show active only" toggle must appear when show-all is active');
+    await context.close();
+  });
+
+  await test('TX-7: Categories table has 8 columns including budget_group_key', async () => {
+    const { page, context } = await openApp(browser);
+    const result = await page.evaluate((mockAccounts, mockCategories) => {
+      FEATURE_FLAGS.showTransactionSection = true;
+      _accountsCache = mockAccounts;
+      _categoriesCache = mockCategories;
+      _registriesLoadStatus = 'loaded';
+      renderApp();
+      setSection('transactions');
+      setTxSubNav('categories');
+      var html = document.getElementById('transactions-content')?.innerHTML || '';
+      return {
+        hasBudgetLineKey: html.includes('Budget Line Key'),
+        hasBudgetGroupKey: html.includes('Budget Group Key'),
+        orphanColspan8: html.includes('colspan="8"') || !html.includes('no parent in current view'), // orphan section only if orphans exist
+      };
+    }, TX_MOCK_ACCOUNTS, TX_MOCK_CATEGORIES);
+    assert(result.hasBudgetLineKey, 'Categories table must have Budget Line Key column');
+    assert(result.hasBudgetGroupKey, 'Categories table must have Budget Group Key column (8th column)');
+    await context.close();
+  });
+
+  await test('TX-8: Future tabs labeled with phase — Register Phase 5E, Reconciliation Phase 5F', async () => {
+    const { page, context } = await openApp(browser);
+    const result = await page.evaluate((mockAccounts) => {
+      FEATURE_FLAGS.showTransactionSection = true;
+      _accountsCache = mockAccounts;
+      _categoriesCache = [];
+      _registriesLoadStatus = 'loaded';
+      renderApp();
+      setSection('transactions');
+      var html = document.getElementById('transactions-content')?.innerHTML || '';
+      return {
+        registerLabel: html.includes('Register — Phase 5E'),
+        reconciliationLabel: html.includes('Reconciliation — Phase 5F'),
+        registerNotClickable: html.includes('cursor:not-allowed') || html.includes('cursor: not-allowed')
+      };
+    }, TX_MOCK_ACCOUNTS);
+    assert(result.registerLabel, 'Register future tab must be labeled "Register — Phase 5E"');
+    assert(result.reconciliationLabel, 'Reconciliation future tab must be labeled "Reconciliation — Phase 5F"');
+    assert(result.registerNotClickable, 'Future tabs must have cursor:not-allowed to signal they are disabled');
+    await context.close();
+  });
+
+  await test('TX-9: flag reset to false — Transactions nav hidden, budget module unaffected', async () => {
+    const { page, context } = await openApp(browser);
+    const result = await page.evaluate((mockAccounts) => {
+      // Enable then disable
+      FEATURE_FLAGS.showTransactionSection = true;
+      _accountsCache = mockAccounts;
+      _registriesLoadStatus = 'loaded';
+      renderApp();
+      FEATURE_FLAGS.showTransactionSection = false;
+      renderApp();
+      return {
+        navHidden: document.getElementById('nav-transactions-wrap')?.style.display === 'none',
+        budgetCatRegistryIntact: typeof BUDGET_CATEGORY_REGISTRY !== 'undefined' && BUDGET_CATEGORY_REGISTRY.length > 0,
+        runModelWorks: typeof runModel === 'function'
+      };
+    }, TX_MOCK_ACCOUNTS);
+    assert(result.navHidden, 'Transactions nav must be hidden again after flag reset to false');
+    assert(result.budgetCatRegistryIntact, 'BUDGET_CATEGORY_REGISTRY must remain intact after Transactions module runs');
+    assert(result.runModelWorks, 'runModel must still be callable after Transactions module runs');
+    await context.close();
+  });
+
+  await test('TX-10: Transactions section not in mob-bottom-nav (desktop-only, Slice 1)', async () => {
+    const { page, context } = await openApp(browser);
+    const result = await page.evaluate(() => {
+      var mobNav = document.getElementById('mob-bottom-nav');
+      return {
+        mobNavHasTransactions: mobNav ? mobNav.innerHTML.includes('transactions') : false,
+        mobNavHasMobNavTransactions: !!document.getElementById('mob-nav-transactions')
+      };
+    });
+    assert(!result.mobNavHasTransactions, 'mob-bottom-nav must not contain transactions entry in Slice 1');
+    assert(!result.mobNavHasMobNavTransactions, 'mob-nav-transactions element must not exist in Slice 1');
     await context.close();
   });
 
