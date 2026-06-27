@@ -7,7 +7,8 @@
 | 5E-1   | SQL Foundation + Read-Only Register Shell | Complete    |
 | 5E-2   | Transaction Writes                        | Complete    |
 | 5E-3   | Register Live by Default                  | Complete    |
-| 5E-4   | Wendy Stabilization / Small Fixes         | Not started |
+| 5E-4   | Budget Correctness + Display Fixes        | Complete    |
+| 5E-5   | Budget Line Admin (required before 7/1)   | Not started |
 | 5F-0   | Role Enforcement / Security Maturity Gate | Not started |
 | 5F-1   | Reconciliation Design + Read-Only Scaffold| Not started |
 | 5F-2   | Reconciliation Writes                     | Not started |
@@ -15,6 +16,42 @@
 | 5H     | Transfers                                 | Not started |
 | 5I     | Import Readiness                          | Not started |
 | 5J     | Budget Integration / Actuals              | Not started |
+
+### Phase 5E-5 — Budget Line Admin (REQUIRED BEFORE 7/1, NOT STARTED)
+Minimum viable in-app budget line management. Must complete before 5F-0.
+
+**Scope:**
+- Add budget line (category, label, amount, effective month)
+- Edit budget line (name, group, amount)
+- Archive/inactivate line (no hard delete, preserves history)
+- Show whether selected month balances to income
+- Prevent overwriting prior months accidentally (month-scoped rules)
+- No auto-forcing rebalance to Extra Pay — show imbalance and let Adam decide
+
+**No schema change required.** Current `budget_line_rules` table supports all of this.
+
+**Gate:** Must complete before 5F-0. 7/1 hard requirement.
+
+---
+
+### Phase 5E-4 — Budget Correctness + Display Fixes (COMPLETE, 2026-06-27)
+**What shipped:**
+- Fixed Budget topbar subtitle (was bleeding Register account name)
+- Removed `misc.goal_sweep` exclusion from totals — now included in Total Planned Budget
+- Renamed "Monthly Living Expenses (excl. goal sweep)" to "Total Planned Budget"
+- Budget balance row drives from `incomeTotal` (from budget lines), not hardcoded $15,938
+- Out-of-balance warning: amber banner + explanation when plan ≠ income
+- Balanced confirmation: green checkmark when plan = income
+- `misc.goal_sweep` row annotated as "(flexible sweep line)"
+- Help text updated: Extra Pay is the usual sweep line; Misc → Extra or other discretionary can also absorb changes
+- Reconciliation section on Budget annotated with transitional note (moves to Transactions in 5F-2)
+- July SQL patch: `docs/phase-5e-4-july-budget-patch.sql` — closes $2,300 goal_sweep at June, opens $1,450 for July+
+- 12 new static regression tests (5E4-01 through 5E4-12); 785/785 passed
+- Updated stale tests: 5B-24 (label change), 5E1-01 (flag now defaults true)
+
+**Non-goals:** No `_getBudgetLivingExpenses()` changes (feeds runModel — untouched). No new schema. No Budget Line Admin UI (that's 5E-5).
+
+---
 
 ### Phase 5F-0 — Role Enforcement / Security Maturity Gate (PLANNED, NOT STARTED)
 Absorbs deferred Phase 4C. Must complete before reconciliation, splits, imports, transfers, or budget integration.

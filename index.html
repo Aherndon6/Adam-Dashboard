@@ -5183,8 +5183,8 @@ function renderBudget(){
     html+='<li><strong>Spent</strong> — what has been logged so far this month in that category.</li>';
     html+='<li><strong>Budget</strong> — the planned amount for the month (set by Adam in the financial model).</li>';
     html+='<li><strong>Remaining</strong> — Budget minus Spent. <span style="color:var(--green);font-weight:600">Green</span> means within budget, <span style="color:#ef4444;font-weight:600">red</span> means over.</li>';
-    html+='<li><em>Extra Pay Going to Spreadsheet</em> (under Misc) is the goal sweep — automatic and excluded from all totals.</li>';
-    html+='<li><strong>Available for Goals</strong> (bottom row) is income minus total living expenses — this feeds the savings and goals model.</li>';
+    html+='<li><em>Extra Pay Going to Spreadsheet</em> (under Misc) is the usual flexible sweep line — it is included in the Total Planned Budget. When expenses increase, reduce this line to keep the budget balanced. You can also offset changes by adjusting Misc → Extra or another discretionary category.</li>';
+    html+='<li>The <strong>Budget Balance</strong> row shows income minus Total Planned Budget. It should always be $0.00. If it is not, adjust a discretionary line until it zeros out.</li>';
     html+='</ul>';
 
     html+='</div>';
@@ -5278,57 +5278,57 @@ function renderBudget(){
     }
 
     rows.forEach(function(c){
-      // goal_sweep: display-only row, styled differently
-      if(c.key==='misc.goal_sweep'){
-        var gsAmt=_getBudgetAmount(c.key,monthIso);
-        html+='<tr style="border-bottom:1px solid var(--border)">';
-        html+='<td style="padding:5px 8px 5px 20px;color:var(--muted);font-style:italic">'+c.label+'</td>';
-        html+='<td style="text-align:right;padding:5px 8px;color:var(--muted)">—</td>';
-        html+='<td style="text-align:right;padding:5px 8px;color:var(--muted);font-style:italic">'+f(gsAmt)+'</td>';
-        html+='<td style="text-align:right;padding:5px 8px;color:var(--muted)">—</td>';
-        html+='</tr>';
-        return;
-      }
       var s=spentByKey[c.key]||0;
       var b=_getBudgetAmount(c.key,monthIso);
       if(b===0&&s===0)return; // skip zero rows
       var rem=b-s;
       var indent=isStandalone?'8px':'20px';
-      html+='<tr style="border-bottom:1px solid var(--border)">';
-      html+='<td style="padding:5px 8px 5px '+indent+'">'+c.label+'</td>';
+      // misc.goal_sweep: included in totals but marked as the flexible sweep line
+      var isGoalSweep=c.key==='misc.goal_sweep';
+      html+='<tr style="border-bottom:1px solid var(--border)'+(isGoalSweep?';background:var(--bg)':'')+'">';
+      html+='<td style="padding:5px 8px 5px '+indent+(isGoalSweep?';font-style:italic':'')+'">'
+        +c.label+(isGoalSweep?' <span style="font-size:10px;color:var(--muted)">(flexible sweep line)</span>':'')+'</td>';
       html+='<td style="text-align:right;padding:5px 8px">'+(s>0?f(s):'—')+'</td>';
       html+='<td style="text-align:right;padding:5px 8px;color:var(--blue)">'+(b>0?f(b):'—')+'</td>';
       html+='<td style="text-align:right;padding:5px 8px;color:'+(rem<0?'#ef4444':(rem===b&&s===0)?'var(--muted)':'var(--green)')+'">'+f(rem)+'</td>';
       html+='</tr>';
-      if(c.key!=='misc.goal_sweep'){totalExpSpent+=s;totalExpBudget+=b;}
+      totalExpSpent+=s;totalExpBudget+=b;
     });
   });
 
-  // Grand total expenses row — excludes misc.goal_sweep (display-only)
+  // Total Planned Budget row — includes all expense lines including misc.goal_sweep
   var totalRem=totalExpBudget-totalExpSpent;
-  var gsAmt=_getBudgetAmount('misc.goal_sweep',monthIso);
   html+='<tr style="border-top:2px solid var(--border);background:var(--bg)">';
-  html+='<td style="padding:6px 8px;font-weight:700">Monthly Living Expenses <span style="font-size:10px;font-weight:400;color:var(--muted)">(excl. goal sweep)</span></td>';
+  html+='<td style="padding:6px 8px;font-weight:700">Total Planned Budget</td>';
   html+='<td style="text-align:right;padding:6px 8px;font-weight:700">'+f(totalExpSpent)+'</td>';
   html+='<td style="text-align:right;padding:6px 8px;font-weight:700;color:var(--blue)">'+f(totalExpBudget)+'</td>';
   html+='<td style="text-align:right;padding:6px 8px;font-weight:700;color:'+(totalRem<0?'#ef4444':'var(--green)')+'">'+f(totalRem)+'</td>';
   html+='</tr>';
-  // Available for Goals row — mirrors Goals stats panel
-  var afg=15938-totalExpBudget;
-  html+='<tr style="background:var(--greenSoft)">';
-  html+='<td style="padding:5px 8px;font-size:11px;color:#166534;font-weight:600">Available for Goals <span style="font-size:10px;font-weight:400">(Income $15,938 − Living Expenses)</span></td>';
-  html+='<td colspan="2" style="text-align:right;padding:5px 8px;font-size:11px;color:#166534">—</td>';
-  html+='<td style="text-align:right;padding:5px 8px;font-size:13px;font-weight:700;color:#166534">'+f(afg)+'</td>';
+  // Budget balance row — income vs total planned; warns when not zero
+  var budgetDiff=incomeTotal-totalExpBudget;
+  var balanced=Math.abs(budgetDiff)<0.01;
+  html+='<tr style="background:'+(balanced?'var(--greenSoft)':'#fef3c7')+'">';
+  html+='<td style="padding:5px 8px;font-size:11px;font-weight:600;color:'+(balanced?'#166534':'#92400e')+'">'
+    +(balanced?'✓ Budget balanced':'⚠ Budget out of balance')
+    +' <span style="font-size:10px;font-weight:400">(Income '+f(incomeTotal)+' − Total Planned '+f(totalExpBudget)+')</span></td>';
+  html+='<td colspan="2" style="text-align:right;padding:5px 8px;font-size:11px">—</td>';
+  html+='<td style="text-align:right;padding:5px 8px;font-size:13px;font-weight:700;color:'+(balanced?'#166534':(budgetDiff>0?'var(--blue)':'#ef4444'))+'">'+f(budgetDiff)+'</td>';
   html+='</tr>';
-  if(gsAmt>0){
-    html+='<tr style="background:var(--bg)">';
-    html+='<td colspan="4" style="padding:4px 8px;font-size:10px;color:var(--muted)">* "Extra Pay Going to Spreadsheet" ($'+fc(gsAmt)+') shown under Misc. is the goal sweep allocation. It is excluded from living expenses and from all Spent/Remaining calculations.</td>';
+  if(!balanced){
+    html+='<tr style="background:#fef3c7">';
+    html+='<td colspan="4" style="padding:4px 8px;font-size:10px;color:#92400e">'
+      +'Budget does not balance to income. To fix, adjust Misc → Extra Pay Going to Spreadsheet (most common), '
+      +'Misc → Extra, or another discretionary category until the difference reaches $0.00.</td>';
     html+='</tr>';
   }
   html+='</tbody></table></div>';
 
 
   // ── Reconciliation Panel ───────────────────────────────────────────────────
+  // Temporary: reconciliation remains here during the Transactions tab transition.
+  // Budget tab reconciliation uses budget_transactions (current Wendy workflow).
+  // This panel will move fully to the Transactions tab in Phase 5F-2 when the
+  // new reconciliation workflow has parity.
   html+=_renderBudgetRecon(monthIso);
 
   // ── Transaction List ───────────────────────────────────────────────────────
@@ -5625,6 +5625,8 @@ function renderApp(){
       _ts.textContent=scenarioState.active?'Preview active — '+scenarioState.type+' scenario':'What-if modeling — preview never writes until committed';
     } else if(activeSection==='ask'){
       _ts.textContent='Ask questions about your model in plain English';
+    } else if(activeSection==='budget'){
+      _ts.textContent=_budgetMonthLabel(_budgetGetMonthIso())+' · Monthly budget';
     } else if(activeSection==='transactions'){
       if(_txSubNav==='accounts'){
         _ts.textContent=_accountsCache?_accountsCache.length+' accounts · Read only':'Accounts loading…';

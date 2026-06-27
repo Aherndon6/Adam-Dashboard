@@ -5051,17 +5051,19 @@ test('5B-23: renderBudget shows empty-rules warning when cache is loaded but has
   assert(htmlSrc.includes('_budgetLineRulesCache.length===0'),'must check cache length explicitly');
 });
 
-test('5B-24: Budget printout total row label says "Monthly Living Expenses (excl. goal sweep)"',()=>{
+test('5B-24: Budget printout total row uses "Total Planned Budget" label (updated 5E-4)',()=>{
+  // Updated in Phase 5E-4: misc.goal_sweep is now INCLUDED in the total.
+  // Label changed from "Monthly Living Expenses (excl. goal sweep)" to "Total Planned Budget".
+  // "Available for Goals" row replaced by budget balance row using incomeTotal.
   var htmlSrc='';
   try{htmlSrc=require('fs').readFileSync(require('path').join(__dirname,'index.html'),'utf8');}catch(e){}
   assert(htmlSrc.length>0,'Could not read index.html');
   var budgetFnIdx=htmlSrc.indexOf('function renderBudget()');
   var budgetFnSrc=htmlSrc.slice(budgetFnIdx,budgetFnIdx+18000);
-  assert(budgetFnSrc.includes('Monthly Living Expenses'),'total row must say Monthly Living Expenses');
-  assert(budgetFnSrc.includes('excl. goal sweep'),'total row must note exclusion of goal sweep');
-  assert(budgetFnSrc.includes('Available for Goals'),'must show Available for Goals row below total');
-  // Footnote must explain goal_sweep exclusion for Wendy
-  assert(budgetFnSrc.includes('Extra Pay Going to Spreadsheet')&&budgetFnSrc.includes('excluded from living expenses'),'footnote must explain goal_sweep is excluded from living expenses totals');
+  assert(budgetFnSrc.includes('Total Planned Budget'),'total row must say Total Planned Budget');
+  assert(!budgetFnSrc.includes('excl. goal sweep'),'goal sweep exclusion note must be removed');
+  assert(budgetFnSrc.includes('Extra Pay Going to Spreadsheet'),'misc.goal_sweep must still render');
+  assert(budgetFnSrc.includes('Budget out of balance'),'out-of-balance warning must exist');
 });
 
 test('5B-25: appendChild guard prevents regression render errors',()=>{
@@ -5415,8 +5417,9 @@ test('5D2-26: orphan category header colspan matches 8-column category table',()
 // ── Phase 5E-1: SQL foundation + read-only Register shell ─────────────────
 console.log('\n── Phase 5E-1 tests ──');
 
-test('5E1-01: FEATURE_FLAGS.showTransactionLedger defaults false',()=>{
-  assertIncludes(html,'showTransactionLedger:false','showTransactionLedger must default false');
+test('5E1-01: FEATURE_FLAGS.showTransactionLedger defaults true (enabled in 5E-3)',()=>{
+  // Phase 5E-3 flipped this to true as the production default.
+  assertIncludes(html,'showTransactionLedger:true','showTransactionLedger must default true after Phase 5E-3');
 });
 
 test('5E1-02: showTransactionLedger flag comment present in FEATURE_FLAGS block',()=>{
@@ -5932,6 +5935,93 @@ test('5E2-40: _txToFormData uses parseFloat before amount comparisons',()=>{
   assertIncludes(fnSrc,'amt<0','_txToFormData must compare parsed amt for negative branch');
   assertIncludes(fnSrc,'amt>0','_txToFormData must compare parsed amt for positive branch');
   assertIncludes(fnSrc,'Math.abs(amt)','_txToFormData must use Math.abs(amt), not Math.abs(tx.amount)');
+});
+
+// ═══════════════════════════════════════════════════════════════════════════
+// Section 5E4 — Budget Totals Correctness (Phase 5E-4)
+// ═══════════════════════════════════════════════════════════════════════════
+
+test('5E4-01: misc.goal_sweep NOT excluded from totalExpBudget accumulation',()=>{
+  // The old pattern was: if(c.key!=='misc.goal_sweep'){totalExpSpent+=s;totalExpBudget+=b;}
+  // After 5E-4 this guard must NOT exist — goal_sweep counts in the total.
+  var start=html.indexOf('rows.forEach(function(c){');
+  var end=html.indexOf('// Total Planned Budget row',start);
+  assert(start>0,'rows.forEach block not found');
+  assert(end>start,'Total Planned Budget comment not found after rows.forEach');
+  var block=html.slice(start,end);
+  assert(!block.includes("c.key!=='misc.goal_sweep'"),
+    'goal_sweep exclusion guard must be removed from totalExpBudget accumulation');
+});
+
+test('5E4-02: renderBudget uses "Total Planned Budget" label',()=>{
+  assertIncludes(html,'Total Planned Budget',
+    'Budget total row must use "Total Planned Budget" label');
+});
+
+test('5E4-03: renderBudget does NOT use legacy "Monthly Living Expenses (excl. goal sweep)" label',()=>{
+  assert(!html.includes('Monthly Living Expenses (excl. goal sweep)'),
+    'Legacy label "Monthly Living Expenses (excl. goal sweep)" must be removed');
+});
+
+test('5E4-04: budget balance row uses incomeTotal not hardcoded 15938',()=>{
+  // The balance diff must reference incomeTotal, not the literal 15938
+  var start=html.indexOf('// Total Planned Budget row');
+  var end=html.indexOf('</tbody></table></div>',start);
+  var block=html.slice(start,end);
+  assertIncludes(block,'incomeTotal',
+    'Budget balance row must reference incomeTotal, not hardcoded income');
+  assert(!block.includes('15938'),
+    'Budget balance row must not use hardcoded 15938');
+});
+
+test('5E4-05: out-of-balance warning text exists in renderBudget',()=>{
+  assertIncludes(html,'Budget out of balance',
+    'renderBudget must contain out-of-balance warning text');
+});
+
+test('5E4-06: budget balance shows green when balanced',()=>{
+  assertIncludes(html,'Budget balanced',
+    'renderBudget must show balanced state when income equals total planned');
+});
+
+test('5E4-07: footnote about goal_sweep exclusion from totals is removed',()=>{
+  assert(!html.includes('excluded from living expenses and from all Spent/Remaining calculations'),
+    'Old footnote about goal_sweep exclusion must be removed');
+});
+
+test('5E4-08: help text explains Extra Pay as flexible sweep line, not excluded',()=>{
+  assertIncludes(html,'flexible sweep line',
+    'Help text must describe Extra Pay as the flexible sweep line');
+  assertIncludes(html,'Misc → Extra',
+    'Help text must mention Misc → Extra as an alternative balancing line');
+});
+
+test('5E4-09: misc.goal_sweep row rendered with "(flexible sweep line)" label suffix',()=>{
+  assertIncludes(html,'flexible sweep line',
+    'misc.goal_sweep row must show "(flexible sweep line)" annotation');
+});
+
+test('5E4-10: reconciliation transitional note present on Budget',()=>{
+  assertIncludes(html,'reconciliation remains here during the Transactions tab transition',
+    'Budget reconciliation section must include transitional note');
+});
+
+test('5E4-11: topbar subtitle has budget section case',()=>{
+  assertIncludes(html,"activeSection==='budget'",
+    'Topbar subtitle must handle budget section');
+  var budgetCase=html.indexOf("activeSection==='budget'");
+  var txCase=html.indexOf("activeSection==='transactions'");
+  assert(budgetCase>0,'budget case not found');
+  assert(txCase>0,'transactions case not found');
+  assert(budgetCase<txCase,'budget case must appear before transactions case in subtitle logic');
+});
+
+test('5E4-12: _budgetMonthLabel used in budget topbar subtitle',()=>{
+  var subtitleBlock=html.indexOf("activeSection==='budget'");
+  var nextBlock=html.indexOf("} else if(activeSection==='transactions')",subtitleBlock);
+  var budgetSubtitleCode=html.slice(subtitleBlock,nextBlock);
+  assertIncludes(budgetSubtitleCode,'_budgetMonthLabel',
+    'Budget subtitle must use _budgetMonthLabel for the month display');
 });
 
 // ─────────────────────────────────────────────────────────────────────────
