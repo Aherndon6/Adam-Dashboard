@@ -1,9 +1,20 @@
 # Herndon Financial OS — Phase Status
 
-## Phase 5E-2 — Transaction Writes
-**Status:** Migration complete — awaiting live smoke
+## Phase 5E-3 — Production Enablement
+**Status:** Complete
 **Date:** 2026-06-27
-**Commit:** 40fdf28
+
+### What shipped
+- `showTransactionLedger` flipped to `true` as production default
+- Register tab now live for all users on page load — no console JS required
+- Live smoke passed: Adam add/edit/cleared/delete, Wendy add — all confirmed
+
+---
+
+## Phase 5E-2 — Transaction Writes
+**Status:** Complete
+**Date:** 2026-06-27
+**Commit:** 40fdf28 + a8d2b19
 
 ### Final confirmed state (post-migration)
 - Static regression: 773/773 passed

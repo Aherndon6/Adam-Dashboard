@@ -5706,12 +5706,11 @@ const SUPA_H={'apikey':SUPA_KEY,'Authorization':'Bearer '+SUPA_KEY,'Content-Type
 // showTransactionSection: false = production default; Transactions nav hidden.
 //                         true  = show Transactions section (Accounts + Categories views).
 //                                 Forces Supabase registry load regardless of useSupabaseRegistries.
-// showTransactionLedger:  false = production default; Register tab stays disabled.
-//                         true  = activate Register tab (Phase 5E-1 read-only ledger).
+// showTransactionLedger:  true  = Register tab active (Phase 5E-3 production default).
 //                                 Implies Transactions section nav visible even if showTransactionSection=false.
 //                                 Forces Supabase registry load for account selector.
 // Set flags in console for manual testing.
-var FEATURE_FLAGS={useSupabaseRegistries:false,showTransactionSection:false,showTransactionLedger:false};
+var FEATURE_FLAGS={useSupabaseRegistries:false,showTransactionSection:false,showTransactionLedger:true};
 
 // ── Auth state machine ────────────────────────────────────────────────────────
 // SUPA_H is retained as a const for reference but is no longer used in any fetch() call.
