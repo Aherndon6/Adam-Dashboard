@@ -41,7 +41,7 @@ Minimal Budget Rule Admin UI inside the Budget tab.
 - After each save: reloads `budget_line_rules` cache from Supabase and re-renders Budget
 - Total Income / Total Planned Budget / Budget Balance recalculate automatically after each change
 - No auto-forcing rebalance — out-of-balance warning shown; Adam decides what to adjust
-- `canWriteFinancials()` guards all `_blrOpen*` functions; unauthenticated users see no admin controls
+- `canWriteFinancials()` guards all `_blrOpen*` functions — Adam (owner) and Wendy (household_admin) both see and can use Manage Lines, Edit, and Archive; this is intentional — budget rule management is household operational work, not platform admin; unauthenticated users see no admin controls; future viewer role enforcement deferred to 5E-6
 
 **Hardening patch (same commit session):**
 - `_blrDupCheck` (point-in-time) replaced by `_blrHasOverlap` (full interval overlap)
@@ -100,8 +100,8 @@ Absorbs deferred Phase 4C. Must complete before reconciliation, splits, imports,
 - Document role/capability matrix: owner (Adam), household_admin (Wendy), viewer (future read-only)
 - Audit all write policies and classify by predicate:
   - `is_allowed_user()` = read access only — must not appear on any write policy
-  - `can_write_financials()` = household financial writes (transactions, budget line rules)
-  - `is_owner()` = owner-only admin/config/sensitive writes (accounts, categories, budget tables)
+  - `can_write_financials()` = household operational writes: transactions, budget line rule add/edit/archive
+  - `is_owner()` = owner-only writes: accounts, categories, RLS/policy changes, category registry creation, new category keys, platform/config/admin tables, any destructive/permanent admin action
 - Confirm no write policy uses `is_allowed_user()`
 - Confirm Wendy can write only to intended household financial workflows
 - Confirm viewer role (when added) can read but cannot write

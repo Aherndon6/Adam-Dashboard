@@ -16,7 +16,8 @@ All tests use real July 2026 data. No accidental mutations — follow the sequen
 - [ ] Confirm "Manage Lines" button appears in header (right of month selector)
 - [ ] Confirm Edit/Archive buttons appear on each expense line row
 - [ ] Confirm Edit button (no Archive) appears on income rows (Net Salary, Net Salary Spouse)
-- [ ] Confirm Wendy login does NOT show Manage Lines or Edit/Archive buttons (or repeat as Wendy and verify)
+- [ ] Confirm Wendy (household_admin) ALSO sees Manage Lines / Edit / Archive — this is intentional; Wendy can manage household budget rules via `canWriteFinancials()`
+- [ ] Confirm unauthenticated users do NOT see or cannot use admin controls (sign out to verify)
 
 ---
 
@@ -140,12 +141,23 @@ Verified implicitly in AC-1, AC-2, AC-3. Confirm:
 
 ---
 
-## AC-9: Unauthenticated users cannot write
+## AC-9: Write access is role-gated
 
+**Unauthenticated:**
 1. Sign out
-2. Confirm Manage Lines button NOT visible (or not functional)
+2. Confirm Manage Lines button NOT visible (or not functional if visible)
 3. Confirm Edit/Archive buttons NOT visible on rows
 4. Sign back in as Adam
+
+**Wendy (household_admin) — intentionally allowed:**
+- Wendy should see Manage Lines, Edit, and Archive buttons
+- This is correct behavior — `canWriteFinancials()` includes household_admin
+- Wendy can manage budget rule labels, amounts, one-time/ongoing adds, and archives
+- This was verified in pre-flight above
+
+**Future viewer role (not yet implemented):**
+- Once a viewer/read-only role exists, it must NOT see or be able to use admin controls
+- Enforcement deferred to 5E-6 Role Enforcement phase
 
 ---
 
