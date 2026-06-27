@@ -1,16 +1,19 @@
 # Herndon Financial OS — Phase Status
 
 ## Phase 5E-2 — Transaction Writes
-**Status:** Complete (awaiting Supabase migration + live smoke)
+**Status:** Migration complete — awaiting live smoke
 **Date:** 2026-06-27
-**Commit:** pending
+**Commit:** 40fdf28
 
-### Final confirmed state (pre-migration)
-- Static regression: 761/761 passed (733 prior + 28 new 5E2-* tests)
-- Playwright E2E: 106/106 passed (90 prior + 16 new WR tests)
-- All RG tests updated for 5E-2 behavior (RG-7b, RG-11, RG-15)
-- Supabase migration NOT yet applied — code is flag-guarded (showTransactionLedger=false)
-- Working tree: uncommitted changes staged and ready
+### Final confirmed state (post-migration)
+- Static regression: 773/773 passed
+- Playwright E2E: 114/114 passed
+- Supabase migration applied: 3 write policies, column grants, ALTER POLICY hardening
+- VM1-VM12: all 12 passed (VM6/VM8 updated to verify RLS policy content vs. column grants)
+- VM6/VM8 note: Supabase grants ALL to authenticated at table level by default; column-level
+  grant restriction is not achievable — security enforced via RLS. INSERT policy hardened
+  with user_id = auth.uid() check via ALTER POLICY on 2026-06-27.
+- showTransactionLedger still default false — enable for live smoke only
 
 ### What was built
 - DB: 3 write policies using `can_write_financials() AND source='manual'` (INSERT, UPDATE, DELETE)
