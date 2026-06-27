@@ -1,5 +1,50 @@
 # Herndon Financial OS — Phase Status
 
+## Roadmap Sequence (as of 2026-06-27)
+
+| Phase  | Name                                      | Status      |
+|--------|-------------------------------------------|-------------|
+| 5E-1   | SQL Foundation + Read-Only Register Shell | Complete    |
+| 5E-2   | Transaction Writes                        | Complete    |
+| 5E-3   | Register Live by Default                  | Complete    |
+| 5E-4   | Wendy Stabilization / Small Fixes         | Not started |
+| 5F-0   | Role Enforcement / Security Maturity Gate | Not started |
+| 5F-1   | Reconciliation Design + Read-Only Scaffold| Not started |
+| 5F-2   | Reconciliation Writes                     | Not started |
+| 5G     | Splits                                    | Not started |
+| 5H     | Transfers                                 | Not started |
+| 5I     | Import Readiness                          | Not started |
+| 5J     | Budget Integration / Actuals              | Not started |
+
+### Phase 5F-0 — Role Enforcement / Security Maturity Gate (PLANNED, NOT STARTED)
+Absorbs deferred Phase 4C. Must complete before reconciliation, splits, imports, transfers, or budget integration.
+
+**Purpose:** Formalize and verify role-based write access across all current policies before the schema grows further.
+
+**Scope:**
+- Document role/capability matrix: owner (Adam), household_admin (Wendy), viewer (future read-only)
+- Audit all write policies and classify by predicate:
+  - `is_allowed_user()` = read access only — must not appear on any write policy
+  - `can_write_financials()` = household financial writes (transactions)
+  - `is_owner()` = owner-only admin/config/sensitive writes (accounts, categories, budget tables)
+- Confirm no write policy uses `is_allowed_user()`
+- Confirm Wendy can write only to intended household financial workflows
+- Confirm viewer role (when added) can read but cannot write
+- Confirm owner-only tables remain owner-only
+- Add SQL preflight, validation, and smoke scripts
+- Update docs with role matrix
+
+**Non-goals (explicit exclusions):**
+- No new app features
+- No Budget math changes
+- No `budget_transactions` changes unless audit proves a policy is wrong and change is explicitly approved
+
+**Gate:** 5F-0 must pass before any of 5F-1, 5F-2, 5G, 5H, 5I, or 5J begins.
+
+**Do not start until explicitly approved.**
+
+---
+
 ## Phase 5E-3 — Production Enablement
 **Status:** Complete
 **Date:** 2026-06-27
