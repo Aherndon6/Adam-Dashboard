@@ -81,18 +81,33 @@ If a valid inactive key is available:
 
 ---
 
-## AC-5: Archive a line — prior history preserved
+## AC-5: Archive modal — verify Case A and Case B display (no real rows archived)
 
-1. (Use a test row from AC-3 or AC-4 cleanup, OR)
-2. Click **Archive** on "Diablos (Preston) Fee" (health_fitness.diablos_preston_fee) in July
-3. Archive modal should show: "This rule has history before July 2026" → "will be closed at end of June 2026"
-4. **Do NOT confirm** — click Cancel (this is a real row we want to keep)
+Test modal display logic only for both cases. Cancel every time — do not archive real rows.
 
-> Test the archive MODAL display only, not the actual archive of a real row. Verify:
-> - Modal title: "Archive Budget Rule"
-> - Correct row details shown
-> - Correct case logic (caseA vs caseB) shown in description
-> - Cancel button works cleanly
+**Case A — row has prior-month history (caseA = start_month < July)**
+
+1. Click **Archive** on "Mortgage & Rent" (home.mortgage_rent) in July 2026
+   - This row started before July, so it has history
+2. Confirm modal shows:
+   - Title: "Archive Budget Rule"
+   - Indicates this rule has history before July 2026
+   - Explains it will be closed at end of June 2026 (end_month set to 2026-06-01)
+   - Row will remain visible in all months before July
+3. Click **Cancel** — do not archive
+
+**Case B — row started this month (caseB = start_month = July)**
+
+1. Click **Archive** on "Diablos (Preston) Fee" (health_fitness.diablos_preston_fee) in July 2026
+   - This row starts July 2026, so it has no prior history
+2. Confirm modal shows:
+   - Title: "Archive Budget Rule"
+   - Indicates this rule started in July 2026 (no prior history)
+   - Explains it will be deactivated (is_active set to false) if confirmed
+   - Does NOT say "will be closed at end of June"
+3. Click **Cancel** — do not archive
+
+> Both cancel paths must dismiss the modal cleanly with no state change.
 
 ---
 

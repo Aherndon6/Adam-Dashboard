@@ -17,29 +17,45 @@
 | 5I     | Import Readiness                          | Not started |
 | 5J     | Budget Integration / Actuals              | Not started |
 
-### Phase 5E-5 — Budget Line Admin (COMPLETE, 2026-06-27)
+### Phase 5E-5 — Budget Line Admin (COMPLETE + HARDENED, 2026-06-27)
 Minimal Budget Rule Admin UI inside the Budget tab.
 
-**What shipped:**
+**What shipped (base):**
 - "Manage Lines" button in Budget header (write users only) — opens Add modal
 - Inline "Edit" and "Archive" buttons on each budget line row (expense rows: both; income rows: Edit only)
 - **Edit modal**: label + amount editable; scope locked to "from selected month forward" only
   - Closes prior active row at end of prior month (or deactivates if row started same month)
-  - Inserts new row starting selected month
+  - Inserts replacement row starting selected month, preserving original `end_month`
   - Income warning banner when editing income lines
+  - Shows "Effective Range: From [month] through [end] / onward (open-ended)"
 - **Add modal**: category key from existing `BUDGET_CATEGORY_REGISTRY` leaf keys only (no free-form keys)
   - Scope: one-time (start=end=month) or ongoing (start=month, end=null)
-  - Keys already active for selected month shown as disabled
+  - Keys with an active overlapping rule for selected month shown as disabled
 - **Archive modal**: shows what will happen before confirming
   - Case A (has prior history): closes row at end of prior month, preserves all history
   - Case B (started this month): sets `is_active = false`
   - No hard delete under any circumstance
-- Duplicate active row check blocks saves when same key is already active in selected month
 - After each save: reloads `budget_line_rules` cache from Supabase and re-renders Budget
 - Total Income / Total Planned Budget / Budget Balance recalculate automatically after each change
 - No auto-forcing rebalance — out-of-balance warning shown; Adam decides what to adjust
-- canWriteFinancials() guards all _blrOpen* functions; unauthenticated users see no admin controls
-- 18 new static regression tests (5E5-01 through 5E5-18)
+- `canWriteFinancials()` guards all `_blrOpen*` functions; unauthenticated users see no admin controls
+
+**Hardening patch (same commit session):**
+- `_blrDupCheck` (point-in-time) replaced by `_blrHasOverlap` (full interval overlap)
+  - Two intervals overlap when `new_start <= existing_end AND existing_start <= new_end`
+  - Open-ended rows use FAR sentinel `9999-12-01` for comparison
+  - One-time July add correctly does NOT conflict with an August-forward row
+  - Ongoing July-forward add correctly IS blocked by an August-forward row
+- `_blrSaveEdit`: replacement row now inherits `currentRow.end_month` (not hardcoded null)
+- `_blrSaveEdit`: best-effort rollback — if replacement INSERT fails after the close/deactivate PATCH succeeds, attempts to restore the prior row to its original state; error message distinguishes clean rollback from double-failure
+- `_blrSaveEdit`, `_blrSaveAdd`, `_blrSaveArchive`: all have direct `canWriteFinancials()` guards (defense-in-depth; RLS is the real gate)
+- Add modal dropdown disable: updated to use `_blrHasOverlap` for point-in-month check
+- Smoke checklist AC-10a added: edit a bounded row, confirm January (after end_month) stays clean
+
+**Regression tests:**
+- 18 base tests (5E5-01 through 5E5-18)
+- 10 hardening tests (5E5-H01 through 5E5-H10)
+- **28 total 5E-5 tests; 813/813 full suite passing**
 
 **Explicit scope limitations (documented, deferred to 5E-6):**
 - "Selected month only" edit (three-row split) NOT in 5E-5 — too risky for 7/1
@@ -49,7 +65,7 @@ Minimal Budget Rule Admin UI inside the Budget tab.
 
 **No schema change.** All operations use existing `budget_line_rules` table and REST API.
 
-**Gate:** Must complete before 5F-0.
+**Gate:** Must complete browser smoke checklist before 5F-0.
 
 ---
 
