@@ -4462,7 +4462,7 @@ function renderBudget(){
   // Render INCOME section
   html+='<tr><td colspan="4" style="padding:6px 8px 2px;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);border-top:1px solid var(--border)">Income</td></tr>';
   var incomeTotal=0;
-  BUDGET_CATEGORY_REGISTRY.filter(function(c){return c.isIncome&&c.leaf;}).forEach(function(c){
+  _getActiveCategoryRegistry().filter(function(c){return c.isIncome&&c.leaf;}).forEach(function(c){
     var bud=_getBudgetAmount(c.key,monthIso);
     incomeTotal+=bud;
     html+='<tr style="border-bottom:1px solid var(--border)">';
@@ -4482,15 +4482,15 @@ function renderBudget(){
   // Render EXPENSE sections
   var totalExpSpent=0,totalExpBudget=0;
   // Get top-level expense parents (in order)
-  var expenseParents=BUDGET_CATEGORY_REGISTRY.filter(function(c){
+  var expenseParents=_getActiveCategoryRegistry().filter(function(c){
     return !c.isIncome&&!c.parent&&c.key!=='misc'; // misc rendered last
   });
-  expenseParents.push(BUDGET_CATEGORY_REGISTRY.find(function(c){return c.key==='misc';}));
+  expenseParents.push(_getActiveCategoryRegistry().find(function(c){return c.key==='misc';}));
 
   expenseParents.forEach(function(parent){
     if(!parent)return;
     // Check if this parent has any children in registry
-    var children=BUDGET_CATEGORY_REGISTRY.filter(function(c){return c.parent===parent.key&&!c.isIncome;});
+    var children=_getActiveCategoryRegistry().filter(function(c){return c.parent===parent.key&&!c.isIncome;});
     var isStandalone=children.length===0; // entertainment is standalone
     var rows=isStandalone?[parent]:children;
 
@@ -4581,7 +4581,7 @@ function renderBudget(){
   // Filter by account
   html+='<select style="padding:4px 8px;border:1px solid var(--border);border-radius:6px;font-size:11px;background:var(--surface2);color:var(--ink)" onchange="window._budgetSetFilterAccount(this.value)">';
   html+='<option value="all"'+((_budgetFilterAccount==='all')?' selected':'')+'>All Accounts</option>';
-  BUDGET_PAYMENT_ACCOUNTS.forEach(function(a){html+='<option value="'+esc(a)+'"'+(_budgetFilterAccount===a?' selected':'')+'>'+esc(a)+'</option>';});
+  _getPaymentAccountOptions().forEach(function(a){html+='<option value="'+esc(a)+'"'+(_budgetFilterAccount===a?' selected':'')+'>'+esc(a)+'</option>';});
   html+='</select>';
   // Filter by cleared
   html+='<select style="padding:4px 8px;border:1px solid var(--border);border-radius:6px;font-size:11px;background:var(--surface2);color:var(--ink)" onchange="window._budgetSetFilterCleared(this.value)">';
@@ -4672,7 +4672,7 @@ function _renderBudgetForm(monthIso){
     html+='<option value="">-- Select --</option>';
     // Render selectable leaf nodes in hierarchy order
     var lastParent=null;
-    BUDGET_CATEGORY_REGISTRY.filter(function(c){return !c.isIncome&&c.leaf&&c.assignable;}).forEach(function(c){
+    _getActiveCategoryRegistry().filter(function(c){return !c.isIncome&&c.leaf&&c.assignable;}).forEach(function(c){
       var parentKey=c.parent;
       if(parentKey&&parentKey!==lastParent){
         var pCat=_budgetCatByKey[parentKey];
@@ -4690,7 +4690,7 @@ function _renderBudgetForm(monthIso){
   html+='<div><label style="font-size:11px;font-weight:600;color:var(--muted);display:block;margin-bottom:3px">Payment Account</label>';
   html+='<select style="width:100%;box-sizing:border-box;padding:6px 8px;border:1px solid var(--border);border-radius:6px;font-size:12px;background:var(--surface2);color:var(--ink)" onchange="_budgetFormData.payment_account=this.value">';
   html+='<option value="">-- Select --</option>';
-  BUDGET_PAYMENT_ACCOUNTS.forEach(function(a){html+='<option value="'+esc(a)+'"'+(fd.payment_account===a?' selected':'')+'>'+esc(a)+'</option>';});
+  _getPaymentAccountOptions().forEach(function(a){html+='<option value="'+esc(a)+'"'+(fd.payment_account===a?' selected':'')+'>'+esc(a)+'</option>';});
   html+='</select></div>';
 
   // Description
@@ -4732,7 +4732,7 @@ function _renderBudgetRecon(monthIso){
   html+='<div style="display:flex;align-items:center;gap:10px;margin-bottom:10px;flex-wrap:wrap">';
   html+='<label style="font-size:11px;font-weight:600;color:var(--muted)">Account:</label>';
   html+='<select style="padding:5px 8px;border:1px solid var(--border);border-radius:6px;font-size:12px;background:var(--surface2);color:var(--ink)" onchange="window._budgetSetReconAccount(this.value)">';
-  BUDGET_PAYMENT_ACCOUNTS.forEach(function(a){html+='<option value="'+esc(a)+'"'+(_budgetReconAccount===a?' selected':'')+'>'+esc(a)+'</option>';});
+  _getPaymentAccountOptions().forEach(function(a){html+='<option value="'+esc(a)+'"'+(_budgetReconAccount===a?' selected':'')+'>'+esc(a)+'</option>';});
   html+='</select>';
   html+='<label style="font-size:11px;font-weight:600;color:var(--muted)">Statement balance:</label>';
   html+='<input type="number" min="0" step="0.01" value="'+(_budgetReconBalance||'')+'" placeholder="0.00" style="width:110px;padding:5px 8px;border:1px solid var(--border);border-radius:6px;font-size:12px;background:var(--surface2);color:var(--ink)" onchange="window._budgetSetReconBalance(this.value)">';
@@ -4913,6 +4913,12 @@ if(STAGING_MODE){
 const SUPA_URL='https://usayoldrawwmjsmretin.supabase.co';
 const SUPA_KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InVzYXlvbGRyYXd3bWpzbXJldGluIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzc0NjI0MzIsImV4cCI6MjA5MzAzODQzMn0.7dpPsXdQy2aIYYsm1yWK7D5WJH0tB32ixERMBf5HRWA';
 const SUPA_H={'apikey':SUPA_KEY,'Authorization':'Bearer '+SUPA_KEY,'Content-Type':'application/json'};
+
+// ── Feature Flags (Phase 5D-1) ────────────────────────────────────────────────
+// useSupabaseRegistries: false = production default; JS constants used throughout.
+//                        true  = load accounts + categories from Supabase on login.
+// Set flag=true in console then await _loadSupabaseRegistries() for manual testing.
+var FEATURE_FLAGS={useSupabaseRegistries:false};
 
 // ── Auth state machine ────────────────────────────────────────────────────────
 // SUPA_H is retained as a const for reference but is no longer used in any fetch() call.
@@ -5161,7 +5167,15 @@ async function loadAll(){
     }
     _supaConnected=true;
   }catch(e){console.error('loadAll:',e);_supaConnected=false;budgetRulesLoadStatus='failed';goalsLoadStatus='loaded_fallback';applyGoalsFallback();}
-  renderApp();
+  // Rebuild category lookup from JS registry (immediate, synchronous).
+  _rebuildBudgetCatByKey();
+  // Phase 5D-1: if flag is on, await Supabase registry load before first render.
+  // If load fails, _registriesLoadStatus='failed' and getters fall back to JS constants.
+  if(FEATURE_FLAGS.useSupabaseRegistries){
+    _loadSupabaseRegistries().then(function(){_rebuildBudgetCatByKey();renderApp();}).catch(function(e){console.error('[5D-1] registry load error in loadAll:',e);renderApp();});
+  }else{
+    renderApp();
+  }
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -5187,8 +5201,103 @@ function getWeekStartDate(n){return new Date(2026,5,7+(n-1)*7);}
 function fmtDate(d){var M=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];return M[d.getMonth()]+' '+d.getDate();}
 function getWeekDate(n){return fmtDate(getWeekStartDate(n));}
 
+// ── Phase 5D-1 Registry State + Helpers ──────────────────────────────────────
+// All-or-nothing fallback: if either accounts or categories fails to load,
+// both fall back to the JS constants below. No mixed-registry state.
+//
+// assignable derivation (not stored in DB):
+//   is_leaf && lifecycle_status==='active' &&
+//   behavior_class !== 'savings_allocation' &&
+//   budget_treatment !== 'planned_allocation'
+//
+// isIncome derivation (not stored in DB):
+//   behavior_class IN ('income','commission_income','reimbursable_income')
+//
+// Context filtering (Phase 5E+):
+//   expense picker:       expense / reimbursable_expense / goal_linked
+//   income/deposit picker:income / commission_income / reimbursable_income
+//   transfer picker:      transfer
+
+var _registriesLoadStatus='not_loaded'; // 'not_loaded'|'loading'|'loaded'|'failed'
+var _accountsCache=null;
+var _categoriesCache=null;
+
+async function _loadSupabaseRegistries(){
+  _registriesLoadStatus='loading';
+  try{
+    var h=await getAuthHeaders();
+    var[accR,catR]=await Promise.all([
+      fetch(SUPA_URL+'/rest/v1/accounts?order=display_order.asc,label.asc,key.asc',{headers:h}),
+      fetch(SUPA_URL+'/rest/v1/categories?order=display_order.asc,key.asc',{headers:h})
+    ]);
+    if(accR.ok&&catR.ok){
+      _accountsCache=await accR.json();
+      _categoriesCache=await catR.json();
+      _registriesLoadStatus='loaded';
+      console.log('[5D-1] Registries loaded: '+_accountsCache.length+' accounts, '+_categoriesCache.length+' categories');
+    }else{
+      _registriesLoadStatus='failed';
+      if(!accR.ok)console.error('[5D-1] Accounts load failed: HTTP '+accR.status+' — using JS fallback');
+      if(!catR.ok)console.error('[5D-1] Categories load failed: HTTP '+catR.status+' — using JS fallback');
+    }
+  }catch(e){
+    _registriesLoadStatus='failed';
+    console.error('[5D-1] Registry load error:',e,'— using JS fallback');
+  }
+}
+
+// Normalizes a Supabase categories row to the JS registry shape.
+// Derives assignable and isIncome; passes through extended fields for Phase 5E use.
+function _normalizeCatRow(c){
+  var assignable=c.is_leaf&&c.lifecycle_status==='active'&&c.behavior_class!=='savings_allocation'&&c.budget_treatment!=='planned_allocation';
+  var isIncome=['income','commission_income','reimbursable_income'].indexOf(c.behavior_class)!==-1;
+  return {
+    key:c.key, label:c.label,
+    parent:c.parent_key||null,
+    leaf:c.is_leaf,
+    assignable:assignable,
+    isIncome:isIncome,
+    behavior_class:c.behavior_class,
+    budget_treatment:c.budget_treatment,
+    cashflow_treatment:c.cashflow_treatment,
+    budget_line_key:c.budget_line_key,
+    budget_group_key:c.budget_group_key
+  };
+}
+
+// Returns the active category registry.
+// Supabase (active rows only, normalized) when flag=true and both registries loaded.
+// JS fallback otherwise — identical behavior to pre-5D-1 when flag=false.
+function _getActiveCategoryRegistry(){
+  if(FEATURE_FLAGS.useSupabaseRegistries&&_registriesLoadStatus==='loaded'&&_categoriesCache){
+    return _categoriesCache.filter(function(c){return c.lifecycle_status==='active';}).map(_normalizeCatRow);
+  }
+  return BUDGET_CATEGORY_REGISTRY;
+}
+
+// Returns payment account labels for transaction/reconciliation dropdowns.
+// Supabase: active credit_card + checking accounts only, plus Cash / Other.
+// Hidden accounts (e.g. Costco Visa) excluded until lifecycle_status becomes 'active'.
+// JS fallback: BUDGET_PAYMENT_ACCOUNTS.
+function _getPaymentAccountOptions(){
+  if(FEATURE_FLAGS.useSupabaseRegistries&&_registriesLoadStatus==='loaded'&&_accountsCache){
+    return _accountsCache
+      .filter(function(a){return a.lifecycle_status==='active'&&(a.account_type==='credit_card'||a.account_type==='checking');})
+      .map(function(a){return a.label;})
+      .concat(['Cash / Other']);
+  }
+  return BUDGET_PAYMENT_ACCOUNTS;
+}
+
+// Rebuilds _budgetCatByKey lookup from the current active registry.
+// Called at end of loadAll() (covers both flag=false and flag=true after Supabase load).
+function _rebuildBudgetCatByKey(){
+  _budgetCatByKey={};
+  _getActiveCategoryRegistry().forEach(function(c){_budgetCatByKey[c.key]=c;});
+}
+
 // ── Budget Module — Phase 5B ──────────────────────────────────────────────
-// Category registry (hardcoded source of truth).
+// Category registry (hardcoded source of truth / JS fallback for flag=false).
 // Format: parent_key.child_key for subcategories; bare key for standalone leaves.
 // assignable=false: display-only, cannot be chosen for transactions.
 // leaf=true: bottom of hierarchy, selectable if also assignable=true.
@@ -5237,7 +5346,8 @@ var BUDGET_CATEGORY_REGISTRY=[
 
 // Lookup helpers
 var _budgetCatByKey={};
-BUDGET_CATEGORY_REGISTRY.forEach(function(c){_budgetCatByKey[c.key]=c;});
+// Populated by _rebuildBudgetCatByKey() at end of loadAll().
+// Using _getActiveCategoryRegistry() so Supabase data is reflected when flag=true.
 
 function getBudgetCatLabel(key){
   return (_budgetCatByKey[key]&&_budgetCatByKey[key].label)||key;
