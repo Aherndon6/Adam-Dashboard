@@ -5526,6 +5526,415 @@ test('5E1-20: _loadTxLedger does not reference budget_transactions',()=>{
 });
 
 // ─────────────────────────────────────────────────────────────────────────
+// Phase 5E-2 — Transaction Write Support
+// ─────────────────────────────────────────────────────────────────────────
+
+test('5E2-01: Phase 5E-2 write state variables exist',()=>{
+  assertIncludes(html,'var _txFormMode=null','_txFormMode must be declared');
+  assertIncludes(html,'var _txFormData={}','_txFormData must be declared');
+  assertIncludes(html,'var _txEditId=null','_txEditId must be declared');
+  assertIncludes(html,'var _txDeleteConfirmId=null','_txDeleteConfirmId must be declared');
+  assertIncludes(html,'var _txFormError=\'\'','_txFormError must be declared');
+  assertIncludes(html,'var _txFormSaving=false','_txFormSaving must be declared');
+  assertIncludes(html,'var _txDeleteSaving=false','_txDeleteSaving must be declared');
+  assertIncludes(html,'var _txDeleteError=\'\'','_txDeleteError must be declared');
+  assertIncludes(html,'var _txClearedSavingId=null','_txClearedSavingId must be declared');
+  assertIncludes(html,'var _txClearedError={}','_txClearedError must be declared');
+});
+
+test('5E2-02: write helper functions exist in source',()=>{
+  assertIncludes(html,'function _isValidTxDate(','_isValidTxDate must exist');
+  assertIncludes(html,'function _parseTxAmount(','_parseTxAmount must exist');
+  assertIncludes(html,'function _openTxForm(','_openTxForm must exist');
+  assertIncludes(html,'function _closeTxForm(','_closeTxForm must exist');
+  assertIncludes(html,'function _setTxFormField(','_setTxFormField must exist');
+  assertIncludes(html,'function _openTxDeleteConfirm(','_openTxDeleteConfirm must exist');
+  assertIncludes(html,'function _cancelTxDelete(','_cancelTxDelete must exist');
+  assertIncludes(html,'async function _saveTxForm(','_saveTxForm must exist');
+  assertIncludes(html,'async function _confirmTxDelete(','_confirmTxDelete must exist');
+  assertIncludes(html,'async function _toggleTxCleared(','_toggleTxCleared must exist');
+});
+
+test('5E2-03: _parseTxAmount rejects invalid inputs',()=>{
+  // Extract and eval the function
+  var start=html.indexOf('function _parseTxAmount(');
+  var end=html.indexOf('\nfunction ',start+10);
+  var fnSrc=html.slice(start,end);
+  var fn=new Function('return '+fnSrc)();
+  assert(fn('')===null,'empty string must return null');
+  assert(fn('0')===null,'zero must return null');
+  assert(fn('-5')===null,'negative must return null');
+  assert(fn('1e3')===null,'scientific notation must return null');
+  assert(fn('12abc')===null,'mixed alphanum must return null');
+  assert(fn('1.234')===null,'three decimal places must return null');
+  assert(fn('1,000')===null,'commas must return null');
+  assert(fn('42')===42,'integer must parse to 42');
+  assert(fn('42.5')===42.50,'one decimal must parse to 42.50');
+  assert(fn('42.50')===42.50,'two decimals must parse to 42.50');
+  assert(fn('0.01')===0.01,'minimum valid amount');
+});
+
+test('5E2-04: _isValidTxDate rejects invalid and impossible dates',()=>{
+  var start=html.indexOf('function _isValidTxDate(');
+  var end=html.indexOf('\nfunction ',start+10);
+  var fnSrc=html.slice(start,end);
+  var fn=new Function('return '+fnSrc)();
+  assert(fn('')===false,'empty string must be invalid');
+  assert(fn('not-a-date')===false,'non-date string must be invalid');
+  assert(fn('2026-13-01')===false,'month 13 must be invalid');
+  assert(fn('2026-02-31')===false,'Feb 31 must be invalid (impossible date)');
+  assert(fn('2026-06-00')===false,'day 0 must be invalid');
+  assert(fn('2026-06-27')===true,'valid date must return true');
+  assert(fn('2024-02-29')===true,'leap year Feb 29 must be valid');
+  assert(fn('2026-02-28')===true,'Feb 28 non-leap year must be valid');
+});
+
+test('5E2-05: _openTxForm resets delete confirm state (one action at a time)',()=>{
+  var fnSrc=html.slice(html.indexOf('function _openTxForm('),
+    html.indexOf('\nfunction ',html.indexOf('function _openTxForm(')+10));
+  assertIncludes(fnSrc,'_txDeleteConfirmId=null','_openTxForm must clear delete confirm');
+  assertIncludes(fnSrc,'_txDeleteError=\'\'','_openTxForm must clear delete error');
+  assertIncludes(fnSrc,'_txFormError=\'\'','_openTxForm must clear form error');
+});
+
+test('5E2-06: _openTxDeleteConfirm resets form state (one action at a time)',()=>{
+  var fnSrc=html.slice(html.indexOf('function _openTxDeleteConfirm('),
+    html.indexOf('\nfunction ',html.indexOf('function _openTxDeleteConfirm(')+10));
+  assertIncludes(fnSrc,'_txFormMode=null','_openTxDeleteConfirm must clear form mode');
+  assertIncludes(fnSrc,'_txEditId=null','_openTxDeleteConfirm must clear edit ID');
+  assertIncludes(fnSrc,'_txFormError=\'\'','_openTxDeleteConfirm must clear form error');
+});
+
+test('5E2-07: _setTxFormField implements outflow/inflow mutual exclusion',()=>{
+  var fnSrc=html.slice(html.indexOf('function _setTxFormField('),
+    html.indexOf('\nfunction ',html.indexOf('function _setTxFormField(')+10));
+  assertIncludes(fnSrc,'_txFormData.inflow=\'\'','entering outflow must clear inflow');
+  assertIncludes(fnSrc,'_txFormData.outflow=\'\'','entering inflow must clear outflow');
+});
+
+test('5E2-08: _saveTxForm uses can_write_financials write policies — source hardcoded to manual',()=>{
+  var fnSrc=html.slice(html.indexOf('async function _saveTxForm('),
+    html.indexOf('\nasync function _confirmTxDelete'));
+  assertIncludes(fnSrc,"body.source='manual'",'source must be hardcoded to manual in payload');
+  assert(!fnSrc.includes("body.source='import'"),'source must not be import');
+  assert(!fnSrc.includes("body.source='migration'"),'source must not be migration');
+});
+
+test('5E2-09: _saveTxForm omits user_id and notes from payload',()=>{
+  var fnSrc=html.slice(html.indexOf('async function _saveTxForm('),
+    html.indexOf('\nasync function _confirmTxDelete'));
+  assert(!fnSrc.includes('user_id:'),'user_id must not be in POST/PATCH payload');
+  assert(!fnSrc.includes("notes:"),'notes must not be in POST/PATCH payload');
+});
+
+test('5E2-10: _saveTxForm omits account_key from PATCH (edit) payload',()=>{
+  var fnSrc=html.slice(html.indexOf('async function _saveTxForm('),
+    html.indexOf('\nasync function _confirmTxDelete'));
+  // account_key must only appear in the !isEdit branch, not in the shared body object
+  // Check: account_key is conditioned on !isEdit
+  assertIncludes(fnSrc,'if(!isEdit)','edit path must branch separately for account_key');
+  assertIncludes(fnSrc,'body.account_key','account_key set in !isEdit branch');
+});
+
+test('5E2-11: _saveTxForm validates account before POST/PATCH',()=>{
+  var fnSrc=html.slice(html.indexOf('async function _saveTxForm('),
+    html.indexOf('\nasync function _confirmTxDelete'));
+  assertIncludes(fnSrc,'No valid account selected','account validation error message must exist');
+});
+
+test('5E2-12: _saveTxForm uses response.ok (not specific status code)',()=>{
+  var fnSrc=html.slice(html.indexOf('async function _saveTxForm('),
+    html.indexOf('\nasync function _confirmTxDelete'));
+  assertIncludes(fnSrc,'if(!res.ok)','must use response.ok for success check');
+  assert(!fnSrc.includes('res.status===200'),'must not hardcode status 200');
+  assert(!fnSrc.includes('res.status===201'),'must not hardcode status 201');
+});
+
+test('5E2-13: _saveTxForm resets saving flag in finally block',()=>{
+  var fnSrc=html.slice(html.indexOf('async function _saveTxForm('),
+    html.indexOf('\nasync function _confirmTxDelete'));
+  assertIncludes(fnSrc,'finally{','_saveTxForm must have finally block');
+  assertIncludes(fnSrc,'_txFormSaving=false','_txFormSaving must reset in finally');
+});
+
+test('5E2-14: _confirmTxDelete uses response.ok and resets in finally',()=>{
+  var fnSrc=html.slice(html.indexOf('async function _confirmTxDelete('),
+    html.indexOf('\nasync function _toggleTxCleared'));
+  assertIncludes(fnSrc,'if(!res.ok)','must use response.ok');
+  assertIncludes(fnSrc,'finally{','must have finally block');
+  assertIncludes(fnSrc,'_txDeleteSaving=false','_txDeleteSaving must reset in finally');
+});
+
+test('5E2-15: _toggleTxCleared uses response.ok and resets in finally',()=>{
+  var fnSrc=html.slice(html.indexOf('async function _toggleTxCleared('),
+    html.indexOf('\n// _renderTxRegister'));
+  assertIncludes(fnSrc,'if(!res.ok)','must use response.ok');
+  assertIncludes(fnSrc,'finally{','must have finally block');
+  assertIncludes(fnSrc,'_txClearedSavingId=null','_txClearedSavingId must reset in finally');
+});
+
+test('5E2-16: _renderTxRegister renders Add Transaction button when flag true',()=>{
+  // Simulate flag-on render by extracting rendered output with mock state
+  var regFn=html.slice(html.indexOf('function _renderTxRegister()'),
+    html.indexOf('\n// renderTransactions'));
+  assertIncludes(regFn,'tx-add-btn','Add button must have id tx-add-btn');
+  // Source uses escaped single quotes: _openTxForm(\'add\'
+  assertIncludes(regFn,"_openTxForm(\\'add\\'",'Add button must call _openTxForm add');
+});
+
+test('5E2-17: edit and delete buttons gated on tx.source===manual',()=>{
+  var regFn=html.slice(html.indexOf('function _renderTxRegister()'),
+    html.indexOf('\n// renderTransactions'));
+  assertIncludes(regFn,"isManual=tx.source==='manual'",'isManual flag must be derived from tx.source');
+  assertIncludes(regFn,'if(isManual)','edit/delete controls must be inside isManual gate');
+});
+
+test('5E2-18: cleared toggle gated on tx.source===manual',()=>{
+  var regFn=html.slice(html.indexOf('function _renderTxRegister()'),
+    html.indexOf('\n// renderTransactions'));
+  assertIncludes(regFn,'_toggleTxCleared','cleared toggle handler must exist');
+  // Cleared uses the same isManual gate for clickable vs static display
+  assertIncludes(regFn,'if(isManual)','cleared checkbox must be inside isManual gate');
+});
+
+test('5E2-19: delete confirmation strip renders with Confirm and Cancel buttons',()=>{
+  var regFn=html.slice(html.indexOf('function _renderTxRegister()'),
+    html.indexOf('\n// renderTransactions'));
+  assertIncludes(regFn,'isDeleteConfirm','isDeleteConfirm variable must be used in row render');
+  assertIncludes(regFn,'_confirmTxDelete()','Confirm Delete button must call _confirmTxDelete');
+  assertIncludes(regFn,'_cancelTxDelete()','Cancel button must call _cancelTxDelete');
+  assertIncludes(regFn,'This cannot be undone','confirmation message must be present');
+});
+
+test('5E2-20: add/edit form renders with all required fields',()=>{
+  var regFn=html.slice(html.indexOf('function _renderTxRegister()'),
+    html.indexOf('\n// renderTransactions'));
+  assertIncludes(regFn,"type=\"date\"",'date input must exist');
+  assertIncludes(regFn,"'outflow'",'outflow field must be in form');
+  assertIncludes(regFn,"'inflow'",'inflow field must be in form');
+  assertIncludes(regFn,'cleared','cleared checkbox must be in form');
+  assertIncludes(regFn,'category_key','category select must be in form');
+  assertIncludes(regFn,"'payee'",'payee field must be in form');
+  assertIncludes(regFn,"'memo'",'memo field must be in form');
+  assertIncludes(regFn,'_saveTxForm()','Save button must call _saveTxForm');
+  assertIncludes(regFn,'_closeTxForm()','Cancel button must call _closeTxForm');
+});
+
+test('5E2-21: form amount inputs have step=0.01 and inputmode=decimal',()=>{
+  var regFn=html.slice(html.indexOf('function _renderTxRegister()'),
+    html.indexOf('\n// renderTransactions'));
+  assertIncludes(regFn,'step="0.01"','amount inputs must have step=0.01');
+  assertIncludes(regFn,'inputmode="decimal"','amount inputs must have inputmode=decimal');
+});
+
+test('5E2-22: save button disabled when _txFormSaving',()=>{
+  var regFn=html.slice(html.indexOf('function _renderTxRegister()'),
+    html.indexOf('\n// renderTransactions'));
+  assertIncludes(regFn,'_txFormSaving','save button must reference _txFormSaving state');
+});
+
+test('5E2-23: confirm delete button disabled when _txDeleteSaving',()=>{
+  var regFn=html.slice(html.indexOf('function _renderTxRegister()'),
+    html.indexOf('\n// renderTransactions'));
+  assertIncludes(regFn,'_txDeleteSaving','confirm button must reference _txDeleteSaving');
+});
+
+test('5E2-24: row being edited has reduced opacity (visual mute)',()=>{
+  var regFn=html.slice(html.indexOf('function _renderTxRegister()'),
+    html.indexOf('\n// renderTransactions'));
+  assertIncludes(regFn,'isBeingEdited=_txEditId===tx.id','isBeingEdited must be derived from _txEditId');
+  assertIncludes(regFn,'opacity','edited row must apply opacity style');
+});
+
+test('5E2-25: write functions do not reference runModel or budget_transactions',()=>{
+  var writeSrc=html.slice(html.indexOf('// Phase 5E-2: Write helpers'),
+    html.indexOf('// _renderTxRegister — Phase 5E-2'));
+  assert(!writeSrc.includes('runModel'),'write helpers must not reference runModel');
+  assert(!writeSrc.includes('budget_transactions'),'write helpers must not reference budget_transactions');
+});
+
+test('5E2-26: auth error produces distinct user message for 401/403',()=>{
+  var saveSrc=html.slice(html.indexOf('async function _saveTxForm('),
+    html.indexOf('\nasync function _confirmTxDelete'));
+  assertIncludes(saveSrc,'res.status===401||res.status===403','save must distinguish auth errors');
+  assertIncludes(saveSrc,'sign in again','auth error message must mention sign in');
+  var delSrc=html.slice(html.indexOf('async function _confirmTxDelete('),
+    html.indexOf('\nasync function _toggleTxCleared'));
+  assertIncludes(delSrc,'res.status===401||res.status===403','delete must distinguish auth errors');
+});
+
+test('5E2-27: console.error calls include explicit operation string per function',()=>{
+  var saveSrc=html.slice(html.indexOf('async function _saveTxForm('),
+    html.indexOf('\nasync function _confirmTxDelete'));
+  var delSrc=html.slice(html.indexOf('async function _confirmTxDelete('),
+    html.indexOf('\nasync function _toggleTxCleared'));
+  var clrSrc=html.slice(html.indexOf('async function _toggleTxCleared('),
+    html.indexOf('\n// _renderTxRegister'));
+  // Each function must log its own operation string (not the _txFormMode || 'delete' anti-pattern)
+  assertIncludes(saveSrc,"operation:isEdit?'edit':'add'",'save must log add/edit operation string');
+  assertIncludes(delSrc,"operation:'delete'",'delete must log delete operation string');
+  assertIncludes(clrSrc,"operation:'cleared'",'cleared toggle must log cleared operation string');
+});
+
+test('5E2-28: topbar subtitle updated for form-open states',()=>{
+  assertIncludes(html,"_txFormMode==='add'","topbar must check _txFormMode add");
+  assertIncludes(html,"_txFormMode==='edit'","topbar must check _txFormMode edit");
+  assertIncludes(html,"Adding transaction","topbar add text must exist");
+  assertIncludes(html,"Editing transaction","topbar edit text must exist");
+});
+
+// ─── 5E-2 Hardening pass (ChatGPT review round 2) ──────────────────────────
+
+test('5E2-29: _txToFormData helper exists in source',()=>{
+  assertIncludes(html,'function _txToFormData(','_txToFormData must be declared');
+});
+
+test('5E2-30: _txToFormData maps negative amount to outflow, positive to inflow',()=>{
+  var start=html.indexOf('function _txToFormData(');
+  var end=html.indexOf('\nfunction ',start+10);
+  var fnSrc=html.slice(start,end);
+  // In round 3 hardening, uses parseFloat into var amt before Math.abs
+  assertIncludes(fnSrc,'Math.abs(amt)','negative amount must map to Math.abs(amt) — not tx.amount directly');
+  assertIncludes(fnSrc,'fd.outflow','outflow field must be set');
+  assertIncludes(fnSrc,'fd.inflow','inflow field must be set');
+  // must handle both branches
+  assertIncludes(fnSrc,'amt<0','must handle negative amount branch using parsed amt');
+  assertIncludes(fnSrc,'amt>0','must handle positive amount branch using parsed amt');
+});
+
+test('5E2-31: _openTxEditById helper exists and verifies source===manual before opening form',()=>{
+  assertIncludes(html,'function _openTxEditById(','_openTxEditById must be declared');
+  var start=html.indexOf('function _openTxEditById(');
+  var end=html.indexOf('\nfunction ',start+10);
+  var fnSrc=html.slice(start,end);
+  assertIncludes(fnSrc,'_txLedgerCache','must look up from _txLedgerCache');
+  assertIncludes(fnSrc,"source!=='manual'",'must guard on source===manual');
+  assertIncludes(fnSrc,'_openTxForm(','must call _openTxForm after cache lookup');
+  assertIncludes(fnSrc,'_txToFormData(','must use _txToFormData to convert raw tx to form shape');
+});
+
+test('5E2-32: edit button uses _openTxEditById — no JSON.stringify in onclick',()=>{
+  var regFn=html.slice(html.indexOf('function _renderTxRegister()'),
+    html.indexOf('\n// renderTransactions'));
+  assertIncludes(regFn,'_openTxEditById(','edit button must call _openTxEditById');
+  assert(!regFn.includes('JSON.stringify'),'edit button must not use JSON.stringify — injection risk');
+});
+
+test('5E2-33: _setTxFormField does NOT call renderApp for text/number fields',()=>{
+  var start=html.indexOf('function _setTxFormField(');
+  var end=html.indexOf('\nfunction ',start+10);
+  var fnSrc=html.slice(start,end);
+  // renderApp should only be called inside the category_key/cleared branch
+  // The function should NOT have a bare renderApp() call outside a conditional
+  assertIncludes(fnSrc,"field==='category_key'||field==='cleared'",'renderApp must be gated on category/cleared fields only');
+  // Mutual exclusion must update DOM directly for text fields
+  assertIncludes(fnSrc,"getElementById('tx-form-inflow",'inflow DOM id must be used for mutual exclusion');
+  assertIncludes(fnSrc,"getElementById('tx-form-outflow",'outflow DOM id must be used for mutual exclusion');
+});
+
+test('5E2-34: outflow and inflow inputs have DOM ids for mutual exclusion',()=>{
+  var regFn=html.slice(html.indexOf('function _renderTxRegister()'),
+    html.indexOf('\n// renderTransactions'));
+  assertIncludes(regFn,'tx-form-outflow','outflow input must have id tx-form-outflow');
+  assertIncludes(regFn,'tx-form-inflow','inflow input must have id tx-form-inflow');
+});
+
+test('5E2-35: finally blocks call renderApp to re-enable UI after error',()=>{
+  var saveSrc=html.slice(html.indexOf('async function _saveTxForm('),
+    html.indexOf('\nasync function _confirmTxDelete'));
+  var delSrc=html.slice(html.indexOf('async function _confirmTxDelete('),
+    html.indexOf('\nasync function _toggleTxCleared'));
+  var clrSrc=html.slice(html.indexOf('async function _toggleTxCleared('),
+    html.indexOf('\n// _renderTxRegister'));
+  // Each finally block must include renderApp() after resetting the saving flag
+  assertIncludes(saveSrc,'finally','_saveTxForm must have finally block');
+  assert(saveSrc.includes('_txFormSaving=false')&&saveSrc.indexOf('renderApp()',saveSrc.indexOf('_txFormSaving=false'))>-1,
+    '_saveTxForm finally must call renderApp() after resetting _txFormSaving');
+  assertIncludes(delSrc,'finally','_confirmTxDelete must have finally block');
+  assert(delSrc.includes('_txDeleteSaving=false')&&delSrc.indexOf('renderApp()',delSrc.indexOf('_txDeleteSaving=false'))>-1,
+    '_confirmTxDelete finally must call renderApp() after resetting _txDeleteSaving');
+  assertIncludes(clrSrc,'finally','_toggleTxCleared must have finally block');
+  assert(clrSrc.includes('_txClearedSavingId=null')&&clrSrc.indexOf('renderApp()',clrSrc.indexOf('_txClearedSavingId=null'))>-1,
+    '_toggleTxCleared finally must call renderApp() after resetting _txClearedSavingId');
+});
+
+test('5E2-36: VM10 in migration SQL checks role_table_grants not role_column_grants for SELECT',()=>{
+  // This is a SQL file check — read as text via the test harness
+  try{
+    var sqlPath=require('path').join(__dirname,'docs','phase-5e-2-migration.sql');
+    var sqlContent=require('fs').readFileSync(sqlPath,'utf8');
+    assert(sqlContent.includes('role_table_grants')&&sqlContent.includes('SELECT'),
+      'VM10 must use role_table_grants for SELECT grant check');
+    assert(!sqlContent.includes('role_column_grants')||
+      sqlContent.indexOf('role_table_grants')<sqlContent.indexOf('role_column_grants')||
+      !sqlContent.includes("privilege_type = 'SELECT'"+' FROM information_schema.role_column_grants'),
+      'VM10 must not use role_column_grants for SELECT');
+  }catch(e){
+    if(e.code==='MODULE_NOT_FOUND'||e.code==='ENOENT')
+      assert(false,'docs/phase-5e-2-migration.sql must exist');
+    else throw e;
+  }
+});
+
+// ─── 5E-2 Hardening pass (ChatGPT review round 3) ──────────────────────────
+
+test('5E2-37: _todayTxDate helper exists and uses local date components',()=>{
+  assertIncludes(html,'function _todayTxDate(','_todayTxDate must be declared');
+  var start=html.indexOf('function _todayTxDate(');
+  var end=html.indexOf('\nfunction ',start+10);
+  var fnSrc=html.slice(start,end);
+  // Must build YYYY-MM-DD from local date (not toISOString which has UTC shift risk)
+  assertIncludes(fnSrc,'new Date()','_todayTxDate must use new Date()');
+  assertIncludes(fnSrc,'getFullYear()','_todayTxDate must use getFullYear for year');
+  assertIncludes(fnSrc,'getMonth()','_todayTxDate must use getMonth for month');
+  assertIncludes(fnSrc,'getDate()','_todayTxDate must use getDate for day');
+  assertIncludes(fnSrc,'padStart','_todayTxDate must zero-pad month and day with padStart');
+  // Must not use toISOString — that applies UTC offset and can give wrong date
+  assert(!fnSrc.includes('toISOString'),'_todayTxDate must not use toISOString (UTC shift risk)');
+});
+
+test('5E2-38: _newTxFormData helper exists and returns all required fields',()=>{
+  assertIncludes(html,'function _newTxFormData(','_newTxFormData must be declared');
+  assertIncludes(html,'transaction_date:_todayTxDate()','_newTxFormData must seed transaction_date from _todayTxDate()');
+  // All required shape fields must be present
+  var start=html.indexOf('function _newTxFormData(');
+  var end=html.indexOf('\nfunction ',start+10);
+  var fnSrc=html.slice(start,end);
+  assertIncludes(fnSrc,"payee:''",'_newTxFormData must initialize payee');
+  assertIncludes(fnSrc,"memo:''",'_newTxFormData must initialize memo');
+  assertIncludes(fnSrc,"category_key:''",'_newTxFormData must initialize category_key');
+  assertIncludes(fnSrc,"outflow:''",'_newTxFormData must initialize outflow');
+  assertIncludes(fnSrc,"inflow:''",'_newTxFormData must initialize inflow');
+  assertIncludes(fnSrc,"cleared:false",'_newTxFormData must initialize cleared to false');
+});
+
+test('5E2-39: _openTxForm uses _newTxFormData() for add mode — not bare {}',()=>{
+  var start=html.indexOf('function _openTxForm(');
+  var end=html.indexOf('\nfunction ',start+10);
+  var fnSrc=html.slice(start,end);
+  assertIncludes(fnSrc,"mode==='add'",'_openTxForm must branch on add mode');
+  assertIncludes(fnSrc,'_newTxFormData()','_openTxForm must call _newTxFormData() for add mode');
+  // The add branch must come BEFORE any fallback — confirm _newTxFormData() appears in a ternary
+  // that tests mode==='add' first, so add never falls through to bare {}
+  var addBranchIdx=fnSrc.indexOf("mode==='add'");
+  var newFnIdx=fnSrc.indexOf('_newTxFormData()');
+  assert(addBranchIdx>-1&&newFnIdx>-1&&newFnIdx>addBranchIdx,
+    '_newTxFormData() must appear after the mode===add check in the same ternary');
+});
+
+test('5E2-40: _txToFormData uses parseFloat before amount comparisons',()=>{
+  var start=html.indexOf('function _txToFormData(');
+  var end=html.indexOf('\nfunction ',start+10);
+  var fnSrc=html.slice(start,end);
+  assertIncludes(fnSrc,'parseFloat(tx.amount)','_txToFormData must use parseFloat before comparing amount');
+  // Must use the parsed var, not tx.amount directly, in comparisons
+  assertIncludes(fnSrc,'var amt=','_txToFormData must store parsed amount in var amt');
+  assertIncludes(fnSrc,'amt<0','_txToFormData must compare parsed amt for negative branch');
+  assertIncludes(fnSrc,'amt>0','_txToFormData must compare parsed amt for positive branch');
+  assertIncludes(fnSrc,'Math.abs(amt)','_txToFormData must use Math.abs(amt), not Math.abs(tx.amount)');
+});
+
+// ─────────────────────────────────────────────────────────────────────────
 console.log('\n╔══════════════════════════════════════════════════════════════╗');
 console.log('║                       RESULTS                               ║');
 console.log('╚══════════════════════════════════════════════════════════════╝');

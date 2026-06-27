@@ -24,6 +24,7 @@
 //   Section BUD — Budget module: no recursive wrappers, optimistic cleared toggle, delete confirm
 //   Section TX  — Transactions section: flag gate, Accounts view, Categories view, lifecycle toggle
 //   Section RG  — Register (Phase 5E-1): flag gate, account selector, starting balance, read-only ledger
+//   Section WR  — Transaction Writes (Phase 5E-2): add/edit/delete/cleared, mocked Supabase
 //
 // ─────────────────────────────────────────────────────────────────────────
 
@@ -1951,7 +1952,7 @@ async function clickNav(page, id) {
     await context.close();
   });
 
-  await test('RG-7b: category displays resolved label from _categoriesCache, not raw key', async () => {
+  await test('RG-7b: category displays resolved label from _categoriesCache, not raw key (updated in 5E-2)', async () => {
     const { page, context } = await openApp(browser);
     const result = await page.evaluate(([mockAccounts, mockCategories, mockTxns]) => {
       FEATURE_FLAGS.showTransactionLedger = true;
@@ -1965,15 +1966,18 @@ async function clickNav(page, id) {
       setSection('transactions');
       setTxSubNav('register');
       var html = document.getElementById('transactions-content')?.innerHTML || '';
-      // Mock tx-001 has category_key 'health_fitness.flexible_spending_2026'
-      // which resolves to label 'Flexible Spending 2026' in TX_MOCK_CATEGORIES
+      // In 5E-2, the raw key appears in the edit button's onclick JSON payload (attribute data).
+      // The display cell should show the resolved label, not the raw key as visible text.
+      // We check the label is present, and that the raw key only appears in attribute context.
+      // A simple proxy: the label text appears, and the raw key does NOT appear in a <td> cell.
+      var tdMatches = html.match(/<td[^>]*>([^<]*health_fitness\.flexible_spending_2026[^<]*)<\/td>/g) || [];
       return {
         showsLabel: html.includes('Flexible Spending 2026'),
-        showsRawKey: html.includes('health_fitness.flexible_spending_2026')
+        rawKeyInTdCell: tdMatches.length > 0
       };
     }, [TX_MOCK_ACCOUNTS, TX_MOCK_CATEGORIES, RG_MOCK_TRANSACTIONS]);
-    assert(result.showsLabel, 'Category column must display resolved label (e.g. "Flexible Spending 2026"), not raw key');
-    assert(!result.showsRawKey, 'Category column must not display raw key when label is resolvable from _categoriesCache');
+    assert(result.showsLabel, 'Category column must display resolved label "Flexible Spending 2026"');
+    assert(!result.rawKeyInTdCell, 'Raw category key must not appear as text content in a table cell');
     await context.close();
   });
 
@@ -2042,22 +2046,28 @@ async function clickNav(page, id) {
     await context.close();
   });
 
-  await test('RG-11: cleared transaction shows checkmark in Clr column', async () => {
+  await test('RG-11: cleared transaction shows checked checkbox in Clr column (updated in 5E-2)', async () => {
     const { page, context } = await openApp(browser);
     const result = await page.evaluate(([mockAccounts, mockTxns]) => {
       FEATURE_FLAGS.showTransactionLedger = true;
       _accountsCache = mockAccounts;
+      _categoriesCache = [];
       _registriesLoadStatus = 'loaded';
       _txLedgerLoadStatus = 'loaded';
-      _txLedgerCache = mockTxns; // both tx-001 and tx-002 are cleared:true
+      _txLedgerCache = mockTxns; // both tx-001 and tx-002 are cleared:true, source:'manual'
       _txLedgerAccountKey = 'truist_checking';
       renderApp();
       setSection('transactions');
       setTxSubNav('register');
       var html = document.getElementById('transactions-content')?.innerHTML || '';
-      return { hasCheckmark: html.includes('✓') };
+      // In 5E-2, manual rows render cleared as a checkbox (checked attr) not a ✓ character
+      return {
+        hasCheckedCheckbox: html.includes('type="checkbox"') && html.includes('checked'),
+        hasClearedToggle: html.includes('_toggleTxCleared')
+      };
     }, [TX_MOCK_ACCOUNTS, RG_MOCK_TRANSACTIONS]);
-    assert(result.hasCheckmark, 'Cleared transaction must show ✓ in Clr column');
+    assert(result.hasCheckedCheckbox, 'Cleared manual transaction must render as checked checkbox in Clr column');
+    assert(result.hasClearedToggle, 'Cleared checkbox must wire up _toggleTxCleared handler');
     await context.close();
   });
 
@@ -2118,28 +2128,49 @@ async function clickNav(page, id) {
     await context.close();
   });
 
-  await test('RG-15: no add/edit/delete buttons in 5E-1 read-only register', async () => {
+  await test('RG-15: write controls present for manual rows, absent for non-manual rows (updated in 5E-2)', async () => {
     const { page, context } = await openApp(browser);
-    const result = await page.evaluate(([mockAccounts, mockTxns]) => {
+    const mixedTxns = [
+      { id: 'rg-manual', account_key: 'truist_checking', transaction_date: '2026-06-01',
+        payee: 'Manual', memo: '', amount: -50.00, category_key: null,
+        cleared: false, source: 'manual', created_at: '2026-06-01T10:00:00Z', updated_at: '2026-06-01T10:00:00Z' },
+      { id: 'rg-import', account_key: 'truist_checking', transaction_date: '2026-06-02',
+        payee: 'Import', memo: '', amount: -30.00, category_key: null,
+        cleared: false, source: 'import', created_at: '2026-06-02T10:00:00Z', updated_at: '2026-06-02T10:00:00Z' }
+    ];
+    const result = await page.evaluate(([mockAccounts, txns]) => {
       FEATURE_FLAGS.showTransactionLedger = true;
       _accountsCache = mockAccounts;
+      _categoriesCache = [];
       _registriesLoadStatus = 'loaded';
       _txLedgerLoadStatus = 'loaded';
-      _txLedgerCache = mockTxns;
+      _txLedgerCache = txns;
       _txLedgerAccountKey = 'truist_checking';
       renderApp();
       setSection('transactions');
       setTxSubNav('register');
       var html = document.getElementById('transactions-content')?.innerHTML || '';
-      return {
-        hasAddButton: html.includes('Add Transaction') || html.includes('add-transaction'),
-        hasEditButton: html.includes('Edit') && html.includes('onclick') && html.includes('_editTransaction'),
-        hasDeleteButton: html.includes('Delete') && html.includes('_deleteTransaction')
-      };
-    }, [TX_MOCK_ACCOUNTS, RG_MOCK_TRANSACTIONS]);
-    assert(!result.hasAddButton, 'Add Transaction button must not be present in 5E-1');
-    assert(!result.hasEditButton, 'Edit button must not be present in 5E-1');
-    assert(!result.hasDeleteButton, 'Delete button must not be present in 5E-1');
+      // Add Transaction button is expected in 5E-2
+      var hasAddBtn = html.includes('tx-add-btn');
+      // Manual row has edit/delete controls using correct 5E-2 function names
+      // Edit button now uses _openTxEditById(id) — no longer _openTxForm('edit',...)
+      var manualHasEdit = html.includes('_openTxEditById(') && html.includes('rg-manual');
+      var manualHasDelete = html.includes('_openTxDeleteConfirm') && html.includes('rg-manual');
+      // Import row must NOT have edit/delete buttons referencing its ID
+      var importDeleteCalls = (html.match(/_openTxDeleteConfirm\('[^']+'\)/g) || []);
+      var importHasDelete = importDeleteCalls.some(c => c.includes('rg-import'));
+      var importEditCalls = (html.match(/_openTxEditById\('[^']+'\)/g) || []);
+      var importHasEdit = importEditCalls.some(c => c.includes('rg-import'));
+      // Old stale function names must not appear
+      var hasStaleAddFn = html.includes('_addTransaction') || html.includes('_editTransaction') || html.includes('_deleteTransaction');
+      return { hasAddBtn, manualHasEdit, manualHasDelete, importHasDelete, importHasEdit, hasStaleAddFn };
+    }, [TX_MOCK_ACCOUNTS, mixedTxns]);
+    assert(result.hasAddBtn, 'Add Transaction button must be present in 5E-2 register');
+    assert(result.manualHasEdit, 'Manual row must have edit control calling _openTxEditById');
+    assert(result.manualHasDelete, 'Manual row must have delete control calling _openTxDeleteConfirm');
+    assert(!result.importHasDelete, 'Import row must not have a delete button');
+    assert(!result.importHasEdit, 'Import row must not have an edit button');
+    assert(!result.hasStaleAddFn, 'Stale function names (_addTransaction etc.) must not appear');
     await context.close();
   });
 
@@ -2165,6 +2196,718 @@ async function clickNav(page, id) {
     }, TX_MOCK_ACCOUNTS);
     assert(result.registerDisabled, 'Register tab must return to disabled span after flag reset to false');
     assert(result.budgetIntact, 'Budget module must be unaffected after register module runs');
+    await context.close();
+  });
+
+  // ── Section WR: Transaction Writes (Phase 5E-2) ──────────────────────
+  // Write operations intercepted via page.route() to mock Supabase responses.
+  // No live Supabase connection required.
+  console.log('\n── Section WR: Transaction Writes (Phase 5E-2) ──');
+
+  // Mock accounts and transactions shared across WR tests
+  const WR_MOCK_ACCOUNTS = [
+    { key: 'truist_checking', label: 'Truist Checking', institution: 'Truist',
+      account_type: 'checking', lifecycle_status: 'active', include_in_budget: true,
+      include_in_cashflow: true, starting_balance: 1000.00, notes: null }
+  ];
+  const WR_MOCK_CATEGORIES = [
+    { key: 'groceries', label: 'Groceries', parent_key: null, is_leaf: true,
+      lifecycle_status: 'active', behavior_class: 'discretionary',
+      budget_treatment: 'expense', cashflow_treatment: 'expense',
+      budget_line_key: null, budget_group_key: null, merged_into_key: null }
+  ];
+  const WR_MOCK_TX = [
+    { id: 'wr-tx-001', account_key: 'truist_checking', transaction_date: '2026-06-01',
+      payee: 'Kroger', memo: 'Groceries', amount: -85.50,
+      category_key: 'groceries', cleared: false, source: 'manual',
+      created_at: '2026-06-01T10:00:00Z', updated_at: '2026-06-01T10:00:00Z' }
+  ];
+
+  // Helper: set up the register in a ready state with mock data
+  async function setupRegister(page, opts) {
+    opts = opts || {};
+    await page.evaluate(([accounts, categories, txCache, formMode, formData, editId, deleteId]) => {
+      FEATURE_FLAGS.showTransactionLedger = true;
+      FEATURE_FLAGS.showTransactionSection = true;
+      _accountsCache = accounts;
+      _categoriesCache = categories;
+      _registriesLoadStatus = 'loaded';
+      _txLedgerAccountKey = 'truist_checking';
+      _txLedgerLoadStatus = 'loaded';
+      _txLedgerCache = txCache;
+      _txFormMode = formMode;
+      _txFormData = formData || {};
+      _txEditId = editId || null;
+      _txDeleteConfirmId = deleteId || null;
+      _txFormError = '';
+      _txFormSaving = false;
+      _txDeleteSaving = false;
+      renderApp();
+      setSection('transactions');
+      setTxSubNav('register');
+    }, [
+      opts.accounts || WR_MOCK_ACCOUNTS,
+      opts.categories || WR_MOCK_CATEGORIES,
+      opts.txCache !== undefined ? opts.txCache : WR_MOCK_TX,
+      opts.formMode || null,
+      opts.formData || {},
+      opts.editId || null,
+      opts.deleteId || null
+    ]);
+  }
+
+  await test('WR-1: showTransactionLedger=false — Add button absent, no write controls rendered', async () => {
+    const { page, context } = await openApp(browser);
+    const result = await page.evaluate(([accounts, categories]) => {
+      FEATURE_FLAGS.showTransactionLedger = false;
+      FEATURE_FLAGS.showTransactionSection = true;
+      _accountsCache = accounts;
+      _categoriesCache = categories;
+      _registriesLoadStatus = 'loaded';
+      renderApp();
+      setSection('transactions');
+      var html = document.getElementById('transactions-content')?.innerHTML || '';
+      return {
+        addBtnAbsent: !html.includes('tx-add-btn'),
+        noSaveTxForm: !html.includes('_saveTxForm'),
+        noDeleteConfirm: !html.includes('_confirmTxDelete'),
+        noToggleCleared: !html.includes('_toggleTxCleared')
+      };
+    }, [WR_MOCK_ACCOUNTS, WR_MOCK_CATEGORIES]);
+    assert(result.addBtnAbsent, 'Add button must be absent when showTransactionLedger=false');
+    assert(result.noSaveTxForm, '_saveTxForm must not appear in DOM when flag=false');
+    assert(result.noDeleteConfirm, '_confirmTxDelete must not appear in DOM when flag=false');
+    assert(result.noToggleCleared, '_toggleTxCleared must not appear in DOM when flag=false');
+    await context.close();
+  });
+
+  await test('WR-2: showTransactionLedger=true — Add Transaction button present', async () => {
+    const { page, context } = await openApp(browser);
+    await setupRegister(page, { txCache: [] });
+    const result = await page.evaluate(() => {
+      var html = document.getElementById('transactions-content')?.innerHTML || '';
+      return {
+        addBtnPresent: html.includes('tx-add-btn'),
+        addBtnText: html.includes('Add Transaction')
+      };
+    });
+    assert(result.addBtnPresent, 'Add Transaction button with id tx-add-btn must be present');
+    assert(result.addBtnText, 'Button must have label "Add Transaction"');
+    await context.close();
+  });
+
+  await test('WR-3: clicking Add renders form with all required fields', async () => {
+    const { page, context } = await openApp(browser);
+    await setupRegister(page, { txCache: [], formMode: 'add', formData: {} });
+    const result = await page.evaluate(() => {
+      var html = document.getElementById('transactions-content')?.innerHTML || '';
+      return {
+        hasDateInput: html.includes('type="date"'),
+        hasPayee: html.includes("'payee'") || html.includes('"payee"') || html.includes('payee'),
+        hasMemo: html.includes("'memo'") || html.includes('"memo"') || html.includes('memo'),
+        hasCategory: html.includes('category_key'),
+        hasOutflow: html.includes('outflow'),
+        hasInflow: html.includes('inflow'),
+        hasCleared: html.includes("'cleared'") || html.includes('"cleared"'),
+        hasSaveBtn: html.includes('_saveTxForm()'),
+        hasCancelBtn: html.includes('_closeTxForm()')
+      };
+    });
+    assert(result.hasDateInput, 'Form must have date input');
+    assert(result.hasCategory, 'Form must have category field');
+    assert(result.hasOutflow, 'Form must have outflow field');
+    assert(result.hasInflow, 'Form must have inflow field');
+    assert(result.hasCleared, 'Form must have cleared checkbox');
+    assert(result.hasSaveBtn, 'Form must have Save button calling _saveTxForm');
+    assert(result.hasCancelBtn, 'Form must have Cancel button calling _closeTxForm');
+    await context.close();
+  });
+
+  await test('WR-4: outflow/inflow mutual exclusion — setTxFormField clears opposite field', async () => {
+    const { page, context } = await openApp(browser);
+    await setupRegister(page, { txCache: [], formMode: 'add', formData: {} });
+    const result = await page.evaluate(() => {
+      // Simulate entering outflow
+      _setTxFormField('outflow', '50.00');
+      var afterOutflow = { outflow: _txFormData.outflow, inflow: _txFormData.inflow };
+      // Simulate entering inflow
+      _setTxFormField('inflow', '200.00');
+      var afterInflow = { outflow: _txFormData.outflow, inflow: _txFormData.inflow };
+      return { afterOutflow, afterInflow };
+    });
+    assert(result.afterOutflow.outflow === '50.00', 'outflow must be set');
+    assert(result.afterOutflow.inflow === '', 'inflow must be cleared when outflow entered');
+    assert(result.afterInflow.inflow === '200.00', 'inflow must be set');
+    assert(result.afterInflow.outflow === '', 'outflow must be cleared when inflow entered');
+    await context.close();
+  });
+
+  await test('WR-5: Save with empty amount shows validation error, no POST fired', async () => {
+    const { page, context } = await openApp(browser);
+    let postFired = false;
+    await page.route('**/rest/v1/transactions**', route => {
+      if (route.request().method() === 'POST') { postFired = true; }
+      route.fulfill({ status: 201, body: '[]' });
+    });
+    await setupRegister(page, { txCache: [], formMode: 'add', formData: { transaction_date: '2026-06-27' } });
+    await page.evaluate(() => { _saveTxForm(); });
+    await page.waitForTimeout(100);
+    const result = await page.evaluate(() => ({
+      error: _txFormError,
+      formStillOpen: _txFormMode === 'add'
+    }));
+    assert(!postFired, 'POST must not fire when amount is missing');
+    assert(result.error.length > 0, 'Validation error must be set');
+    assert(result.formStillOpen, 'Form must remain open after validation error');
+    await context.close();
+  });
+
+  await test('WR-6: Save with invalid amount (1e3) shows validation error, no POST fired', async () => {
+    const { page, context } = await openApp(browser);
+    let postFired = false;
+    await page.route('**/rest/v1/transactions**', route => {
+      if (route.request().method() === 'POST') { postFired = true; }
+      route.fulfill({ status: 201, body: '[]' });
+    });
+    await setupRegister(page, { txCache: [], formMode: 'add',
+      formData: { transaction_date: '2026-06-27', outflow: '1e3' } });
+    await page.evaluate(() => { _saveTxForm(); });
+    await page.waitForTimeout(100);
+    const error = await page.evaluate(() => _txFormError);
+    assert(!postFired, 'POST must not fire for invalid amount');
+    assert(error.includes('positive number'), 'Error must mention positive number format');
+    await context.close();
+  });
+
+  await test('WR-7: Cancel closes form without firing any request', async () => {
+    const { page, context } = await openApp(browser);
+    let requestFired = false;
+    await page.route('**/rest/v1/transactions**', route => {
+      requestFired = true;
+      route.fulfill({ status: 201, body: '[]' });
+    });
+    await setupRegister(page, { txCache: [], formMode: 'add', formData: { outflow: '50.00' } });
+    await page.evaluate(() => { _closeTxForm(); });
+    await page.waitForTimeout(100);
+    const result = await page.evaluate(() => ({ formMode: _txFormMode, formData: JSON.stringify(_txFormData) }));
+    assert(!requestFired, 'No request must fire on cancel');
+    assert(result.formMode === null, 'Form mode must be null after cancel');
+    await context.close();
+  });
+
+  await test('WR-8: Valid outflow save fires POST with negative amount, form closes on success', async () => {
+    const { page, context } = await openApp(browser);
+    let capturedBody = null;
+    await page.route('**/rest/v1/transactions**', route => {
+      if (route.request().method() === 'POST') {
+        capturedBody = JSON.parse(route.request().postData() || '{}');
+        route.fulfill({ status: 201, contentType: 'application/json', body: '[]' });
+      } else if (route.request().method() === 'GET') {
+        route.fulfill({ status: 200, contentType: 'application/json', body: '[]' });
+      } else {
+        route.continue();
+      }
+    });
+    await setupRegister(page, { txCache: [], formMode: 'add',
+      formData: { transaction_date: '2026-06-27', payee: 'Walmart', outflow: '45.00' } });
+    await page.evaluate(() => {
+      _accountsCache = [{ key: 'truist_checking', label: 'Truist Checking', lifecycle_status: 'active', starting_balance: 1000 }];
+      _categoriesCache = [];
+      _txLedgerAccountKey = 'truist_checking';
+      _saveTxForm();
+    });
+    await page.waitForTimeout(300);
+    assert(capturedBody !== null, 'POST must have fired');
+    assert(capturedBody.amount === -45.00, 'amount must be negative for outflow, got: ' + capturedBody.amount);
+    assert(capturedBody.source === 'manual', 'source must be manual');
+    assert(capturedBody.account_key === 'truist_checking', 'account_key must be set');
+    assert(!('user_id' in capturedBody), 'user_id must not be in POST body');
+    assert(!('notes' in capturedBody), 'notes must not be in POST body');
+    await context.close();
+  });
+
+  await test('WR-9: Valid inflow save fires POST with positive amount', async () => {
+    const { page, context } = await openApp(browser);
+    let capturedBody = null;
+    await page.route('**/rest/v1/transactions**', route => {
+      if (route.request().method() === 'POST') {
+        capturedBody = JSON.parse(route.request().postData() || '{}');
+        route.fulfill({ status: 201, contentType: 'application/json', body: '[]' });
+      } else if (route.request().method() === 'GET') {
+        route.fulfill({ status: 200, contentType: 'application/json', body: '[]' });
+      } else {
+        route.continue();
+      }
+    });
+    await setupRegister(page, { txCache: [], formMode: 'add',
+      formData: { transaction_date: '2026-06-27', payee: 'Paycheck', inflow: '2000.00' } });
+    await page.evaluate(() => {
+      _accountsCache = [{ key: 'truist_checking', label: 'Truist Checking', lifecycle_status: 'active', starting_balance: 1000 }];
+      _categoriesCache = [];
+      _txLedgerAccountKey = 'truist_checking';
+      _saveTxForm();
+    });
+    await page.waitForTimeout(300);
+    assert(capturedBody !== null, 'POST must have fired');
+    assert(capturedBody.amount === 2000.00, 'amount must be positive for inflow, got: ' + capturedBody.amount);
+    await context.close();
+  });
+
+  await test('WR-10: Edit button opens form pre-populated; non-manual row has no edit button', async () => {
+    const { page, context } = await openApp(browser);
+    // One manual row, one import row
+    const mixedTx = [
+      { id: 'wr-manual', account_key: 'truist_checking', transaction_date: '2026-06-01',
+        payee: 'Kroger', memo: 'Food', amount: -50.00, category_key: 'groceries',
+        cleared: false, source: 'manual', created_at: '2026-06-01T10:00:00Z', updated_at: '2026-06-01T10:00:00Z' },
+      { id: 'wr-import', account_key: 'truist_checking', transaction_date: '2026-06-02',
+        payee: 'Amazon', memo: '', amount: -30.00, category_key: null,
+        cleared: false, source: 'import', created_at: '2026-06-02T10:00:00Z', updated_at: '2026-06-02T10:00:00Z' }
+    ];
+    await setupRegister(page, { txCache: mixedTx, formMode: 'edit',
+      formData: { id: 'wr-manual', transaction_date: '2026-06-01', payee: 'Kroger', memo: 'Food',
+                  amount: -50.00, category_key: 'groceries', cleared: false, source: 'manual' },
+      editId: 'wr-manual' });
+    const result = await page.evaluate(() => {
+      var html = document.getElementById('transactions-content')?.innerHTML || '';
+      return {
+        formOpen: _txFormMode === 'edit',
+        editIdSet: _txEditId === 'wr-manual',
+        payeePrePopulated: html.includes('Kroger'),
+        formPresent: html.includes('Save Changes'),
+        // Import row should not have edit/delete buttons calling _openTxForm
+        importRowHasNoEditBtn: !html.includes('wr-import') || (function() {
+          // Check that _openTxDeleteConfirm is only called with manual ID
+          var editCalls = html.match(/_openTxForm\('edit'[^)]+\)/g) || [];
+          return !editCalls.some(c => c.includes('wr-import'));
+        })()
+      };
+    });
+    assert(result.formOpen, 'Form mode must be edit');
+    assert(result.editIdSet, '_txEditId must be set to the manual row ID');
+    assert(result.payeePrePopulated, 'Payee must be pre-populated in edit form');
+    assert(result.formPresent, 'Save Changes button must appear in edit mode');
+    assert(result.importRowHasNoEditBtn, 'Import row must not have edit button');
+    await context.close();
+  });
+
+  await test('WR-11: Edit save fires PATCH with only mutable fields (no account_key, user_id, source)', async () => {
+    const { page, context } = await openApp(browser);
+    let capturedBody = null;
+    let capturedUrl = null;
+    await page.route('**/rest/v1/transactions**', route => {
+      if (route.request().method() === 'PATCH') {
+        capturedBody = JSON.parse(route.request().postData() || '{}');
+        capturedUrl = route.request().url();
+        route.fulfill({ status: 200, contentType: 'application/json', body: '{}' });
+      } else if (route.request().method() === 'GET') {
+        route.fulfill({ status: 200, contentType: 'application/json', body: '[]' });
+      } else {
+        route.continue();
+      }
+    });
+    await setupRegister(page, { txCache: WR_MOCK_TX, formMode: 'edit',
+      formData: { transaction_date: '2026-06-01', payee: 'Kroger Updated', memo: 'Edited',
+                  amount: -85.50, outflow: '85.50', category_key: 'groceries', cleared: true },
+      editId: 'wr-tx-001' });
+    await page.evaluate(() => {
+      _accountsCache = [{ key: 'truist_checking', label: 'Truist Checking', lifecycle_status: 'active', starting_balance: 1000 }];
+      _categoriesCache = [{ key: 'groceries', label: 'Groceries', lifecycle_status: 'active' }];
+      _txLedgerAccountKey = 'truist_checking';
+      _saveTxForm();
+    });
+    await page.waitForTimeout(300);
+    assert(capturedBody !== null, 'PATCH must have fired');
+    assert(capturedUrl && capturedUrl.includes('id=eq.wr-tx-001'), 'PATCH URL must target correct ID');
+    assert(!('account_key' in capturedBody), 'account_key must not be in PATCH body');
+    assert(!('user_id' in capturedBody), 'user_id must not be in PATCH body');
+    assert(!('source' in capturedBody), 'source must not be in PATCH body');
+    assert(!('notes' in capturedBody), 'notes must not be in PATCH body');
+    assert('transaction_date' in capturedBody, 'transaction_date must be in PATCH body');
+    assert('amount' in capturedBody, 'amount must be in PATCH body');
+    await context.close();
+  });
+
+  await test('WR-12: Delete icon shows confirmation strip; non-manual row has no delete button', async () => {
+    const { page, context } = await openApp(browser);
+    const mixedTx = [
+      { id: 'wr-m1', account_key: 'truist_checking', transaction_date: '2026-06-01',
+        payee: 'Manual Row', memo: '', amount: -50.00, category_key: null,
+        cleared: false, source: 'manual', created_at: '2026-06-01T10:00:00Z', updated_at: '2026-06-01T10:00:00Z' },
+      { id: 'wr-i1', account_key: 'truist_checking', transaction_date: '2026-06-02',
+        payee: 'Import Row', memo: '', amount: -30.00, category_key: null,
+        cleared: false, source: 'import', created_at: '2026-06-02T10:00:00Z', updated_at: '2026-06-02T10:00:00Z' }
+    ];
+    await setupRegister(page, { txCache: mixedTx, deleteId: 'wr-m1' });
+    const result = await page.evaluate(() => {
+      var html = document.getElementById('transactions-content')?.innerHTML || '';
+      return {
+        confirmStripPresent: html.includes('This cannot be undone'),
+        confirmBtn: html.includes('_confirmTxDelete()'),
+        cancelBtn: html.includes('_cancelTxDelete()'),
+        importHasNoDeleteBtn: (function() {
+          var deleteCalls = html.match(/_openTxDeleteConfirm\('[^']+'\)/g) || [];
+          return !deleteCalls.some(c => c.includes('wr-i1'));
+        })()
+      };
+    });
+    assert(result.confirmStripPresent, 'Confirmation strip must show "This cannot be undone"');
+    assert(result.confirmBtn, 'Confirm Delete button must call _confirmTxDelete');
+    assert(result.cancelBtn, 'Cancel button must call _cancelTxDelete');
+    assert(result.importHasNoDeleteBtn, 'Import row must not have a delete button');
+    await context.close();
+  });
+
+  await test('WR-13: Delete Cancel — strip dismissed, no DELETE fired', async () => {
+    const { page, context } = await openApp(browser);
+    let deleteFired = false;
+    await page.route('**/rest/v1/transactions**', route => {
+      if (route.request().method() === 'DELETE') { deleteFired = true; }
+      route.fulfill({ status: 204, body: '' });
+    });
+    await setupRegister(page, { txCache: WR_MOCK_TX, deleteId: 'wr-tx-001' });
+    await page.evaluate(() => { _cancelTxDelete(); });
+    await page.waitForTimeout(100);
+    const result = await page.evaluate(() => ({
+      confirmIdCleared: _txDeleteConfirmId === null
+    }));
+    assert(!deleteFired, 'DELETE must not fire on cancel');
+    assert(result.confirmIdCleared, '_txDeleteConfirmId must be null after cancel');
+    await context.close();
+  });
+
+  await test('WR-14: Delete Confirm fires DELETE for correct ID, cache cleared on success', async () => {
+    const { page, context } = await openApp(browser);
+    let capturedUrl = null;
+    await page.route('**/rest/v1/transactions**', route => {
+      if (route.request().method() === 'DELETE') {
+        capturedUrl = route.request().url();
+        route.fulfill({ status: 204, body: '' });
+      } else if (route.request().method() === 'GET') {
+        route.fulfill({ status: 200, contentType: 'application/json', body: '[]' });
+      } else {
+        route.continue();
+      }
+    });
+    await setupRegister(page, { txCache: WR_MOCK_TX, deleteId: 'wr-tx-001' });
+    await page.evaluate(() => {
+      _accountsCache = [{ key: 'truist_checking', label: 'Truist Checking', lifecycle_status: 'active', starting_balance: 1000 }];
+      _txLedgerAccountKey = 'truist_checking';
+      _confirmTxDelete();
+    });
+    await page.waitForTimeout(300);
+    assert(capturedUrl !== null, 'DELETE must have fired');
+    assert(capturedUrl.includes('id=eq.wr-tx-001'), 'DELETE must target correct ID');
+    await context.close();
+  });
+
+  await test('WR-15: Cleared toggle fires PATCH with correct cleared value for manual row', async () => {
+    const { page, context } = await openApp(browser);
+    let capturedBody = null;
+    let capturedUrl = null;
+    await page.route('**/rest/v1/transactions**', route => {
+      if (route.request().method() === 'PATCH') {
+        capturedBody = JSON.parse(route.request().postData() || '{}');
+        capturedUrl = route.request().url();
+        route.fulfill({ status: 200, body: '{}' });
+      } else if (route.request().method() === 'GET') {
+        route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(WR_MOCK_TX) });
+      } else {
+        route.continue();
+      }
+    });
+    await setupRegister(page, { txCache: WR_MOCK_TX });
+    await page.evaluate(() => {
+      _accountsCache = [{ key: 'truist_checking', label: 'Truist Checking', lifecycle_status: 'active', starting_balance: 1000 }];
+      _txLedgerAccountKey = 'truist_checking';
+      _toggleTxCleared('wr-tx-001', false); // toggle from false to true
+    });
+    await page.waitForTimeout(300);
+    assert(capturedBody !== null, 'PATCH must have fired');
+    assert(capturedUrl && capturedUrl.includes('id=eq.wr-tx-001'), 'PATCH must target correct ID');
+    assert(capturedBody.cleared === true, 'cleared must be toggled to true');
+    assert(Object.keys(capturedBody).length === 1, 'PATCH body must only contain cleared field');
+    await context.close();
+  });
+
+  await test('WR-16: Save error (mocked 500) — form stays open, error message shown', async () => {
+    const { page, context } = await openApp(browser);
+    await page.route('**/rest/v1/transactions**', route => {
+      if (route.request().method() === 'POST') {
+        route.fulfill({ status: 500, contentType: 'application/json',
+          body: JSON.stringify({ message: 'internal server error' }) });
+      } else {
+        route.continue();
+      }
+    });
+    await setupRegister(page, { txCache: [], formMode: 'add',
+      formData: { transaction_date: '2026-06-27', outflow: '50.00' } });
+    await page.evaluate(() => {
+      _accountsCache = [{ key: 'truist_checking', label: 'Truist Checking', lifecycle_status: 'active', starting_balance: 1000 }];
+      _categoriesCache = [];
+      _txLedgerAccountKey = 'truist_checking';
+      _saveTxForm();
+    });
+    await page.waitForTimeout(300);
+    const result = await page.evaluate(() => ({
+      formStillOpen: _txFormMode === 'add',
+      hasError: _txFormError.length > 0,
+      savingReset: _txFormSaving === false
+    }));
+    assert(result.formStillOpen, 'Form must remain open after save error');
+    assert(result.hasError, 'Error message must be set after 500 response');
+    assert(result.savingReset, '_txFormSaving must be reset to false in finally block');
+    await context.close();
+  });
+
+  // ── Section WR2: Write Hardening (ChatGPT round 2) ──────────────────────
+  console.log('\n── Section WR2: Write Hardening (ChatGPT round 2) ──');
+
+  await test('WR2-1: Edit open populates outflow for negative amount transaction', async () => {
+    const { page, context } = await openApp(browser);
+    const result = await page.evaluate(([mockAccounts, mockCategories, mockTxns]) => {
+      FEATURE_FLAGS.showTransactionLedger = true;
+      _accountsCache = mockAccounts;
+      _categoriesCache = mockCategories;
+      _registriesLoadStatus = 'loaded';
+      _txLedgerLoadStatus = 'loaded';
+      _txLedgerCache = mockTxns; // wr-tx-001 has amount: -85.50
+      _txLedgerAccountKey = 'truist_checking';
+      renderApp();
+      setSection('transactions');
+      setTxSubNav('register');
+      _openTxEditById('wr-tx-001');
+      return {
+        mode: _txFormMode,
+        outflow: _txFormData.outflow,
+        inflow: _txFormData.inflow
+      };
+    }, [WR_MOCK_ACCOUNTS, WR_MOCK_CATEGORIES, WR_MOCK_TX]);
+    assert(result.mode === 'edit', 'form mode must be edit');
+    assert(result.outflow === '85.50', 'negative amount must populate outflow as "85.50", got: ' + result.outflow);
+    assert(!result.inflow, 'inflow must be empty when amount is negative');
+    await context.close();
+  });
+
+  await test('WR2-2: Edit open populates inflow for positive amount transaction', async () => {
+    const { page, context } = await openApp(browser);
+    const positiveTx = [{
+      id: 'wr-positive-001', account_key: 'truist_checking', transaction_date: '2026-06-05',
+      payee: 'Paycheck', memo: '', amount: 2000.00, category_key: null,
+      cleared: false, source: 'manual',
+      created_at: '2026-06-05T10:00:00Z', updated_at: '2026-06-05T10:00:00Z'
+    }];
+    const result = await page.evaluate(([mockAccounts, mockCategories, txns]) => {
+      FEATURE_FLAGS.showTransactionLedger = true;
+      _accountsCache = mockAccounts;
+      _categoriesCache = mockCategories;
+      _registriesLoadStatus = 'loaded';
+      _txLedgerLoadStatus = 'loaded';
+      _txLedgerCache = txns;
+      _txLedgerAccountKey = 'truist_checking';
+      renderApp();
+      setSection('transactions');
+      setTxSubNav('register');
+      _openTxEditById('wr-positive-001');
+      return {
+        mode: _txFormMode,
+        outflow: _txFormData.outflow,
+        inflow: _txFormData.inflow
+      };
+    }, [WR_MOCK_ACCOUNTS, WR_MOCK_CATEGORIES, positiveTx]);
+    assert(result.mode === 'edit', 'form mode must be edit');
+    assert(result.inflow === '2000.00', 'positive amount must populate inflow as "2000.00", got: ' + result.inflow);
+    assert(!result.outflow, 'outflow must be empty when amount is positive');
+    await context.close();
+  });
+
+  await test('WR2-3: Typing in outflow clears inflow field without full re-render (mutual exclusion via DOM)', async () => {
+    const { page, context } = await openApp(browser);
+    await setupRegister(page, { txCache: WR_MOCK_TX });
+    // Open the add form
+    await page.evaluate(() => { _openTxForm('add', null); });
+    // Fill inflow first
+    await page.fill('#tx-form-inflow', '50.00');
+    // Now type in outflow — mutual exclusion should clear inflow via direct DOM update
+    await page.fill('#tx-form-outflow', '25.00');
+    const result = await page.evaluate(() => ({
+      inflowEl: document.getElementById('tx-form-inflow')?.value,
+      stateInflow: _txFormData.inflow,
+      stateOutflow: _txFormData.outflow
+    }));
+    assert(result.inflowEl === '', 'inflow DOM field must be cleared when outflow typed, got: "' + result.inflowEl + '"');
+    assert(!result.stateInflow, 'inflow state must be cleared when outflow typed');
+    await context.close();
+  });
+
+  await test('WR2-4: Typing in inflow clears outflow field (mutual exclusion via DOM)', async () => {
+    const { page, context } = await openApp(browser);
+    await setupRegister(page, { txCache: WR_MOCK_TX });
+    await page.evaluate(() => { _openTxForm('add', null); });
+    await page.fill('#tx-form-outflow', '30.00');
+    await page.fill('#tx-form-inflow', '100.00');
+    const result = await page.evaluate(() => ({
+      outflowEl: document.getElementById('tx-form-outflow')?.value,
+      stateOutflow: _txFormData.outflow
+    }));
+    assert(result.outflowEl === '', 'outflow DOM field must be cleared when inflow typed, got: "' + result.outflowEl + '"');
+    assert(!result.stateOutflow, 'outflow state must be cleared when inflow typed');
+    await context.close();
+  });
+
+  await test('WR2-5: Failed save re-enables save button (_txFormSaving reset in finally)', async () => {
+    const { page, context } = await openApp(browser);
+    await page.route('**/rest/v1/transactions**', route => {
+      if (route.request().method() === 'POST') {
+        route.fulfill({ status: 500, contentType: 'application/json', body: JSON.stringify({ error: 'server error' }) });
+      } else { route.continue(); }
+    });
+    await page.evaluate(([mockAccounts, mockCategories, mockTxns]) => {
+      FEATURE_FLAGS.showTransactionLedger = true;
+      _accountsCache = mockAccounts;
+      _categoriesCache = mockCategories;
+      _registriesLoadStatus = 'loaded';
+      _txLedgerLoadStatus = 'loaded';
+      _txLedgerCache = mockTxns;
+      _txLedgerAccountKey = 'truist_checking';
+      renderApp();
+      setSection('transactions');
+      setTxSubNav('register');
+      _openTxForm('add', null);
+    }, [WR_MOCK_ACCOUNTS, WR_MOCK_CATEGORIES, WR_MOCK_TX]);
+    // Pre-fill a valid form
+    await page.evaluate(() => {
+      _txFormData.transaction_date = '2026-06-15';
+      _txFormData.outflow = '50.00';
+    });
+    await page.evaluate(() => { _saveTxForm(); });
+    // Wait for the network call and finally block to complete
+    await page.waitForTimeout(500);
+    const result = await page.evaluate(() => ({
+      savingFlag: _txFormSaving,
+      hasError: !!_txFormError,
+      formOpen: _txFormMode === 'add'
+    }));
+    assert(!result.savingFlag, '_txFormSaving must be false after failed save (finally block reset)');
+    assert(result.hasError, 'error message must be set after failed save');
+    assert(result.formOpen, 'form must stay open after failed save');
+    await context.close();
+  });
+
+  await test('WR2-6: Failed delete re-enables confirm button (_txDeleteSaving reset in finally)', async () => {
+    const { page, context } = await openApp(browser);
+    await page.route('**/rest/v1/transactions**', route => {
+      if (route.request().method() === 'DELETE') {
+        route.fulfill({ status: 500, body: '' });
+      } else { route.continue(); }
+    });
+    await page.evaluate(([mockAccounts, mockCategories, mockTxns]) => {
+      FEATURE_FLAGS.showTransactionLedger = true;
+      _accountsCache = mockAccounts;
+      _categoriesCache = mockCategories;
+      _registriesLoadStatus = 'loaded';
+      _txLedgerLoadStatus = 'loaded';
+      _txLedgerCache = mockTxns;
+      _txLedgerAccountKey = 'truist_checking';
+      renderApp();
+      setSection('transactions');
+      setTxSubNav('register');
+      _openTxDeleteConfirm('wr-tx-001');
+    }, [WR_MOCK_ACCOUNTS, WR_MOCK_CATEGORIES, WR_MOCK_TX]);
+    await page.evaluate(() => { _confirmTxDelete(); });
+    await page.waitForTimeout(500);
+    const result = await page.evaluate(() => ({
+      deletingFlag: _txDeleteSaving,
+      hasError: !!_txDeleteError,
+      confirmStillOpen: _txDeleteConfirmId === 'wr-tx-001'
+    }));
+    assert(!result.deletingFlag, '_txDeleteSaving must be false after failed delete (finally block reset)');
+    assert(result.hasError, 'error message must be set after failed delete');
+    await context.close();
+  });
+
+  await test('WR2-7: Edit button safe with payee containing quotes — uses _openTxEditById not JSON.stringify', async () => {
+    const { page, context } = await openApp(browser);
+    const quoteTx = [{
+      id: 'wr-quote-tx', account_key: 'truist_checking', transaction_date: '2026-06-10',
+      payee: "O'Brien's \"Grill\"", memo: 'payee with \'quotes\' and "double"',
+      amount: -42.00, category_key: null, cleared: false, source: 'manual',
+      created_at: '2026-06-10T10:00:00Z', updated_at: '2026-06-10T10:00:00Z'
+    }];
+    const result = await page.evaluate(([mockAccounts, txns]) => {
+      FEATURE_FLAGS.showTransactionLedger = true;
+      _accountsCache = mockAccounts;
+      _categoriesCache = [];
+      _registriesLoadStatus = 'loaded';
+      _txLedgerLoadStatus = 'loaded';
+      _txLedgerCache = txns;
+      _txLedgerAccountKey = 'truist_checking';
+      renderApp();
+      setSection('transactions');
+      setTxSubNav('register');
+      var html = document.getElementById('transactions-content')?.innerHTML || '';
+      // Must use _openTxEditById, not JSON.stringify
+      var hasEditById = html.includes('_openTxEditById(');
+      var hasJsonStringify = html.includes('JSON.stringify');
+      // Calling _openTxEditById with the quote tx id must work without throwing
+      var threw = false;
+      try { _openTxEditById('wr-quote-tx'); } catch(e) { threw = true; }
+      return { hasEditById, hasJsonStringify, threw, mode: _txFormMode, outflow: _txFormData.outflow };
+    }, [WR_MOCK_ACCOUNTS, quoteTx]);
+    assert(result.hasEditById, 'edit button must use _openTxEditById');
+    assert(!result.hasJsonStringify, 'edit button must not use JSON.stringify');
+    assert(!result.threw, '_openTxEditById must not throw for payee with quotes');
+    assert(result.mode === 'edit', 'edit form must open for quote-payee transaction');
+    assert(result.outflow === '42.00', 'outflow must be correctly populated: ' + result.outflow);
+    await context.close();
+  });
+
+  await test('WR2-8: Add form default date — no touch, save fires POST with today\'s date', async () => {
+    const { page, context } = await openApp(browser);
+    let capturedBody = null;
+    await page.route('**/rest/v1/transactions**', route => {
+      if (route.request().method() === 'POST') {
+        capturedBody = JSON.parse(route.request().postData() || '{}');
+        route.fulfill({ status: 201, contentType: 'application/json', body: '[]' });
+      } else if (route.request().method() === 'GET') {
+        // Must mock GET — _saveTxForm calls _loadTxLedger on success, which fires GET
+        route.fulfill({ status: 200, contentType: 'application/json', body: '[]' });
+      } else { route.continue(); }
+    });
+    await page.evaluate(([mockAccounts, mockCategories, mockTxns]) => {
+      FEATURE_FLAGS.showTransactionLedger = true;
+      _accountsCache = mockAccounts;
+      _categoriesCache = mockCategories;
+      _registriesLoadStatus = 'loaded';
+      _txLedgerLoadStatus = 'loaded';
+      _txLedgerCache = mockTxns;
+      _txLedgerAccountKey = 'truist_checking';
+      renderApp();
+      setSection('transactions');
+      setTxSubNav('register');
+      _openTxForm('add', null); // do NOT pass a date
+    }, [WR_MOCK_ACCOUNTS, WR_MOCK_CATEGORIES, WR_MOCK_TX]);
+    // Do NOT touch the date field — leave it at whatever the form initialized
+    // Enter only outflow
+    await page.fill('#tx-form-outflow', '42.00');
+    // Capture today's date in the same format _todayTxDate() would return
+    const expectedDate = await page.evaluate(() => {
+      var n = new Date();
+      return n.getFullYear() + '-' + String(n.getMonth()+1).padStart(2,'0') + '-' + String(n.getDate()).padStart(2,'0');
+    });
+    // Fire save
+    await page.evaluate(() => { _saveTxForm(); });
+    await page.waitForTimeout(300);
+    const result = await page.evaluate(() => ({
+      formError: _txFormError,
+      formMode: _txFormMode,
+      stateDate: _txFormData.transaction_date
+    }));
+    assert(capturedBody !== null, 'POST must have fired — date was pre-initialized so validation should pass');
+    assert(capturedBody.transaction_date === expectedDate,
+      'POST body transaction_date must equal today (' + expectedDate + '), got: ' + capturedBody.transaction_date);
+    assert(!result.formError.includes('Date is required'),
+      '"Date is required" error must not appear when date field was not touched');
     await context.close();
   });
 

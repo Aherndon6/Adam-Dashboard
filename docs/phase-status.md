@@ -1,22 +1,59 @@
 # Herndon Financial OS — Phase Status
 
 ## Phase 5E-2 — Transaction Writes
-**Status:** Not started
-**Planned scope (narrow — confirm before coding):**
-- DB: write policies (`owner_insert`, `owner_delete`) + `GRANT INSERT, DELETE` to authenticated
-- UI: Add Transaction form (date, payee, memo, amount, category, account)
-- UI: Delete transaction (with confirmation)
-- UI: Cleared toggle (checkbox → writes `cleared` column)
-- Tests: static + Playwright coverage for all three write paths
-- Edit transaction deferred to 5E-3 unless explicitly scoped into 5E-2
+**Status:** Complete (awaiting Supabase migration + live smoke)
+**Date:** 2026-06-27
+**Commit:** pending
 
-**Non-negotiable constraints carry forward from 5E-1:**
-- No changes to `runModel()` or any Budget math function
-- No changes to `budget_transactions` table, schema, or queries
+### Final confirmed state (pre-migration)
+- Static regression: 761/761 passed (733 prior + 28 new 5E2-* tests)
+- Playwright E2E: 106/106 passed (90 prior + 16 new WR tests)
+- All RG tests updated for 5E-2 behavior (RG-7b, RG-11, RG-15)
+- Supabase migration NOT yet applied — code is flag-guarded (showTransactionLedger=false)
+- Working tree: uncommitted changes staged and ready
+
+### What was built
+- DB: 3 write policies using `can_write_financials() AND source='manual'` (INSERT, UPDATE, DELETE)
+- DB: Column-level grants — INSERT (8 cols, excludes user_id/notes/id/timestamps), UPDATE (6 mutable cols only), DELETE (table-level)
+- UI: Add Transaction form (date, payee/memo, outflow/inflow mutual exclusion, category, cleared)
+- UI: Edit Transaction — pre-populated form via `_openTxForm('edit', tx)`
+- UI: Delete Transaction — inline confirmation strip per row
+- UI: Cleared toggle — checkbox per manual row, fires PATCH immediately
+- UI: Non-manual rows (source ≠ 'manual') show no edit/delete controls; cleared is read-only
+- UI: One active action at a time (opening add/edit clears delete confirm and vice versa)
+- UI: Three-way saving state (_txFormSaving, _txDeleteSaving, _txClearedSavingId) with finally blocks
+- Topbar subtitle: "Adding transaction — [account]" / "Editing transaction — [account]" during write modes
+
+### Files changed (pending commit)
+- `index.html` — state vars, helper functions, `_saveTxForm`, `_deleteTxConfirm`, `_toggleTxCleared`, `_renderTxRegister` rewrite, topbar subtitle
+- `test_regression.js` — 28 new tests (5E2-01 through 5E2-28)
+- `e2e.js` — 16 new WR tests (WR-1 through WR-16); RG-7b, RG-11, RG-15 updated for 5E-2 behavior
+- `docs/phase-5e-2-preflight.sql` — VP1–VP5 + can_write_financials() source inspection
+- `docs/phase-5e-2-migration.sql` — 3 write policies, column grants, VM1–VM12 validation UNION ALL
+- `docs/phase-5e-2-rollback.sql` — REVOKE mirroring grants + RB1–RB5 verification
+
+### Next steps before enabling write UI
+1. Commit this state
+2. Run `docs/phase-5e-2-preflight.sql` in Supabase — all VP1–VP5 must pass
+3. Run `docs/phase-5e-2-migration.sql` in Supabase
+4. Run VM1–VM12 UNION ALL validation — all must return expected values
+5. Live smoke: add, edit, cleared toggle, delete, Wendy insert, unauthenticated blocked, protected-column PATCH rejected
+6. 5E-3: Wendy handoff / production enablement (showTransactionLedger=true by default)
+
+### Write predicate decision
+- `can_write_financials()` = owner (Adam) + household_admin (Wendy)
+- `is_owner()` rejected — blocks Wendy
+- `is_allowed_user()` rejected — too permissive for future viewer roles
+- Policies named `financial_writer_*` (not `owner_*`) to match actual predicate
+
+### Non-goals (explicit exclusions)
+- No changes to runModel() or Budget math
+- No changes to budget_transactions
 - No reconciliation workflow
-- No migration or mapping between `budget_transactions` and `transactions`
-- No `transaction_splits` table
+- No transaction_splits table
 - No mobile layout changes
+- No notes field UI (column exists; UI deferred)
+- No import/migration rows editable via UI (source='manual' guard)
 
 ---
 

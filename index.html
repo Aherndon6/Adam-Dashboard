@@ -4247,6 +4247,18 @@ var _txLedgerAccountKey='';          // account key currently loaded in register
 var _txLedgerCache=null;             // fetched transactions array or null
 var _txLedgerLoadStatus='not_loaded';// 'not_loaded' | 'loading' | 'loaded' | 'failed'
 
+// ── Phase 5E-2: Write state ────────────────────────────────────────────────
+var _txFormMode=null;          // null | 'add' | 'edit'
+var _txFormData={};            // current form field values
+var _txEditId=null;            // UUID of transaction being edited
+var _txDeleteConfirmId=null;   // UUID awaiting delete confirmation
+var _txFormError='';           // form-level validation or save error message
+var _txFormSaving=false;       // true while add/edit POST/PATCH is in flight
+var _txDeleteSaving=false;     // true while delete DELETE is in flight
+var _txDeleteError='';         // error from a failed delete attempt
+var _txClearedSavingId=null;   // UUID of the row whose cleared toggle is in flight
+var _txClearedError={};        // {[uuid]: errorString} per-row cleared toggle errors
+
 function setTxSubNav(tab){_txSubNav=tab;renderApp();}
 
 // Switch account in register — resets cache and triggers fresh fetch
@@ -4423,13 +4435,289 @@ function _renderTxCategories(){
   return html;
 }
 
-// _renderTxRegister — Phase 5E-1 read-only account register
-// Shows account selector, starting balance row, and transaction list.
-// Writes (add/edit/delete/cleared toggle) are Phase 5E-2.
+// ── Phase 5E-2: Write helpers ──────────────────────────────────────────────
+
+// Validate YYYY-MM-DD string, including impossible dates like 2026-02-31.
+// Uses new Date() for validation only — raw string is sent to Supabase unchanged.
+function _isValidTxDate(str){
+  if(!/^\d{4}-\d{2}-\d{2}$/.test(str))return false;
+  var p=str.split('-');
+  var y=+p[0],m=+p[1],d=+p[2];
+  var dt=new Date(y,m-1,d); // local time — intentionally not UTC
+  return dt.getFullYear()===y&&dt.getMonth()===m-1&&dt.getDate()===d;
+}
+
+// Parse a user-entered amount string.
+// Accepts: '42', '42.5', '42.50'
+// Rejects: '1e3', '12abc', '-5', '1.234', '', '0', commas
+// Returns a positive float rounded to 2 decimals, or null on any failure.
+function _parseTxAmount(raw){
+  var s=String(raw||'').trim();
+  if(!/^\d+(\.\d{1,2})?$/.test(s))return null;
+  var n=parseFloat(s);
+  if(!isFinite(n)||n<=0)return null;
+  var result=parseFloat(n.toFixed(2));
+  return result||null; // guard against -0
+}
+
+// Returns today's date as a YYYY-MM-DD string in local time (no UTC shift).
+// Used as the default transaction_date when opening the add form.
+function _todayTxDate(){
+  var n=new Date();
+  return n.getFullYear()+'-'+String(n.getMonth()+1).padStart(2,'0')+'-'+String(n.getDate()).padStart(2,'0');
+}
+
+// Default shape for a new add-form. Ensures _saveTxForm() sees a valid date
+// even if Wendy opens Add, leaves the date field untouched, and hits Save.
+function _newTxFormData(){
+  return {transaction_date:_todayTxDate(),payee:'',memo:'',category_key:'',outflow:'',inflow:'',cleared:false};
+}
+
+// Convert a raw transaction record to form field shape (outflow/inflow split).
+// amount < 0 → outflow = abs value; amount > 0 → inflow = value; 0 → both blank.
+// parseFloat guards against stored string or NaN from unexpected API shapes.
+function _txToFormData(tx){
+  var fd=Object.assign({},tx);
+  var amt=parseFloat(tx.amount)||0;
+  if(amt<0){ fd.outflow=Math.abs(amt).toFixed(2); fd.inflow=''; }
+  else if(amt>0){ fd.inflow=amt.toFixed(2); fd.outflow=''; }
+  else { fd.outflow=''; fd.inflow=''; }
+  return fd;
+}
+
+// Look up a manual transaction by id and open the edit form.
+// Replaces inline JSON.stringify in onclick — avoids quote injection from payee/memo.
+function _openTxEditById(id){
+  if(!_txLedgerCache)return;
+  var tx=_txLedgerCache.find(function(t){return t.id===id;});
+  if(!tx||tx.source!=='manual')return;
+  _openTxForm('edit',_txToFormData(tx));
+}
+
+// Open the add/edit form. Resets delete confirm state (one action at a time).
+// For add, initializes form with today's date and blank fields via _newTxFormData().
+// For edit, pass form-shaped data (outflow/inflow) via _txToFormData — not raw tx.
+function _openTxForm(mode,fd){
+  _txFormMode=mode;
+  _txFormData=(mode==='add')?_newTxFormData():(fd?Object.assign({},fd):{});
+  _txEditId=(mode==='edit'&&fd)?fd.id:null;
+  _txDeleteConfirmId=null;
+  _txDeleteError='';
+  _txFormError='';
+  _txFormSaving=false;
+  renderApp();
+}
+
+// Close the form and reset all form state.
+function _closeTxForm(){
+  _txFormMode=null;
+  _txFormData={};
+  _txEditId=null;
+  _txFormError='';
+  _txFormSaving=false;
+  renderApp();
+}
+
+// Update a single form field. Handles outflow/inflow mutual exclusion.
+// Does NOT call renderApp() for text/number fields — avoids focus loss on keypress.
+// Re-renders only for select/checkbox fields where focus loss is not a concern.
+function _setTxFormField(field,val){
+  _txFormData[field]=val;
+  if(field==='outflow'&&val){
+    _txFormData.inflow='';
+    var el=document.getElementById('tx-form-inflow');
+    if(el)el.value='';
+  }
+  if(field==='inflow'&&val){
+    _txFormData.outflow='';
+    var el=document.getElementById('tx-form-outflow');
+    if(el)el.value='';
+  }
+  if(field==='category_key'||field==='cleared')renderApp();
+}
+
+// Open delete confirmation strip. Resets form state (one action at a time).
+function _openTxDeleteConfirm(id){
+  _txDeleteConfirmId=id;
+  _txDeleteError='';
+  _txDeleteSaving=false;
+  _txFormMode=null;
+  _txFormData={};
+  _txEditId=null;
+  _txFormError='';
+  renderApp();
+}
+
+// Cancel delete confirmation.
+function _cancelTxDelete(){
+  _txDeleteConfirmId=null;
+  _txDeleteError='';
+  _txDeleteSaving=false;
+  renderApp();
+}
+
+// Validate and save the add/edit form. POST for add, PATCH for edit.
+async function _saveTxForm(){
+  // ── Validation ──
+  var d=_txFormData;
+  var dateStr=(d.transaction_date||'').trim();
+  if(!dateStr){_txFormError='Date is required.';renderApp();return;}
+  if(!_isValidTxDate(dateStr)){_txFormError='Enter a valid date.';renderApp();return;}
+
+  var outVal=_parseTxAmount(d.outflow);
+  var inVal=_parseTxAmount(d.inflow);
+  var outRaw=(d.outflow||'').trim();
+  var inRaw=(d.inflow||'').trim();
+  if(!outRaw&&!inRaw){_txFormError='Enter an outflow or inflow amount.';renderApp();return;}
+  if(outRaw&&inRaw){_txFormError='Enter outflow or inflow, not both.';renderApp();return;}
+  if(outRaw&&outVal===null){_txFormError='Amount must be a positive number with up to two decimal places.';renderApp();return;}
+  if(inRaw&&inVal===null){_txFormError='Amount must be a positive number with up to two decimal places.';renderApp();return;}
+  var signedAmount=outVal!==null?-outVal:inVal;
+
+  var acctObj=(_accountsCache||[]).find(function(a){return a.key===_txLedgerAccountKey;});
+  if(!_txLedgerAccountKey||!acctObj){_txFormError='No valid account selected.';renderApp();return;}
+
+  // Category: blank -> null; non-blank must be active in cache
+  var catKey=(d.category_key||'').trim()||null;
+  if(catKey){
+    var catObj=(_categoriesCache||[]).find(function(c){return c.key===catKey;});
+    if(!catObj||catObj.lifecycle_status!=='active'){_txFormError='Selected category is no longer active.';renderApp();return;}
+  }
+
+  // Payee and memo: trim, blank -> null
+  var payee=(d.payee||'').trim()||null;
+  var memo=(d.memo||'').trim()||null;
+
+  // ── Supabase call ──
+  _txFormSaving=true;
+  _txFormError='';
+  renderApp();
+  var isEdit=_txFormMode==='edit';
+  try{
+    var h=await getAuthHeaders();
+    var url=SUPA_URL+'/rest/v1/transactions'+(isEdit?'?id=eq.'+encodeURIComponent(_txEditId):'');
+    var method=isEdit?'PATCH':'POST';
+    var hdrs=Object.assign({},h,{'Content-Type':'application/json','Prefer':'return=minimal'});
+    var body={
+      transaction_date:dateStr,
+      payee:payee,
+      memo:memo,
+      amount:signedAmount,
+      category_key:catKey,
+      cleared:d.cleared?true:false
+    };
+    if(!isEdit){
+      body.account_key=_txLedgerAccountKey;
+      body.source='manual';
+    }
+    var res=await fetch(url,{method:method,headers:hdrs,body:JSON.stringify(body)});
+    if(!res.ok){
+      var errBody='';
+      try{errBody=(await res.json()).message||'';}catch(e){}
+      console.error('[5E-2] save failed:',{operation:isEdit?'edit':'add',status:res.status,statusText:res.statusText,body:errBody});
+      _txFormError=(res.status===401||res.status===403)
+        ?'Save failed — please refresh and sign in again if this continues.'
+        :'Save failed — please try again.';
+      renderApp();
+      return;
+    }
+    // Success: reset form state, reload ledger
+    _txFormMode=null;
+    _txFormData={};
+    _txEditId=null;
+    _txFormError='';
+    _txLedgerCache=null;
+    _txLedgerLoadStatus='not_loaded';
+    await _loadTxLedger(_txLedgerAccountKey);
+  }catch(e){
+    console.error('[5E-2] save error:',{operation:isEdit?'edit':'add',error:e});
+    _txFormError='Save failed — please try again.';
+    renderApp();
+  }finally{
+    _txFormSaving=false;
+    renderApp(); // re-enables save button after error or success
+  }
+}
+
+// Fire DELETE for the confirmed transaction.
+async function _confirmTxDelete(){
+  if(!_txDeleteConfirmId)return;
+  _txDeleteSaving=true;
+  _txDeleteError='';
+  renderApp();
+  var targetId=_txDeleteConfirmId;
+  try{
+    var h=await getAuthHeaders();
+    var res=await fetch(SUPA_URL+'/rest/v1/transactions?id=eq.'+encodeURIComponent(targetId),
+      {method:'DELETE',headers:h});
+    if(!res.ok){
+      var errBody='';
+      try{errBody=(await res.json()).message||'';}catch(e){}
+      console.error('[5E-2] delete failed:',{operation:'delete',status:res.status,statusText:res.statusText,body:errBody});
+      _txDeleteError=(res.status===401||res.status===403)
+        ?'Delete failed — please refresh and sign in again if this continues.'
+        :'Delete failed — please try again.';
+      renderApp();
+      return;
+    }
+    // Success: reset delete state, reload ledger
+    _txDeleteConfirmId=null;
+    _txDeleteError='';
+    _txLedgerCache=null;
+    _txLedgerLoadStatus='not_loaded';
+    await _loadTxLedger(_txLedgerAccountKey);
+  }catch(e){
+    console.error('[5E-2] delete error:',{operation:'delete',error:e});
+    _txDeleteError='Delete failed — please try again.';
+    renderApp();
+  }finally{
+    _txDeleteSaving=false;
+    renderApp(); // re-enables confirm button after error or success
+  }
+}
+
+// Toggle the cleared flag for a single transaction row.
+async function _toggleTxCleared(id,currentCleared){
+  if(_txClearedSavingId===id)return; // already in flight for this row
+  _txClearedSavingId=id;
+  delete _txClearedError[id];
+  renderApp();
+  try{
+    var h=await getAuthHeaders();
+    var res=await fetch(SUPA_URL+'/rest/v1/transactions?id=eq.'+encodeURIComponent(id),
+      {method:'PATCH',headers:Object.assign({},h,{'Content-Type':'application/json','Prefer':'return=minimal'}),
+       body:JSON.stringify({cleared:!currentCleared})});
+    if(!res.ok){
+      var errBody='';
+      try{errBody=(await res.json()).message||'';}catch(e){}
+      console.error('[5E-2] cleared toggle failed:',{operation:'cleared',status:res.status,statusText:res.statusText,body:errBody});
+      _txClearedError[id]=(res.status===401||res.status===403)
+        ?'Update failed — please refresh and sign in again.'
+        :'Update failed — please try again.';
+      renderApp();
+      return;
+    }
+    // Success: reload ledger to reflect updated cleared state
+    _txLedgerCache=null;
+    _txLedgerLoadStatus='not_loaded';
+    await _loadTxLedger(_txLedgerAccountKey);
+  }catch(e){
+    console.error('[5E-2] cleared toggle error:',{operation:'cleared',error:e});
+    _txClearedError[id]='Update failed — please try again.';
+    renderApp();
+  }finally{
+    _txClearedSavingId=null;
+    renderApp(); // re-enables cleared checkbox after error or success
+  }
+}
+
+// _renderTxRegister — Phase 5E-2 account register with write support
+// Shows account selector, inline add/edit form, starting balance row, and transaction list.
+// Write controls (add/edit/delete/cleared) gated on tx.source==='manual'.
 // Transactions fetched from Supabase on demand (up to 500, query-level limit).
 // Running balance computed client-side in deterministic ascending order.
 function _renderTxRegister(){
-  // Registries must be loaded to populate account selector
+  // Registries must be loaded to populate account selector and category dropdown
   if(_registriesLoadStatus==='not_loaded'||_registriesLoadStatus==='loading'){
     return '<div style="padding:24px;color:var(--muted)">Loading account registry…</div>';
   }
@@ -4450,17 +4738,101 @@ function _renderTxRegister(){
     setTimeout(function(){_loadTxLedger(_txLedgerAccountKey);},0);
   }
 
-  // Account selector
-  var sel='<div style="padding:12px 16px;border-bottom:1px solid var(--line);display:flex;align-items:center;gap:10px">'
+  // Today's date in YYYY-MM-DD (local time — no UTC shift)
+  var _today=(function(){var n=new Date();return n.getFullYear()+'-'+String(n.getMonth()+1).padStart(2,'0')+'-'+String(n.getDate()).padStart(2,'0');})();
+
+  // ── Account selector row + Add button ──────────────────────────────────
+  var sel='<div style="padding:12px 16px;border-bottom:1px solid var(--line);display:flex;align-items:center;gap:10px;flex-wrap:wrap">'
     +'<label style="font-size:12px;font-weight:600;color:var(--muted);white-space:nowrap">Account</label>'
     +'<select onchange="setTxLedgerAccount(this.value)" style="font-family:inherit;font-size:13px;padding:4px 8px;border:1px solid var(--line);border-radius:6px;background:var(--surface);color:var(--text)">';
   activeAccounts.forEach(function(a){
     sel+='<option value="'+_esc(a.key)+'"'+(a.key===_txLedgerAccountKey?' selected':'')+'>'
       +_esc(a.label)+'</option>';
   });
-  sel+='</select></div>';
+  sel+='</select>'
+    +'<span style="flex:1"></span>'
+    +'<button onclick="_openTxForm(\'add\',null)" '
+    +'style="font-family:inherit;font-size:12px;font-weight:600;padding:5px 12px;cursor:pointer;'
+    +'border:1px solid var(--blue);border-radius:6px;background:var(--blue);color:#fff" '
+    +'id="tx-add-btn">+ Add Transaction</button>'
+    +'</div>';
 
-  // Transaction list
+  // ── Inline add/edit form ────────────────────────────────────────────────
+  var form='';
+  if(_txFormMode==='add'||_txFormMode==='edit'){
+    var fd=_txFormData;
+    var activeCategories=(_categoriesCache||[]).filter(function(c){return c.lifecycle_status==='active';});
+    var catOpts='<option value="">— No category —</option>';
+    activeCategories.forEach(function(c){
+      catOpts+='<option value="'+_esc(c.key)+'"'+(fd.category_key===c.key?' selected':'')+'>'+_esc(c.label)+'</option>';
+    });
+    var inp=function(field,placeholder,value,extra){
+      return '<input type="text" placeholder="'+_esc(placeholder)+'" value="'+_esc(value||'')+'" '
+        +'oninput="_setTxFormField(\''+field+'\',this.value)" '
+        +'style="font-family:inherit;font-size:13px;padding:5px 8px;border:1px solid var(--line);'
+        +'border-radius:6px;background:var(--surface);color:var(--text);width:100%" '+(extra||'')+'>';
+    };
+    var amtInp=function(field,placeholder,value){
+      var fieldId=field==='outflow'?'tx-form-outflow':field==='inflow'?'tx-form-inflow':'';
+      return '<input type="number" '+(fieldId?'id="'+fieldId+'" ':'')+' placeholder="'+_esc(placeholder)+'" value="'+_esc(value||'')+'" '
+        +'min="0" step="0.01" inputmode="decimal" '
+        +'oninput="_setTxFormField(\''+field+'\',this.value)" '
+        +'style="font-family:inherit;font-size:13px;padding:5px 8px;border:1px solid var(--line);'
+        +'border-radius:6px;background:var(--surface);color:var(--text);width:100%">';
+    };
+    var savingLabel=_txFormMode==='edit'?'Saving…':'Adding…';
+    var saveLabel=_txFormMode==='edit'?'Save Changes':'Add Transaction';
+    form='<div style="padding:14px 16px;background:var(--blueSoft);border-bottom:2px solid var(--blue)">'
+      +'<div style="font-size:11px;font-weight:700;color:var(--blue);text-transform:uppercase;letter-spacing:.06em;margin-bottom:10px">'
+      +(_txFormMode==='edit'?'Edit Transaction':'New Transaction')+'</div>'
+      +'<div style="display:grid;grid-template-columns:140px 1fr 1fr 1fr 100px 100px auto auto;gap:8px;align-items:end">'
+      // Date
+      +'<div><label style="font-size:11px;font-weight:600;color:var(--muted);display:block;margin-bottom:3px">Date*</label>'
+      +'<input type="date" value="'+_esc(fd.transaction_date||_today)+'" '
+      +'oninput="_setTxFormField(\'transaction_date\',this.value)" '
+      +'style="font-family:inherit;font-size:13px;padding:5px 8px;border:1px solid var(--line);'
+      +'border-radius:6px;background:var(--surface);color:var(--text);width:100%"></div>'
+      // Payee
+      +'<div><label style="font-size:11px;font-weight:600;color:var(--muted);display:block;margin-bottom:3px">Payee</label>'
+      +inp('payee','Optional',fd.payee)+'</div>'
+      // Memo
+      +'<div><label style="font-size:11px;font-weight:600;color:var(--muted);display:block;margin-bottom:3px">Memo</label>'
+      +inp('memo','Optional',fd.memo)+'</div>'
+      // Category
+      +'<div><label style="font-size:11px;font-weight:600;color:var(--muted);display:block;margin-bottom:3px">Category</label>'
+      +'<select onchange="_setTxFormField(\'category_key\',this.value)" '
+      +'style="font-family:inherit;font-size:13px;padding:5px 8px;border:1px solid var(--line);'
+      +'border-radius:6px;background:var(--surface);color:var(--text);width:100%">'
+      +catOpts+'</select></div>'
+      // Outflow
+      +'<div><label style="font-size:11px;font-weight:600;color:var(--muted);display:block;margin-bottom:3px">Outflow</label>'
+      +amtInp('outflow','0.00',fd.outflow)+'</div>'
+      // Inflow
+      +'<div><label style="font-size:11px;font-weight:600;color:var(--muted);display:block;margin-bottom:3px">Inflow</label>'
+      +amtInp('inflow','0.00',fd.inflow)+'</div>'
+      // Cleared checkbox
+      +'<div style="display:flex;flex-direction:column;align-items:center;gap:3px">'
+      +'<label style="font-size:11px;font-weight:600;color:var(--muted)">Clr</label>'
+      +'<input type="checkbox" '+(fd.cleared?'checked':'')+' '
+      +'onchange="_setTxFormField(\'cleared\',this.checked)" style="width:16px;height:16px;cursor:pointer"></div>'
+      // Buttons
+      +'<div style="display:flex;gap:6px;align-items:flex-end">'
+      +'<button onclick="_saveTxForm()" '
+      +((_txFormSaving)?'disabled ':'')
+      +'style="font-family:inherit;font-size:12px;font-weight:600;padding:5px 12px;cursor:'
+      +(_txFormSaving?'default':'pointer')+';border:1px solid var(--blue);border-radius:6px;'
+      +'background:'+(_txFormSaving?'var(--muted2)':'var(--blue)')+';color:#fff;white-space:nowrap">'
+      +(_txFormSaving?savingLabel:saveLabel)+'</button>'
+      +'<button onclick="_closeTxForm()" style="font-family:inherit;font-size:12px;font-weight:600;'
+      +'padding:5px 12px;cursor:pointer;border:1px solid var(--line);border-radius:6px;'
+      +'background:var(--surface);color:var(--muted)">Cancel</button>'
+      +'</div>'
+      +'</div>'
+      +(_txFormError?'<div style="margin-top:8px;font-size:12px;color:var(--red)">'+_esc(_txFormError)+'</div>':'')
+      +'</div>';
+  }
+
+  // ── Transaction list ────────────────────────────────────────────────────
   var body='';
   if(_txLedgerLoadStatus==='not_loaded'||_txLedgerLoadStatus==='loading'){
     body='<div style="padding:24px;color:var(--muted)">Loading transactions…</div>';
@@ -4473,18 +4845,19 @@ function _renderTxRegister(){
     var runBal=rawBal!==null?rawBal:0;
     var balWarning=rawBal===null;
 
-    // Table
     var th=function(label,align){
       return '<th style="padding:8px 12px;font-weight:600;color:var(--muted);font-size:11px;'
         +'text-transform:uppercase;letter-spacing:.05em;white-space:nowrap'
         +(align?';text-align:'+align:'')+'">'
         +label+'</th>';
     };
+    // Extra columns: edit and delete actions
     var tbl='<table style="width:100%;border-collapse:collapse;font-size:13px">'
       +'<thead><tr style="background:var(--surface2);text-align:left">'
       +th('Date')+th('Payee')+th('Memo')+th('Category')
       +th('Outflow','right')+th('Inflow','right')
       +th('Clr','center')+th('Balance','right')
+      +'<th style="padding:8px 12px;width:60px"></th>'
       +'</tr></thead><tbody>';
 
     // Starting balance row
@@ -4492,13 +4865,13 @@ function _renderTxRegister(){
       ?'<span style="font-style:italic;color:var(--amber)">Starting balance not set — running balance starts from $0.00</span>'
       :'<span style="font-style:italic;color:var(--muted)">Starting balance</span>';
     tbl+='<tr style="background:var(--surface2)">'
-      +'<td colspan="7" style="padding:8px 12px">'+startCell+'</td>'
-      +'<td style="padding:8px 12px;text-align:right;font-weight:600">$'
+      +'<td colspan="8" style="padding:8px 12px">'+startCell+'</td>'
+      +'<td style="padding:8px 12px;text-align:right;font-weight:600" colspan="1">$'
       +runBal.toFixed(2)+'</td></tr>';
 
     var rows=_txLedgerCache||[];
     if(!rows.length){
-      tbl+='<tr><td colspan="8" style="padding:24px 12px;text-align:center;'
+      tbl+='<tr><td colspan="9" style="padding:24px 12px;text-align:center;'
         +'color:var(--muted);font-style:italic">No transactions for this account.</td></tr>';
     }else{
       rows.forEach(function(tx){
@@ -4506,25 +4879,81 @@ function _renderTxRegister(){
         var outflow=amt<0?'$'+Math.abs(amt).toFixed(2):'';
         var inflow=amt>0?'$'+amt.toFixed(2):'';
         runBal+=amt;
-        // Resolve category label from cache; fall back to raw key if not found
         var catObj=tx.category_key?(_categoriesCache||[]).find(function(c){return c.key===tx.category_key;}):null;
         var catDisplay=catObj?catObj.label:(tx.category_key||'');
-        tbl+='<tr style="border-top:1px solid var(--line)">'
+        var isManual=tx.source==='manual';
+        var isBeingEdited=_txEditId===tx.id;
+        var isDeleteConfirm=_txDeleteConfirmId===tx.id;
+        var clearedSaving=_txClearedSavingId===tx.id;
+        var clearedErr=_txClearedError[tx.id]||'';
+        var rowOpacity=isBeingEdited?'opacity:.45;':'';
+
+        // Cleared cell: clickable checkbox for manual rows; static display for non-manual
+        var clrCell;
+        if(isManual){
+          clrCell='<td style="padding:8px 12px;text-align:center">'
+            +'<input type="checkbox" '+(tx.cleared?'checked':'')+' '
+            +(clearedSaving?'disabled ':'')
+            +'onchange="_toggleTxCleared(\''+_esc(tx.id)+'\','+tx.cleared+')" '
+            +'style="width:15px;height:15px;cursor:'+(clearedSaving?'default':'pointer')+';" '
+            +'title="'+(tx.cleared?'Mark uncleared':'Mark cleared')+'">'
+            +(clearedErr?'<div style="font-size:10px;color:var(--red)">'+_esc(clearedErr)+'</div>':'')
+            +'</td>';
+        }else{
+          clrCell='<td style="padding:8px 12px;text-align:center">'+(tx.cleared?'✓':'')+'</td>';
+        }
+
+        // Action cell: edit + delete for manual rows; empty for non-manual
+        var actionCell;
+        if(isManual){
+          actionCell='<td style="padding:4px 8px;white-space:nowrap;text-align:right">'
+            +'<button onclick="_openTxEditById(\''+_esc(tx.id)+'\')" '
+            +'title="Edit" style="font-family:inherit;font-size:11px;padding:2px 7px;cursor:pointer;'
+            +'border:1px solid var(--line);border-radius:4px;background:var(--surface);color:var(--muted);margin-right:2px">✎</button>'
+            +'<button onclick="_openTxDeleteConfirm(\''+_esc(tx.id)+'\')" '
+            +'title="Delete" style="font-family:inherit;font-size:11px;padding:2px 7px;cursor:pointer;'
+            +'border:1px solid var(--line);border-radius:4px;background:var(--surface);color:var(--red)">✕</button>'
+            +'</td>';
+        }else{
+          actionCell='<td style="padding:4px 8px"></td>';
+        }
+
+        tbl+='<tr style="border-top:1px solid var(--line);'+rowOpacity+'">'
           +'<td style="padding:8px 12px;white-space:nowrap">'+_esc(tx.transaction_date||'')+'</td>'
           +'<td style="padding:8px 12px">'+_esc(tx.payee||'')+'</td>'
           +'<td style="padding:8px 12px;color:var(--muted)">'+_esc(tx.memo||'')+'</td>'
           +'<td style="padding:8px 12px;color:var(--muted)">'+_esc(catDisplay)+'</td>'
           +'<td style="padding:8px 12px;text-align:right;color:var(--red)">'+outflow+'</td>'
           +'<td style="padding:8px 12px;text-align:right;color:var(--green)">'+inflow+'</td>'
-          +'<td style="padding:8px 12px;text-align:center">'+(tx.cleared?'✓':'')+'</td>'
+          +clrCell
           +'<td style="padding:8px 12px;text-align:right;font-weight:600">$'+runBal.toFixed(2)+'</td>'
+          +actionCell
           +'</tr>';
+
+        // Delete confirmation strip — renders immediately below the target row
+        if(isDeleteConfirm){
+          tbl+='<tr style="background:var(--redSoft,#fff0f0);border-top:1px solid var(--red)">'
+            +'<td colspan="9" style="padding:10px 16px">'
+            +'<span style="font-size:13px;color:var(--red);font-weight:600">Delete this transaction? This cannot be undone.</span>'
+            +'&nbsp;&nbsp;'
+            +'<button onclick="_confirmTxDelete()" '
+            +(_txDeleteSaving?'disabled ':'')
+            +'style="font-family:inherit;font-size:12px;font-weight:600;padding:4px 12px;cursor:'
+            +(_txDeleteSaving?'default':'pointer')+';border:1px solid var(--red);border-radius:6px;'
+            +'background:var(--red);color:#fff;margin-right:6px">'
+            +(_txDeleteSaving?'Deleting…':'Confirm Delete')+'</button>'
+            +'<button onclick="_cancelTxDelete()" '
+            +'style="font-family:inherit;font-size:12px;padding:4px 12px;cursor:pointer;'
+            +'border:1px solid var(--line);border-radius:6px;background:var(--surface);color:var(--muted)">Cancel</button>'
+            +(_txDeleteError?'<span style="margin-left:12px;font-size:12px;color:var(--red)">'+_esc(_txDeleteError)+'</span>':'')
+            +'</td></tr>';
+        }
       });
     }
     tbl+='</tbody></table>';
     body=tbl;
   }
-  return sel+body;
+  return sel+form+body;
 }
 
 // renderTransactions — shell, sub-nav, and routing
@@ -5207,11 +5636,17 @@ function renderApp(){
       }else if(_txSubNav==='register'){
         var _selAcctReg=(_accountsCache||[]).find(function(a){return a.key===_txLedgerAccountKey;});
         var _txCountReg=_txLedgerCache?_txLedgerCache.length:0;
-        _ts.textContent=_txLedgerLoadStatus==='loaded'
-          ?(_selAcctReg?_selAcctReg.label+' · '+_txCountReg+' transaction'+(_txCountReg!==1?'s':'')+' · Read only':'Select an account')
-          :_txLedgerLoadStatus==='loading'?'Loading transactions…'
-          :_txLedgerLoadStatus==='failed'?'Failed to load transactions'
-          :'Register';
+        if(_txFormMode==='add'){
+          _ts.textContent=_selAcctReg?'Adding transaction — '+_selAcctReg.label:'Adding transaction';
+        }else if(_txFormMode==='edit'){
+          _ts.textContent=_selAcctReg?'Editing transaction — '+_selAcctReg.label:'Editing transaction';
+        }else{
+          _ts.textContent=_txLedgerLoadStatus==='loaded'
+            ?(_selAcctReg?_selAcctReg.label+' · '+_txCountReg+' transaction'+(_txCountReg!==1?'s':''):'Select an account')
+            :_txLedgerLoadStatus==='loading'?'Loading transactions…'
+            :_txLedgerLoadStatus==='failed'?'Failed to load transactions'
+            :'Register';
+        }
       }
     }
   })();
