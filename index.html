@@ -6288,15 +6288,22 @@ function _blrFindActive(key,monthIso){
 }
 
 // Returns duplicate active row for key in monthIso (excluding excludeId), or null
-function _blrDupCheck(key,monthIso,excludeId){
+// _blrHasOverlap(key, startIso, endIso, excludeId)
+// Returns the first active row that overlaps [startIso, endIso], or null.
+// endIso=null means open-ended. Two intervals overlap when:
+//   new_start <= existing_end  AND  existing_start <= new_end
+// (null end treated as FAR future '9999-12-01' for comparison.)
+// Used for all add/edit validations. Replaces old point-in-time _blrDupCheck.
+function _blrHasOverlap(key,startIso,endIso,excludeId){
   if(!_budgetLineRulesCache)return null;
+  var FAR='9999-12-01';
+  var newEnd=endIso||FAR;
   return _budgetLineRulesCache.find(function(r){
     if(!r.is_active)return false;
     if(r.category_key!==key)return false;
     if(excludeId&&r.id===excludeId)return false;
-    if(r.start_month>monthIso)return false;
-    if(r.end_month!==null&&r.end_month!==undefined&&r.end_month<monthIso)return false;
-    return true;
+    var rEnd=(r.end_month!==null&&r.end_month!==undefined)?r.end_month:FAR;
+    return startIso<=rEnd&&r.start_month<=newEnd;
   })||null;
 }
 
@@ -6319,6 +6326,9 @@ function _blrRenderModal(){
     var parentCat=cat.parent?BUDGET_CATEGORY_REGISTRY.find(function(c){return c.key===cat.parent;}):null;
     var monthLabel=_budgetMonthLabel(m.monthIso);
     var currentAmt=m.currentRow?parseFloat(m.currentRow.amount):null;
+    // Compute preserved end_month for display and save
+    var preservedEnd=m.currentRow?(m.currentRow.end_month||null):null;
+    var endLabel=preservedEnd?('through '+_budgetMonthLabel(preservedEnd)):'onward (open-ended)';
     html+='<div class="sc-modal-title">Edit Budget Rule</div>';
     if(m.isIncome){
       html+='<div style="background:#fef3c7;border:1px solid #f59e0b;border-radius:6px;padding:8px 10px;font-size:11px;color:#92400e;margin-bottom:12px">⚠ <strong>Income assumption.</strong> Editing this changes Total Income and budget balance.</div>';
@@ -6327,7 +6337,7 @@ function _blrRenderModal(){
     html+='<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:12px;font-size:12px">';
     html+='<div><span style="font-size:10px;color:var(--muted);font-weight:700;text-transform:uppercase;letter-spacing:.05em">Category</span><br>'+esc(cat.label||m.key)+'</div>';
     html+='<div><span style="font-size:10px;color:var(--muted);font-weight:700;text-transform:uppercase;letter-spacing:.05em">Group</span><br>'+esc(parentCat?parentCat.label:'(standalone)')+'</div>';
-    html+='<div><span style="font-size:10px;color:var(--muted);font-weight:700;text-transform:uppercase;letter-spacing:.05em">Scope</span><br>From '+monthLabel+' forward</div>';
+    html+='<div><span style="font-size:10px;color:var(--muted);font-weight:700;text-transform:uppercase;letter-spacing:.05em">Effective Range</span><br>From '+monthLabel+' '+endLabel+'</div>';
     html+='<div><span style="font-size:10px;color:var(--muted);font-weight:700;text-transform:uppercase;letter-spacing:.05em">Current Amount</span><br>'+(currentAmt!==null?f(currentAmt):'none')+'</div>';
     html+='</div>';
     html+='<div class="modal-field"><label class="modal-label">Line Label</label>';
@@ -6335,7 +6345,7 @@ function _blrRenderModal(){
     html+='<div class="modal-field"><label class="modal-label">Amount ($)</label>';
     html+='<input class="modal-input" id="blr-amount" type="number" min="0" step="1" value="'+esc(String(m.amount))+'" oninput="window._blrModal.amount=this.value"></div>';
     html+='<div style="background:var(--surface2);border-radius:6px;padding:8px 10px;font-size:11px;color:var(--muted);margin-bottom:12px">';
-    html+='Prior months unchanged. A new rule starting '+monthLabel+' will replace the current amount.';
+    html+='Prior months unchanged. The replacement rule will run '+monthLabel+' '+endLabel+' (preserving the original end date). Only label and amount change.';
     html+='</div>';
     if(m.error){html+='<div style="color:#ef4444;font-size:12px;margin-bottom:8px">'+esc(m.error)+'</div>';}
     html+='</div>';
@@ -6362,7 +6372,7 @@ function _blrRenderModal(){
         html+='<optgroup label="'+esc(parentLabel)+'">';
         lastParent=parentLabel;
       }
-      var alreadyActive=!!_blrDupCheck(c.key,m.monthIso,null);
+      var alreadyActive=!!_blrHasOverlap(c.key,m.monthIso,m.monthIso,null);
       html+='<option value="'+esc(c.key)+'"'+(m.key===c.key?' selected':'')+(alreadyActive?' disabled':'')+'>';
       html+=esc(c.label)+(alreadyActive?' (active this month)':'');
       html+='</option>';
@@ -6490,28 +6500,57 @@ async function _blrReloadAndRender(){
 async function _blrSaveEdit(){
   if(!_blrModal||_blrModal.mode!=='edit'||_blrModal.saving)return;
   var m=_blrModal;
+  // Defense-in-depth permission guard (RLS is the real gate; this prevents accidental UI writes)
+  if(!canWriteFinancials()){m.error='Permission denied.';_blrRenderModal();return;}
   if(!m.label||!m.label.trim()){m.error='Line label is required.';_blrRenderModal();return;}
   var amt=parseFloat(m.amount);
   if(isNaN(amt)||amt<0){m.error='Amount must be a number ≥ 0.';_blrRenderModal();return;}
-  var dup=_blrDupCheck(m.key,m.monthIso,m.currentRow?m.currentRow.id:null);
-  if(dup){m.error='Another active rule already exists for this category in '+_budgetMonthLabel(m.monthIso)+'. Archive or edit it first.';_blrRenderModal();return;}
+  // Replacement row inherits the current row's end_month — edit does not change date range.
+  var replacementEndMonth=(m.currentRow&&m.currentRow.end_month!==undefined)?m.currentRow.end_month:null;
+  if(replacementEndMonth===undefined)replacementEndMonth=null;
+  // Interval overlap check: does any OTHER active row conflict with [monthIso, replacementEndMonth]?
+  var overlap=_blrHasOverlap(m.key,m.monthIso,replacementEndMonth,m.currentRow?m.currentRow.id:null);
+  if(overlap){m.error='Another active rule overlaps the replacement date range. Archive or edit it first.';_blrRenderModal();return;}
   m.saving=true;_blrRenderModal();
   try{
     var h=await getAuthHeaders();
-    // Step 1: close prior row if exists
+    // Step 1: close/deactivate current row.
+    // Track original state for best-effort rollback if Step 2 fails.
+    // Note: REST writes are not transaction-wrapped — rollback is best-effort only.
+    var closedRowId=null;
+    var restorePatch=null;
     if(m.currentRow){
       var priorIso=_blrPriorMonthIso(m.monthIso);
-      // If row started this month, deactivate it (no prior history); else close at prior month
-      var closePatch=m.currentRow.start_month<m.monthIso?{end_month:priorIso}:{is_active:false};
+      var caseA=m.currentRow.start_month<m.monthIso;
+      var closePatch=caseA?{end_month:priorIso}:{is_active:false};
+      // Restore patch brings the row back to its original state if rollback is needed
+      restorePatch=caseA
+        ?{end_month:(m.currentRow.end_month!==undefined?m.currentRow.end_month:null)}
+        :{is_active:true};
+      closedRowId=m.currentRow.id;
       var pr=await fetch(SUPA_URL+'/rest/v1/budget_line_rules?id=eq.'+encodeURIComponent(m.currentRow.id),
         {method:'PATCH',headers:Object.assign({},h,{'Prefer':'return=minimal'}),body:JSON.stringify(closePatch)});
       if(!pr.ok){var et=await pr.text();throw new Error('Close prior row HTTP '+pr.status+': '+et);}
     }
-    // Step 2: insert new row
+    // Step 2: insert replacement row preserving original end_month
     var ir=await fetch(SUPA_URL+'/rest/v1/budget_line_rules',
       {method:'POST',headers:Object.assign({},h,{'Prefer':'return=minimal'}),
-       body:JSON.stringify({category_key:m.key,line_label:m.label.trim(),amount:amt,start_month:m.monthIso,end_month:null})});
-    if(!ir.ok){var et2=await ir.text();throw new Error('Insert new row HTTP '+ir.status+': '+et2);}
+       body:JSON.stringify({category_key:m.key,line_label:m.label.trim(),amount:amt,start_month:m.monthIso,end_month:replacementEndMonth})});
+    if(!ir.ok){
+      var et2=await ir.text();
+      // Best-effort rollback: restore the closed row to its original state
+      if(closedRowId&&restorePatch){
+        try{
+          await fetch(SUPA_URL+'/rest/v1/budget_line_rules?id=eq.'+encodeURIComponent(closedRowId),
+            {method:'PATCH',headers:Object.assign({},h,{'Prefer':'return=minimal'}),body:JSON.stringify(restorePatch)});
+          throw new Error('Insert failed (HTTP '+ir.status+'); prior row was restored. No data lost. Details: '+et2);
+        }catch(re){
+          if(re.message.startsWith('Insert failed'))throw re;
+          throw new Error('Insert failed AND rollback failed — check budget_line_rules id '+closedRowId+' manually. Insert: '+et2+'. Rollback: '+re.message);
+        }
+      }
+      throw new Error('Insert new row HTTP '+ir.status+': '+et2);
+    }
     await _blrReloadAndRender();
   }catch(e){
     console.error('[BLR] saveEdit:',e);
@@ -6522,16 +6561,19 @@ async function _blrSaveEdit(){
 async function _blrSaveAdd(){
   if(!_blrModal||_blrModal.mode!=='add'||_blrModal.saving)return;
   var m=_blrModal;
+  // Defense-in-depth permission guard
+  if(!canWriteFinancials()){m.error='Permission denied.';_blrRenderModal();return;}
   if(!m.key){m.error='Please select a category.';_blrRenderModal();return;}
   if(!m.label||!m.label.trim()){m.error='Line label is required.';_blrRenderModal();return;}
   var amt=parseFloat(m.amount);
   if(isNaN(amt)||amt<0){m.error='Amount must be a number ≥ 0.';_blrRenderModal();return;}
-  var dup=_blrDupCheck(m.key,m.monthIso,null);
-  if(dup){m.error='An active rule already exists for this category in '+_budgetMonthLabel(m.monthIso)+'. Edit or archive it first.';_blrRenderModal();return;}
+  // Full interval overlap check against the proposed date range
+  var endMonth=m.scope==='once'?m.monthIso:null;
+  var overlap=_blrHasOverlap(m.key,m.monthIso,endMonth,null);
+  if(overlap){m.error='An active rule overlaps the proposed date range for this category. Edit or archive it first.';_blrRenderModal();return;}
   m.saving=true;_blrRenderModal();
   try{
     var h=await getAuthHeaders();
-    var endMonth=m.scope==='once'?m.monthIso:null;
     var r=await fetch(SUPA_URL+'/rest/v1/budget_line_rules',
       {method:'POST',headers:Object.assign({},h,{'Prefer':'return=minimal'}),
        body:JSON.stringify({category_key:m.key,line_label:m.label.trim(),amount:amt,start_month:m.monthIso,end_month:endMonth})});
@@ -6546,6 +6588,8 @@ async function _blrSaveAdd(){
 async function _blrSaveArchive(){
   if(!_blrModal||_blrModal.mode!=='archive'||_blrModal.saving||!_blrModal.currentRow)return;
   var m=_blrModal;
+  // Defense-in-depth permission guard
+  if(!canWriteFinancials()){m.error='Permission denied.';_blrRenderModal();return;}
   m.saving=true;_blrRenderModal();
   try{
     var h=await getAuthHeaders();

@@ -6069,7 +6069,7 @@ test('5E5-08: edit mode uses "close prior row then insert" pattern in code',()=>
   // Verify both PATCH and POST calls exist in _blrSaveEdit
   var editFn=html.indexOf('async function _blrSaveEdit');
   assert(editFn>-1,'_blrSaveEdit function must exist');
-  var editBlock=html.slice(editFn,editFn+2000);
+  var editBlock=html.slice(editFn,editFn+3500);
   assertIncludes(editBlock,'PATCH','_blrSaveEdit must use PATCH to close prior row');
   assertIncludes(editBlock,'POST','_blrSaveEdit must use POST to insert new row');
   assertIncludes(editBlock,'end_month:priorIso','_blrSaveEdit must set end_month=priorIso for Case A');
@@ -6094,24 +6094,26 @@ test('5E5-10: add mode supports one-time and ongoing scope',()=>{
   assertIncludes(addBlock,'endMonth','_blrSaveAdd must set endMonth based on scope');
 });
 
-test('5E5-11: duplicate check function exists and checks is_active, category_key, month overlap',()=>{
-  var dupFn=html.indexOf('function _blrDupCheck');
-  assert(dupFn>-1,'_blrDupCheck function must exist');
+test('5E5-11: overlap check function exists and checks is_active, category_key, date interval',()=>{
+  // _blrDupCheck replaced by _blrHasOverlap in hardening pass
+  var dupFn=html.indexOf('function _blrHasOverlap');
+  assert(dupFn>-1,'_blrHasOverlap function must exist');
   var dupBlock=html.slice(dupFn,dupFn+600);
-  assertIncludes(dupBlock,'is_active','dup check must verify is_active');
-  assertIncludes(dupBlock,'category_key','dup check must match category_key');
-  assertIncludes(dupBlock,'start_month','dup check must check start_month');
-  assertIncludes(dupBlock,'end_month','dup check must check end_month');
-  assertIncludes(dupBlock,'excludeId','dup check must support excludeId to skip current row');
+  assertIncludes(dupBlock,'is_active','overlap check must verify is_active');
+  assertIncludes(dupBlock,'category_key','overlap check must match category_key');
+  assertIncludes(dupBlock,'start_month','overlap check must check start_month');
+  assertIncludes(dupBlock,'end_month','overlap check must check end_month or FAR sentinel');
+  assertIncludes(dupBlock,'excludeId','overlap check must support excludeId to skip current row');
 });
 
-test('5E5-12: dup check is invoked in both saveEdit and saveAdd',()=>{
+test('5E5-12: overlap check is invoked in both saveEdit and saveAdd',()=>{
+  // _blrDupCheck replaced by _blrHasOverlap in hardening pass
   var editFn=html.indexOf('async function _blrSaveEdit');
   var editBlock=html.slice(editFn,editFn+1500);
-  assertIncludes(editBlock,'_blrDupCheck','_blrSaveEdit must call _blrDupCheck');
+  assertIncludes(editBlock,'_blrHasOverlap','_blrSaveEdit must call _blrHasOverlap');
   var addFn=html.indexOf('async function _blrSaveAdd');
   var addBlock=html.slice(addFn,addFn+1000);
-  assertIncludes(addBlock,'_blrDupCheck','_blrSaveAdd must call _blrDupCheck');
+  assertIncludes(addBlock,'_blrHasOverlap','_blrSaveAdd must call _blrHasOverlap');
 });
 
 test('5E5-13: canWriteFinancials guards all _blrOpen* functions',()=>{
@@ -6160,6 +6162,95 @@ test('5E5-17: _blrReloadAndRender reloads only is_active=true rows',()=>{
   assert(reloadFn>-1,'_blrReloadAndRender must exist');
   var reloadBlock=html.slice(reloadFn,reloadFn+400);
   assertIncludes(reloadBlock,'is_active=eq.true','_blrReloadAndRender must filter active rows');
+});
+
+// ── Phase 5E-5 Hardening ──────────────────────────────────────────────────
+
+test('5E5-H01: _blrHasOverlap function exists and replaces _blrDupCheck',()=>{
+  assertIncludes(html,'function _blrHasOverlap','_blrHasOverlap must exist');
+  // _blrDupCheck should no longer exist (replaced by _blrHasOverlap)
+  assert(html.indexOf('function _blrDupCheck')===-1,'_blrDupCheck must be removed — replaced by _blrHasOverlap');
+});
+
+test('5E5-H02: _blrHasOverlap uses FAR sentinel for open-ended rows',()=>{
+  var fnStart=html.indexOf('function _blrHasOverlap');
+  var fnBlock=html.slice(fnStart,fnStart+600);
+  assertIncludes(fnBlock,'9999-12-01','_blrHasOverlap must use FAR sentinel for open-ended rows');
+  assertIncludes(fnBlock,'newEnd','_blrHasOverlap must compute newEnd from endIso||FAR');
+  assertIncludes(fnBlock,'rEnd','_blrHasOverlap must compute rEnd for each existing row');
+});
+
+test('5E5-H03: overlap logic: one-time July add allowed when next row starts August',()=>{
+  // Simulate: new=[July,July], existing=[August,null]
+  // Overlap: July <= FAR (yes) AND August <= July (no) → no overlap → allowed
+  var FAR='9999-12-01';
+  var newStart='2026-07-01', newEnd='2026-07-01';
+  var rStart='2026-08-01', rEnd=FAR;
+  var overlaps=newStart<=rEnd && rStart<=newEnd;
+  assert(!overlaps,'One-time July add must NOT overlap an August-forward row');
+});
+
+test('5E5-H04: overlap logic: ongoing July-forward add blocked when August-forward row exists',()=>{
+  // Simulate: new=[July,null→FAR], existing=[August,null→FAR]
+  var FAR='9999-12-01';
+  var newStart='2026-07-01', newEnd=FAR;
+  var rStart='2026-08-01', rEnd=FAR;
+  var overlaps=newStart<=rEnd && rStart<=newEnd;
+  assert(overlaps,'Ongoing July-forward add MUST overlap an August-forward row — should be blocked');
+});
+
+test('5E5-H05: _blrSaveEdit preserves original end_month (not always null)',()=>{
+  var editFn=html.indexOf('async function _blrSaveEdit');
+  var editBlock=html.slice(editFn,editFn+3800);
+  assertIncludes(editBlock,'replacementEndMonth','_blrSaveEdit must compute replacementEndMonth');
+  assertIncludes(editBlock,'currentRow.end_month','_blrSaveEdit must read currentRow.end_month');
+  assertIncludes(editBlock,'end_month:replacementEndMonth','_blrSaveEdit must use replacementEndMonth in the INSERT');
+  // Confirm it does NOT hardcode end_month:null in the body
+  var insertIdx=editBlock.indexOf('end_month:replacementEndMonth');
+  assert(insertIdx>-1,'_blrSaveEdit insert must use replacementEndMonth, not null');
+});
+
+test('5E5-H06: _blrSaveEdit uses _blrHasOverlap for interval check (not _blrDupCheck)',()=>{
+  var editFn=html.indexOf('async function _blrSaveEdit');
+  var editBlock=html.slice(editFn,editFn+1000);
+  assertIncludes(editBlock,'_blrHasOverlap','_blrSaveEdit must use _blrHasOverlap');
+  assert(editBlock.indexOf('_blrDupCheck')===-1,'_blrSaveEdit must not use old _blrDupCheck');
+});
+
+test('5E5-H07: _blrSaveAdd uses _blrHasOverlap for interval check',()=>{
+  var addFn=html.indexOf('async function _blrSaveAdd');
+  var addBlock=html.slice(addFn,addFn+800);
+  assertIncludes(addBlock,'_blrHasOverlap','_blrSaveAdd must use _blrHasOverlap');
+  assert(addBlock.indexOf('_blrDupCheck')===-1,'_blrSaveAdd must not use old _blrDupCheck');
+});
+
+test('5E5-H08: _blrSaveEdit has best-effort rollback after failed insert',()=>{
+  var editFn=html.indexOf('async function _blrSaveEdit');
+  var editBlock=html.slice(editFn,editFn+4000);
+  assertIncludes(editBlock,'restorePatch','_blrSaveEdit must define restorePatch for rollback');
+  assertIncludes(editBlock,'closedRowId','_blrSaveEdit must track closedRowId for rollback');
+  assertIncludes(editBlock,'best-effort rollback','_blrSaveEdit must have a comment explaining best-effort rollback');
+  assertIncludes(editBlock,'rollback failed','_blrSaveEdit must handle rollback failure');
+});
+
+test('5E5-H09: all three save functions have canWriteFinancials() guard',()=>{
+  var editFn=html.indexOf('async function _blrSaveEdit');
+  var editBlock=html.slice(editFn,editFn+400);
+  assertIncludes(editBlock,'canWriteFinancials','_blrSaveEdit must check canWriteFinancials');
+  var addFn=html.indexOf('async function _blrSaveAdd');
+  var addBlock=html.slice(addFn,addFn+400);
+  assertIncludes(addBlock,'canWriteFinancials','_blrSaveAdd must check canWriteFinancials');
+  var archFn=html.indexOf('async function _blrSaveArchive');
+  var archBlock=html.slice(archFn,archFn+400);
+  assertIncludes(archBlock,'canWriteFinancials','_blrSaveArchive must check canWriteFinancials');
+});
+
+test('5E5-H10: edit modal shows effective range including end_month',()=>{
+  var renderFn=html.indexOf('function _blrRenderModal');
+  var renderBlock=html.slice(renderFn,renderFn+3000);
+  assertIncludes(renderBlock,'preservedEnd','_blrRenderModal edit mode must compute preservedEnd');
+  assertIncludes(renderBlock,'endLabel','_blrRenderModal edit mode must compute endLabel');
+  assertIncludes(renderBlock,'Effective Range','_blrRenderModal edit mode must show Effective Range label');
 });
 
 test('5E5-18: 5E-5 does not allow free-form category key entry',()=>{

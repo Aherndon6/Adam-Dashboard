@@ -134,6 +134,22 @@ Verified implicitly in AC-1, AC-2, AC-3. Confirm:
 
 ---
 
+## AC-10a: Edit preserves original end_month (date-range preservation)
+
+This tests the hardening fix: editing a rule with a fixed end date must NOT convert it to open-ended.
+
+1. Identify a budget line with a known end date (e.g., "Diablos (Preston) Fee" — end_month = 2026-12-01)
+2. Click **Edit** on that row in July 2026
+3. Confirm the modal "Effective Range" shows: **"From July 2026 through December 2026"** (not "onward (open-ended)")
+4. Change the amount by $1 and click Save
+5. In July: confirm the row shows the new amount
+6. In January 2027: confirm the row does NOT appear (end_month preserved at Dec 2026)
+7. **Restore**: Click Edit on that row in July, change amount back, Save. Confirm January 2027 still clean.
+
+> If all editable rows are open-ended in your test data, note that here and verify the "onward (open-ended)" label displays correctly instead.
+
+---
+
 ## AC-10: No invisible rows for unknown keys
 
 - Confirm all rows added via the admin UI (using registry keys) appear in the Budget table
