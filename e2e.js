@@ -23,6 +23,7 @@
 //   Section J   — Mobile viewport (nav, panels, no overflow)
 //   Section BUD — Budget module: no recursive wrappers, optimistic cleared toggle, delete confirm
 //   Section TX  — Transactions section: flag gate, Accounts view, Categories view, lifecycle toggle
+//   Section RG  — Register (Phase 5E-1): flag gate, account selector, starting balance, read-only ledger
 //
 // ─────────────────────────────────────────────────────────────────────────
 
@@ -1766,6 +1767,404 @@ async function clickNav(page, id) {
     });
     assert(!result.mobNavHasTransactions, 'mob-bottom-nav must not contain transactions entry in Slice 1');
     assert(!result.mobNavHasMobNavTransactions, 'mob-nav-transactions element must not exist in Slice 1');
+    await context.close();
+  });
+
+  // ── Section RG: Register (Phase 5E-1 read-only) ──────────────────────
+  // All tests inject mock data — no Supabase connection required.
+  // Writes (add/edit/delete/cleared toggle) are Phase 5E-2 and tested separately.
+  console.log('\n── Section RG: Register (Phase 5E-1 read-only) ──');
+
+  // Mock transactions — two rows, ascending by date, one inflow one outflow
+  const RG_MOCK_TRANSACTIONS = [
+    { id: 'tx-001', account_key: 'truist_checking', transaction_date: '2026-06-01',
+      posted_date: null, payee: 'Kroger', memo: 'Weekly groceries',
+      amount: -125.00, category_key: 'health_fitness.flexible_spending_2026',
+      cleared: true, reconciled: false, source: 'manual',
+      created_at: '2026-06-01T10:00:00Z', updated_at: '2026-06-01T10:00:00Z' },
+    { id: 'tx-002', account_key: 'truist_checking', transaction_date: '2026-06-03',
+      posted_date: null, payee: 'Paycheck', memo: '',
+      amount: 2000.00, category_key: 'income.net_salary',
+      cleared: true, reconciled: false, source: 'manual',
+      created_at: '2026-06-03T09:00:00Z', updated_at: '2026-06-03T09:00:00Z' }
+  ];
+
+  await test('RG-1: showTransactionLedger=false — Register tab is disabled span, not a button', async () => {
+    const { page, context } = await openApp(browser);
+    const result = await page.evaluate(() => {
+      FEATURE_FLAGS.showTransactionLedger = false;
+      FEATURE_FLAGS.showTransactionSection = true;
+      _accountsCache = [];
+      _registriesLoadStatus = 'loaded';
+      renderApp();
+      setSection('transactions');
+      var html = document.getElementById('transactions-content')?.innerHTML || '';
+      return {
+        hasDisabledSpan: html.includes('Register — Phase 5E'),
+        hasRegisterButton: (html.match(/<button[^>]*>Register<\/button>/)||[]).length > 0
+      };
+    });
+    assert(result.hasDisabledSpan, 'Register — Phase 5E disabled span must be present when flag=false');
+    assert(!result.hasRegisterButton, 'Register must not be a clickable button when showTransactionLedger=false');
+    await context.close();
+  });
+
+  await test('RG-2: showTransactionLedger=true — Register tab is active button labeled Register', async () => {
+    const { page, context } = await openApp(browser);
+    const result = await page.evaluate(() => {
+      FEATURE_FLAGS.showTransactionLedger = true;
+      _accountsCache = [];
+      _registriesLoadStatus = 'loaded';
+      renderApp();
+      setSection('transactions');
+      var html = document.getElementById('transactions-content')?.innerHTML || '';
+      return {
+        hasRegisterButton: html.includes('Register — Phase 5E') === false && html.includes('Register'),
+        noDisabledRegister: !html.includes('Register — Phase 5E')
+      };
+    });
+    assert(result.hasRegisterButton, 'Register tab must be present and labeled Register (not Register — Phase 5E)');
+    assert(result.noDisabledRegister, 'Disabled Phase 5E label must not appear when flag=true');
+    await context.close();
+  });
+
+  await test('RG-3: showTransactionLedger=true alone (without showTransactionSection) — Transactions nav visible', async () => {
+    const { page, context } = await openApp(browser);
+    const result = await page.evaluate(() => {
+      FEATURE_FLAGS.showTransactionSection = false;
+      FEATURE_FLAGS.showTransactionLedger = true;
+      _accountsCache = [];
+      _registriesLoadStatus = 'loaded';
+      renderApp();
+      return {
+        navVisible: document.getElementById('nav-transactions-wrap')?.style.display !== 'none'
+      };
+    });
+    assert(result.navVisible, 'Transactions nav must be visible when showTransactionLedger=true, even if showTransactionSection=false');
+    await context.close();
+  });
+
+  await test('RG-4: account selector populates with active accounts only', async () => {
+    const { page, context } = await openApp(browser);
+    const result = await page.evaluate((mockAccounts) => {
+      FEATURE_FLAGS.showTransactionLedger = true;
+      _accountsCache = mockAccounts;
+      _registriesLoadStatus = 'loaded';
+      _txLedgerLoadStatus = 'loaded';
+      _txLedgerCache = [];
+      _txLedgerAccountKey = 'truist_checking';
+      renderApp();
+      setSection('transactions');
+      setTxSubNav('register');
+      var html = document.getElementById('transactions-content')?.innerHTML || '';
+      return {
+        hasTruistOption: html.includes('Truist Checking'),
+        hasCostcoOption: html.includes('Costco Visa'),    // hidden — must be absent
+        hasFidelityOption: html.includes('Fidelity Joint') // view_only — must be absent
+      };
+    }, TX_MOCK_ACCOUNTS);
+    assert(result.hasTruistOption, 'Active account must appear in account selector');
+    assert(!result.hasCostcoOption, 'Hidden account must not appear in account selector');
+    assert(!result.hasFidelityOption, 'View-only account must not appear in account selector');
+    await context.close();
+  });
+
+  await test('RG-5: starting_balance null shows explicit warning, not silent $0.00', async () => {
+    const { page, context } = await openApp(browser);
+    const result = await page.evaluate((mockAccounts) => {
+      FEATURE_FLAGS.showTransactionLedger = true;
+      _accountsCache = mockAccounts;
+      _registriesLoadStatus = 'loaded';
+      _txLedgerLoadStatus = 'loaded';
+      _txLedgerCache = [];
+      _txLedgerAccountKey = 'truist_checking'; // starting_balance: null
+      renderApp();
+      setSection('transactions');
+      setTxSubNav('register');
+      var html = document.getElementById('transactions-content')?.innerHTML || '';
+      return {
+        hasWarning: html.includes('Starting balance not set — running balance starts from $0.00')
+      };
+    }, TX_MOCK_ACCOUNTS);
+    assert(result.hasWarning, 'Must show explicit starting balance not-set warning when starting_balance is null');
+    await context.close();
+  });
+
+  await test('RG-6: starting_balance set — shows value, no warning', async () => {
+    const { page, context } = await openApp(browser);
+    const result = await page.evaluate((mockAccounts) => {
+      FEATURE_FLAGS.showTransactionLedger = true;
+      var accts = mockAccounts.map(function(a) {
+        return a.key === 'truist_checking' ? Object.assign({}, a, {starting_balance: 500.00}) : a;
+      });
+      _accountsCache = accts;
+      _registriesLoadStatus = 'loaded';
+      _txLedgerLoadStatus = 'loaded';
+      _txLedgerCache = [];
+      _txLedgerAccountKey = 'truist_checking';
+      renderApp();
+      setSection('transactions');
+      setTxSubNav('register');
+      var html = document.getElementById('transactions-content')?.innerHTML || '';
+      return {
+        noWarning: !html.includes('Starting balance not set'),
+        hasBalance: html.includes('500.00')
+      };
+    }, TX_MOCK_ACCOUNTS);
+    assert(result.noWarning, 'Must not show not-set warning when starting_balance is present');
+    assert(result.hasBalance, 'Starting balance value must appear in the register');
+    await context.close();
+  });
+
+  await test('RG-7: transaction list renders expected columns', async () => {
+    const { page, context } = await openApp(browser);
+    const result = await page.evaluate(([mockAccounts, mockTxns]) => {
+      FEATURE_FLAGS.showTransactionLedger = true;
+      _accountsCache = mockAccounts;
+      _registriesLoadStatus = 'loaded';
+      _txLedgerLoadStatus = 'loaded';
+      _txLedgerCache = mockTxns;
+      _txLedgerAccountKey = 'truist_checking';
+      renderApp();
+      setSection('transactions');
+      setTxSubNav('register');
+      var html = document.getElementById('transactions-content')?.innerHTML || '';
+      return {
+        hasDate: html.includes('Date'),
+        hasPayee: html.includes('Payee'),
+        hasMemo: html.includes('Memo'),
+        hasCategory: html.includes('Category'),
+        hasOutflow: html.includes('Outflow'),
+        hasInflow: html.includes('Inflow'),
+        hasClr: html.includes('Clr'),
+        hasBalance: html.includes('Balance')
+      };
+    }, [TX_MOCK_ACCOUNTS, RG_MOCK_TRANSACTIONS]);
+    assert(result.hasDate, 'Date column must be present');
+    assert(result.hasPayee, 'Payee column must be present');
+    assert(result.hasMemo, 'Memo column must be present');
+    assert(result.hasCategory, 'Category column must be present');
+    assert(result.hasOutflow, 'Outflow column must be present');
+    assert(result.hasInflow, 'Inflow column must be present');
+    assert(result.hasClr, 'Clr column must be present');
+    assert(result.hasBalance, 'Balance column must be present');
+    await context.close();
+  });
+
+  await test('RG-7b: category displays resolved label from _categoriesCache, not raw key', async () => {
+    const { page, context } = await openApp(browser);
+    const result = await page.evaluate(([mockAccounts, mockCategories, mockTxns]) => {
+      FEATURE_FLAGS.showTransactionLedger = true;
+      _accountsCache = mockAccounts;
+      _categoriesCache = mockCategories;
+      _registriesLoadStatus = 'loaded';
+      _txLedgerLoadStatus = 'loaded';
+      _txLedgerCache = mockTxns;
+      _txLedgerAccountKey = 'truist_checking';
+      renderApp();
+      setSection('transactions');
+      setTxSubNav('register');
+      var html = document.getElementById('transactions-content')?.innerHTML || '';
+      // Mock tx-001 has category_key 'health_fitness.flexible_spending_2026'
+      // which resolves to label 'Flexible Spending 2026' in TX_MOCK_CATEGORIES
+      return {
+        showsLabel: html.includes('Flexible Spending 2026'),
+        showsRawKey: html.includes('health_fitness.flexible_spending_2026')
+      };
+    }, [TX_MOCK_ACCOUNTS, TX_MOCK_CATEGORIES, RG_MOCK_TRANSACTIONS]);
+    assert(result.showsLabel, 'Category column must display resolved label (e.g. "Flexible Spending 2026"), not raw key');
+    assert(!result.showsRawKey, 'Category column must not display raw key when label is resolvable from _categoriesCache');
+    await context.close();
+  });
+
+  await test('RG-8: running balance computes correctly from mock transactions', async () => {
+    const { page, context } = await openApp(browser);
+    const result = await page.evaluate(([mockAccounts, mockTxns]) => {
+      FEATURE_FLAGS.showTransactionLedger = true;
+      _accountsCache = mockAccounts; // starting_balance: null → $0.00
+      _registriesLoadStatus = 'loaded';
+      _txLedgerLoadStatus = 'loaded';
+      _txLedgerCache = mockTxns; // -125.00 then +2000.00 → final 1875.00
+      _txLedgerAccountKey = 'truist_checking';
+      renderApp();
+      setSection('transactions');
+      setTxSubNav('register');
+      var html = document.getElementById('transactions-content')?.innerHTML || '';
+      return {
+        hasFinalBalance: html.includes('1875.00'),
+        hasIntermediate: html.includes('-125.00') || html.includes('125.00')
+      };
+    }, [TX_MOCK_ACCOUNTS, RG_MOCK_TRANSACTIONS]);
+    assert(result.hasFinalBalance, 'Final running balance must be $1875.00 (0 - 125 + 2000)');
+    await context.close();
+  });
+
+  await test('RG-9: negative amount renders in Outflow column as positive display value', async () => {
+    const { page, context } = await openApp(browser);
+    const result = await page.evaluate(([mockAccounts, mockTxns]) => {
+      FEATURE_FLAGS.showTransactionLedger = true;
+      _accountsCache = mockAccounts;
+      _registriesLoadStatus = 'loaded';
+      _txLedgerLoadStatus = 'loaded';
+      _txLedgerCache = mockTxns;
+      _txLedgerAccountKey = 'truist_checking';
+      renderApp();
+      setSection('transactions');
+      setTxSubNav('register');
+      var html = document.getElementById('transactions-content')?.innerHTML || '';
+      // The outflow column should show 125.00 (abs of -125.00) in red
+      return {
+        hasOutflowValue: html.includes('125.00') && html.includes('var(--red)')
+      };
+    }, [TX_MOCK_ACCOUNTS, RG_MOCK_TRANSACTIONS]);
+    assert(result.hasOutflowValue, 'Negative amount must render as positive value in red Outflow column');
+    await context.close();
+  });
+
+  await test('RG-10: positive amount renders in Inflow column in green', async () => {
+    const { page, context } = await openApp(browser);
+    const result = await page.evaluate(([mockAccounts, mockTxns]) => {
+      FEATURE_FLAGS.showTransactionLedger = true;
+      _accountsCache = mockAccounts;
+      _registriesLoadStatus = 'loaded';
+      _txLedgerLoadStatus = 'loaded';
+      _txLedgerCache = mockTxns;
+      _txLedgerAccountKey = 'truist_checking';
+      renderApp();
+      setSection('transactions');
+      setTxSubNav('register');
+      var html = document.getElementById('transactions-content')?.innerHTML || '';
+      return {
+        hasInflowValue: html.includes('2000.00') && html.includes('var(--green)')
+      };
+    }, [TX_MOCK_ACCOUNTS, RG_MOCK_TRANSACTIONS]);
+    assert(result.hasInflowValue, 'Positive amount must render in green Inflow column');
+    await context.close();
+  });
+
+  await test('RG-11: cleared transaction shows checkmark in Clr column', async () => {
+    const { page, context } = await openApp(browser);
+    const result = await page.evaluate(([mockAccounts, mockTxns]) => {
+      FEATURE_FLAGS.showTransactionLedger = true;
+      _accountsCache = mockAccounts;
+      _registriesLoadStatus = 'loaded';
+      _txLedgerLoadStatus = 'loaded';
+      _txLedgerCache = mockTxns; // both tx-001 and tx-002 are cleared:true
+      _txLedgerAccountKey = 'truist_checking';
+      renderApp();
+      setSection('transactions');
+      setTxSubNav('register');
+      var html = document.getElementById('transactions-content')?.innerHTML || '';
+      return { hasCheckmark: html.includes('✓') };
+    }, [TX_MOCK_ACCOUNTS, RG_MOCK_TRANSACTIONS]);
+    assert(result.hasCheckmark, 'Cleared transaction must show ✓ in Clr column');
+    await context.close();
+  });
+
+  await test('RG-12: empty state shown when no transactions for account', async () => {
+    const { page, context } = await openApp(browser);
+    const result = await page.evaluate((mockAccounts) => {
+      FEATURE_FLAGS.showTransactionLedger = true;
+      _accountsCache = mockAccounts;
+      _registriesLoadStatus = 'loaded';
+      _txLedgerLoadStatus = 'loaded';
+      _txLedgerCache = [];
+      _txLedgerAccountKey = 'truist_checking';
+      renderApp();
+      setSection('transactions');
+      setTxSubNav('register');
+      var html = document.getElementById('transactions-content')?.innerHTML || '';
+      return { hasEmptyState: html.includes('No transactions for this account') };
+    }, TX_MOCK_ACCOUNTS);
+    assert(result.hasEmptyState, 'Empty state message must appear when transaction list is empty');
+    await context.close();
+  });
+
+  await test('RG-13: loading state shown when _txLedgerLoadStatus is loading', async () => {
+    const { page, context } = await openApp(browser);
+    const result = await page.evaluate((mockAccounts) => {
+      FEATURE_FLAGS.showTransactionLedger = true;
+      _accountsCache = mockAccounts;
+      _registriesLoadStatus = 'loaded';
+      _txLedgerLoadStatus = 'loading';
+      _txLedgerCache = null;
+      _txLedgerAccountKey = 'truist_checking';
+      renderApp();
+      setSection('transactions');
+      setTxSubNav('register');
+      var html = document.getElementById('transactions-content')?.innerHTML || '';
+      return { hasLoadingState: html.includes('Loading transactions') };
+    }, TX_MOCK_ACCOUNTS);
+    assert(result.hasLoadingState, 'Loading state must render while _txLedgerLoadStatus is loading');
+    await context.close();
+  });
+
+  await test('RG-14: error state shown when _txLedgerLoadStatus is failed', async () => {
+    const { page, context } = await openApp(browser);
+    const result = await page.evaluate((mockAccounts) => {
+      FEATURE_FLAGS.showTransactionLedger = true;
+      _accountsCache = mockAccounts;
+      _registriesLoadStatus = 'loaded';
+      _txLedgerLoadStatus = 'failed';
+      _txLedgerCache = null;
+      _txLedgerAccountKey = 'truist_checking';
+      renderApp();
+      setSection('transactions');
+      setTxSubNav('register');
+      var html = document.getElementById('transactions-content')?.innerHTML || '';
+      return { hasErrorState: html.includes('Failed to load transactions') };
+    }, TX_MOCK_ACCOUNTS);
+    assert(result.hasErrorState, 'Error state must render when _txLedgerLoadStatus is failed');
+    await context.close();
+  });
+
+  await test('RG-15: no add/edit/delete buttons in 5E-1 read-only register', async () => {
+    const { page, context } = await openApp(browser);
+    const result = await page.evaluate(([mockAccounts, mockTxns]) => {
+      FEATURE_FLAGS.showTransactionLedger = true;
+      _accountsCache = mockAccounts;
+      _registriesLoadStatus = 'loaded';
+      _txLedgerLoadStatus = 'loaded';
+      _txLedgerCache = mockTxns;
+      _txLedgerAccountKey = 'truist_checking';
+      renderApp();
+      setSection('transactions');
+      setTxSubNav('register');
+      var html = document.getElementById('transactions-content')?.innerHTML || '';
+      return {
+        hasAddButton: html.includes('Add Transaction') || html.includes('add-transaction'),
+        hasEditButton: html.includes('Edit') && html.includes('onclick') && html.includes('_editTransaction'),
+        hasDeleteButton: html.includes('Delete') && html.includes('_deleteTransaction')
+      };
+    }, [TX_MOCK_ACCOUNTS, RG_MOCK_TRANSACTIONS]);
+    assert(!result.hasAddButton, 'Add Transaction button must not be present in 5E-1');
+    assert(!result.hasEditButton, 'Edit button must not be present in 5E-1');
+    assert(!result.hasDeleteButton, 'Delete button must not be present in 5E-1');
+    await context.close();
+  });
+
+  await test('RG-16: flag reset to false — Register tab returns to disabled span, budget unaffected', async () => {
+    const { page, context } = await openApp(browser);
+    const result = await page.evaluate((mockAccounts) => {
+      FEATURE_FLAGS.showTransactionLedger = true;
+      _accountsCache = mockAccounts;
+      _registriesLoadStatus = 'loaded';
+      _txLedgerLoadStatus = 'loaded';
+      _txLedgerCache = [];
+      _txLedgerAccountKey = 'truist_checking';
+      renderApp();
+      // Now reset
+      FEATURE_FLAGS.showTransactionLedger = false;
+      renderApp();
+      setSection('transactions');
+      var html = document.getElementById('transactions-content')?.innerHTML || '';
+      return {
+        registerDisabled: html.includes('Register — Phase 5E'),
+        budgetIntact: typeof runModel === 'function' && typeof BUDGET_CATEGORY_REGISTRY !== 'undefined'
+      };
+    }, TX_MOCK_ACCOUNTS);
+    assert(result.registerDisabled, 'Register tab must return to disabled span after flag reset to false');
+    assert(result.budgetIntact, 'Budget module must be unaffected after register module runs');
     await context.close();
   });
 

@@ -5315,9 +5315,12 @@ test('5D2-07: renderApp dispatches to renderTransactions',()=>{
     'renderApp must dispatch to renderTransactions for transactions section');
 });
 
-test('5D2-08: renderApp shows/hides Transactions nav based on flag',()=>{
-  assertIncludes(html,'FEATURE_FLAGS.showTransactionSection?',
-    'renderApp must conditionally show nav-transactions-wrap based on flag');
+test('5D2-08: renderApp shows/hides Transactions nav based on flag (updated in 5E-1)',()=>{
+  // 5E-1 changed single-flag check to derived _showTxSection = showTransactionSection || showTransactionLedger
+  assertIncludes(html,'var _showTxSection=FEATURE_FLAGS.showTransactionSection||FEATURE_FLAGS.showTransactionLedger',
+    'renderApp must derive _showTxSection from both flags');
+  assertIncludes(html,'_tnw.style.display=_showTxSection',
+    'renderApp must use _showTxSection to set nav-transactions-wrap display');
 });
 
 test('5D2-09: renderTransactions function exists',()=>{
@@ -5407,6 +5410,119 @@ test('5D2-26: orphan category header colspan matches 8-column category table',()
     'Orphan group header must not use colspan="7" — categories table has 8 columns');
   assertIncludes(html,'<td colspan="8" style="padding:7px 12px;font-weight:700;color:var(--muted);font-size:11px">▸ (no parent in current view)',
     'Orphan group header must use colspan="8" to span all 8 category columns');
+});
+
+// ── Phase 5E-1: SQL foundation + read-only Register shell ─────────────────
+console.log('\n── Phase 5E-1 tests ──');
+
+test('5E1-01: FEATURE_FLAGS.showTransactionLedger defaults false',()=>{
+  assertIncludes(html,'showTransactionLedger:false','showTransactionLedger must default false');
+});
+
+test('5E1-02: showTransactionLedger flag comment present in FEATURE_FLAGS block',()=>{
+  assertIncludes(html,'showTransactionLedger','showTransactionLedger comment/flag missing from FEATURE_FLAGS block');
+});
+
+test('5E1-03: loadAll condition includes showTransactionLedger',()=>{
+  assertIncludes(html,'FEATURE_FLAGS.showTransactionLedger',
+    'loadAll registry-load condition must include showTransactionLedger');
+  assertIncludes(html,
+    'FEATURE_FLAGS.useSupabaseRegistries||FEATURE_FLAGS.showTransactionSection||FEATURE_FLAGS.showTransactionLedger',
+    'loadAll OR condition must include all three flags');
+});
+
+test('5E1-04: nav visibility uses showTransactionSection || showTransactionLedger',()=>{
+  assertIncludes(html,'FEATURE_FLAGS.showTransactionSection||FEATURE_FLAGS.showTransactionLedger',
+    'nav visibility must be gated on showTransactionSection OR showTransactionLedger');
+});
+
+test('5E1-05: Register tab is disabled span when showTransactionLedger=false path exists',()=>{
+  // The conditional expression must include the false-path that produces future:true / disabled span
+  assertIncludes(html,'future:!FEATURE_FLAGS.showTransactionLedger',
+    'Register tab must use !showTransactionLedger to determine future/disabled state');
+});
+
+test('5E1-06: Register tab label is plain Register when flag=true path exists in code',()=>{
+  assertIncludes(html,"FEATURE_FLAGS.showTransactionLedger?'Register':'Register — Phase 5E'",
+    'Register tab label must switch between Register and Register — Phase 5E based on flag');
+});
+
+test('5E1-07: _renderTxRegister function exists',()=>{
+  assertIncludes(html,'function _renderTxRegister()',
+    '_renderTxRegister function must be present');
+});
+
+test('5E1-08: _loadTxLedger function exists',()=>{
+  assertIncludes(html,'async function _loadTxLedger(',
+    '_loadTxLedger async function must be present');
+});
+
+test('5E1-09: setTxLedgerAccount function exists',()=>{
+  assertIncludes(html,'function setTxLedgerAccount(',
+    'setTxLedgerAccount function must be present');
+});
+
+test('5E1-10: _txLedgerAccountKey state variable initialized',()=>{
+  assertIncludes(html,"var _txLedgerAccountKey='';",
+    '_txLedgerAccountKey must be initialized to empty string');
+});
+
+test('5E1-11: _txLedgerCache state variable initialized to null',()=>{
+  assertIncludes(html,'var _txLedgerCache=null;',
+    '_txLedgerCache must be initialized to null');
+});
+
+test('5E1-12: _txLedgerLoadStatus initialized to not_loaded',()=>{
+  assertIncludes(html,"var _txLedgerLoadStatus='not_loaded';",
+    "_txLedgerLoadStatus must be initialized to 'not_loaded'");
+});
+
+test('5E1-13: Supabase query applies limit=500 at query level',()=>{
+  assertIncludes(html,'&limit=500',
+    'Transaction fetch must include &limit=500 in URL (query-level cap, not client-side slice)');
+});
+
+test('5E1-14: Supabase query sort order is deterministic three-level tie-break',()=>{
+  assertIncludes(html,'order=transaction_date.asc,created_at.asc,id.asc',
+    'Transaction fetch must use deterministic three-level ORDER BY');
+});
+
+test('5E1-15: Starting balance not-set warning text present in register HTML',()=>{
+  assertIncludes(html,'Starting balance not set — running balance starts from $0.00',
+    'Register must show explicit warning when starting_balance is null');
+});
+
+test('5E1-16: renderTransactions routes to _renderTxRegister when flag enabled',()=>{
+  assertIncludes(html,"_txSubNav==='register'&&FEATURE_FLAGS.showTransactionLedger)body=_renderTxRegister()",
+    'renderTransactions must route to _renderTxRegister when showTransactionLedger=true');
+});
+
+test('5E1-17: topbar subtitle handles register sub-nav',()=>{
+  assertIncludes(html,"_txSubNav==='register'",
+    'Topbar subtitle must include register sub-nav case');
+  assertIncludes(html,"'Loading transactions…'",
+    "Topbar must show 'Loading transactions…' while ledger is loading");
+});
+
+test('5E1-18: no add/edit/delete/cleared write functions in 5E-1 scope',()=>{
+  assert(!html.includes('function _addTransaction('),'_addTransaction must not exist in 5E-1');
+  assert(!html.includes('function _editTransaction('),'_editTransaction must not exist in 5E-1');
+  assert(!html.includes('function _deleteTransaction('),'_deleteTransaction must not exist in 5E-1');
+  assert(!html.includes('function _toggleCleared('),'_toggleCleared must not exist in 5E-1');
+});
+
+test('5E1-19: Budget module functions unaffected by 5E-1 changes',()=>{
+  assertIncludes(html,'function runModel(','runModel must still exist');
+  assertIncludes(html,'var BUDGET_CATEGORY_REGISTRY','BUDGET_CATEGORY_REGISTRY must still be present');
+  assertIncludes(html,'var BUDGET_PAYMENT_ACCOUNTS','BUDGET_PAYMENT_ACCOUNTS must still be present');
+});
+
+test('5E1-20: _loadTxLedger does not reference budget_transactions',()=>{
+  // Verify the new ledger function is isolated from Budget module data
+  var ledgerFn=html.slice(html.indexOf('async function _loadTxLedger('),
+    html.indexOf('async function _loadTxLedger(')+500);
+  assert(!ledgerFn.includes('budget_transactions'),
+    '_loadTxLedger must not reference budget_transactions table');
 });
 
 // ─────────────────────────────────────────────────────────────────────────

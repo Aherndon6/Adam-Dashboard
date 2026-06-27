@@ -1,5 +1,70 @@
 # Herndon Financial OS — Phase Status
 
+## Phase 5E-1 — SQL Foundation + Read-Only Register Shell
+**Status:** Draft — pending approval and execution
+**Date:** 2026-06-26
+
+### Scope (5E-1 only)
+- `transactions` table, indexes, constraints, RLS (1 SELECT policy — least privilege), trigger, `GRANT SELECT` only
+- `showTransactionLedger` feature flag (default `false`)
+- Register tab activates when `showTransactionLedger=true`; stays disabled span otherwise
+- Account selector populated from `_accountsCache`
+- Starting balance row: shows value or explicit "Starting balance not set — running balance starts from $0.00" warning
+- Read-only transaction list (fetched via Supabase, 500-row query-level limit, deterministic sort)
+- Loading / error / empty states
+- Topbar subtitle for register sub-nav
+
+### Not in 5E-1
+- Add / edit / delete — Phase 5E-2
+- Cleared toggle/write operation — Phase 5E-2 (cleared status is displayed read-only in 5E-1; the write toggle is deferred)
+- `transaction_splits` table — deferred until split UI is scoped
+- Transfer UI — deferred
+- `reconciled` column surfaced — Phase 5F
+- Starting balance editing
+- Budget math changes — non-negotiable exclusion
+- `budget_transactions` changes — non-negotiable exclusion
+- Mobile layout — non-negotiable exclusion
+
+### Draft files (review only — not yet executed or committed)
+- `docs/phase-5e-preflight.sql` — 9 pre-checks (P1–P7 + P5a/P6a FK constraint validation)
+- `docs/phase-5e-migration.sql` — table, indexes, 1 RLS policy (SELECT only), trigger, SELECT grant, 13 post-migration validation queries (V1–V10 + V3a/V3b policy name/expression checks)
+- `docs/phase-5e-rollback.sql` — safe teardown with Phase 5F warning
+- `index.html` — 8 edit points (flag, loadAll condition, nav logic, Register tab, routing, state vars, `_loadTxLedger`, `_renderTxRegister`, topbar subtitle)
+- `test_regression.js` — 20 new tests (5E1-01 through 5E1-20)
+- `e2e.js` — 16 new tests (RG-1 through RG-16, Section RG)
+
+### Execution gate (ordered — do not skip steps)
+1. Run `docs/phase-5e-preflight.sql` — all P1–P7, P5a, P6a must return expected values
+2. Run `docs/phase-5e-migration.sql` — migration is intentionally fail-loud (no IF NOT EXISTS)
+3. Confirm all V1–V10, V3a, V3b return expected values
+4. Only after all validations pass: enable flag in console for smoke test (do not change default)
+5. Run manual smoke test below
+6. Commit/push only after smoke is clean
+
+**Do not enable `showTransactionLedger=true` in the live app (console or code) until steps 1–3 above are complete.**
+
+### Manual smoke test (after migration + validations confirmed)
+```js
+FEATURE_FLAGS.showTransactionLedger = true;
+await _loadSupabaseRegistries();
+_rebuildBudgetCatByKey();
+renderApp();
+setSection('transactions');
+setTxSubNav('register');
+```
+Expected: Transactions nav visible, Register tab active, account selector shows active accounts, empty state (no transactions yet), starting balance warning if null.
+
+### Release gates (non-negotiable for all of Phase 5E)
+- No changes to `runModel()` or any Budget math function
+- No changes to `budget_transactions` table, schema, or queries
+- No reconciliation workflow of any kind
+- No migration or mapping between `budget_transactions` and `transactions`
+- No default flag changes in production
+- No mobile layout expansion
+- No `transaction_splits` table until splits UI is explicitly scoped
+
+---
+
 ## Phase 5D-2 Slice 1 — Read-Only Transactions Section
 **Status:** Complete (pending your push after manual smoke)
 **Date:** 2026-06-26

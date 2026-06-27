@@ -4239,10 +4239,48 @@ function applyCompletionSnapshots(weeks){
 // Read-only Accounts and Categories views behind FEATURE_FLAGS.showTransactionSection.
 // No add/edit/archive in Slice 1. All new UI hidden when flag=false.
 
-var _txSubNav='accounts';    // 'accounts' | 'categories'
+var _txSubNav='accounts';    // 'accounts' | 'categories' | 'register'
 var _txCatShowAll=false;     // categories lifecycle toggle
 
+// ── Phase 5E-1: Register state ────────────────────────────────────────────
+var _txLedgerAccountKey='';          // account key currently loaded in register
+var _txLedgerCache=null;             // fetched transactions array or null
+var _txLedgerLoadStatus='not_loaded';// 'not_loaded' | 'loading' | 'loaded' | 'failed'
+
 function setTxSubNav(tab){_txSubNav=tab;renderApp();}
+
+// Switch account in register — resets cache and triggers fresh fetch
+function setTxLedgerAccount(key){
+  if(!key||key===_txLedgerAccountKey)return;
+  _txLedgerLoadStatus='not_loaded';
+  _txLedgerCache=null;
+  _txLedgerAccountKey=key;
+  _loadTxLedger(key);
+}
+
+// Fetch up to 500 transactions for one account, deterministic order
+async function _loadTxLedger(accountKey){
+  if(!accountKey)return;
+  _txLedgerAccountKey=accountKey;
+  _txLedgerLoadStatus='loading';
+  _txLedgerCache=null;
+  renderApp();
+  try{
+    var h=await getAuthHeaders();
+    var url=SUPA_URL+'/rest/v1/transactions'
+      +'?account_key=eq.'+encodeURIComponent(accountKey)
+      +'&order=transaction_date.asc,created_at.asc,id.asc'
+      +'&limit=500';
+    var res=await fetch(url,{headers:h});
+    if(!res.ok)throw new Error('HTTP '+res.status);
+    _txLedgerCache=await res.json();
+    _txLedgerLoadStatus='loaded';
+  }catch(e){
+    console.error('[5E] ledger load error:',e);
+    _txLedgerLoadStatus='failed';
+  }
+  renderApp();
+}
 function toggleTxCatShowAll(){_txCatShowAll=!_txCatShowAll;renderApp();}
 
 // _txLifecycleBadge — returns a styled inline-badge span for lifecycle_status values
@@ -4385,15 +4423,121 @@ function _renderTxCategories(){
   return html;
 }
 
+// _renderTxRegister — Phase 5E-1 read-only account register
+// Shows account selector, starting balance row, and transaction list.
+// Writes (add/edit/delete/cleared toggle) are Phase 5E-2.
+// Transactions fetched from Supabase on demand (up to 500, query-level limit).
+// Running balance computed client-side in deterministic ascending order.
+function _renderTxRegister(){
+  // Registries must be loaded to populate account selector
+  if(_registriesLoadStatus==='not_loaded'||_registriesLoadStatus==='loading'){
+    return '<div style="padding:24px;color:var(--muted)">Loading account registry…</div>';
+  }
+  if(_registriesLoadStatus==='failed'){
+    return '<div style="padding:24px;color:var(--red)">Failed to load account registry. Refresh to retry.</div>';
+  }
+  var activeAccounts=(_accountsCache||[]).filter(function(a){return a.lifecycle_status==='active';});
+  if(!activeAccounts.length){
+    return '<div style="padding:24px;color:var(--muted)">No active accounts found.</div>';
+  }
+  // Default to first account on initial render
+  if(!_txLedgerAccountKey&&activeAccounts.length){_txLedgerAccountKey=activeAccounts[0].key;}
+  // Kick off async load if not yet fetched for current account.
+  // Set status to 'loading' synchronously before scheduling so repeated renders
+  // during the same event loop tick cannot schedule duplicate fetches.
+  if(_txLedgerLoadStatus==='not_loaded'&&_txLedgerAccountKey){
+    _txLedgerLoadStatus='loading';
+    setTimeout(function(){_loadTxLedger(_txLedgerAccountKey);},0);
+  }
+
+  // Account selector
+  var sel='<div style="padding:12px 16px;border-bottom:1px solid var(--line);display:flex;align-items:center;gap:10px">'
+    +'<label style="font-size:12px;font-weight:600;color:var(--muted);white-space:nowrap">Account</label>'
+    +'<select onchange="setTxLedgerAccount(this.value)" style="font-family:inherit;font-size:13px;padding:4px 8px;border:1px solid var(--line);border-radius:6px;background:var(--surface);color:var(--text)">';
+  activeAccounts.forEach(function(a){
+    sel+='<option value="'+_esc(a.key)+'"'+(a.key===_txLedgerAccountKey?' selected':'')+'>'
+      +_esc(a.label)+'</option>';
+  });
+  sel+='</select></div>';
+
+  // Transaction list
+  var body='';
+  if(_txLedgerLoadStatus==='not_loaded'||_txLedgerLoadStatus==='loading'){
+    body='<div style="padding:24px;color:var(--muted)">Loading transactions…</div>';
+  }else if(_txLedgerLoadStatus==='failed'){
+    body='<div style="padding:24px;color:var(--red)">Failed to load transactions. Refresh to retry.</div>';
+  }else{
+    var selAcct=(_accountsCache||[]).find(function(a){return a.key===_txLedgerAccountKey;})||null;
+    var rawBal=(selAcct&&selAcct.starting_balance!==null&&selAcct.starting_balance!==undefined)
+      ?parseFloat(selAcct.starting_balance):null;
+    var runBal=rawBal!==null?rawBal:0;
+    var balWarning=rawBal===null;
+
+    // Table
+    var th=function(label,align){
+      return '<th style="padding:8px 12px;font-weight:600;color:var(--muted);font-size:11px;'
+        +'text-transform:uppercase;letter-spacing:.05em;white-space:nowrap'
+        +(align?';text-align:'+align:'')+'">'
+        +label+'</th>';
+    };
+    var tbl='<table style="width:100%;border-collapse:collapse;font-size:13px">'
+      +'<thead><tr style="background:var(--surface2);text-align:left">'
+      +th('Date')+th('Payee')+th('Memo')+th('Category')
+      +th('Outflow','right')+th('Inflow','right')
+      +th('Clr','center')+th('Balance','right')
+      +'</tr></thead><tbody>';
+
+    // Starting balance row
+    var startCell=balWarning
+      ?'<span style="font-style:italic;color:var(--amber)">Starting balance not set — running balance starts from $0.00</span>'
+      :'<span style="font-style:italic;color:var(--muted)">Starting balance</span>';
+    tbl+='<tr style="background:var(--surface2)">'
+      +'<td colspan="7" style="padding:8px 12px">'+startCell+'</td>'
+      +'<td style="padding:8px 12px;text-align:right;font-weight:600">$'
+      +runBal.toFixed(2)+'</td></tr>';
+
+    var rows=_txLedgerCache||[];
+    if(!rows.length){
+      tbl+='<tr><td colspan="8" style="padding:24px 12px;text-align:center;'
+        +'color:var(--muted);font-style:italic">No transactions for this account.</td></tr>';
+    }else{
+      rows.forEach(function(tx){
+        var amt=parseFloat(tx.amount)||0;
+        var outflow=amt<0?'$'+Math.abs(amt).toFixed(2):'';
+        var inflow=amt>0?'$'+amt.toFixed(2):'';
+        runBal+=amt;
+        // Resolve category label from cache; fall back to raw key if not found
+        var catObj=tx.category_key?(_categoriesCache||[]).find(function(c){return c.key===tx.category_key;}):null;
+        var catDisplay=catObj?catObj.label:(tx.category_key||'');
+        tbl+='<tr style="border-top:1px solid var(--line)">'
+          +'<td style="padding:8px 12px;white-space:nowrap">'+_esc(tx.transaction_date||'')+'</td>'
+          +'<td style="padding:8px 12px">'+_esc(tx.payee||'')+'</td>'
+          +'<td style="padding:8px 12px;color:var(--muted)">'+_esc(tx.memo||'')+'</td>'
+          +'<td style="padding:8px 12px;color:var(--muted)">'+_esc(catDisplay)+'</td>'
+          +'<td style="padding:8px 12px;text-align:right;color:var(--red)">'+outflow+'</td>'
+          +'<td style="padding:8px 12px;text-align:right;color:var(--green)">'+inflow+'</td>'
+          +'<td style="padding:8px 12px;text-align:center">'+(tx.cleared?'✓':'')+'</td>'
+          +'<td style="padding:8px 12px;text-align:right;font-weight:600">$'+runBal.toFixed(2)+'</td>'
+          +'</tr>';
+      });
+    }
+    tbl+='</tbody></table>';
+    body=tbl;
+  }
+  return sel+body;
+}
+
 // renderTransactions — shell, sub-nav, and routing
 function renderTransactions(){
   var el=document.getElementById('transactions-content');
   if(!el)return;
   var subTabs=[
-    {id:'accounts',   label:'Accounts'},
-    {id:'categories', label:'Categories'},
-    {id:'register',   label:'Register — Phase 5E',    future:true},
-    {id:'reconciliation',label:'Reconciliation — Phase 5F',future:true}
+    {id:'accounts',       label:'Accounts'},
+    {id:'categories',     label:'Categories'},
+    // Register tab: active when showTransactionLedger=true; disabled placeholder otherwise.
+    {id:'register',       label:FEATURE_FLAGS.showTransactionLedger?'Register':'Register — Phase 5E',
+                          future:!FEATURE_FLAGS.showTransactionLedger},
+    {id:'reconciliation', label:'Reconciliation — Phase 5F', future:true}
   ];
   var nav='<div style="display:flex;gap:2px;padding:16px 16px 0;background:var(--surface);border-bottom:1px solid var(--line);flex-wrap:wrap">';
   subTabs.forEach(function(t){
@@ -4411,6 +4555,7 @@ function renderTransactions(){
   var body='';
   if(_txSubNav==='accounts')body=_renderTxAccounts();
   else if(_txSubNav==='categories')body=_renderTxCategories();
+  else if(_txSubNav==='register'&&FEATURE_FLAGS.showTransactionLedger)body=_renderTxRegister();
   el.innerHTML='<div style="padding:20px;max-width:1200px">'
     +'<div style="background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);overflow:hidden">'
     +nav+'<div>'+body+'</div></div></div>';
@@ -5059,6 +5204,14 @@ function renderApp(){
           ?(_txCatShowAll?_categoriesCache.length:_categoriesCache.filter(function(c){return c.lifecycle_status==='active';}).length)
           :0;
         _ts.textContent=_categoriesCache?_visCatCount+' categories'+(_txCatShowAll?' (all)':' (active)')+' · Read only':'Categories loading…';
+      }else if(_txSubNav==='register'){
+        var _selAcctReg=(_accountsCache||[]).find(function(a){return a.key===_txLedgerAccountKey;});
+        var _txCountReg=_txLedgerCache?_txLedgerCache.length:0;
+        _ts.textContent=_txLedgerLoadStatus==='loaded'
+          ?(_selAcctReg?_selAcctReg.label+' · '+_txCountReg+' transaction'+(_txCountReg!==1?'s':'')+' · Read only':'Select an account')
+          :_txLedgerLoadStatus==='loading'?'Loading transactions…'
+          :_txLedgerLoadStatus==='failed'?'Failed to load transactions'
+          :'Register';
       }
     }
   })();
@@ -5073,9 +5226,11 @@ function renderApp(){
   else if(activeSection==='ask')renderAskClaude();
   else if(activeSection==='budget')renderBudget();
   else if(activeSection==='transactions')renderTransactions();
-  // Show/hide Transactions nav based on feature flag
+  // Show/hide Transactions nav: visible when either showTransactionSection OR showTransactionLedger is true.
+  // showTransactionLedger implies the Transactions section nav must be visible (Register lives there).
+  var _showTxSection=FEATURE_FLAGS.showTransactionSection||FEATURE_FLAGS.showTransactionLedger;
   var _tnw=document.getElementById('nav-transactions-wrap');
-  if(_tnw)_tnw.style.display=FEATURE_FLAGS.showTransactionSection?'block':'none';
+  if(_tnw)_tnw.style.display=_showTxSection?'block':'none';
   renderEditDrawer();
   renderScenarioModal();
   // Clear any previous render error
@@ -5111,13 +5266,17 @@ const SUPA_KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJ
 const SUPA_H={'apikey':SUPA_KEY,'Authorization':'Bearer '+SUPA_KEY,'Content-Type':'application/json'};
 
 // ── Feature Flags ─────────────────────────────────────────────────────────────
-// useSupabaseRegistries: false = production default; JS constants used throughout.
-//                        true  = load accounts + categories from Supabase on login.
+// useSupabaseRegistries:  false = production default; JS constants used throughout.
+//                         true  = load accounts + categories from Supabase on login.
 // showTransactionSection: false = production default; Transactions nav hidden.
 //                         true  = show Transactions section (Accounts + Categories views).
 //                                 Forces Supabase registry load regardless of useSupabaseRegistries.
+// showTransactionLedger:  false = production default; Register tab stays disabled.
+//                         true  = activate Register tab (Phase 5E-1 read-only ledger).
+//                                 Implies Transactions section nav visible even if showTransactionSection=false.
+//                                 Forces Supabase registry load for account selector.
 // Set flags in console for manual testing.
-var FEATURE_FLAGS={useSupabaseRegistries:false,showTransactionSection:false};
+var FEATURE_FLAGS={useSupabaseRegistries:false,showTransactionSection:false,showTransactionLedger:false};
 
 // ── Auth state machine ────────────────────────────────────────────────────────
 // SUPA_H is retained as a const for reference but is no longer used in any fetch() call.
@@ -5368,11 +5527,13 @@ async function loadAll(){
   }catch(e){console.error('loadAll:',e);_supaConnected=false;budgetRulesLoadStatus='failed';goalsLoadStatus='loaded_fallback';applyGoalsFallback();}
   // Rebuild category lookup from JS registry (immediate, synchronous).
   _rebuildBudgetCatByKey();
-  // Phase 5D-1/5D-2: load Supabase registries if either flag needs the data.
+  // Phase 5D-1/5D-2/5E-1: load Supabase registries if any flag needs the data.
   // useSupabaseRegistries=true  → Budget module uses Supabase data.
-  // showTransactionSection=true → Transactions UI needs Supabase data even if Budget still uses JS constants.
-  // Both flags false (production default) → no Supabase load, existing behavior unchanged.
-  if(FEATURE_FLAGS.useSupabaseRegistries||FEATURE_FLAGS.showTransactionSection){
+  // showTransactionSection=true → Transactions UI (Accounts/Categories views) needs registry data.
+  // showTransactionLedger=true  → Register needs _accountsCache for account selector.
+  // All flags false (production default) → no Supabase registry load and no transaction fetch
+  //   caused by 5E. Note: auth/session calls may still occur as part of normal Supabase auth flow.
+  if(FEATURE_FLAGS.useSupabaseRegistries||FEATURE_FLAGS.showTransactionSection||FEATURE_FLAGS.showTransactionLedger){
     _loadSupabaseRegistries().then(function(){_rebuildBudgetCatByKey();renderApp();}).catch(function(e){console.error('[5D] registry load error in loadAll:',e);renderApp();});
   }else{
     renderApp();
