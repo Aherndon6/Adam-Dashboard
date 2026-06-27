@@ -2,20 +2,23 @@
 
 ## Roadmap Sequence (as of 2026-06-27)
 
-| Phase  | Name                                      | Status      |
-|--------|-------------------------------------------|-------------|
-| 5E-1   | SQL Foundation + Read-Only Register Shell | Complete    |
-| 5E-2   | Transaction Writes                        | Complete    |
-| 5E-3   | Register Live by Default                  | Complete    |
-| 5E-4   | Budget Correctness + Display Fixes        | Complete    |
-| 5E-5   | Budget Line Admin (required before 7/1)   | Complete    |
-| 5F-0   | Role Enforcement / Security Maturity Gate | Not started |
-| 5F-1   | Reconciliation Design + Read-Only Scaffold| Not started |
-| 5F-2   | Reconciliation Writes                     | Not started |
-| 5G     | Splits                                    | Not started |
-| 5H     | Transfers                                 | Not started |
-| 5I     | Import Readiness                          | Not started |
-| 5J     | Budget Integration / Actuals              | Not started |
+| Phase  | Name                                           | Status             |
+|--------|------------------------------------------------|--------------------|
+| 5E-1   | SQL Foundation + Read-Only Register Shell      | Complete           |
+| 5E-2   | Transaction Writes                             | Complete           |
+| 5E-3   | Register Live by Default                       | Complete           |
+| 5E-4   | Budget Correctness + Display Fixes             | Complete           |
+| 5E-5   | Budget Line Admin (required before 7/1)        | Complete (pending browser smoke) |
+| 5E-6   | Role Enforcement / Security Maturity Gate      | Not started        |
+| 5E-7   | 7/1 Wendy Operating Readiness                  | Not started        |
+| 5E-8   | Category Registry Admin                        | Deferred (unless 7/1 blocker found) |
+| 5F-0   | Needs Attention / Dashboard Usefulness         | Not started        |
+| 5F-1   | Reconciliation Design + Read-Only Scaffold     | Not started        |
+| 5F-2   | Reconciliation Writes                          | Not started        |
+| 5G     | Splits                                         | Not started        |
+| 5H     | Transfers                                      | Not started        |
+| 5I     | Import Readiness                               | Not started        |
+| 5J     | Budget Integration / Actuals                  | Not started        |
 
 ### Phase 5E-5 — Budget Line Admin (COMPLETE + HARDENED, 2026-06-27)
 Minimal Budget Rule Admin UI inside the Budget tab.
@@ -65,7 +68,7 @@ Minimal Budget Rule Admin UI inside the Budget tab.
 
 **No schema change.** All operations use existing `budget_line_rules` table and REST API.
 
-**Gate:** Must complete browser smoke checklist before 5F-0.
+**Gate:** Must complete browser smoke checklist (AC-1 through AC-10a) before 5E-6.
 
 ---
 
@@ -88,7 +91,7 @@ Minimal Budget Rule Admin UI inside the Budget tab.
 
 ---
 
-### Phase 5F-0 — Role Enforcement / Security Maturity Gate (PLANNED, NOT STARTED)
+### Phase 5E-6 — Role Enforcement / Security Maturity Gate (PLANNED, NOT STARTED)
 Absorbs deferred Phase 4C. Must complete before reconciliation, splits, imports, transfers, or budget integration.
 
 **Purpose:** Formalize and verify role-based write access across all current policies before the schema grows further.
@@ -97,7 +100,7 @@ Absorbs deferred Phase 4C. Must complete before reconciliation, splits, imports,
 - Document role/capability matrix: owner (Adam), household_admin (Wendy), viewer (future read-only)
 - Audit all write policies and classify by predicate:
   - `is_allowed_user()` = read access only — must not appear on any write policy
-  - `can_write_financials()` = household financial writes (transactions)
+  - `can_write_financials()` = household financial writes (transactions, budget line rules)
   - `is_owner()` = owner-only admin/config/sensitive writes (accounts, categories, budget tables)
 - Confirm no write policy uses `is_allowed_user()`
 - Confirm Wendy can write only to intended household financial workflows
@@ -111,7 +114,50 @@ Absorbs deferred Phase 4C. Must complete before reconciliation, splits, imports,
 - No Budget math changes
 - No `budget_transactions` changes unless audit proves a policy is wrong and change is explicitly approved
 
-**Gate:** 5F-0 must pass before any of 5F-1, 5F-2, 5G, 5H, 5I, or 5J begins.
+**Gate:** 5E-6 must pass before any of 5F-0, 5F-1, 5F-2, 5G, 5H, 5I, or 5J begins.
+
+**Do not start until 5E-5 browser smoke passes.**
+
+---
+
+### Phase 5E-7 — 7/1 Wendy Operating Readiness (PLANNED, NOT STARTED)
+Confirm the system is operationally ready for Wendy to use as of July 1.
+
+**Scope:**
+- July budget sanity check (totals, balance, key rows)
+- Wendy workflow smoke: transaction entry, cleared toggle, Budget view
+- Budget edit workflow verified (Edit/Archive tested against real July data)
+- Transaction entry verified (add, edit, delete manual rows)
+- Reconciliation transition note visible and accurate
+- Known limitations documented (no splits, no transfers, no imports, no reconciliation yet)
+- No major new feature build unless a readiness blocker is found during this phase
+
+**Gate:** Unblocked after 5E-6 passes. No code changes expected unless a blocker surfaces.
+
+---
+
+### Phase 5E-8 — Category Registry Admin (DEFERRED)
+New category creation UI (keys not in `BUDGET_CATEGORY_REGISTRY`). Deferred unless a 7/1 blocker is found from missing registry keys.
+
+**If triggered:** adds a Category Registry Admin panel to create new leaf keys and register them in the JS `BUDGET_CATEGORY_REGISTRY`. Scope TBD at that time.
+
+---
+
+### Phase 5F-0 — Needs Attention / Dashboard Usefulness (PLANNED, NOT STARTED)
+Lightweight actionable summary panel — not a full dashboard redesign.
+
+**Scope:**
+- Budget out-of-balance alert
+- Over-budget / near-limit categories
+- Pending/deferred items (if already supported by existing data)
+- Unreconciled/uncleared items (if already supported by existing data — no reconciliation migration)
+
+**Non-goals (explicit exclusions):**
+- No reconciliation migration or new reconciliation workflow
+- No broad dashboard redesign
+- No new schema
+
+**Gate:** Unblocked after 5E-6 passes. Does not require 5F-1 or 5F-2.
 
 **Do not start until explicitly approved.**
 
