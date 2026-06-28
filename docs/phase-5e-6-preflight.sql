@@ -90,8 +90,7 @@ SELECT
   transaction_date,
   description,
   amount,
-  category_key,
-  is_active
+  category_key
 FROM budget_transactions
 WHERE category_key = 'entertainment'
 ORDER BY transaction_date DESC
