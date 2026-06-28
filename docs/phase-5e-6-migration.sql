@@ -9,6 +9,8 @@
 -- Hard-stop guards: DO $$ RAISE EXCEPTION on unsafe preconditions.
 -- ============================================================
 
+SET search_path TO public;
+
 -- ── Guard 1: Exactly one active parent entertainment rule must exist ──────────
 DO $$
 DECLARE
@@ -42,7 +44,7 @@ DO $$
 DECLARE
   v_conflicts TEXT;
 BEGIN
-  SELECT STRING_AGG(category_key || ' (start: ' || start_month || ')', ', ')
+  SELECT STRING_AGG(category_key || ' (start: ' || start_month::text || ')', ', ')
     INTO v_conflicts
   FROM budget_line_rules
   WHERE category_key IN (
@@ -68,7 +70,7 @@ DO $$
 DECLARE
   v_conflicts TEXT;
 BEGIN
-  SELECT STRING_AGG(category_key || ' (start: ' || start_month || ')', ', ')
+  SELECT STRING_AGG(category_key || ' (start: ' || start_month::text || ')', ', ')
     INTO v_conflicts
   FROM budget_line_rules
   WHERE category_key IN (
@@ -93,9 +95,8 @@ END $$;
 -- Condition: only updates if end_month is not already correctly set.
 UPDATE budget_line_rules
 SET
-  end_month    = '2026-06-01',
-  updated_by   = 'adam@herndons.us',
-  updated_at   = NOW()
+  end_month  = '2026-06-01',
+  updated_at = NOW()
 WHERE category_key = 'entertainment'
   AND is_active = true
   AND (end_month IS NULL OR end_month > '2026-06-01');
@@ -108,9 +109,9 @@ WHERE category_key = 'entertainment'
 
 -- entertainment.event_1 → Seattle, $300
 INSERT INTO budget_line_rules
-  (category_key, line_label, amount, start_month, end_month, is_active, created_by)
+  (category_key, line_label, amount, start_month, end_month, is_active)
 SELECT
-  'entertainment.event_1', 'Seattle', 300, '2026-07-01', '2026-07-01', true, 'adam@herndons.us'
+  'entertainment.event_1', 'Seattle', 300, '2026-07-01', '2026-07-01', true
 WHERE NOT EXISTS (
   SELECT 1 FROM budget_line_rules
   WHERE category_key = 'entertainment.event_1'
@@ -120,9 +121,9 @@ WHERE NOT EXISTS (
 
 -- entertainment.event_2 → Wewe's Lunches, $200
 INSERT INTO budget_line_rules
-  (category_key, line_label, amount, start_month, end_month, is_active, created_by)
+  (category_key, line_label, amount, start_month, end_month, is_active)
 SELECT
-  'entertainment.event_2', 'Wewe''s Lunches', 200, '2026-07-01', '2026-07-01', true, 'adam@herndons.us'
+  'entertainment.event_2', 'Wewe''s Lunches', 200, '2026-07-01', '2026-07-01', true
 WHERE NOT EXISTS (
   SELECT 1 FROM budget_line_rules
   WHERE category_key = 'entertainment.event_2'
@@ -132,9 +133,9 @@ WHERE NOT EXISTS (
 
 -- entertainment.week_1 → Entertainment Week 1, $250
 INSERT INTO budget_line_rules
-  (category_key, line_label, amount, start_month, end_month, is_active, created_by)
+  (category_key, line_label, amount, start_month, end_month, is_active)
 SELECT
-  'entertainment.week_1', 'Entertainment Week 1', 250, '2026-07-01', '2026-07-01', true, 'adam@herndons.us'
+  'entertainment.week_1', 'Entertainment Week 1', 250, '2026-07-01', '2026-07-01', true
 WHERE NOT EXISTS (
   SELECT 1 FROM budget_line_rules
   WHERE category_key = 'entertainment.week_1'
@@ -144,9 +145,9 @@ WHERE NOT EXISTS (
 
 -- entertainment.week_2 → Entertainment Week 2, $250
 INSERT INTO budget_line_rules
-  (category_key, line_label, amount, start_month, end_month, is_active, created_by)
+  (category_key, line_label, amount, start_month, end_month, is_active)
 SELECT
-  'entertainment.week_2', 'Entertainment Week 2', 250, '2026-07-01', '2026-07-01', true, 'adam@herndons.us'
+  'entertainment.week_2', 'Entertainment Week 2', 250, '2026-07-01', '2026-07-01', true
 WHERE NOT EXISTS (
   SELECT 1 FROM budget_line_rules
   WHERE category_key = 'entertainment.week_2'
@@ -156,9 +157,9 @@ WHERE NOT EXISTS (
 
 -- entertainment.week_3 → Entertainment Week 3, $250
 INSERT INTO budget_line_rules
-  (category_key, line_label, amount, start_month, end_month, is_active, created_by)
+  (category_key, line_label, amount, start_month, end_month, is_active)
 SELECT
-  'entertainment.week_3', 'Entertainment Week 3', 250, '2026-07-01', '2026-07-01', true, 'adam@herndons.us'
+  'entertainment.week_3', 'Entertainment Week 3', 250, '2026-07-01', '2026-07-01', true
 WHERE NOT EXISTS (
   SELECT 1 FROM budget_line_rules
   WHERE category_key = 'entertainment.week_3'
@@ -168,9 +169,9 @@ WHERE NOT EXISTS (
 
 -- entertainment.week_4 → Entertainment Week 4, $250
 INSERT INTO budget_line_rules
-  (category_key, line_label, amount, start_month, end_month, is_active, created_by)
+  (category_key, line_label, amount, start_month, end_month, is_active)
 SELECT
-  'entertainment.week_4', 'Entertainment Week 4', 250, '2026-07-01', '2026-07-01', true, 'adam@herndons.us'
+  'entertainment.week_4', 'Entertainment Week 4', 250, '2026-07-01', '2026-07-01', true
 WHERE NOT EXISTS (
   SELECT 1 FROM budget_line_rules
   WHERE category_key = 'entertainment.week_4'

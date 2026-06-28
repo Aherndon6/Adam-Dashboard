@@ -5,6 +5,8 @@
 -- Run only if migration must be undone.
 -- ============================================================
 
+SET search_path TO public;
+
 -- ── Guard: Confirm parent entertainment rule exists in closed state ───────────
 DO $$
 DECLARE
@@ -28,7 +30,6 @@ END $$;
 UPDATE budget_line_rules
 SET
   end_month    = NULL,
-  updated_by   = 'adam@herndons.us',
   updated_at   = NOW()
 WHERE category_key = 'entertainment'
   AND is_active = true
@@ -40,7 +41,6 @@ WHERE category_key = 'entertainment'
 UPDATE budget_line_rules
 SET
   is_active    = false,
-  updated_by   = 'adam@herndons.us',
   updated_at   = NOW()
 WHERE category_key IN (
   'entertainment.event_1','entertainment.event_2',

@@ -3,6 +3,8 @@
 -- Purpose: Read-only. Run after migration to confirm correctness.
 -- Date: 2026-06-27
 -- All checks have expected values. Review output against expected.
+
+SET search_path TO public;
 -- ============================================================
 
 -- ── Check 1: Parent entertainment has no active July 2026 rule ───────────────

@@ -5,6 +5,8 @@
 -- Safe to run multiple times. Makes no changes.
 -- ============================================================
 
+SET search_path TO public;
+
 -- ── 1. Current active budget_line_rules for 'entertainment' parent key ───────
 SELECT
   id,
