@@ -1,0 +1,6 @@
+#!/bin/bash
+# Auto-update BUILD_TS in index.html to current local time before every commit.
+# Source of truth: scripts/pre-commit.hook — reinstall via: bash scripts/install-hooks.sh
+TS=$(date '+%Y-%m-%dT%H:%M:%S')
+sed -i '' "s|const BUILD_TS='[^']*';|const BUILD_TS='${TS}';|" index.html
+git add index.html
