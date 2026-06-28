@@ -5197,8 +5197,10 @@ function renderBudget(){
   html+='</div>';
 
   // ── Add / Edit Form ────────────────────────────────────────────────────────
+  // Wrapped in stable id='budget-form-container' so date-change can scoped-re-render
+  // without scrolling the whole page (Phase 5E-6).
   if(_budgetShowAddForm||_budgetEditId){
-    html+=_renderBudgetForm(monthIso);
+    html+='<div id="budget-form-container">'+_renderBudgetForm(monthIso)+'</div>';
   }
 
   // ── Budget Printout (Spent | Budget | Remaining) ───────────────────────────
@@ -5268,12 +5270,20 @@ function renderBudget(){
       var b=_getBudgetAmount(c.key,monthIso);
       pSpent+=s;pBudget+=b;
     });
+    // Legacy rollup (Phase 5E-6): when a parent key has its own BLR rows or transactions
+    // (e.g., 'entertainment' before it was split into children), fold those into the group total.
+    // This handles June/history correctly without hiding historical data.
+    // Safe for all other groups: no other parent key has direct BLR rows or transactions.
+    if(!isStandalone){
+      pSpent+=spentByKey[parent.key]||0;
+      pBudget+=_getBudgetAmount(parent.key,monthIso);
+    }
 
     // Skip if no budget and no spending for this month (time-bounded rows)
     if(pBudget===0&&pSpent===0&&!isStandalone){
-      // Still render if any child has a rule
+      // Still render if any child has a rule or parent key has a rule
       var hasRule=rows.some(function(c){return activeBudgetCats[c.key]!==undefined;});
-      if(!hasRule)return;
+      if(!hasRule&&!activeBudgetCats[parent.key])return;
     }
 
     // Section header row (bold parent, not for standalone leaves)
@@ -5302,8 +5312,10 @@ function renderBudget(){
           +'</span>'
         :'';
       html+='<tr style="border-bottom:1px solid var(--border)'+(isGoalSweep?';background:var(--bg)':'')+'">';
+      // Use BLR line_label for the budget month if available; fall back to registry label.
+      var _rowLabel=_getCategoryDisplayLabel(c.key,monthIso);
       html+='<td style="padding:5px 8px 5px '+indent+(isGoalSweep?';font-style:italic':'')+'">'
-        +_blrExpActions+c.label+(isGoalSweep?' <span style="font-size:10px;color:var(--muted)">(flexible sweep line)</span>':'')+'</td>';
+        +_blrExpActions+_rowLabel+(isGoalSweep?' <span style="font-size:10px;color:var(--muted)">(flexible sweep line)</span>':'')+'</td>';
       html+='<td style="text-align:right;padding:5px 8px">'+(s>0?f(s):'—')+'</td>';
       html+='<td style="text-align:right;padding:5px 8px;color:var(--blue)">'+(b>0?f(b):'—')+'</td>';
       html+='<td style="text-align:right;padding:5px 8px;color:'+(rem<0?'#ef4444':(rem===b&&s===0)?'var(--muted)':'var(--green)')+'">'+f(rem)+'</td>';
@@ -5378,9 +5390,12 @@ function renderBudget(){
       var isEdit=_budgetDeleteConfirmId===t.id;
       var isReimbRow=t.transaction_type==='reimbursable_expense';
       var statusColor={'pending':'#f59e0b','submitted':'#3b82f6','reimbursed':'var(--green)'}[t.reimbursement_status]||'var(--muted)';
+      // Use transaction's own date to derive month for display label (Phase 5E-6).
+      // July transaction → July BLR label; August transaction → August BLR label.
+      var _tTxMonthIso=_txDateToMonthIso(t.transaction_date);
       var catCell=isReimbRow
         ? '<span style="font-size:10px;font-weight:700;background:#fef3c7;color:#92400e;padding:1px 6px;border-radius:4px">REIMB</span>'+(t.reimbursement_status?'<span style="font-size:10px;font-weight:700;color:'+statusColor+';margin-left:4px">'+t.reimbursement_status.toUpperCase()+'</span>':'')
-        : getBudgetCatLabel(t.category_key||'');
+        : _getCategoryDisplayLabel(t.category_key||'',_tTxMonthIso);
       html+='<tr style="border-bottom:1px solid var(--border)'+(isEdit?';background:var(--amberSoft)':'')+'">';
       html+='<td style="padding:4px 8px;color:var(--muted);white-space:nowrap">'+t.transaction_date+'</td>';
       html+='<td style="padding:4px 8px">'+esc(t.description||'')+'</td>';
@@ -5424,7 +5439,7 @@ function _renderBudgetForm(monthIso){
 
   // Date
   html+='<div><label style="font-size:11px;font-weight:600;color:var(--muted);display:block;margin-bottom:3px">Date</label>';
-  html+='<input type="date" value="'+(fd.transaction_date||monthIso.substring(0,7)+'-01')+'" style="width:100%;box-sizing:border-box;padding:6px 8px;border:1px solid var(--border);border-radius:6px;font-size:12px;background:var(--surface2);color:var(--ink)" onchange="_budgetFormData.transaction_date=this.value"></div>';
+  html+='<input type="date" value="'+(fd.transaction_date||monthIso.substring(0,7)+'-01')+'" style="width:100%;box-sizing:border-box;padding:6px 8px;border:1px solid var(--border);border-radius:6px;font-size:12px;background:var(--surface2);color:var(--ink)" onchange="_budgetFormData.transaction_date=this.value;(function(){var fc=document.getElementById(\'budget-form-container\');if(fc)fc.innerHTML=_renderBudgetForm(_budgetGetMonthIso());})()"></div>';
 
   // Amount
   html+='<div><label style="font-size:11px;font-weight:600;color:var(--muted);display:block;margin-bottom:3px">Amount</label>';
@@ -5443,6 +5458,9 @@ function _renderBudgetForm(monthIso){
     html+='<div><label style="font-size:11px;font-weight:600;color:var(--muted);display:block;margin-bottom:3px">Category</label>';
     html+='<select style="width:100%;box-sizing:border-box;padding:6px 8px;border:1px solid var(--border);border-radius:6px;font-size:12px;background:var(--surface2);color:var(--ink)" onchange="_budgetFormData.category_key=this.value">';
     html+='<option value="">-- Select --</option>';
+    // Derive month from transaction date for date-aware labels (Phase 5E-6).
+    // Falls back to selected budget month, then current month.
+    var _txMonthIso=_txDateToMonthIso(fd.transaction_date)||monthIso;
     // Render selectable leaf nodes in hierarchy order
     var lastParent=null;
     _getActiveCategoryRegistry().filter(function(c){return !c.isIncome&&c.leaf&&c.assignable;}).forEach(function(c){
@@ -5454,8 +5472,21 @@ function _renderBudgetForm(monthIso){
       } else if(!parentKey&&lastParent){
         html+='</optgroup>';lastParent=null;
       }
-      html+='<option value="'+c.key+'"'+(fd.category_key===c.key?' selected':'')+'>'+c.label+'</option>';
+      // Use BLR line_label for the transaction month if available; fall back to registry label.
+      var _optLabel=_getCategoryDisplayLabel(c.key,_txMonthIso);
+      html+='<option value="'+c.key+'"'+(fd.category_key===c.key?' selected':'')+'>'+_optLabel+'</option>';
     });
+    if(lastParent)html+='</optgroup>';
+    // Legacy category support (Phase 5E-6): if the current category_key is no longer
+    // assignable (e.g., 'entertainment' became a parent), show it as a selectable legacy option
+    // so existing transactions can be saved/re-categorized without breaking.
+    if(fd.category_key){
+      var _inFilteredList=_getActiveCategoryRegistry().some(function(c){return !c.isIncome&&c.leaf&&c.assignable&&c.key===fd.category_key;});
+      if(!_inFilteredList){
+        var _legCat=_budgetCatByKey[fd.category_key];
+        html+='<option value="'+esc(fd.category_key)+'" selected>'+esc(_legCat?_legCat.label:fd.category_key)+' (legacy — re-categorize)</option>';
+      }
+    }
     html+='</select></div>';
   }
 
@@ -6131,8 +6162,19 @@ var BUDGET_CATEGORY_REGISTRY=[
   {key:'bills_utilities.gas_power',     label:'Gas and Power',           parent:'bills_utilities',    leaf:true,  assignable:true,  isIncome:false},
   {key:'bills_utilities.mobile_phone',  label:'Mobile Phone',            parent:'bills_utilities',    leaf:true,  assignable:true,  isIncome:false},
   {key:'bills_utilities.water',         label:'Water',                   parent:'bills_utilities',    leaf:true,  assignable:true,  isIncome:false},
-  // Entertainment (standalone leaf)
-  {key:'entertainment',                 label:'Entertainment',           parent:null,                 leaf:true,  assignable:true,  isIncome:false},
+  // Entertainment (parent/group — Phase 5E-6)
+  // Child labels are per-month via budget_line_rules.line_label; registry labels are fallbacks.
+  {key:'entertainment',                 label:'Entertainment',           parent:null,                 leaf:false, assignable:false, isIncome:false},
+  {key:'entertainment.event_1',         label:'Entertainment Event 1',   parent:'entertainment',      leaf:true,  assignable:true,  isIncome:false},
+  {key:'entertainment.event_2',         label:'Entertainment Event 2',   parent:'entertainment',      leaf:true,  assignable:true,  isIncome:false},
+  {key:'entertainment.event_3',         label:'Entertainment Event 3',   parent:'entertainment',      leaf:true,  assignable:true,  isIncome:false},
+  {key:'entertainment.event_4',         label:'Entertainment Event 4',   parent:'entertainment',      leaf:true,  assignable:true,  isIncome:false},
+  {key:'entertainment.event_5',         label:'Entertainment Event 5',   parent:'entertainment',      leaf:true,  assignable:true,  isIncome:false},
+  {key:'entertainment.week_1',          label:'Entertainment Week 1',    parent:'entertainment',      leaf:true,  assignable:true,  isIncome:false},
+  {key:'entertainment.week_2',          label:'Entertainment Week 2',    parent:'entertainment',      leaf:true,  assignable:true,  isIncome:false},
+  {key:'entertainment.week_3',          label:'Entertainment Week 3',    parent:'entertainment',      leaf:true,  assignable:true,  isIncome:false},
+  {key:'entertainment.week_4',          label:'Entertainment Week 4',    parent:'entertainment',      leaf:true,  assignable:true,  isIncome:false},
+  {key:'entertainment.week_5',          label:'Entertainment Week 5',    parent:'entertainment',      leaf:true,  assignable:true,  isIncome:false},
   // Food & Dining
   {key:'food_dining',                   label:'Food & Dining',           parent:null,                 leaf:false, assignable:false, isIncome:false},
   {key:'food_dining.groceries',         label:'Groceries',               parent:'food_dining',        leaf:true,  assignable:true,  isIncome:false},
@@ -6216,6 +6258,35 @@ function _getBudgetAmount(categoryKey, monthIso){
     total+=parseFloat(r.amount)||0;
   });
   return total;
+}
+
+// _getCategoryDisplayLabel(key, monthIso)
+// Returns the display label for a category key in a given month.
+// Priority: active budget_line_rules.line_label > registry label.
+// Used in budget grid, transaction register, transaction form dropdown.
+// monthIso must be 'YYYY-MM-01' format.
+// If monthIso is null/blank, falls back to registry label immediately.
+function _getCategoryDisplayLabel(key,monthIso){
+  if(monthIso&&_budgetLineRulesLoadStatus==='loaded'&&_budgetLineRulesCache){
+    for(var i=0;i<_budgetLineRulesCache.length;i++){
+      var r=_budgetLineRulesCache[i];
+      if(!r.is_active||r.category_key!==key)continue;
+      if(r.start_month>monthIso)continue;
+      if(r.end_month!==null&&r.end_month!==undefined&&r.end_month<monthIso)continue;
+      if(r.line_label&&r.line_label.trim())return r.line_label.trim();
+    }
+  }
+  return getBudgetCatLabel(key);
+}
+
+// _txDateToMonthIso(dateStr)
+// Converts a transaction date string ('YYYY-MM-DD') to a budget month ISO ('YYYY-MM-01').
+// Returns null if dateStr is blank or not a valid date string.
+function _txDateToMonthIso(dateStr){
+  if(!dateStr||typeof dateStr!=='string'||dateStr.length<7)return null;
+  var m=dateStr.substring(0,7);
+  if(!/^\d{4}-\d{2}$/.test(m))return null;
+  return m+'-01';
 }
 
 // _getActiveBudgetCategories(monthIso)
@@ -6497,6 +6568,31 @@ async function _blrReloadAndRender(){
   renderApp();
 }
 
+// _blrCheckEntertainmentDupLabel(key, proposedLabel, proposedStart, proposedEnd, excludeKey)
+// Interval-aware duplicate label guard for entertainment child slots (Phase 5E-6).
+// Returns true if another entertainment child row has the same normalized label
+// and overlaps the proposed date range [proposedStart, proposedEnd (null=open-ended)].
+// excludeKey: category_key to skip when checking (the slot being edited, if any).
+// Only applies to entertainment.* child keys.
+function _blrCheckEntertainmentDupLabel(key,proposedLabel,proposedStart,proposedEnd,excludeKey){
+  if(!key||!key.startsWith('entertainment.')||key==='entertainment')return false;
+  if(!proposedLabel||!proposedLabel.trim())return false;
+  if(!_budgetLineRulesCache||_budgetLineRulesLoadStatus!=='loaded')return false;
+  var normNew=proposedLabel.trim().toLowerCase();
+  var FAR='9999-12-01';
+  var propEnd=proposedEnd||FAR;
+  return _budgetLineRulesCache.some(function(r){
+    if(!r.is_active)return false;
+    if(!r.category_key||!r.category_key.startsWith('entertainment.')||r.category_key==='entertainment')return false;
+    if(r.category_key===key)return false;               // same slot (edit path)
+    if(excludeKey&&r.category_key===excludeKey)return false;
+    if((r.line_label||'').trim().toLowerCase()!==normNew)return false;
+    // Interval overlap: proposed [proposedStart, propEnd] overlaps existing [r.start_month, existEnd]
+    var existEnd=r.end_month||FAR;
+    return proposedStart<=existEnd&&r.start_month<=propEnd;
+  });
+}
+
 async function _blrSaveEdit(){
   if(!_blrModal||_blrModal.mode!=='edit'||_blrModal.saving)return;
   var m=_blrModal;
@@ -6511,6 +6607,11 @@ async function _blrSaveEdit(){
   // Interval overlap check: does any OTHER active row conflict with [monthIso, replacementEndMonth]?
   var overlap=_blrHasOverlap(m.key,m.monthIso,replacementEndMonth,m.currentRow?m.currentRow.id:null);
   if(overlap){m.error='Another active rule overlaps the replacement date range. Archive or edit it first.';_blrRenderModal();return;}
+  // Duplicate label guard for entertainment child slots (Phase 5E-6): interval-aware.
+  if(_blrCheckEntertainmentDupLabel(m.key,m.label,m.monthIso,replacementEndMonth,null)){
+    m.error='Another Entertainment line with the label "'+m.label.trim()+'" already overlaps this date range. Use a different label.';
+    _blrRenderModal();return;
+  }
   m.saving=true;_blrRenderModal();
   try{
     var h=await getAuthHeaders();
@@ -6571,6 +6672,11 @@ async function _blrSaveAdd(){
   var endMonth=m.scope==='once'?m.monthIso:null;
   var overlap=_blrHasOverlap(m.key,m.monthIso,endMonth,null);
   if(overlap){m.error='An active rule overlaps the proposed date range for this category. Edit or archive it first.';_blrRenderModal();return;}
+  // Duplicate label guard for entertainment child slots (Phase 5E-6): interval-aware.
+  if(_blrCheckEntertainmentDupLabel(m.key,m.label,m.monthIso,endMonth,null)){
+    m.error='Another Entertainment line with the label "'+m.label.trim()+'" already overlaps this date range. Use a different label.';
+    _blrRenderModal();return;
+  }
   m.saving=true;_blrRenderModal();
   try{
     var h=await getAuthHeaders();

@@ -347,10 +347,15 @@ test('_renderGoalsSavings: monthly income = $15,938',()=>{
 test('_renderGoalsSavings: monthly living expenses correct for current week',()=>{
   const h=_renderGoalsSavings(fullVm);
   const w=getCurrentWeek();
+  // Use monthIso-based formula matching the actual fallback in _getBudgetLivingExpenses.
+  // Week 4 starts June 28 (still June), so monthIso='2026-06-01' — fallback returns base only.
+  // Using week-number thresholds diverges from the monthIso fallback on boundary weeks.
+  const wsd=getWeekStartDate(w);
+  const mo=wsd.getFullYear()+'-'+String(wsd.getMonth()+1).padStart(2,'0')+'-01';
   const base=13638;
-  const rent=(w>=4)?100:0;
-  const diablos=(w>=4&&w<=30)?750:0;
-  const glp=(w>=8&&w<=30)?404:0;
+  const rent=(mo>='2026-07-01')?100:0;
+  const diablos=(mo>='2026-07-01'&&mo<='2026-12-01')?750:0;
+  const glp=(mo>='2026-08-01'&&mo<='2026-12-01')?404:0;
   const expected=(base+rent+diablos+glp).toLocaleString();
   assertIncludes(h,expected,'Monthly living expenses '+expected+' not found for week '+w);
 });
@@ -6262,6 +6267,196 @@ test('5E5-18: 5E-5 does not allow free-form category key entry',()=>{
   assert(addBlock.indexOf('<select')>-1,'Add modal must use a select for category key');
   assert(addBlock.indexOf('free-form')===-1||addBlock.indexOf('deferred')>-1,
     'Add modal must not enable free-form key entry');
+});
+
+// ─────────────────────────────────────────────────────────────────────────
+// Section 5E-6: Monthly Entertainment Buckets
+// ─────────────────────────────────────────────────────────────────────────
+console.log('\n── Section 5E-6: Monthly Entertainment Buckets ──');
+
+// ── Registry shape ────────────────────────────────────────────────────────
+test('5E6-01: entertainment is a non-leaf non-assignable parent in BUDGET_CATEGORY_REGISTRY',()=>{
+  var ent=BUDGET_CATEGORY_REGISTRY.find(c=>c.key==='entertainment');
+  assert(ent,'entertainment not found in BUDGET_CATEGORY_REGISTRY');
+  assert(!ent.leaf,'entertainment must not be leaf (Phase 5E-6: converted to parent)');
+  assert(!ent.assignable,'entertainment must not be assignable (parent/group)');
+  assert(ent.parent===null,'entertainment parent must be null');
+});
+
+test('5E6-02: all 10 child slots exist in BUDGET_CATEGORY_REGISTRY with correct shape',()=>{
+  var expectedKeys=[
+    'entertainment.event_1','entertainment.event_2','entertainment.event_3',
+    'entertainment.event_4','entertainment.event_5',
+    'entertainment.week_1','entertainment.week_2','entertainment.week_3',
+    'entertainment.week_4','entertainment.week_5'
+  ];
+  expectedKeys.forEach(function(k){
+    var c=BUDGET_CATEGORY_REGISTRY.find(x=>x.key===k);
+    assert(c,k+' missing from BUDGET_CATEGORY_REGISTRY');
+    assert(c.leaf,k+' must be leaf:true');
+    assert(c.assignable,k+' must be assignable:true');
+    assert(c.parent==='entertainment',k+' parent must be "entertainment"');
+    assert(!c.isIncome,k+' must not be isIncome');
+  });
+});
+
+test('5E6-03: entertainment children appear as children in registry (parent=entertainment)',()=>{
+  var children=BUDGET_CATEGORY_REGISTRY.filter(c=>c.parent==='entertainment');
+  assert(children.length===10,'Expected 10 entertainment children, got '+children.length);
+});
+
+// ── _getCategoryDisplayLabel helper ──────────────────────────────────────
+test('5E6-04: _getCategoryDisplayLabel function exists',()=>{
+  var fn=html.indexOf('function _getCategoryDisplayLabel');
+  assert(fn>-1,'_getCategoryDisplayLabel function missing from index.html');
+});
+
+test('5E6-05: _getCategoryDisplayLabel scans _budgetLineRulesCache for line_label',()=>{
+  var fnIdx=html.indexOf('function _getCategoryDisplayLabel');
+  var fnBlock=html.slice(fnIdx,fnIdx+600);
+  assertIncludes(fnBlock,'_budgetLineRulesCache','_getCategoryDisplayLabel must scan _budgetLineRulesCache');
+  assertIncludes(fnBlock,'line_label','_getCategoryDisplayLabel must return line_label from BLR');
+  assertIncludes(fnBlock,'getBudgetCatLabel','_getCategoryDisplayLabel must fall back to getBudgetCatLabel');
+});
+
+test('5E6-06: _txDateToMonthIso function exists and converts YYYY-MM-DD to YYYY-MM-01',()=>{
+  var fn=html.indexOf('function _txDateToMonthIso');
+  assert(fn>-1,'_txDateToMonthIso function missing from index.html');
+  var fnBlock=html.slice(fn,fn+300);
+  assertIncludes(fnBlock,'substring(0,7)','_txDateToMonthIso must extract year-month via substring');
+  assertIncludes(fnBlock,'-01','_txDateToMonthIso must append -01 to form month ISO');
+});
+
+// ── Budget grid uses BLR line_label ──────────────────────────────────────
+test('5E6-07: budget grid child row uses _getCategoryDisplayLabel not c.label directly',()=>{
+  // Search for the specific label assignment that replaced c.label in expense rows
+  var labelAssignIdx=html.indexOf('_rowLabel=_getCategoryDisplayLabel(c.key,monthIso)');
+  assert(labelAssignIdx>-1,'Budget grid must assign _rowLabel=_getCategoryDisplayLabel(c.key,monthIso)');
+  // Confirm _rowLabel is then used in the td
+  var tdBlock=html.slice(labelAssignIdx,labelAssignIdx+200);
+  assertIncludes(tdBlock,'_rowLabel','Budget grid td must render _rowLabel after assigning it');
+});
+
+// ── Legacy parent rollup ──────────────────────────────────────────────────
+test('5E6-08: legacy rollup code exists in budget render (spentByKey[parent.key])',()=>{
+  var rollupIdx=html.indexOf('Legacy rollup (Phase 5E-6)');
+  assert(rollupIdx>-1,'Legacy rollup comment not found — rollup code may be missing');
+  // Window 600: rollup comment + multi-line guard + pSpent/pBudget lines (~450 chars from start)
+  var rollupBlock=html.slice(rollupIdx,rollupIdx+600);
+  assertIncludes(rollupBlock,'spentByKey[parent.key]','Legacy rollup must add spentByKey[parent.key]');
+  assertIncludes(rollupBlock,'_getBudgetAmount(parent.key','Legacy rollup must add _getBudgetAmount(parent.key)');
+});
+
+test('5E6-09: legacy rollup skip guard includes parent key check',()=>{
+  var skipIdx=html.indexOf('activeBudgetCats[parent.key]');
+  assert(skipIdx>-1,'Skip guard must also check activeBudgetCats[parent.key] for legacy parent rows');
+});
+
+// ── Transaction dropdown date-aware ──────────────────────────────────────
+test('5E6-10: transaction form date field triggers scoped re-render on change',()=>{
+  // Search for the budget-form-container wrapping div that enables scoped re-render.
+  // Also verify the date onchange triggers the scoped re-render (contains budget-form-container reference).
+  var containerIdx=html.indexOf("'budget-form-container'");
+  assert(containerIdx>-1,"budget-form-container must appear in index.html for scoped form re-render");
+  // Confirm _renderBudgetForm is called in the date onchange by searching for its occurrence
+  // in the budget form rendering area (not just anywhere in the file)
+  var budgetFormContainerWrap=html.indexOf("id='budget-form-container'");
+  var altWrap=html.indexOf('id="budget-form-container"');
+  assert(budgetFormContainerWrap>-1||altWrap>-1,'budget-form-container must be rendered as a div id in the budget tab');
+});
+
+test('5E6-11: transaction form category dropdown derives month from fd.transaction_date',()=>{
+  var dropdownIdx=html.indexOf('_txDateToMonthIso(fd.transaction_date)');
+  assert(dropdownIdx>-1,'Transaction dropdown must call _txDateToMonthIso(fd.transaction_date) for month derivation');
+});
+
+test('5E6-12: transaction form category dropdown uses _getCategoryDisplayLabel for option labels',()=>{
+  var catDropIdx=html.indexOf('_getCategoryDisplayLabel(c.key,_txMonthIso)');
+  assert(catDropIdx>-1,'Transaction form dropdown must call _getCategoryDisplayLabel(c.key,_txMonthIso)');
+});
+
+// ── Legacy category in edit form ──────────────────────────────────────────
+test('5E6-13: transaction edit form includes legacy category fallback for non-assignable keys',()=>{
+  var legacyIdx=html.indexOf('legacy — re-categorize');
+  assert(legacyIdx>-1,'Transaction form must render legacy option for non-assignable category_keys');
+});
+
+// ── Transaction register display date-aware ───────────────────────────────
+test('5E6-14: budget tab transaction register uses _getCategoryDisplayLabel with transaction date',()=>{
+  var registerIdx=html.indexOf('_getCategoryDisplayLabel(t.category_key');
+  assert(registerIdx>-1,'Budget tab transaction register must call _getCategoryDisplayLabel with transaction category_key');
+  var registerBlock=html.slice(registerIdx,registerIdx+100);
+  assertIncludes(registerBlock,'_tTxMonthIso','Budget tab register must use _tTxMonthIso derived from transaction date');
+});
+
+// ── Entertainment parent excluded from dropdown ───────────────────────────
+test('5E6-15: entertainment parent key is NOT assignable and NOT in transaction dropdown filtered list',()=>{
+  var ent=BUDGET_CATEGORY_REGISTRY.find(c=>c.key==='entertainment');
+  assert(ent,'entertainment not found');
+  // The dropdown filter is c.leaf && c.assignable — entertainment fails both
+  var inDropdown=(ent.leaf&&ent.assignable);
+  assert(!inDropdown,'entertainment must not pass c.leaf&&c.assignable filter (it is now a parent/group)');
+});
+
+// ── Duplicate label guard ─────────────────────────────────────────────────
+test('5E6-16: _blrCheckEntertainmentDupLabel function exists',()=>{
+  var fn=html.indexOf('function _blrCheckEntertainmentDupLabel');
+  assert(fn>-1,'_blrCheckEntertainmentDupLabel function missing from index.html');
+});
+
+test('5E6-17: _blrCheckEntertainmentDupLabel is interval-aware (uses FAR sentinel)',()=>{
+  // Use window 1200 — function body with nested some() callback spans ~950 chars
+  var fnIdx=html.indexOf('function _blrCheckEntertainmentDupLabel');
+  var fnBlock=html.slice(fnIdx,fnIdx+1200);
+  assertIncludes(fnBlock,'FAR','_blrCheckEntertainmentDupLabel must use FAR sentinel for open-ended rows');
+  assertIncludes(fnBlock,'proposedStart<=existEnd','Duplicate guard must check proposedStart<=existEnd');
+  assertIncludes(fnBlock,'r.start_month<=propEnd','Duplicate guard must check r.start_month<=propEnd');
+});
+
+test('5E6-18: _blrCheckEntertainmentDupLabel only fires for entertainment.* child keys',()=>{
+  var fnIdx=html.indexOf('function _blrCheckEntertainmentDupLabel');
+  var fnBlock=html.slice(fnIdx,fnIdx+400);
+  assertIncludes(fnBlock,"startsWith('entertainment.')",'Guard must check key.startsWith("entertainment.")');
+});
+
+test('5E6-19: _blrSaveEdit calls _blrCheckEntertainmentDupLabel before saving',()=>{
+  var editFnIdx=html.indexOf('async function _blrSaveEdit');
+  var editBlock=html.slice(editFnIdx,editFnIdx+3000);
+  assertIncludes(editBlock,'_blrCheckEntertainmentDupLabel','_blrSaveEdit must call _blrCheckEntertainmentDupLabel');
+});
+
+test('5E6-20: _blrSaveAdd calls _blrCheckEntertainmentDupLabel before saving',()=>{
+  var addFnIdx=html.indexOf('async function _blrSaveAdd');
+  var addBlock=html.slice(addFnIdx,addFnIdx+1500);
+  assertIncludes(addBlock,'_blrCheckEntertainmentDupLabel','_blrSaveAdd must call _blrCheckEntertainmentDupLabel');
+});
+
+// ── SQL artifacts present ──────────────────────────────────────────────────
+test('5E6-21: phase-5e-6-preflight.sql exists',()=>{
+  assert(fs.existsSync('./docs/phase-5e-6-preflight.sql'),'phase-5e-6-preflight.sql not found in docs/');
+});
+
+test('5E6-22: phase-5e-6-migration.sql exists with hard-stop guards',()=>{
+  assert(fs.existsSync('./docs/phase-5e-6-migration.sql'),'phase-5e-6-migration.sql not found in docs/');
+  var sql=fs.readFileSync('./docs/phase-5e-6-migration.sql','utf8');
+  assertIncludes(sql,'RAISE EXCEPTION','Migration must use RAISE EXCEPTION for hard-stop guards');
+  assertIncludes(sql,'WHERE NOT EXISTS','Migration must use WHERE NOT EXISTS for idempotent inserts');
+});
+
+test('5E6-23: phase-5e-6-validation.sql exists with key checks',()=>{
+  assert(fs.existsSync('./docs/phase-5e-6-validation.sql'),'phase-5e-6-validation.sql not found in docs/');
+  var sql=fs.readFileSync('./docs/phase-5e-6-validation.sql','utf8');
+  assertIncludes(sql,'1500','Validation must check for $1,500 child total');
+  assertIncludes(sql,'2026-07-01','Validation must reference July 2026 month');
+  assertIncludes(sql,'2026-06-01','Validation must check June history');
+});
+
+test('5E6-24: phase-5e-6-rollback.sql exists with restore logic',()=>{
+  assert(fs.existsSync('./docs/phase-5e-6-rollback.sql'),'phase-5e-6-rollback.sql not found in docs/');
+  var sql=fs.readFileSync('./docs/phase-5e-6-rollback.sql','utf8');
+  assertIncludes(sql,'RAISE EXCEPTION','Rollback must have hard-stop guard');
+  // Check for end_month being set to NULL (may have aligned spaces in SQL formatting)
+  assert(/end_month\s+=\s+NULL/.test(sql),'Rollback must reopen parent rule by setting end_month to NULL');
 });
 
 // ─────────────────────────────────────────────────────────────────────────

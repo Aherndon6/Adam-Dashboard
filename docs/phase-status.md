@@ -9,7 +9,7 @@
 | 5E-3   | Register Live by Default                       | Complete           |
 | 5E-4   | Budget Correctness + Display Fixes             | Complete           |
 | 5E-5   | Budget Line Admin (required before 7/1)        | Complete                         |
-| 5E-6   | Monthly Entertainment Buckets                  | Not started        |
+| 5E-6   | Monthly Entertainment Buckets                  | Code complete — pending SQL migration + browser smoke |
 | 5E-7   | Role Enforcement / Security Maturity Gate      | Not started        |
 | 5E-8   | 7/1 Wendy Operating Readiness                  | Not started        |
 | 5E-9   | Category Registry Admin                        | Deferred (unless 7/1 blocker found) |
@@ -97,20 +97,76 @@ Post-smoke state: Total Income $15,938, Total Planned $15,938, Balance $0, misc.
 
 ---
 
-### Phase 5E-6 — Monthly Entertainment Buckets (PLANNED, NOT STARTED)
-Split the `entertainment` standalone leaf into weekly/event sub-buckets for July 1 Wendy budget usability. Scoped narrowly — not full Category Registry Admin.
+### Phase 5E-6 — Monthly Entertainment Buckets (CODE COMPLETE, 2026-06-27 — awaiting SQL migration + browser smoke)
 
-**Purpose:** Wendy needs to track entertainment spending by sub-type (e.g. streaming, outings/events) starting July 2026. The current single `entertainment` line is too coarse.
+Split the `entertainment` standalone leaf into 10 reusable monthly child slots for July 1 Wendy budget usability. Scoped narrowly — not full Category Registry Admin.
 
-**Scope (to be confirmed before build):**
-- Convert `entertainment` from standalone leaf → parent node in `BUDGET_CATEGORY_REGISTRY`
-- Add new child leaf keys (e.g. `entertainment.streaming`, `entertainment.outings`)
-- Migrate existing `entertainment` budget_line_rules row to a child key
-- Update any transaction category references if needed
-- No free-form key creation — keys hardcoded in JS registry
-- No full Category Registry Admin UI
+**What ships:**
+- `entertainment` converted from `leaf:true, assignable:true` → `leaf:false, assignable:false` parent node in `BUDGET_CATEGORY_REGISTRY`
+- 10 child slots added: `entertainment.event_1` through `entertainment.event_5`, `entertainment.week_1` through `entertainment.week_5`
+- Registry-based selectable design: child keys selectable in dropdown regardless of BLR existence
+- `_getCategoryDisplayLabel(key, monthIso)` — shared helper; returns BLR `line_label` when active, falls back to registry label
+- `_txDateToMonthIso(dateStr)` — converts `'YYYY-MM-DD'` to `'YYYY-MM-01'`
+- `_blrCheckEntertainmentDupLabel(...)` — interval-aware duplicate label guard for entertainment.* child keys
+- Budget grid child rows use `_getCategoryDisplayLabel(c.key, monthIso)` — shows BLR label not registry key
+- Transaction form dropdown uses date-aware month for label resolution; scoped div re-render on date change (no scroll regression)
+- Transaction register displays category label keyed to transaction's own date (constraint 1 — non-negotiable)
+- Legacy rollup: `spentByKey[parent.key]` and `_getBudgetAmount(parent.key, monthIso)` folded into group totals when `!isStandalone` — preserves June history after entertainment becomes a parent
+- Legacy `entertainment` category_key shows as "(legacy — re-categorize)" option in edit form dropdown
 
-**Gate:** Unblocked. Start after 5E-5 closeout commit is pushed.
+**July 2026 activation plan (via SQL migration):**
+| Child Key | Line Label | Amount |
+|---|---|---|
+| entertainment.event_1 | Seattle | $300 |
+| entertainment.event_2 | Wewe's Lunches | $200 |
+| entertainment.week_1 | Entertainment Week 1 | $250 |
+| entertainment.week_2 | Entertainment Week 2 | $250 |
+| entertainment.week_3 | Entertainment Week 3 | $250 |
+| entertainment.week_4 | Entertainment Week 4 | $250 |
+| **Total** | | **$1,500** |
+
+event_3, event_4, event_5, week_5 remain inactive for July (no BLR rows). Budget Line Admin can activate them for any future month.
+
+**Wendy operating convention — July 2026:**
+- Week 1: July 1–7 | Week 2: July 8–14 | Week 3: July 15–21 | Week 4: July 22–31
+- No date enforcement in app. Household convention: assign to the week when spending occurred.
+- Event buckets (Seattle, Wewe's Lunches): assign to the event bucket, not weekly.
+
+**SQL files (all in docs/):**
+- `phase-5e-6-preflight.sql` — 10 read-only pre-migration checks
+- `phase-5e-6-migration.sql` — 3 hard-stop DO/RAISE guards + close parent + 6 child inserts
+- `phase-5e-6-validation.sql` — 11 read-only post-migration checks
+- `phase-5e-6-rollback.sql` — restore parent rule + deactivate child rows
+
+**Hardcoded hard-stop guards (migration):**
+1. Exactly 1 active parent entertainment rule covering July must exist
+2. No existing active July rows for 6 activated child keys
+3. No existing active July rows for 4 inactive slots
+
+**Legacy rollup safety:** Only parent key has direct BLR rows or transactions. All other groups in registry have no direct BLR rows, so rollup is a no-op outside entertainment.
+
+**Explicit scope out (deferred):**
+- No Category Registry Admin UI (free-form key creation)
+- No week_5 activation for July (no Wendy use case)
+- No entertainment.event_3/4/5 activation for July
+
+**Expected July state (post-migration):**
+- Entertainment group total: $1,500 (6 children)
+- Overall July: Income $15,938, Planned $15,938, Balance $0
+- June: Entertainment still shows $1,500 (legacy parent rule, closed at June)
+
+**Regression tests:**
+- 24 tests (5E6-01 through 5E6-24)
+- **837/837 full suite passing (2026-06-27)**
+
+**Smoke checklist:** `docs/phase-5e-6-smoke-checklist.md` — 12 ACs covering group render, July balance, June history, future months, label display, admin edit/add, transaction dropdown date-awareness, register display, legacy transactions, dup label guard, inactive slot visibility.
+
+**Remaining gate before phase-complete:**
+1. Run `phase-5e-6-preflight.sql` in Supabase — confirm no conflicts
+2. Run `phase-5e-6-migration.sql` — confirm guards pass, 6 rows inserted
+3. Run `phase-5e-6-validation.sql` — confirm all 11 checks match expected
+4. Open https://dashboard.herndons.us — run smoke checklist ACs 1–12
+5. Mark phase complete; commit any cleanup
 
 ---
 
