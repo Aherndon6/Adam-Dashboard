@@ -104,14 +104,15 @@ WHERE category_key = 'entertainment'
 
 -- ── Step 2: Insert 6 July 2026 child rows ────────────────────────────────────
 -- One-time rules: start_month = end_month = '2026-07-01'.
--- Labels represent July-specific naming; future months use their own BLR rows.
+-- created_by pulled from existing entertainment row (avoids hardcoding UUID).
 -- WHERE NOT EXISTS prevents re-insertion on idempotent re-run.
 
 -- entertainment.event_1 → Seattle, $300
 INSERT INTO budget_line_rules
-  (category_key, line_label, amount, start_month, end_month, is_active)
+  (category_key, line_label, amount, start_month, end_month, is_active, created_by)
 SELECT
-  'entertainment.event_1', 'Seattle', 300, '2026-07-01', '2026-07-01', true
+  'entertainment.event_1', 'Seattle', 300, '2026-07-01', '2026-07-01', true,
+  (SELECT created_by FROM budget_line_rules WHERE category_key = 'entertainment' LIMIT 1)
 WHERE NOT EXISTS (
   SELECT 1 FROM budget_line_rules
   WHERE category_key = 'entertainment.event_1'
@@ -121,9 +122,10 @@ WHERE NOT EXISTS (
 
 -- entertainment.event_2 → Wewe's Lunches, $200
 INSERT INTO budget_line_rules
-  (category_key, line_label, amount, start_month, end_month, is_active)
+  (category_key, line_label, amount, start_month, end_month, is_active, created_by)
 SELECT
-  'entertainment.event_2', 'Wewe''s Lunches', 200, '2026-07-01', '2026-07-01', true
+  'entertainment.event_2', 'Wewe''s Lunches', 200, '2026-07-01', '2026-07-01', true,
+  (SELECT created_by FROM budget_line_rules WHERE category_key = 'entertainment' LIMIT 1)
 WHERE NOT EXISTS (
   SELECT 1 FROM budget_line_rules
   WHERE category_key = 'entertainment.event_2'
@@ -133,9 +135,10 @@ WHERE NOT EXISTS (
 
 -- entertainment.week_1 → Entertainment Week 1, $250
 INSERT INTO budget_line_rules
-  (category_key, line_label, amount, start_month, end_month, is_active)
+  (category_key, line_label, amount, start_month, end_month, is_active, created_by)
 SELECT
-  'entertainment.week_1', 'Entertainment Week 1', 250, '2026-07-01', '2026-07-01', true
+  'entertainment.week_1', 'Entertainment Week 1', 250, '2026-07-01', '2026-07-01', true,
+  (SELECT created_by FROM budget_line_rules WHERE category_key = 'entertainment' LIMIT 1)
 WHERE NOT EXISTS (
   SELECT 1 FROM budget_line_rules
   WHERE category_key = 'entertainment.week_1'
@@ -145,9 +148,10 @@ WHERE NOT EXISTS (
 
 -- entertainment.week_2 → Entertainment Week 2, $250
 INSERT INTO budget_line_rules
-  (category_key, line_label, amount, start_month, end_month, is_active)
+  (category_key, line_label, amount, start_month, end_month, is_active, created_by)
 SELECT
-  'entertainment.week_2', 'Entertainment Week 2', 250, '2026-07-01', '2026-07-01', true
+  'entertainment.week_2', 'Entertainment Week 2', 250, '2026-07-01', '2026-07-01', true,
+  (SELECT created_by FROM budget_line_rules WHERE category_key = 'entertainment' LIMIT 1)
 WHERE NOT EXISTS (
   SELECT 1 FROM budget_line_rules
   WHERE category_key = 'entertainment.week_2'
@@ -157,9 +161,10 @@ WHERE NOT EXISTS (
 
 -- entertainment.week_3 → Entertainment Week 3, $250
 INSERT INTO budget_line_rules
-  (category_key, line_label, amount, start_month, end_month, is_active)
+  (category_key, line_label, amount, start_month, end_month, is_active, created_by)
 SELECT
-  'entertainment.week_3', 'Entertainment Week 3', 250, '2026-07-01', '2026-07-01', true
+  'entertainment.week_3', 'Entertainment Week 3', 250, '2026-07-01', '2026-07-01', true,
+  (SELECT created_by FROM budget_line_rules WHERE category_key = 'entertainment' LIMIT 1)
 WHERE NOT EXISTS (
   SELECT 1 FROM budget_line_rules
   WHERE category_key = 'entertainment.week_3'
@@ -169,9 +174,10 @@ WHERE NOT EXISTS (
 
 -- entertainment.week_4 → Entertainment Week 4, $250
 INSERT INTO budget_line_rules
-  (category_key, line_label, amount, start_month, end_month, is_active)
+  (category_key, line_label, amount, start_month, end_month, is_active, created_by)
 SELECT
-  'entertainment.week_4', 'Entertainment Week 4', 250, '2026-07-01', '2026-07-01', true
+  'entertainment.week_4', 'Entertainment Week 4', 250, '2026-07-01', '2026-07-01', true,
+  (SELECT created_by FROM budget_line_rules WHERE category_key = 'entertainment' LIMIT 1)
 WHERE NOT EXISTS (
   SELECT 1 FROM budget_line_rules
   WHERE category_key = 'entertainment.week_4'
