@@ -5275,8 +5275,13 @@ function renderBudget(){
     // This handles June/history correctly without hiding historical data.
     // Safe for all other groups: no other parent key has direct BLR rows or transactions.
     if(!isStandalone){
-      pSpent+=spentByKey[parent.key]||0;
-      pBudget+=_getBudgetAmount(parent.key,monthIso);
+      var _legSpent=spentByKey[parent.key]||0;
+      var _legBudget=_getBudgetAmount(parent.key,monthIso);
+      pSpent+=_legSpent;
+      pBudget+=_legBudget;
+      // Also roll legacy amounts into grand totals so Total Planned Budget stays correct.
+      totalExpSpent+=_legSpent;
+      totalExpBudget+=_legBudget;
     }
 
     // Skip if no budget and no spending for this month (time-bounded rows)
