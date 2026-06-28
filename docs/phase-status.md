@@ -9,7 +9,7 @@
 | 5E-3   | Register Live by Default                       | Complete           |
 | 5E-4   | Budget Correctness + Display Fixes             | Complete           |
 | 5E-5   | Budget Line Admin (required before 7/1)        | Complete                         |
-| 5E-6   | Monthly Entertainment Buckets                  | Code complete — pending SQL migration + browser smoke |
+| 5E-6   | Monthly Entertainment Buckets                  | Complete                         |
 | 5E-7   | Role Enforcement / Security Maturity Gate      | Not started        |
 | 5E-8   | 7/1 Wendy Operating Readiness                  | Not started        |
 | 5E-9   | Category Registry Admin                        | Deferred (unless 7/1 blocker found) |
@@ -97,7 +97,7 @@ Post-smoke state: Total Income $15,938, Total Planned $15,938, Balance $0, misc.
 
 ---
 
-### Phase 5E-6 — Monthly Entertainment Buckets (CODE COMPLETE, 2026-06-27 — awaiting SQL migration + browser smoke)
+### Phase 5E-6 — Monthly Entertainment Buckets (COMPLETE, 2026-06-27 — browser smoke PASSED)
 
 Split the `entertainment` standalone leaf into 10 reusable monthly child slots for July 1 Wendy budget usability. Scoped narrowly — not full Category Registry Admin.
 
@@ -161,12 +161,8 @@ event_3, event_4, event_5, week_5 remain inactive for July (no BLR rows). Budget
 
 **Smoke checklist:** `docs/phase-5e-6-smoke-checklist.md` — 12 ACs covering group render, July balance, June history, future months, label display, admin edit/add, transaction dropdown date-awareness, register display, legacy transactions, dup label guard, inactive slot visibility.
 
-**Remaining gate before phase-complete:**
-1. Run `phase-5e-6-preflight.sql` in Supabase — confirm no conflicts
-2. Run `phase-5e-6-migration.sql` — confirm guards pass, 6 rows inserted
-3. Run `phase-5e-6-validation.sql` — confirm all 11 checks match expected
-4. Open https://dashboard.herndons.us — run smoke checklist ACs 1–12
-5. Mark phase complete; commit any cleanup
+**Browser smoke result (2026-06-27):** PASSED — ACs 1–9, 11–12 passed; AC-10 N/A (no legacy entertainment transactions).
+Post-smoke state: Entertainment group $1,500 budget, balanced at $0 for July. June history correct at $1,500. August intentionally empty (by design — Manage Lines for future months).
 
 ---
 
