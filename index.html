@@ -857,7 +857,7 @@ button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-vis
 // ── Constants (unchanged) ──────────────────────────────────────────────────
 // Simplified architecture — $8,250 total from LC · $6,500 operating floor · no legacy mechanics
 // Real-world moves: keep $2,250 in chk, move $2,750 sav→chk, move $1,000 LC→chk, move $2,250 LC→chk (Option 1 correction)
-const BUILD_TS='2026-06-27T23:02:02'; // updated each push — local time string
+const BUILD_TS='2026-06-29T09:49:12'; // updated each push — local time string
 const START_CHK=18037.73,START_SAV=3772.77,START_AMX=103.64,START_TAX=0,START_LC=13488.88;
 const EF_AMT=13488.88; // LC/EF balance — static this model year (no transfers in or out)
 const BASE_TAX=521.36,RET_SAV_XFR=3772.74;
@@ -1315,6 +1315,7 @@ function setTaskMeta(id,fields){
   customTaskMeta[id]=Object.assign({},getTaskMeta(id,''),fields);
 }
 async function saveCustomTaskMeta(){
+  if(!canWriteFinancials())return;
   try{
     var h=await getAuthHeaders();
     return fetch(SUPA_URL+'/rest/v1/goals',{method:'POST',headers:Object.assign({},h,{'Prefer':'resolution=merge-duplicates,return=minimal'}),body:JSON.stringify({key:'custom_task_meta',value:JSON.stringify(customTaskMeta)})}).catch(function(e){console.error('saveCustomTaskMeta:',e);});
@@ -1338,9 +1339,10 @@ function migrateCustomTaskMeta(){
       _changed=true;
     });
   });
-  if(_changed)saveCustomTaskMeta(); // persist so migration doesn't re-run on every reload
+  if(_changed&&canWriteFinancials())saveCustomTaskMeta(); // persist so migration doesn't re-run on every reload
 }
 function flipCustomTaskType(weekNum,id){
+  if(!canWriteFinancials())return;
   var ct=(customTaskData[weekNum]||[]).find(function(t){return t.id===id;});
   if(!ct)return;
   var meta=getTaskMeta(id,ct.label);
@@ -1394,6 +1396,7 @@ function ensureAutoReminders(weekNum){
 
 // ── Custom task CRUD ───────────────────────────────────────────────────────
 function saveCustomTask(weekNum,type){
+  if(!canWriteFinancials())return;
   var inp=document.getElementById('ct-inp-'+weekNum);
   var label=inp?inp.value.trim():'';
   if(!label)return;
@@ -1410,6 +1413,7 @@ function saveCustomTask(weekNum,type){
   ]);}).catch(function(e){console.error('saveCustomTask:',e);});
 }
 function toggleCustomTask(weekNum,id,checked){
+  if(!canWriteFinancials())return;
   if(!customTaskData[weekNum])return;
   var ct=customTaskData[weekNum].find(function(t){return t.id===id;});
   if(!ct)return;
@@ -1421,6 +1425,7 @@ function toggleCustomTask(weekNum,id,checked){
   if(meta.source==='auto_reminder'||meta.reminderKey||(meta.version>=1&&!customTaskMeta[id])){setTaskMeta(id,meta);saveCustomTaskMeta();}
 }
 function deleteCustomTask(weekNum,id){
+  if(!canWriteFinancials())return;
   if(!customTaskData[weekNum])return;
   customTaskData[weekNum]=customTaskData[weekNum].filter(function(t){return t.id!==id;});
   delete customTaskMeta[id];
@@ -1431,6 +1436,7 @@ function deleteCustomTask(weekNum,id){
   ]);}).catch(function(e){console.error('deleteCustomTask:',e);});
 }
 function dismissAutoReminder(weekNum,id){
+  if(!canWriteFinancials())return;
   if(!customTaskData[weekNum])return;
   var ct=customTaskData[weekNum].find(function(t){return t.id===id;});
   if(!ct)return;
@@ -1958,11 +1964,12 @@ function goWeek(dir){
 }
 
 // ── Reconcile (unchanged) ──────────────────────────────────────────────────
-function openRecon(n){reconOpen=n;renderApp();setTimeout(function(){var el=document.querySelector('.recon-form');if(el)el.scrollIntoView({behavior:'smooth',block:'nearest'});},80);}
+function openRecon(n){if(!canWriteFinancials())return;reconOpen=n;renderApp();setTimeout(function(){var el=document.querySelector('.recon-form');if(el)el.scrollIntoView({behavior:'smooth',block:'nearest'});},80);}
 function cancelRecon(){reconOpen=null;renderApp();}
-function confirmReconDelete(n){reconDeleteConfirm=n;renderApp();}
+function confirmReconDelete(n){if(!canWriteFinancials())return;reconDeleteConfirm=n;renderApp();}
 function cancelReconDelete(){reconDeleteConfirm=false;renderApp();}
 async function saveRecon(n){
+  if(!canWriteFinancials())return;
   function gv(id){return parseFloat(document.getElementById(id).value)||0;}
   const data={chk:gv('ri_chk'),sav:gv('ri_sav'),amx:gv('ri_amx'),tax:gv('ri_tax'),lc:gv('ri_lc')};
   const now=new Date();
@@ -1981,16 +1988,19 @@ async function saveRecon(n){
   }
 }
 async function deleteRecon(n){
-  delete reconData[n];
+  if(!canWriteFinancials())return;
   try{
     var h=await getAuthHeaders();
-    await fetch(SUPA_URL+'/rest/v1/weekly_reconciliations?week_num=eq.'+n,{method:'DELETE',headers:h});
+    var r=await fetch(SUPA_URL+'/rest/v1/weekly_reconciliations?week_num=eq.'+n,{method:'DELETE',headers:h});
+    if(r.ok)delete reconData[n];
+    else console.error('deleteRecon: HTTP '+r.status);
   }catch(e){console.error('deleteRecon:',e);}
   reconOpen=null;renderApp();
 }
 
 // ── Tasks ──────────────────────────────────────────────────────────────────
 async function toggleTask(weekNum,taskIdx,checked,actionKey,amount){
+  if(!canWriteFinancials())return;
   const key=weekNum+'_'+taskIdx;const now=new Date().toISOString();
   // Snapshot completed amount AND label at check time so label stays accurate if model recalculates
   var completedAmount=(checked&&amount!=null)?amount:null;
@@ -2005,6 +2015,7 @@ async function toggleTask(weekNum,taskIdx,checked,actionKey,amount){
 
 // ── Notes (unchanged) ──────────────────────────────────────────────────────
 async function saveNote(weekNum,el){
+  if(!canWriteFinancials())return;
   noteData[weekNum]=el.value;
   const s=document.getElementById('ns_'+weekNum);if(s)s.textContent='Saving...';
   try{
@@ -2016,7 +2027,7 @@ async function saveNote(weekNum,el){
 }
 
 // ── Edit drawer ────────────────────────────────────────────────────────────
-function openEdit(n){editOpen=n;document.body.style.overflow='hidden';renderApp();}
+function openEdit(n){if(!canWriteFinancials())return;editOpen=n;document.body.style.overflow='hidden';renderApp();}
 function closeEdit(){editOpen=null;document.body.style.overflow='';renderApp();}
 function _weekDayOpts(weekNum,selectedD){
   var MO=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
@@ -2033,6 +2044,7 @@ function _weekDayOpts(weekNum,selectedD){
   return opts;
 }
 function addEditEvent(){
+  if(!canWriteFinancials())return;
   const list=document.getElementById('ev-edit-list');if(!list)return;
   const i=list.querySelectorAll('.ev-edit-row').length;const div=document.createElement('div');div.className='ev-edit-row';div.setAttribute('data-idx',i);
   div.innerHTML='<input class="ev-edit-lbl" type="text" placeholder="Description (e.g. Wendy paycheck)">'+
@@ -2059,6 +2071,7 @@ function _readEditEvents(){
   return events;
 }
 async function saveWeekEdits(n){
+  if(!canWriteFinancials()){if(editOpen!=null){closeEdit();}return;}
   const errEl=document.getElementById('drawer-error');
   function showErr(msg){if(errEl){errEl.textContent=msg;errEl.style.display='block';}return false;}
   // Validate: rows with a label must have a positive amount
@@ -2163,13 +2176,15 @@ async function saveWeekEdits(n){
   }
   editSaving=false;editOpen=null;document.body.style.overflow='';renderApp();
 }
-function confirmEditDelete(n){editDeleteConfirm=n;renderEditDrawer();}
+function confirmEditDelete(n){if(!canWriteFinancials())return;editDeleteConfirm=n;renderEditDrawer();}
 function cancelEditDelete(){editDeleteConfirm=false;renderEditDrawer();}
 async function deleteWeekOverride(n){
+  if(!canWriteFinancials())return;
   try{
     var h=await getAuthHeaders();
-    await fetch(SUPA_URL+'/rest/v1/model_week_overrides?week_num=eq.'+n,{method:'DELETE',headers:h});
-    delete overrideData[n];
+    var r=await fetch(SUPA_URL+'/rest/v1/model_week_overrides?week_num=eq.'+n,{method:'DELETE',headers:h});
+    if(r.ok)delete overrideData[n];
+    else console.error('deleteWeekOverride: HTTP '+r.status);
   }catch(e){console.error('deleteWeekOverride:',e);}
   editDeleteConfirm=false;editOpen=null;renderApp();
 }
@@ -2771,7 +2786,7 @@ function renderWeekDetail(w,weeks){
       '</div>'+
       '<div class="wk-action-row">'+
         (canWriteFinancials()?'<button class="btn" onclick="openEdit('+w.num+')">Edit week</button>':'')+
-        (isPastWeek||isNowWeek?'<button class="btn primary" onclick="openRecon('+w.num+')">'+
+        (canWriteFinancials()&&(isPastWeek||isNowWeek)?'<button class="btn primary" onclick="openRecon('+w.num+')">'+
           (w.reconciled?'Update actuals':'Reconcile')+'</button>':'')+
       '</div>'+
     '</div>'+
@@ -2987,7 +3002,7 @@ function renderWeekDetail(w,weeks){
         var _goalAmt=_goalAmtM?parseFloat(_goalAmtM[1].replace(/,/g,'')):null;
         var _amtStr=(actionKey===ACTION_KEYS.COMMISSION_TAX)?w.ct:(_isGoalKey&&_goalAmt!=null?_goalAmt:'null');
         return'<div class="task-row'+(hasOv?' edited':'')+'">'+
-          '<input type="checkbox" class="task-check" '+(done?'checked':'')+' onchange="toggleTask('+w.num+','+i+',this.checked,'+_akyStr+','+_amtStr+')">'+
+          '<input type="checkbox" class="task-check" '+(done?'checked':'')+(canWriteFinancials()?'':' disabled')+' onchange="toggleTask('+w.num+','+i+',this.checked,'+_akyStr+','+_amtStr+')">'+
           '<div class="task-text'+(done?' done':'')+'">'+badge+esc(a)+'<span class="task-date">'+getWeekDate(w.num)+'</span>'+noteHtml+'</div>'+
           controls+
         '</div>'+
@@ -3036,14 +3051,14 @@ function renderWeekDetail(w,weeks){
   var note=noteData[w.num]||'';
   html+='<div class="panel card-pad">'+
     '<div class="notes-hdr">Week notes</div>'+
-    '<textarea class="notes-area" id="na_'+w.num+'" placeholder="Add notes for this week..." onblur="saveNote('+w.num+',this)">'+note.replace(/</g,'&lt;').replace(/>/g,'&gt;')+'</textarea>'+
+    '<textarea class="notes-area" id="na_'+w.num+'" placeholder="Add notes for this week..."'+(canWriteFinancials()?'':' readonly')+' onblur="saveNote('+w.num+',this)">'+note.replace(/</g,'&lt;').replace(/>/g,'&gt;')+'</textarea>'+
     '<div class="notes-saved" id="ns_'+w.num+'"></div>'+
   '</div>';
   // Recon
   html+='<div class="panel card-pad">';
   if(w.reconciled&&reconOpen!==w.num){
-    html+='<div class="recon-done-row"><span class="recon-done-lbl">✅ Reconciled \xb7 '+w.actualBals.date+'</span><button class="recon-edit-btn" onclick="openRecon('+w.num+')">Edit actuals</button></div>';
-  }else if((isPastWeek||isNowWeek)&&reconOpen!==w.num){
+    html+='<div class="recon-done-row"><span class="recon-done-lbl">✅ Reconciled \xb7 '+w.actualBals.date+'</span>'+(canWriteFinancials()?'<button class="recon-edit-btn" onclick="openRecon('+w.num+')">Edit actuals</button>':'')+'</div>';
+  }else if(canWriteFinancials()&&(isPastWeek||isNowWeek)&&reconOpen!==w.num){
     html+='<button class="recon-open-btn" onclick="openRecon('+w.num+')">Reconcile this week ✏️ — enter actual balances</button>';
   }
   if(reconOpen===w.num){
@@ -4500,6 +4515,7 @@ function _openTxEditById(id){
 // For add, initializes form with today's date and blank fields via _newTxFormData().
 // For edit, pass form-shaped data (outflow/inflow) via _txToFormData — not raw tx.
 function _openTxForm(mode,fd){
+  if(!canWriteFinancials())return;
   _txFormMode=mode;
   _txFormData=(mode==='add')?_newTxFormData():(fd?Object.assign({},fd):{});
   _txEditId=(mode==='edit'&&fd)?fd.id:null;
@@ -4560,6 +4576,7 @@ function _cancelTxDelete(){
 
 // Validate and save the add/edit form. POST for add, PATCH for edit.
 async function _saveTxForm(){
+  if(!canWriteFinancials()){_txFormError='Permission denied.';renderApp();return;}
   // ── Validation ──
   var d=_txFormData;
   var dateStr=(d.transaction_date||'').trim();
@@ -4643,6 +4660,7 @@ async function _saveTxForm(){
 
 // Fire DELETE for the confirmed transaction.
 async function _confirmTxDelete(){
+  if(!canWriteFinancials())return;
   if(!_txDeleteConfirmId)return;
   _txDeleteSaving=true;
   _txDeleteError='';
@@ -4680,6 +4698,7 @@ async function _confirmTxDelete(){
 
 // Toggle the cleared flag for a single transaction row.
 async function _toggleTxCleared(id,currentCleared){
+  if(!canWriteFinancials())return;
   if(_txClearedSavingId===id)return; // already in flight for this row
   _txClearedSavingId=id;
   delete _txClearedError[id];
@@ -4753,10 +4772,12 @@ function _renderTxRegister(){
   });
   sel+='</select>'
     +'<span style="flex:1"></span>'
-    +'<button onclick="_openTxForm(\'add\',null)" '
-    +'style="font-family:inherit;font-size:12px;font-weight:600;padding:5px 12px;cursor:pointer;'
-    +'border:1px solid var(--blue);border-radius:6px;background:var(--blue);color:#fff" '
-    +'id="tx-add-btn">+ Add Transaction</button>'
+    +(canWriteFinancials()
+      ?'<button onclick="_openTxForm(\'add\',null)" '
+        +'style="font-family:inherit;font-size:12px;font-weight:600;padding:5px 12px;cursor:pointer;'
+        +'border:1px solid var(--blue);border-radius:6px;background:var(--blue);color:#fff" '
+        +'id="tx-add-btn">+ Add Transaction</button>'
+      :'')
     +'</div>';
 
   // ── Inline add/edit form ────────────────────────────────────────────────
@@ -4890,14 +4911,15 @@ function _renderTxRegister(){
         var clearedErr=_txClearedError[tx.id]||'';
         var rowOpacity=isBeingEdited?'opacity:.45;':'';
 
-        // Cleared cell: clickable checkbox for manual rows; static display for non-manual
+        // Cleared cell: interactive checkbox for manual rows (disabled for non-writers); static display for non-manual
         var clrCell;
         if(isManual){
+          var _clrDisabled=clearedSaving||!canWriteFinancials();
           clrCell='<td style="padding:8px 12px;text-align:center">'
             +'<input type="checkbox" '+(tx.cleared?'checked':'')+' '
-            +(clearedSaving?'disabled ':'')
+            +(_clrDisabled?'disabled ':'')
             +'onchange="_toggleTxCleared(\''+_esc(tx.id)+'\','+tx.cleared+')" '
-            +'style="width:15px;height:15px;cursor:'+(clearedSaving?'default':'pointer')+';" '
+            +'style="width:15px;height:15px;cursor:'+(_clrDisabled?'default':'pointer')+';" '
             +'title="'+(tx.cleared?'Mark uncleared':'Mark cleared')+'">'
             +(clearedErr?'<div style="font-size:10px;color:var(--red)">'+_esc(clearedErr)+'</div>':'')
             +'</td>';
@@ -4905,17 +4927,21 @@ function _renderTxRegister(){
           clrCell='<td style="padding:8px 12px;text-align:center">'+(tx.cleared?'✓':'')+'</td>';
         }
 
-        // Action cell: edit + delete for manual rows; empty for non-manual
+        // Action cell: edit + delete for manual rows (writers only); empty for non-manual
         var actionCell;
         if(isManual){
-          actionCell='<td style="padding:4px 8px;white-space:nowrap;text-align:right">'
-            +'<button onclick="_openTxEditById(\''+_esc(tx.id)+'\')" '
-            +'title="Edit" style="font-family:inherit;font-size:11px;padding:2px 7px;cursor:pointer;'
-            +'border:1px solid var(--line);border-radius:4px;background:var(--surface);color:var(--muted);margin-right:2px">✎</button>'
-            +'<button onclick="_openTxDeleteConfirm(\''+_esc(tx.id)+'\')" '
-            +'title="Delete" style="font-family:inherit;font-size:11px;padding:2px 7px;cursor:pointer;'
-            +'border:1px solid var(--line);border-radius:4px;background:var(--surface);color:var(--red)">✕</button>'
-            +'</td>';
+          if(canWriteFinancials()){
+            actionCell='<td style="padding:4px 8px;white-space:nowrap;text-align:right">'
+              +'<button onclick="_openTxEditById(\''+_esc(tx.id)+'\')" '
+              +'title="Edit" style="font-family:inherit;font-size:11px;padding:2px 7px;cursor:pointer;'
+              +'border:1px solid var(--line);border-radius:4px;background:var(--surface);color:var(--muted);margin-right:2px">✎</button>'
+              +'<button onclick="_openTxDeleteConfirm(\''+_esc(tx.id)+'\')" '
+              +'title="Delete" style="font-family:inherit;font-size:11px;padding:2px 7px;cursor:pointer;'
+              +'border:1px solid var(--line);border-radius:4px;background:var(--surface);color:var(--red)">✕</button>'
+              +'</td>';
+          }else{
+            actionCell='<td style="padding:4px 8px"></td>';
+          }
         }else{
           actionCell='<td style="padding:4px 8px"></td>';
         }
@@ -5027,6 +5053,7 @@ async function _budgetLoadTransactions(monthIso){
 
 // Save (insert or update) a budget transaction
 async function _budgetSaveTransaction(formData, editId){
+  if(!canWriteFinancials())return;
   _budgetSaving=true;renderApp();
   try{
     var h=await getAuthHeaders();
@@ -5071,6 +5098,7 @@ async function _budgetSaveTransaction(formData, editId){
 
 // Toggle cleared status — optimistic update so reconciliation reflects instantly on click
 async function _budgetToggleCleared(txId,currentCleared){
+  if(!canWriteFinancials())return;
   var _nc=new Date();
   var nowIso=_nc.getFullYear()+'-'+String(_nc.getMonth()+1).padStart(2,'0')+'-'+String(_nc.getDate()).padStart(2,'0');
   var patch={is_cleared:!currentCleared,cleared_date:currentCleared?null:nowIso};
@@ -5093,10 +5121,12 @@ async function _budgetToggleCleared(txId,currentCleared){
 
 // Delete a budget transaction
 async function _budgetDeleteTransaction(txId){
+  if(!canWriteFinancials())return;
   try{
     var h=await getAuthHeaders();
-    await fetch(SUPA_URL+'/rest/v1/budget_transactions?id=eq.'+txId,{method:'DELETE',headers:h});
-    _budgetTransactions=_budgetTransactions.filter(function(t){return t.id!==txId;});
+    var r=await fetch(SUPA_URL+'/rest/v1/budget_transactions?id=eq.'+txId,{method:'DELETE',headers:h});
+    if(r.ok)_budgetTransactions=_budgetTransactions.filter(function(t){return t.id!==txId;});
+    else console.error('[Budget] Delete transaction failed: HTTP '+r.status);
     _budgetDeleteConfirmId=null;
     renderApp();
   }catch(e){console.error('[Budget] Delete transaction error:',e);}
@@ -5145,7 +5175,7 @@ function renderBudget(){
   if(canWriteFinancials()){
     html+='<button onclick="window._blrOpenAdd(\''+monthIso+'\')" style="padding:6px 12px;background:var(--surface2);color:var(--ink);border:1px solid var(--border);border-radius:6px;font-size:12px;font-weight:600;cursor:pointer">Manage Lines</button>';
   }
-  html+='<button onclick="window._budgetOpenAddForm()" style="padding:6px 14px;background:var(--blue);color:#fff;border:none;border-radius:6px;font-size:12px;font-weight:600;cursor:pointer">+ Add Transaction</button>';
+  if(canWriteFinancials()){html+='<button onclick="window._budgetOpenAddForm()" style="padding:6px 14px;background:var(--blue);color:#fff;border:none;border-radius:6px;font-size:12px;font-weight:600;cursor:pointer">+ Add Transaction</button>';}
   html+='</div>';
   html+='</div>';
 
@@ -5407,17 +5437,23 @@ function renderBudget(){
       html+='<td style="padding:4px 8px;color:var(--muted)">'+catCell+'</td>';
       html+='<td style="padding:4px 8px;color:var(--muted)">'+esc(t.payment_account||'')+'</td>';
       html+='<td style="text-align:right;padding:4px 8px;font-weight:600">'+f(parseFloat(t.amount))+'</td>';
-      html+='<td style="text-align:center;padding:4px 8px"><input type="checkbox"'+(t.is_cleared?' checked':'')+' onchange="window._budgetToggleCleared(\''+t.id+'\','+t.is_cleared+')" style="cursor:pointer;width:15px;height:15px"></td>';
-      html+='<td style="padding:4px 8px;text-align:right;white-space:nowrap">';
-      if(isEdit){
-        html+='<span style="font-size:11px;color:#ef4444;font-weight:600">Delete? </span>';
-        html+='<button onclick="window._budgetDeleteTransaction(\''+t.id+'\')" style="font-size:11px;padding:2px 7px;border:1px solid #ef4444;border-radius:4px;background:#fef2f2;color:#ef4444;cursor:pointer">Yes</button> ';
-        html+='<button onclick="window._budgetDeleteConfirmId=null;renderApp()" style="font-size:11px;padding:2px 7px;border:1px solid var(--border);border-radius:4px;background:var(--surface2);cursor:pointer">No</button>';
-      } else {
-        html+='<button onclick="window._budgetStartEdit(\''+t.id+'\')" style="font-size:11px;padding:2px 8px;border:1px solid var(--border);border-radius:4px;background:var(--surface2);cursor:pointer;color:var(--ink)">Edit</button> ';
-        html+='<button onclick="window._budgetDeleteConfirmId=\''+t.id+'\';renderApp()" style="font-size:11px;padding:2px 8px;border:1px solid var(--border);border-radius:4px;background:var(--surface2);cursor:pointer;color:#ef4444">Del</button>';
+      if(canWriteFinancials()){
+        html+='<td style="text-align:center;padding:4px 8px"><input type="checkbox"'+(t.is_cleared?' checked':'')+' onchange="window._budgetToggleCleared(\''+t.id+'\','+t.is_cleared+')" style="cursor:pointer;width:15px;height:15px"></td>';
+        html+='<td style="padding:4px 8px;text-align:right;white-space:nowrap">';
+        if(isEdit){
+          html+='<span style="font-size:11px;color:#ef4444;font-weight:600">Delete? </span>';
+          html+='<button onclick="window._budgetDeleteTransaction(\''+t.id+'\')" style="font-size:11px;padding:2px 7px;border:1px solid #ef4444;border-radius:4px;background:#fef2f2;color:#ef4444;cursor:pointer">Yes</button> ';
+          html+='<button onclick="window._budgetDeleteConfirmId=null;renderApp()" style="font-size:11px;padding:2px 7px;border:1px solid var(--border);border-radius:4px;background:var(--surface2);cursor:pointer">No</button>';
+        } else {
+          html+='<button onclick="window._budgetStartEdit(\''+t.id+'\')" style="font-size:11px;padding:2px 8px;border:1px solid var(--border);border-radius:4px;background:var(--surface2);cursor:pointer;color:var(--ink)">Edit</button> ';
+          html+='<button onclick="window._budgetDeleteConfirmId=\''+t.id+'\';renderApp()" style="font-size:11px;padding:2px 8px;border:1px solid var(--border);border-radius:4px;background:var(--surface2);cursor:pointer;color:#ef4444">Del</button>';
+        }
+        html+='</td>';
+      }else{
+        html+='<td style="text-align:center;padding:4px 8px">'+(t.is_cleared?'✓':'')+'</td>';
+        html+='<td style="padding:4px 8px"></td>';
       }
-      html+='</td></tr>';
+      html+='</tr>';
     });
     html+='</tbody></table>';
   }
@@ -5596,12 +5632,14 @@ window._budgetChangeMonth=function(iso){
   renderApp();
 };
 window._budgetOpenAddForm=function(){
+  if(!canWriteFinancials())return;
   var _n=new Date();
   var today=_n.getFullYear()+'-'+String(_n.getMonth()+1).padStart(2,'0')+'-'+String(_n.getDate()).padStart(2,'0');
   _budgetShowAddForm=true;_budgetEditId=null;_budgetFormData={transaction_type:'household_expense',excluded_from_budget:false,transaction_date:today};
   renderApp();
 };
 window._budgetStartEdit=function(id){
+  if(!canWriteFinancials())return;
   var tx=_budgetTransactions.find(function(t){return t.id===id;});
   if(!tx)return;
   _budgetEditId=id;_budgetShowAddForm=false;_budgetFormData=Object.assign({},tx);
@@ -5611,6 +5649,7 @@ window._budgetCancelForm=function(){
   _budgetShowAddForm=false;_budgetEditId=null;_budgetFormData={};renderApp();
 };
 window._budgetSubmitForm=function(){
+  if(!canWriteFinancials())return;
   var fd=_budgetFormData;
   if(!fd.transaction_date||!fd.amount||parseFloat(fd.amount)<=0){
     alert('Date and amount are required.');return;
@@ -5904,6 +5943,9 @@ async function initAuth(){
 }
 
 async function saveGoal(key,value){
+  // anthropic_key is owner-only; all other goal keys require household operational write access
+  if(key==='anthropic_key'){if(!isOwnerUser())return;}
+  else{if(!canWriteFinancials())return;}
   try{
     var h=await getAuthHeaders();
     await fetch(SUPA_URL+'/rest/v1/goals',{method:'POST',headers:Object.assign({},h,{'Prefer':'resolution=merge-duplicates,return=minimal'}),body:JSON.stringify({key:key,value:String(value)})});
@@ -6973,11 +7015,12 @@ function clearScenario(){
 }
 
 // ── Scenario: open commit modal ────────────────────────────────────────────
-function openScenarioCommit(){scenarioState.commitModal=true;renderApp();}
+function openScenarioCommit(){if(!canWriteFinancials())return;scenarioState.commitModal=true;renderApp();}
 function closeScenarioCommit(){scenarioState.commitModal=false;renderApp();}
 
 // ── Scenario: commit (write to Supabase) ───────────────────────────────────
 async function commitScenario(){
+  if(!canWriteFinancials())return;
   try{
     if(scenarioState.type==='goal'&&scenarioState.previewGoal){
       goalAk=scenarioState.previewGoal.ak;
@@ -6988,8 +7031,9 @@ async function commitScenario(){
       var payload=scenarioState.previewOverride;
       payload.updated_at=new Date().toISOString();
       var _csh=await getAuthHeaders();
-      await fetch(SUPA_URL+'/rest/v1/model_week_overrides',{method:'POST',headers:Object.assign({},_csh,{'Prefer':'resolution=merge-duplicates,return=minimal'}),body:JSON.stringify(payload)});
-      overrideData[payload.week_num]=payload;
+      var _csr=await fetch(SUPA_URL+'/rest/v1/model_week_overrides',{method:'POST',headers:Object.assign({},_csh,{'Prefer':'resolution=merge-duplicates,return=minimal'}),body:JSON.stringify(payload)});
+      if(_csr.ok)overrideData[payload.week_num]=payload;
+      else throw new Error('HTTP '+_csr.status);
     }
     clearScenario();
   }catch(e){console.error('commitScenario:',e);alert('Error saving scenario: '+e.message);}
@@ -7032,7 +7076,7 @@ function _renderScenariosInline(vm){
       '<span class="scenario-banner-type">'+typeLabel+'</span>'+
       '<div style="display:flex;gap:7px;margin-left:10px">'+
         '<button class="scenario-cancel-btn" onclick="clearScenario()">✕ Cancel</button>'+
-        '<button class="scenario-commit-btn" onclick="openScenarioCommit()">Commit →</button>'+
+        (canWriteFinancials()?'<button class="scenario-commit-btn" onclick="openScenarioCommit()">Commit →</button>':'')+
       '</div>'+
     '</div>';
   }
@@ -7060,7 +7104,7 @@ function renderScenarios(vm){
       '<span class="scenario-banner-type">'+typeLabel+'</span>'+
       '<div style="display:flex;gap:7px;margin-left:10px">'+
         '<button class="scenario-cancel-btn" onclick="clearScenario()">✕ Cancel</button>'+
-        '<button class="scenario-commit-btn" onclick="openScenarioCommit()">Commit →</button>'+
+        (canWriteFinancials()?'<button class="scenario-commit-btn" onclick="openScenarioCommit()">Commit →</button>':'')+
       '</div>'+
     '</div>';
   }
@@ -7263,12 +7307,16 @@ async function loadWishlist(){
     if(r.ok){
       wishlistData=await r.json();
       wishlistLoaded=true;
-      if(wishlistData.length===0)await seedWishlist();
-      else await mergeSeedWishlist();
+      // Seed/merge/migrate are background write operations — skip for non-writers
+      if(canWriteFinancials()){
+        if(wishlistData.length===0)await seedWishlist();
+        else await mergeSeedWishlist();
+      }
     }
   }catch(e){console.error('loadWishlist:',e);}
 }
 async function mergeSeedWishlist(){
+  if(!canWriteFinancials())return;
   // Add any WISHLIST_SEED items not already present (matched by title)
   var existing=wishlistData.map(function(x){return x.title;});
   var missing=WISHLIST_SEED.filter(function(s){return existing.indexOf(s.title)<0;});
@@ -7285,6 +7333,7 @@ async function mergeSeedWishlist(){
   renderApp();
 }
 async function phaseMigrateWishlist(){
+  if(!canWriteFinancials())return;
   var ph=await getAuthHeaders();
   // 1. Bulk-move ALL remaining Phase 4 planned items to Phase 5.
   //    Catches any items added by the user or seeded before the re-phase decision.
@@ -7338,6 +7387,7 @@ async function phaseMigrateWishlist(){
   // See: docs/wishlist-v2-spec.md — Pre-Retirement Reconciliation section.
 }
 async function seedWishlist(){
+  if(!canWriteFinancials())return;
   try{
     var sh=await getAuthHeaders();
     var rows=WISHLIST_SEED.map(function(item){return{title:item.title,notes:item.notes,phase:item.phase,status:item.status,priority:0,item_type:'feature'};});
@@ -7347,6 +7397,7 @@ async function seedWishlist(){
   }catch(e){console.error('seedWishlist:',e);}
 }
 async function saveWishlistItem(item){
+  if(!canWriteFinancials())return;
   try{
     var wh=await getAuthHeaders();
     if(item.id){
@@ -7361,6 +7412,7 @@ async function saveWishlistItem(item){
   }catch(e){console.error('saveWishlistItem:',e);alert('Error saving: '+e.message);}
 }
 async function deleteWishlistItem(id){
+  if(!canWriteFinancials())return;
   if(!confirm('Delete this item?'))return;
   try{
     var h=await getAuthHeaders();
@@ -7370,6 +7422,7 @@ async function deleteWishlistItem(id){
   }catch(e){console.error('deleteWishlistItem:',e);}
 }
 async function moveWishlistItem(id,newStatus,buildTag){
+  if(!canWriteFinancials())return;
   var item=wishlistData.find(function(x){return x.id===id;});
   if(!item)return;
   var upd={status:newStatus,updated_at:new Date().toISOString()};
@@ -7498,7 +7551,7 @@ function renderRoadmap(){
         ?'<span style="background:'+c+'22;color:'+c+';border:1px solid '+c+'66;border-radius:99px;font-size:10px;font-weight:700;letter-spacing:.04em;padding:2px 9px">'+ph+' — Next ▶</span>'
         :'<span style="background:'+c+'18;color:'+c+';border:1px solid '+c+'44;border-radius:99px;font-size:10px;font-weight:700;letter-spacing:.04em;padding:2px 9px">'+ph+'</span>';
       body+='<div style="display:flex;align-items:center;gap:8px;margin:'+(body?'14px':'0')+'0 6px;'+(body?'border-top:1px solid var(--border);padding-top:12px':'')+'">'+pill+'<span style="flex:1;height:1px;background:var(--border)"></span><span style="font-size:10px;color:var(--muted)">'+phItems.length+' item'+(phItems.length!==1?'s':'')+'</span></div>';
-      body+=phItems.map(function(it){return card(it,true);}).join('');
+      body+=phItems.map(function(it){return card(it,canWriteFinancials());}).join('');
     });
     return'<div class="wl-col">'+
       '<div class="wl-col-header"><span class="wl-col-title">Planned</span><span class="wl-col-count">'+items.length+'</span>'+
@@ -7512,7 +7565,7 @@ function renderRoadmap(){
       '</div>'+
       '<div class="wl-col-body">'+
         (wishlistAddOpen?addForm():'')+
-        (items.length?items.map(function(it){return card(it,true);}).join(''):('<div class="wl-empty">'+(wishlistPhaseFilter.length?'No ideas match the current filter':'No ideas yet — click Add to capture one')+'</div>'))+
+        (items.length?items.map(function(it){return card(it,canWriteFinancials());}).join(''):('<div class="wl-empty">'+(wishlistPhaseFilter.length?'No ideas match the current filter':'No ideas yet — click Add to capture one')+'</div>'))+
       '</div>'+
     '</div>';
   }
@@ -7541,7 +7594,7 @@ function renderRoadmap(){
           '<span style="flex:1;height:1px;background:var(--border)"></span>'+
           '<span style="font-size:10px;color:var(--muted)">'+tagItems.length+' item'+(tagItems.length!==1?'s':'')+'</span>'+
         '</div>'+
-        '<div data-build-group="'+_esc(tag)+'">'+tagItems.map(function(it){return card(it,true);}).join('')+'</div>';
+        '<div data-build-group="'+_esc(tag)+'">'+tagItems.map(function(it){return card(it,canWriteFinancials());}).join('')+'</div>';
       });
       if(untagged.length){
         body+='<div data-build-tag="Untagged" style="display:flex;align-items:center;gap:8px;margin:'+(body?'14px':'0')+' 0 6px;'+(body?'border-top:1px solid var(--border);padding-top:12px;':'')+'">'+
@@ -7549,7 +7602,7 @@ function renderRoadmap(){
           '<span style="flex:1;height:1px;background:var(--border)"></span>'+
           '<span style="font-size:10px;color:var(--muted)">'+untagged.length+' item'+(untagged.length!==1?'s':'')+'</span>'+
         '</div>'+
-        '<div data-build-group="Untagged">'+untagged.map(function(it){return card(it,true);}).join('')+'</div>';
+        '<div data-build-group="Untagged">'+untagged.map(function(it){return card(it,canWriteFinancials());}).join('')+'</div>';
       }
     }
     return'<div class="wl-col" data-col="done">'+
@@ -7568,11 +7621,13 @@ function renderRoadmap(){
 }
 function _esc(s){return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');}
 function _saveAddForm(){
+  if(!canWriteFinancials())return;
   var t=document.getElementById('wl-new-title');var n=document.getElementById('wl-new-notes');var p=document.getElementById('wl-new-phase');var tp=document.getElementById('wl-new-type');
   if(!t||!t.value.trim())return;
   saveWishlistItem({title:t.value.trim(),notes:n?n.value.trim():'',phase:p?p.value:'Backlog',item_type:tp?tp.value:'feature'});
 }
 function _saveEditForm(id){
+  if(!canWriteFinancials())return;
   var t=document.getElementById('wl-edit-title');var n=document.getElementById('wl-edit-notes');var p=document.getElementById('wl-edit-phase');var tp=document.getElementById('wl-edit-type');
   if(!t||!t.value.trim())return;
   var item=wishlistData.find(function(x){return x.id===id;});
@@ -7585,6 +7640,7 @@ function _togglePhaseFilter(ph){
   renderApp();
 }
 function _confirmDoneWishlist(id){
+  if(!canWriteFinancials())return;
   var sel=document.getElementById('wl-done-tag-'+id);
   var tag=sel?sel.value:WISHLIST_BUILD_TAGS[0];
   wishlistDoneId=null;
@@ -7593,6 +7649,7 @@ function _confirmDoneWishlist(id){
 
 // ── AI Q&A ─────────────────────────────────────────────────────────────────
 async function saveApiKey(key){
+  if(!isOwnerUser())return;
   if(!key||!key.trim())return;
   anthropicKey=key.trim();
   localStorage.setItem('herndon_anthropic_key',anthropicKey);
