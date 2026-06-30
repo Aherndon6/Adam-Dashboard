@@ -11,7 +11,7 @@
 | 5E-5   | Budget Line Admin (required before 7/1)        | Complete                         |
 | 5E-6   | Monthly Entertainment Buckets                  | Complete                         |
 | 5E-7   | Role Enforcement / Security Maturity Gate      | Complete — live P8/V12 verified (2026-06-30) |
-| 5E-8   | 7/1 Wendy Operating Readiness                  | Not started        |
+| 5E-8   | 7/1 Wendy Operating Readiness                  | Smoke passed — conditionally ready pending 7/1 starting balance setup (2026-06-30) |
 | 5E-9   | Category Registry Admin                        | Deferred (unless 7/1 blocker found) |
 | 5F-0   | Needs Attention / Dashboard Usefulness         | Not started        |
 | 5F-1   | Reconciliation Design + Read-Only Scaffold     | Not started        |
@@ -296,19 +296,28 @@ Live P8 audit confirmed `budget_line_rules` write policies were using `is_owner(
 
 ---
 
-### Phase 5E-8 — 7/1 Wendy Operating Readiness (PLANNED, NOT STARTED)
-Confirm the system is operationally ready for Wendy to use as of July 1.
+### Phase 5E-8 — 7/1 Wendy Operating Readiness (SMOKE PASSED — CONDITIONALLY READY, 2026-06-30)
+Confirmed the system is operationally ready for Wendy to use as of July 1, with one manual owner data task outstanding.
 
 **Scope:**
 - July budget sanity check (totals, balance, key rows)
 - Wendy workflow smoke: transaction entry, cleared toggle, Budget view
 - Budget edit workflow verified (Edit/Archive tested against real July data)
 - Transaction entry verified (add, edit, delete manual rows)
-- Reconciliation transition note visible and accurate
 - Known limitations documented (no splits, no transfers, no imports, no reconciliation yet)
 - No major new feature build unless a readiness blocker is found during this phase
 
-**Gate:** CLEARED — 5E-7 code/tests complete and live P8/V12 audit passed (2026-06-30). BLR RLS aligned. Do not start until explicitly approved.
+**Gate:** CLEARED — 5E-7 code/tests complete and live P8/V12 audit passed (2026-06-30). BLR RLS aligned.
+
+**Results (full detail: `docs/phase-5e-8-wendy-readiness.md`):**
+- Wendy household_admin smoke: W1–W10 all PASS (login, Register CRUD + cleanup, Budget tab, Budget Line Admin, Ask Claude owner-gated, weekly task/notes)
+- Adam owner smoke: A1–A4 all PASS (login, Ask Claude owner controls, Register, Budget Line Admin)
+- July budget readiness: J1–J3 all PASS — Entertainment $1,500 total (Seattle $300, Wewe's Lunches $200, Weeks 1–4 = $250 each), June legacy Entertainment unchanged at $1,500, no double-count, budget balanced ($15,938 income = $15,938 planned)
+- Deployment gap found and resolved during smoke: `origin/main` was 2 commits behind local (5E-7 + BLR RLS alignment unpushed), causing W9 to fail on first pass. Code was already correct; fix was `git push origin main` only — no code change, no new commit.
+- Regression suite: `node test_regression.js` — 904 passed / 0 failed
+- Outstanding: Register `starting_balance` not yet set for any of the 14 accounts (by design — captured at go-live per Phase 5C/5D-1 spec, not before). Budget and Transactions CRUD are unaffected. Register running balances anchor at $0.00 with an explicit "Starting balance not set" warning until this is done. Manual, owner-only SQL task (no UI exists for it), targeted for the morning of 7/1 before Wendy relies on register balances.
+
+**Status: Conditionally ready.** Do not start 5F-1 until starting balances are set and Wendy's first live 7/1 session is confirmed clean.
 
 ---
 
