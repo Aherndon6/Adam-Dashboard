@@ -1,6 +1,6 @@
 # Herndon Financial OS — Phase Status
 
-## Roadmap Sequence (as of 2026-06-27)
+## Roadmap Sequence (as of 2026-06-28)
 
 | Phase  | Name                                           | Status             |
 |--------|------------------------------------------------|--------------------|
@@ -10,7 +10,7 @@
 | 5E-4   | Budget Correctness + Display Fixes             | Complete           |
 | 5E-5   | Budget Line Admin (required before 7/1)        | Complete                         |
 | 5E-6   | Monthly Entertainment Buckets                  | Complete                         |
-| 5E-7   | Role Enforcement / Security Maturity Gate      | Not started        |
+| 5E-7   | Role Enforcement / Security Maturity Gate      | Code/tests complete; live P8/V12 pending |
 | 5E-8   | 7/1 Wendy Operating Readiness                  | Not started        |
 | 5E-9   | Category Registry Admin                        | Deferred (unless 7/1 blocker found) |
 | 5F-0   | Needs Attention / Dashboard Usefulness         | Not started        |
@@ -166,32 +166,122 @@ Post-smoke state: Entertainment group $1,500 budget, balanced at $0 for July. Ju
 
 ---
 
-### Phase 5E-7 — Role Enforcement / Security Maturity Gate (PLANNED, NOT STARTED)
-Absorbs deferred Phase 4C. Must complete before reconciliation, splits, imports, transfers, or budget integration.
+### Phase 5E-7 — Role Enforcement / Security Maturity Gate (CODE/TESTS COMPLETE; live SQL P8/V12 pending before 5E-8)
+Absorbs deferred Phase 4C. Hardens and audits all write-path role enforcement before any 5F+ work begins.
 
-**Purpose:** Formalize and verify role-based write access across all current policies before the schema grows further.
+**What shipped:**
 
-**Scope:**
-- Document role/capability matrix: owner (Adam), household_admin (Wendy), viewer (future read-only)
-- Audit all write policies and classify by predicate:
-  - `is_allowed_user()` = read access only — must not appear on any write policy
-  - `can_write_financials()` = household operational writes: transactions, budget line rule add/edit/archive
-  - `is_owner()` = owner-only writes: accounts, categories, RLS/policy changes, category registry creation, new category keys, platform/config/admin tables, any destructive/permanent admin action
-- Confirm no write policy uses `is_allowed_user()`
-- Confirm Wendy can write only to intended household financial workflows
-- Confirm viewer role (when added) can read but cannot write
-- Confirm owner-only tables remain owner-only
-- Add SQL preflight, validation, and smoke scripts
-- Update docs with role matrix
+**PASS A — SQL audit files (read-only, no mutations):**
+- `docs/phase-5e-7-preflight.sql` — 8 checks (P1–P8) querying live `pg_policies`
+- `docs/phase-5e-7-validation.sql` — 15 checks (V1–V15) for post-change validation
+- `docs/phase-5e-7-smoke-checklist.md` — browser smoke script: SA-1/SA-2, AC-1–AC-15 (Adam), WC-1–WC-11 (Wendy), VC-1–VC-11 (viewer)
+- P8/V12 = STOP CONDITION: `budget_line_rules` write policies — if live = `is_owner()`, migration required before 5E-8
 
-**Non-goals (explicit exclusions):**
-- No new app features
+**PASS B — App-side write-path guards (defense-in-depth; RLS is the real gate):**
+
+*Current Register (`transactions`):*
+- `_openTxForm`, `_saveTxForm`, `_confirmTxDelete`, `_toggleTxCleared` — all guarded with `canWriteFinancials()`
+- Register "Add Transaction" button — gated on `canWriteFinancials()`
+- Per-row cleared checkbox — `disabled` for non-writers; still visible as static indicator
+- Per-row Edit/Delete buttons — hidden for non-writers (inside `if(isManual){if(canWriteFinancials())...}` — preserves test-compatible gate structure)
+
+*Legacy Budget actuals (`budget_transactions`):*
+- `_budgetOpenAddForm`, `_budgetSubmitForm`, `_budgetSaveTransaction`, `_budgetToggleCleared`, `_budgetDeleteTransaction`, `_budgetStartEdit` — all guarded
+- Budget "Add Transaction" button — gated
+- Budget per-row cleared/edit/delete controls — gated; shows read-only cleared indicator (`✓`) for non-writers
+
+*Scenario commits:*
+- `openScenarioCommit`, `commitScenario` — guarded; `commitScenario` checks `_csr.ok` before `overrideData` mutation
+- `commitScenario` goal path — `goalAk`/`goalRt` NOT updated until both `saveGoal` calls return `true`; `clearScenario()` not called if either fails
+- "Commit to live model" button in modal — hidden for non-writers; shows read-only message instead
+- Commit button in scenario banner — gated via `canWriteFinancials()` ternary
+
+*Goals:*
+- `saveGoal` — returns `true/false` based on `r.ok`; callers that depend on success must check return value
+- `saveGoal` split guard: `anthropic_key` → `isOwnerUser()`, all other keys → `canWriteFinancials()`
+- `saveApiKey` — `isOwnerUser()` guard; key not cached in memory or localStorage unless Supabase returns 2xx
+- `anthropicKey` variable initialized to `''`; populated only in `loadAll()` after `isOwnerUser()` check
+
+*Ask Claude:*
+- `renderAskClaude` — non-owner branch shows "available to account owner only" message; key input never shown
+- `sendAsk` — guarded with `isOwnerUser()` return-early
+- "Change key" button clears `anthropicKey` and `localStorage` on click
+
+*Custom task UI gates and mutation ordering:*
+- Type badge, checkbox, delete/dismiss buttons gated on `canWriteFinancials()` in render
+- Add transfer / Add task buttons and inline forms gated on `canWriteFinancials()`
+- `saveCustomTaskMeta` returns `bool`; `flipCustomTaskType`, `saveCustomTask`, `toggleCustomTask`, `deleteCustomTask`, `dismissAutoReminder` all snapshot-then-optimistic with rollback on `r.ok` failure
+- `saveRecon`, `toggleTask`, `saveNote` — all snapshot-before-optimistic, roll back on `r.ok` failure
+- `saveWeekEdits` `autoCustomTask`/`autoCustomTaskGoal` branches — await + `r.ok` checks; rollback on PATCH failure; local task added only if POST succeeds
+
+*Action overrides:*
+- `openActionEdit`, `saveActionOverride`, `deleteActionOverride`, `resetAllActionOverrides` — all guarded
+- Override controls in week render — hidden for non-writers
+
+*Legacy stubs:*
+- `moveCustomTask`, `editCustomTaskLabel`, `editCustomTaskDate` — replaced with no-ops; warn only; no longer call Supabase
+
+*loadAll migration:*
+- `anthropicKey` from `goals` table: only loaded when `isOwnerUser()`; only cached to localStorage when `isOwnerUser()`
+- `localStorage` migration of `custom_tasks` — guarded on `canWriteFinancials()`; `removeItem` only called if POST succeeds
+
+*Wishlist/Roadmap:*
+- `seedWishlist`, `mergeSeedWishlist`, `phaseMigrateWishlist` — skipped for non-writers inside `loadWishlist`
+- `phaseMigrateWishlist` — every PATCH now captures `r`; local fields only mutated if `r.ok`
+- `saveWishlistItem` PATCH path — `r.ok` check before updating `wishlistData`; returns early on failure
+- `deleteWishlistItem` — local filter only runs after `r.ok`; leaves state intact on failure
+- `moveWishlistItem` — captures PATCH `r`; local update and `renderApp()` only on `r.ok`; returns `bool`
+- `_confirmDoneWishlist` — async; `wishlistDoneId` cleared only after `moveWishlistItem` returns `true`
+- Add buttons (Planned column, Ideas column) — hidden for non-writers
+- Add form — not rendered if `!canWriteFinancials()`, even if `wishlistAddOpen` state is stale
+- `card(it,...)` render calls — `canWriteFinancials()` passed as editable flag; non-writers see read-only cards
+
+*Weekly write paths (previously patched):*
+- `toggleCustomTask`, `flipCustomTaskType`, `saveCustomTask`, `deleteCustomTask`, `dismissAutoReminder`, `saveCustomTaskMeta`
+- `saveNote`, `toggleTask`, `openRecon`, `saveRecon`, `deleteRecon`, `confirmReconDelete`
+- `openEdit`, `addEditEvent`, `saveWeekEdits`, `confirmEditDelete`, `deleteWeekOverride`
+- Reconcile button, task checkboxes, notes textarea — all role-gated in render
+
+*Optimistic mutation ordering fixed:*
+- `deleteRecon` — `delete reconData[n]` now inside `if(r.ok)` (was running before network call)
+- `deleteWeekOverride` — `delete overrideData[n]` now inside `if(r.ok)` (was running without capture)
+- `_budgetDeleteTransaction` — `filter` now inside `if(r.ok)`
+- `commitScenario` — `overrideData[payload.week_num]=payload` now inside `if(_csr.ok)`
+
+**PASS C — Regression tests (see test_regression.js):**
+- ROLE-C (5E7-C1–C6): `canWriteFinancials()` classification — owner/household_admin=true, viewer/empty/unknown=false
+- ROLE-D (5E7-D1–D5): Register write-path guards
+- ROLE-E (5E7-E1–E5): Budget write-path guards
+- ROLE-F (5E7-F1–F3): `saveGoal` returns false on permission; split guard; `saveApiKey` owner guard
+- ROLE-G (5E7-G1–G6): Wishlist write-path guards and r.ok ordering
+- ROLE-H (5E7-H1–H3): Scenario commit guards and goal path ordering
+- ROLE-I (5E7-I1–I3): Optimistic mutation ordering (`r.ok` before local delete)
+- ROLE-J (5E7-J1–J6): SQL audit file existence and content
+- ROLE-K (5E7-K1–K2): `is_allowed_user()` never used as write guard; smoke checklist P8 reference
+- ROLE-L (5E7-L*): Action override guards, legacy stub no-ops, custom task UI gate strings, `anthropicKey` init
+- ROLE-M (5E7-M*): Wishlist Add button gate strings, V13 per-row SQL format, P2/P3/P8 zero-policy SQL format, V5a negative condition
+- Existing tests S30-4 and S30-6 updated: `USER_ROLE='owner'` set for the test duration
+- **Full suite passing after all Items 1–11 applied — exact count updated in test_regression.js header**
+
+**Final role matrix:**
+
+| Role | `canWriteFinancials()` | `isOwnerUser()` | Household operational writes | Owner-only writes | Read |
+|---|---|---|---|---|---|
+| `owner` (Adam) | ✓ | ✓ | ✓ | ✓ | ✓ |
+| `household_admin` (Wendy) | ✓ | ✗ | ✓ | ✗ | ✓ |
+| `viewer` (future) | ✗ | ✗ | ✗ | ✗ | ✓ |
+
+**Household operational writes:** Register transactions, cleared toggles, Budget actuals, Budget Line Admin, weekly tasks/notes/recon/overrides/custom tasks, scenario commits, normal goal targets, wishlist/roadmap management.
+
+**Owner-only writes:** accounts, categories, category registry keys, `goals.anthropic_key`, RLS/policy/platform config, destructive admin actions.
+
+**STOP CONDITION (budget_line_rules):**
+Migration docs show `budget_line_rules` write policies may use `is_owner()`, blocking Wendy. App-side `_blrSave*` functions already use `canWriteFinancials()` (correct). If P8/V12 returns FAIL, a SQL migration is required before 5E-8 to align DB with product decision. WC-7 in the smoke checklist will surface this.
+
+**Non-goals (held):**
 - No Budget math changes
-- No `budget_transactions` changes unless audit proves a policy is wrong and change is explicitly approved
-
-**Gate:** 5E-7 must pass before any of 5F-0, 5F-1, 5F-2, 5G, 5H, 5I, or 5J begins.
-
-**Do not start until explicitly approved.**
+- No `budget_transactions` schema/RLS changes
+- No new DELETE policies (missing DELETE on `weekly_reconciliations`, `weekly_tasks`, `weekly_notes` is a pre-existing gap, not introduced here)
 
 ---
 
@@ -207,11 +297,11 @@ Confirm the system is operationally ready for Wendy to use as of July 1.
 - Known limitations documented (no splits, no transfers, no imports, no reconciliation yet)
 - No major new feature build unless a readiness blocker is found during this phase
 
-**Gate:** Unblocked after 5E-6 passes. No code changes expected unless a blocker surfaces.
+**Gate:** Unblocked after 5E-7 code/tests pass AND live SQL P8/V12 audit returns no STOP CONDITION. Resolve P8/V12 (budget_line_rules write policy) before starting. No other code changes expected unless a blocker surfaces.
 
 ---
 
-### Phase 5E-8 — Category Registry Admin (DEFERRED)
+### Phase 5E-9 — Category Registry Admin (DEFERRED)
 New category creation UI (keys not in `BUDGET_CATEGORY_REGISTRY`). Deferred unless a 7/1 blocker is found from missing registry keys.
 
 **If triggered:** adds a Category Registry Admin panel to create new leaf keys and register them in the JS `BUDGET_CATEGORY_REGISTRY`. Scope TBD at that time.
@@ -232,7 +322,7 @@ Lightweight actionable summary panel — not a full dashboard redesign.
 - No broad dashboard redesign
 - No new schema
 
-**Gate:** Unblocked after 5E-6 passes. Does not require 5F-1 or 5F-2.
+**Gate:** Unblocked after 5E-7 passes (5E-7 is now complete). Does not require 5F-1 or 5F-2.
 
 **Do not start until explicitly approved.**
 

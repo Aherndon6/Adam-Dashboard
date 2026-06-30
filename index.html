@@ -857,7 +857,7 @@ button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-vis
 // ── Constants (unchanged) ──────────────────────────────────────────────────
 // Simplified architecture — $8,250 total from LC · $6,500 operating floor · no legacy mechanics
 // Real-world moves: keep $2,250 in chk, move $2,750 sav→chk, move $1,000 LC→chk, move $2,250 LC→chk (Option 1 correction)
-const BUILD_TS='2026-06-29T09:49:12'; // updated each push — local time string
+const BUILD_TS='2026-06-30T14:46:24'; // updated each push — local time string
 const START_CHK=18037.73,START_SAV=3772.77,START_AMX=103.64,START_TAX=0,START_LC=13488.88;
 const EF_AMT=13488.88; // LC/EF balance — static this model year (no transfers in or out)
 const BASE_TAX=521.36,RET_SAV_XFR=3772.74;
@@ -1016,6 +1016,7 @@ function validateActionOverride(id, proposedOverride){
 // Open inline edit panel for a model action or custom task
 // mode: 'move'|'label'|'delete'|'edit' (default 'edit' = legacy combined panel)
 function openActionEdit(type, id, weekNum, mode){
+  if(!canWriteFinancials())return;
   actionEditState={type:type,id:id,weekNum:weekNum,mode:mode||'edit',saving:false,warnings:{errors:[],warnings:[],info:[]}};
   renderApp();
 }
@@ -1027,6 +1028,7 @@ function closeActionEdit(){
 // Save override for a model-generated action key
 // props: {week_num?, label?, deleted?}
 function saveActionOverride(id, props){
+  if(!canWriteFinancials())return;
   if(!id||typeof props!=='object')return;
   // Reconciled-week guard: block if EITHER the effective week OR the original default week is reconciled.
   // This prevents editing an action that was previously moved away from a reconciled week.
@@ -1060,6 +1062,7 @@ function saveActionOverride(id, props){
 // while preserving the override record (so it stays gone until explicitly restored).
 // UI: "Reset to default" calls this. "Delete action" (costco_visa only) calls saveActionOverride({deleted:true}).
 function deleteActionOverride(id){
+  if(!canWriteFinancials())return;
   delete actionOverrides[id];
   persistActionOverrides();
   actionEditState=null;
@@ -1203,54 +1206,34 @@ function renderActionEditPanel(id, currentLabel, weekNum){
 
 // Reset all action overrides to model defaults
 function resetAllActionOverrides(){
+  if(!canWriteFinancials())return;
   if(!confirm('Reset all action schedule changes to model defaults?'))return;
   actionOverrides={};
   persistActionOverrides();
   renderApp();
 }
 
-// Custom task CRUD (localStorage-backed until Supabase wired)
-// Note: deleteCustomTask is already defined for Supabase custom tasks (line below);
-// these functions extend with move/date/label editing capabilities.
+// DEPRECATED legacy helpers — replaced by Supabase-REST equivalents in Phase 5E-7.
+// These contained direct supabase.from() write calls and no role guard.
+// Now no-ops: they are not called from any UI path. Kept as stubs so any
+// accidental call surface-logs rather than silently writing to the DB.
 function moveCustomTask(id, toWeekNum){
-  if(!id||!toWeekNum)return;
-  // Block move from/to reconciled weeks via Supabase custom task data
-  var fromEntry=null;
-  Object.keys(customTaskData).forEach(function(wk){
-    customTaskData[wk].forEach(function(ct){if(ct.id===id)fromEntry={wk:parseInt(wk),ct:ct};});
-  });
-  if(!fromEntry)return;
-  if(isWeekReconciled(fromEntry.wk)||isWeekReconciled(toWeekNum)){
-    alert('Cannot move a task into or out of a reconciled week.');return;
-  }
-  // Update Supabase custom_tasks table
-  supabase.from('custom_tasks').update({week_num:toWeekNum}).eq('id',id).then(function(res){
-    if(res.error){alert('Move failed: '+res.error.message);return;}
-    // Refresh custom task data
-    loadCustomTasks().then(renderApp);
-  });
+  if(!canWriteFinancials()){console.warn('[deprecated] moveCustomTask: permission denied');return;}
+  console.warn('[deprecated] moveCustomTask: use Supabase REST path');
 }
-
 function editCustomTaskLabel(id, newLabel){
-  if(!id||!newLabel)return;
-  supabase.from('custom_tasks').update({label:newLabel.trim()}).eq('id',id).then(function(res){
-    if(res.error){alert('Edit failed: '+res.error.message);return;}
-    loadCustomTasks().then(renderApp);
-  });
+  if(!canWriteFinancials()){console.warn('[deprecated] editCustomTaskLabel: permission denied');return;}
+  console.warn('[deprecated] editCustomTaskLabel: use Supabase REST path');
 }
-
 function editCustomTaskDate(id, date){
-  if(!id)return;
-  supabase.from('custom_tasks').update({due_date:date||null}).eq('id',id).then(function(res){
-    if(res.error){alert('Date update failed: '+res.error.message);return;}
-    loadCustomTasks().then(renderApp);
-  });
+  if(!canWriteFinancials()){console.warn('[deprecated] editCustomTaskDate: permission denied');return;}
+  console.warn('[deprecated] editCustomTaskDate: use Supabase REST path');
 }
 
 // actionEditState: {type:'model'|'custom', id, weekNum, saving, warnings} | null
 var actionEditState=null;
 var editOpen=null;
-var USER_ROLE='viewer'; // fail closed — set during checkAuthorization; 'owner'|'editor'|'viewer'
+var USER_ROLE='viewer'; // fail closed — set during checkAuthorization; 'owner'|'household_admin'|'viewer'
 // Phase 2 state
 var reconDeleteConfirm=false;
 var editDeleteConfirm=false;
@@ -1314,12 +1297,15 @@ function getTaskMeta(id,label){
 function setTaskMeta(id,fields){
   customTaskMeta[id]=Object.assign({},getTaskMeta(id,''),fields);
 }
+// Returns true on HTTP success, false on failure. Callers that need rollback check the return value.
 async function saveCustomTaskMeta(){
-  if(!canWriteFinancials())return;
+  if(!canWriteFinancials())return false;
   try{
     var h=await getAuthHeaders();
-    return fetch(SUPA_URL+'/rest/v1/goals',{method:'POST',headers:Object.assign({},h,{'Prefer':'resolution=merge-duplicates,return=minimal'}),body:JSON.stringify({key:'custom_task_meta',value:JSON.stringify(customTaskMeta)})}).catch(function(e){console.error('saveCustomTaskMeta:',e);});
-  }catch(e){console.error('saveCustomTaskMeta:',e);}
+    var r=await fetch(SUPA_URL+'/rest/v1/goals',{method:'POST',headers:Object.assign({},h,{'Prefer':'resolution=merge-duplicates,return=minimal'}),body:JSON.stringify({key:'custom_task_meta',value:JSON.stringify(customTaskMeta)})});
+    if(!r.ok){console.error('saveCustomTaskMeta: HTTP '+r.status);return false;}
+    return true;
+  }catch(e){console.error('saveCustomTaskMeta:',e);return false;}
 }
 function migrateCustomTaskMeta(){
   // Run after hydration — assign type/reminderKey for tasks missing version field
@@ -1341,15 +1327,22 @@ function migrateCustomTaskMeta(){
   });
   if(_changed&&canWriteFinancials())saveCustomTaskMeta(); // persist so migration doesn't re-run on every reload
 }
-function flipCustomTaskType(weekNum,id){
+async function flipCustomTaskType(weekNum,id){
   if(!canWriteFinancials())return;
   var ct=(customTaskData[weekNum]||[]).find(function(t){return t.id===id;});
   if(!ct)return;
   var meta=getTaskMeta(id,ct.label);
   if(meta.source==='auto_reminder')return; // auto-reminders type is fixed
+  var prevMeta=Object.assign({},meta); // snapshot for rollback
   setTaskMeta(id,Object.assign({},meta,{type:meta.type==='transfer'?'action':'transfer'}));
-  saveCustomTaskMeta();
   renderApp();
+  var ok=await saveCustomTaskMeta();
+  if(!ok){
+    // Roll back to previous meta
+    setTaskMeta(id,prevMeta);
+    renderApp();
+    console.error('flipCustomTaskType: meta save failed; reverted');
+  }
 }
 
 // ── Auto-reminder definitions ──────────────────────────────────────────────
@@ -1395,57 +1388,98 @@ function ensureAutoReminders(weekNum){
 }
 
 // ── Custom task CRUD ───────────────────────────────────────────────────────
-function saveCustomTask(weekNum,type){
+async function saveCustomTask(weekNum,type){
   if(!canWriteFinancials())return;
   var inp=document.getElementById('ct-inp-'+weekNum);
   var label=inp?inp.value.trim():'';
   if(!label)return;
   var id='ct_'+Date.now()+'_'+Math.random().toString(36).slice(2,6);
   var taskType=type||'action';
+  // Optimistic: add locally first so UI feels instant
   if(!customTaskData[weekNum])customTaskData[weekNum]=[];
   customTaskData[weekNum].push({id:id,label:label,completed:false});
-  setTaskMeta(id,{type:taskType,source:'user',reminderKey:null,lockedLabel:false,dismissed:false,version:1});
+  var newMeta={type:taskType,source:'user',reminderKey:null,lockedLabel:false,dismissed:false,version:1};
+  setTaskMeta(id,newMeta);
   customTaskState=null;
   renderApp();
-  getAuthHeaders().then(function(h){return Promise.all([
-    fetch(SUPA_URL+'/rest/v1/custom_tasks',{method:'POST',headers:Object.assign({},h,{'Prefer':'return=minimal'}),body:JSON.stringify({id:id,week_num:weekNum,label:label,completed:false})}),
-    saveCustomTaskMeta()
-  ]);}).catch(function(e){console.error('saveCustomTask:',e);});
+  try{
+    var h=await getAuthHeaders();
+    var r=await fetch(SUPA_URL+'/rest/v1/custom_tasks',{method:'POST',headers:Object.assign({},h,{'Prefer':'return=minimal'}),body:JSON.stringify({id:id,week_num:weekNum,label:label,completed:false})});
+    if(!r.ok){
+      // Roll back local insertion on failure
+      customTaskData[weekNum]=(customTaskData[weekNum]||[]).filter(function(t){return t.id!==id;});
+      delete customTaskMeta[id];
+      renderApp();
+      console.error('saveCustomTask: POST failed HTTP '+r.status);
+      return;
+    }
+    // Persist meta only after task row confirmed; if meta save fails, remove local metadata to avoid misleading state
+    var metaOk=await saveCustomTaskMeta();
+    if(!metaOk){delete customTaskMeta[id];renderApp();console.warn('saveCustomTask: task row saved but metadata persistence failed; local meta cleared');}
+  }catch(e){
+    customTaskData[weekNum]=(customTaskData[weekNum]||[]).filter(function(t){return t.id!==id;});
+    delete customTaskMeta[id];
+    renderApp();
+    console.error('saveCustomTask:',e);
+  }
 }
-function toggleCustomTask(weekNum,id,checked){
+async function toggleCustomTask(weekNum,id,checked){
   if(!canWriteFinancials())return;
   if(!customTaskData[weekNum])return;
   var ct=customTaskData[weekNum].find(function(t){return t.id===id;});
   if(!ct)return;
-  ct.completed=checked;
+  var prevCompleted=ct.completed; // snapshot for rollback
+  ct.completed=checked; // optimistic
   var meta=getTaskMeta(id,ct.label);
-  // Upsert handles both new (auto-reminder first toggle) and existing records
-  getAuthHeaders().then(function(h){return fetch(SUPA_URL+'/rest/v1/custom_tasks',{method:'POST',headers:Object.assign({},h,{'Prefer':'resolution=merge-duplicates,return=minimal'}),body:JSON.stringify({id:id,week_num:weekNum,label:ct.label,completed:checked})}).catch(function(e){console.error('toggleCustomTask:',e);});}).catch(function(e){console.error('toggleCustomTask auth:',e);});
-  // Persist meta: always for auto-reminders (source/reminderKey must survive reload); otherwise on first interaction
-  if(meta.source==='auto_reminder'||meta.reminderKey||(meta.version>=1&&!customTaskMeta[id])){setTaskMeta(id,meta);saveCustomTaskMeta();}
+  try{
+    var h=await getAuthHeaders();
+    var r=await fetch(SUPA_URL+'/rest/v1/custom_tasks',{method:'POST',headers:Object.assign({},h,{'Prefer':'resolution=merge-duplicates,return=minimal'}),body:JSON.stringify({id:id,week_num:weekNum,label:ct.label,completed:checked})});
+    if(!r.ok){
+      ct.completed=prevCompleted; // roll back
+      renderApp();
+      console.error('toggleCustomTask: upsert failed HTTP '+r.status);
+      return;
+    }
+    // Persist meta: always for auto-reminders; otherwise on first interaction
+    if(meta.source==='auto_reminder'||meta.reminderKey||(meta.version>=1&&!customTaskMeta[id])){setTaskMeta(id,meta);await saveCustomTaskMeta();}
+  }catch(e){ct.completed=prevCompleted;renderApp();console.error('toggleCustomTask:',e);}
 }
-function deleteCustomTask(weekNum,id){
+async function deleteCustomTask(weekNum,id){
   if(!canWriteFinancials())return;
   if(!customTaskData[weekNum])return;
-  customTaskData[weekNum]=customTaskData[weekNum].filter(function(t){return t.id!==id;});
-  delete customTaskMeta[id];
-  renderApp();
-  getAuthHeaders().then(function(h){return Promise.all([
-    fetch(SUPA_URL+'/rest/v1/custom_tasks?id=eq.'+encodeURIComponent(id),{method:'DELETE',headers:h}),
-    saveCustomTaskMeta()
-  ]);}).catch(function(e){console.error('deleteCustomTask:',e);});
+  // Delete on server FIRST — only remove locally if it succeeds
+  try{
+    var h=await getAuthHeaders();
+    var r=await fetch(SUPA_URL+'/rest/v1/custom_tasks?id=eq.'+encodeURIComponent(id),{method:'DELETE',headers:h});
+    if(!r.ok){console.error('deleteCustomTask: DELETE failed HTTP '+r.status);return;}
+    var prevMeta=Object.assign({},customTaskMeta[id]);
+    customTaskData[weekNum]=customTaskData[weekNum].filter(function(t){return t.id!==id;});
+    delete customTaskMeta[id];
+    var metaOk=await saveCustomTaskMeta();
+    if(!metaOk){
+      // Restore meta so next sync picks it up
+      customTaskMeta[id]=prevMeta;
+      console.error('deleteCustomTask: meta save failed after DELETE succeeded');
+    }
+    renderApp();
+  }catch(e){console.error('deleteCustomTask:',e);}
 }
-function dismissAutoReminder(weekNum,id){
+async function dismissAutoReminder(weekNum,id){
   if(!canWriteFinancials())return;
   if(!customTaskData[weekNum])return;
   var ct=customTaskData[weekNum].find(function(t){return t.id===id;});
   if(!ct)return;
   var meta=getTaskMeta(id,ct.label);
-  setTaskMeta(id,Object.assign({},meta,{dismissed:true}));
-  // Upsert so dismissal survives page reload
-  getAuthHeaders().then(function(h){return fetch(SUPA_URL+'/rest/v1/custom_tasks',{method:'POST',headers:Object.assign({},h,{'Prefer':'resolution=merge-duplicates,return=minimal'}),body:JSON.stringify({id:id,week_num:weekNum,label:ct.label,completed:false})}).catch(function(e){console.error('dismissAutoReminder:',e);});}).catch(function(e){console.error('dismissAutoReminder auth:',e);});
-  saveCustomTaskMeta();
+  var prevMeta=Object.assign({},meta); // snapshot
+  setTaskMeta(id,Object.assign({},meta,{dismissed:true})); // optimistic
   renderApp();
+  try{
+    var h=await getAuthHeaders();
+    var r=await fetch(SUPA_URL+'/rest/v1/custom_tasks',{method:'POST',headers:Object.assign({},h,{'Prefer':'resolution=merge-duplicates,return=minimal'}),body:JSON.stringify({id:id,week_num:weekNum,label:ct.label,completed:false})});
+    if(!r.ok){setTaskMeta(id,prevMeta);renderApp();console.error('dismissAutoReminder: upsert failed HTTP '+r.status);return;}
+    var metaOk=await saveCustomTaskMeta();
+    if(!metaOk){setTaskMeta(id,prevMeta);renderApp();console.error('dismissAutoReminder: meta save failed');}
+  }catch(e){setTaskMeta(id,prevMeta);renderApp();console.error('dismissAutoReminder:',e);}
 }
 
 // ── Phase 6A: Dynamic Goal Registry ─────────────────────────────────────────
@@ -1973,6 +2007,7 @@ async function saveRecon(n){
   function gv(id){return parseFloat(document.getElementById(id).value)||0;}
   const data={chk:gv('ri_chk'),sav:gv('ri_sav'),amx:gv('ri_amx'),tax:gv('ri_tax'),lc:gv('ri_lc')};
   const now=new Date();
+  var prevRecon=reconData[n]?Object.assign({},reconData[n]):undefined; // snapshot
   reconData[n]={...data,date:now.toLocaleDateString('en-US',{month:'short',day:'numeric'})};
   reconSaving=true;renderApp();
   try{
@@ -1981,6 +2016,8 @@ async function saveRecon(n){
     if(!r.ok)throw new Error('HTTP '+r.status);
     reconSaving=false;reconOpen=null;renderApp();
   }catch(e){
+    // Roll back local state so stale data is not displayed
+    if(prevRecon!==undefined){reconData[n]=prevRecon;}else{delete reconData[n];}
     console.error('saveRecon:',e);
     reconSaving=false;
     var errEl=document.querySelector('.recon-error');if(errEl){errEl.style.display='block';}
@@ -2002,20 +2039,33 @@ async function deleteRecon(n){
 async function toggleTask(weekNum,taskIdx,checked,actionKey,amount){
   if(!canWriteFinancials())return;
   const key=weekNum+'_'+taskIdx;const now=new Date().toISOString();
-  // Snapshot completed amount AND label at check time so label stays accurate if model recalculates
   var completedAmount=(checked&&amount!=null)?amount:null;
   var completedLabel=(checked&&actionKey)?(_actionLabelCache[key]||null):null;
+  var prevTask=taskData[key]?Object.assign({},taskData[key]):undefined; // snapshot
   taskData[key]={completed:checked,completedAt:checked?now:null,completedAmount:completedAmount,actionKey:actionKey||null,completedLabel:completedLabel};
   try{
     var h=await getAuthHeaders();
-    await fetch(SUPA_URL+'/rest/v1/weekly_tasks',{method:'POST',headers:Object.assign({},h,{'Prefer':'resolution=merge-duplicates,return=minimal'}),body:JSON.stringify({week_num:weekNum,task_idx:taskIdx,completed:checked,completed_at:checked?now:null,completed_amount:completedAmount,action_key:actionKey||null,completed_label:completedLabel})});
-  }catch(e){console.error('toggleTask:',e);}
+    var r=await fetch(SUPA_URL+'/rest/v1/weekly_tasks',{method:'POST',headers:Object.assign({},h,{'Prefer':'resolution=merge-duplicates,return=minimal'}),body:JSON.stringify({week_num:weekNum,task_idx:taskIdx,completed:checked,completed_at:checked?now:null,completed_amount:completedAmount,action_key:actionKey||null,completed_label:completedLabel})});
+    if(!r.ok){
+      // Roll back local state
+      if(prevTask!==undefined){taskData[key]=prevTask;}else{delete taskData[key];}
+      renderApp();
+      console.error('toggleTask: upsert failed HTTP '+r.status);
+      return;
+    }
+  }catch(e){
+    if(prevTask!==undefined){taskData[key]=prevTask;}else{delete taskData[key];}
+    renderApp();
+    console.error('toggleTask:',e);
+    return;
+  }
   renderApp();
 }
 
 // ── Notes (unchanged) ──────────────────────────────────────────────────────
 async function saveNote(weekNum,el){
   if(!canWriteFinancials())return;
+  var prevNote=noteData[weekNum]; // snapshot
   noteData[weekNum]=el.value;
   const s=document.getElementById('ns_'+weekNum);if(s)s.textContent='Saving...';
   try{
@@ -2023,7 +2073,10 @@ async function saveNote(weekNum,el){
     var r=await fetch(SUPA_URL+'/rest/v1/weekly_notes',{method:'POST',headers:Object.assign({},h,{'Prefer':'resolution=merge-duplicates,return=minimal'}),body:JSON.stringify({week_num:weekNum,note:el.value})});
     if(!r.ok)throw new Error('HTTP '+r.status);
     if(s){s.textContent='Saved';setTimeout(function(){if(s)s.textContent='';},1800);}
-  }catch(e){console.error('saveNote:',e);if(s)s.textContent='Error';}
+  }catch(e){
+    noteData[weekNum]=prevNote; // roll back
+    console.error('saveNote:',e);if(s)s.textContent='Error';
+  }
 }
 
 // ── Edit drawer ────────────────────────────────────────────────────────────
@@ -2116,18 +2169,30 @@ async function saveWeekEdits(n){
       if(_deltaCt>0.005){
         var _ctIdx=_preWk?(_preWk.realActKeys||[]).indexOf(ACTION_KEYS.COMMISSION_TAX):-1;
         if(_ctIdx>=0&&taskData[weekNum+'_'+_ctIdx]&&taskData[weekNum+'_'+_ctIdx].completed){
-          taskData[weekNum+'_'+_ctIdx].completedAmount=_oldCt;
-          taskData[weekNum+'_'+_ctIdx].actionKey=ACTION_KEYS.COMMISSION_TAX;
-          fetch(SUPA_URL+'/rest/v1/weekly_tasks?week_num=eq.'+weekNum+'&task_idx=eq.'+_ctIdx,{method:'PATCH',headers:Object.assign({},_ewh,{'Prefer':'return=minimal'}),body:JSON.stringify({completed_amount:_oldCt,action_key:ACTION_KEYS.COMMISSION_TAX})}).catch(function(e){console.error('autoBackfillCompletedAmount:',e);});
-          var _id='ct_'+Date.now()+'_'+Math.random().toString(36).slice(2,6);
-          var _lbl='Transfer $'+fc(_deltaCt)+' from Truist Checking to Vio Bank – Tax Reserve (commission 40% on additional income)';
-          if(!customTaskData[weekNum])customTaskData[weekNum]=[];
-          customTaskData[weekNum].push({id:_id,label:_lbl,completed:false});
-          setTaskMeta(_id,{type:'transfer',source:'user',reminderKey:null,lockedLabel:false,dismissed:false,version:1});
-          Promise.all([
-            fetch(SUPA_URL+'/rest/v1/custom_tasks',{method:'POST',headers:Object.assign({},_ewh,{'Prefer':'return=minimal'}),body:JSON.stringify({id:_id,week_num:weekNum,label:_lbl,completed:false})}),
-            saveCustomTaskMeta()
-          ]).catch(function(e){console.error('autoCustomTask:',e);});
+          var _ctTaskKey=weekNum+'_'+_ctIdx;
+          var _ctPrevAmt=taskData[_ctTaskKey].completedAmount; // snapshot
+          taskData[_ctTaskKey].completedAmount=_oldCt;
+          taskData[_ctTaskKey].actionKey=ACTION_KEYS.COMMISSION_TAX;
+          var _ctPatchR=await fetch(SUPA_URL+'/rest/v1/weekly_tasks?week_num=eq.'+weekNum+'&task_idx=eq.'+_ctIdx,{method:'PATCH',headers:Object.assign({},_ewh,{'Prefer':'return=minimal'}),body:JSON.stringify({completed_amount:_oldCt,action_key:ACTION_KEYS.COMMISSION_TAX})}).catch(function(e){console.error('autoBackfillCompletedAmount:',e);return null;});
+          if(!_ctPatchR||!_ctPatchR.ok){
+            taskData[_ctTaskKey].completedAmount=_ctPrevAmt; // roll back
+            console.warn('autoCustomTask: task backfill PATCH failed; reverted completed_amount');
+          } else {
+            var _id='ct_'+Date.now()+'_'+Math.random().toString(36).slice(2,6);
+            var _lbl='Transfer $'+fc(_deltaCt)+' from Truist Checking to Vio Bank – Tax Reserve (commission 40% on additional income)';
+            if(!customTaskData[weekNum])customTaskData[weekNum]=[];
+            customTaskData[weekNum].push({id:_id,label:_lbl,completed:false});
+            setTaskMeta(_id,{type:'transfer',source:'user',reminderKey:null,lockedLabel:false,dismissed:false,version:1});
+            var _ctCtR=await fetch(SUPA_URL+'/rest/v1/custom_tasks',{method:'POST',headers:Object.assign({},_ewh,{'Prefer':'return=minimal'}),body:JSON.stringify({id:_id,week_num:weekNum,label:_lbl,completed:false})}).catch(function(e){console.error('autoCustomTask:',e);return null;});
+            if(!_ctCtR||!_ctCtR.ok){
+              customTaskData[weekNum]=(customTaskData[weekNum]||[]).filter(function(t){return t.id!==_id;});
+              delete customTaskMeta[_id];
+              console.warn('autoCustomTask: custom task POST failed; local task removed');
+            } else {
+              var _ctMetaOk=await saveCustomTaskMeta();
+              if(!_ctMetaOk){delete customTaskMeta[_id];console.warn('autoCustomTask: task row saved but metadata save failed; local meta cleared');}
+            }
+          }
         }
       }
     }
@@ -2138,34 +2203,48 @@ async function saveWeekEdits(n){
       var _postWk=runModel(_gPost.ak,_gPost.rt).find(function(w){return w.num===weekNum;})||null;
       if(_postWk){
         var _parseSwpAmt=function(lbl){var m=/\$([0-9,]+(?:\.[0-9]+)?)/.exec(lbl||'');return m?parseFloat(m[1].replace(/,/g,'')):0;};
-        (_postWk.realActKeys||[]).forEach(function(aKey,ai){
-          if(!aKey||aKey.indexOf('goal_')!==0)return;
+        var _realActKeys=_postWk.realActKeys||[];
+        for(var _gai=0;_gai<_realActKeys.length;_gai++){
+          var aKey=_realActKeys[_gai];var ai=_gai;
+          if(!aKey||aKey.indexOf('goal_')!==0)continue;
           var td=taskData[weekNum+'_'+ai];
-          if(!td||!td.completed)return;
+          if(!td||!td.completed)continue;
           var _preIdx=(_preWk.realActKeys||[]).indexOf(aKey);
-          if(_preIdx<0)return;
+          if(_preIdx<0)continue;
           var _prevAmt=td.completedAmount!=null?td.completedAmount:_parseSwpAmt(_preWk.realActs[_preIdx]);
           var _newAmt=_parseSwpAmt(_postWk.realActs[ai]);
           var _gDelta=Math.round((_newAmt-_prevAmt)*100)/100;
           if(_gDelta>0.005){
-            taskData[weekNum+'_'+ai].completedAmount=_prevAmt;
-            taskData[weekNum+'_'+ai].actionKey=aKey;
-            fetch(SUPA_URL+'/rest/v1/weekly_tasks?week_num=eq.'+weekNum+'&task_idx=eq.'+ai,{method:'PATCH',headers:Object.assign({},_ewh,{'Prefer':'return=minimal'}),body:JSON.stringify({completed_amount:_prevAmt,action_key:aKey})}).catch(function(e){console.error('autoBackfillGoal:',e);});
-            var _goalId=aKey.replace('goal_','');
-            var _goalDef=GOALS_REGISTRY.find(function(x){return x.id===_goalId;})||{};
-            var _goalName=_goalDef.name||_goalId;
-            var _dstLbl=_goalDef.dest||_goalName;
-            var _gId='gd_'+aKey+'_'+Date.now()+'_'+Math.random().toString(36).slice(2,6);
-            var _gLbl='Transfer $'+fc(_gDelta)+' from Truist Checking to '+_dstLbl+' ('+_goalName+' — additional allocation)';
-            if(!customTaskData[weekNum])customTaskData[weekNum]=[];
-            customTaskData[weekNum].push({id:_gId,label:_gLbl,completed:false});
-            setTaskMeta(_gId,{type:'transfer',source:'user',reminderKey:null,lockedLabel:false,dismissed:false,version:1});
-            Promise.all([
-              fetch(SUPA_URL+'/rest/v1/custom_tasks',{method:'POST',headers:Object.assign({},_ewh,{'Prefer':'return=minimal'}),body:JSON.stringify({id:_gId,week_num:weekNum,label:_gLbl,completed:false})}),
-              saveCustomTaskMeta()
-            ]).catch(function(e){console.error('autoCustomTaskGoal:',e);});
+            var _gTaskKey=weekNum+'_'+ai;
+            var _gPrevAmt=taskData[_gTaskKey].completedAmount; // snapshot
+            taskData[_gTaskKey].completedAmount=_prevAmt;
+            taskData[_gTaskKey].actionKey=aKey;
+            var _gPatchR=await fetch(SUPA_URL+'/rest/v1/weekly_tasks?week_num=eq.'+weekNum+'&task_idx=eq.'+ai,{method:'PATCH',headers:Object.assign({},_ewh,{'Prefer':'return=minimal'}),body:JSON.stringify({completed_amount:_prevAmt,action_key:aKey})}).catch(function(e){console.error('autoBackfillGoal:',e);return null;});
+            if(!_gPatchR||!_gPatchR.ok){
+              taskData[_gTaskKey].completedAmount=_gPrevAmt; // roll back
+              console.warn('autoCustomTaskGoal: task backfill PATCH failed for '+aKey+'; reverted');
+            } else {
+              var _goalId=aKey.replace('goal_','');
+              var _goalDef=GOALS_REGISTRY.find(function(x){return x.id===_goalId;})||{};
+              var _goalName=_goalDef.name||_goalId;
+              var _dstLbl=_goalDef.dest||_goalName;
+              var _gId='gd_'+aKey+'_'+Date.now()+'_'+Math.random().toString(36).slice(2,6);
+              var _gLbl='Transfer $'+fc(_gDelta)+' from Truist Checking to '+_dstLbl+' ('+_goalName+' — additional allocation)';
+              if(!customTaskData[weekNum])customTaskData[weekNum]=[];
+              customTaskData[weekNum].push({id:_gId,label:_gLbl,completed:false});
+              setTaskMeta(_gId,{type:'transfer',source:'user',reminderKey:null,lockedLabel:false,dismissed:false,version:1});
+              var _gCtR=await fetch(SUPA_URL+'/rest/v1/custom_tasks',{method:'POST',headers:Object.assign({},_ewh,{'Prefer':'return=minimal'}),body:JSON.stringify({id:_gId,week_num:weekNum,label:_gLbl,completed:false})}).catch(function(e){console.error('autoCustomTaskGoal:',e);return null;});
+              if(!_gCtR||!_gCtR.ok){
+                customTaskData[weekNum]=(customTaskData[weekNum]||[]).filter(function(t){return t.id!==_gId;});
+                delete customTaskMeta[_gId];
+                console.warn('autoCustomTaskGoal: custom task POST failed for '+aKey+'; local task removed');
+              } else {
+                var _gMetaOk=await saveCustomTaskMeta();
+                if(!_gMetaOk){delete customTaskMeta[_gId];console.warn('autoCustomTaskGoal: task row saved but metadata save failed for '+aKey+'; local meta cleared');}
+              }
+            }
           }
-        });
+        }
       }
     }
   }catch(e){
@@ -2987,7 +3066,7 @@ function renderWeekDetail(w,weeks){
         var badge=isLocked?'<span class="act-type-badge locked">Locked</span>':isModelAct?'<span class="act-type-badge model">Model</span>':'';
         var noteHtml=note?'<div class="act-override-note">'+esc(note)+'</div>':'';
         var controls='';
-        if(isModelAct&&!isLocked&&!_weekIsRecon){
+        if(isModelAct&&!isLocked&&!_weekIsRecon&&canWriteFinancials()){
           controls='<div class="act-row-controls">'+
             '<button class="task-edit-btn" onclick="openActionEdit(\'model\',\''+actionKey+'\','+w.num+',\'move\')">Move</button>'+
             '<button class="task-edit-btn" onclick="openActionEdit(\'model\',\''+actionKey+'\','+w.num+',\'label\')">Relabel</button>'+
@@ -3012,17 +3091,18 @@ function renderWeekDetail(w,weeks){
       (_xfrCT.length?_xfrCT.map(function(ct){
         var meta=getTaskMeta(ct.id,ct.label);
         var isAutoXfr=meta.source==='auto_reminder';
-        var typeBadge='<span class="act-type-badge" style="background:var(--surface);border:1px solid var(--line2);cursor:'+(meta.source==='user'?'pointer':'default')+'" '+(meta.source==='user'?'onclick="flipCustomTaskType('+w.num+',\''+ct.id+'\')" title="Click to reclassify as Action Item"':'')+'>Transfer</span>';
+        var _canFlipXfr=meta.source==='user'&&canWriteFinancials();
+        var typeBadge='<span class="act-type-badge" style="background:var(--surface);border:1px solid var(--line2);cursor:'+(_canFlipXfr?'pointer':'default')+'" '+(_canFlipXfr?'onclick="flipCustomTaskType('+w.num+',\''+ct.id+'\')" title="Click to reclassify as Action Item"':'')+'>Transfer</span>';
         return'<div class="task-row">'+
-          '<input type="checkbox" class="task-check" '+(ct.completed?'checked':'')+' onchange="toggleCustomTask('+w.num+',\''+ct.id+'\',this.checked)">'+
+          '<input type="checkbox" class="task-check" '+(ct.completed?'checked':'')+' '+(canWriteFinancials()?'onchange="toggleCustomTask('+w.num+',\''+ct.id+'\',this.checked)"':'disabled')+'>'+
           '<div class="task-text'+(ct.completed?' done':'')+'">'+typeBadge+esc(ct.label)+'<span class="task-date">'+(isAutoXfr?'Auto':'Custom')+'</span></div>'+
-          ((!_weekIsRecon||isAutoXfr)?'<button class="custom-task-del" onclick="'+(isAutoXfr?'dismissAutoReminder':'deleteCustomTask')+'('+w.num+',\''+ct.id+'\')" title="'+(isAutoXfr?'Dismiss':'Remove')+'">✕</button>':'')+
+          (canWriteFinancials()&&(!_weekIsRecon||isAutoXfr)?'<button class="custom-task-del" onclick="'+(isAutoXfr?'dismissAutoReminder':'deleteCustomTask')+'('+w.num+',\''+ct.id+'\')" title="'+(isAutoXfr?'Dismiss':'Remove')+'">✕</button>':'')+
         '</div>';
       }).join(''):'')+
-      // Add Transfer form / button
-      (_addingXfr?
+      // Add Transfer form / button (writers only; guard stale customTaskState)
+      (canWriteFinancials()&&_addingXfr?
         '<div class="custom-task-form"><input class="custom-task-input" id="ct-inp-'+w.num+'" type="text" placeholder="Transfer $X from A to B (reason)..." maxlength="200"><button class="custom-task-save-btn" onclick="saveCustomTask('+w.num+',\'transfer\')">Add</button><button class="custom-task-add-btn" onclick="customTaskState=null;renderApp()">Cancel</button></div>':
-        '<button class="custom-task-add-btn" onclick="customTaskState={addingWeek:'+w.num+',addingType:\'transfer\'};renderApp()">+ Add transfer</button>')+
+        (canWriteFinancials()?'<button class="custom-task-add-btn" onclick="customTaskState={addingWeek:'+w.num+',addingType:\'transfer\'};renderApp()">+ Add transfer</button>':''))+
     '</div></div>';
   }
 
@@ -3034,17 +3114,18 @@ function renderWeekDetail(w,weeks){
       (_actCT.length?_actCT.map(function(ct){
         var meta=getTaskMeta(ct.id,ct.label);
         var isAutoAct=meta.source==='auto_reminder';
-        var typeBadge='<span class="act-type-badge" style="background:var(--surface);border:1px solid var(--line2);cursor:'+(meta.source==='user'?'pointer':'default')+'" '+(meta.source==='user'?'onclick="flipCustomTaskType('+w.num+',\''+ct.id+'\')" title="Click to reclassify as Transfer"':'')+'>Task</span>';
+        var _canFlipAct=meta.source==='user'&&canWriteFinancials();
+        var typeBadge='<span class="act-type-badge" style="background:var(--surface);border:1px solid var(--line2);cursor:'+(_canFlipAct?'pointer':'default')+'" '+(_canFlipAct?'onclick="flipCustomTaskType('+w.num+',\''+ct.id+'\')" title="Click to reclassify as Transfer"':'')+'>Task</span>';
         return'<div class="task-row">'+
-          '<input type="checkbox" class="task-check" '+(ct.completed?'checked':'')+' onchange="toggleCustomTask('+w.num+',\''+ct.id+'\',this.checked)">'+
+          '<input type="checkbox" class="task-check" '+(ct.completed?'checked':'')+' '+(canWriteFinancials()?'onchange="toggleCustomTask('+w.num+',\''+ct.id+'\',this.checked)"':'disabled')+'>'+
           '<div class="task-text'+(ct.completed?' done':'')+'">'+typeBadge+esc(ct.label)+'<span class="task-date">'+(isAutoAct?'Auto':'Custom')+'</span></div>'+
-          ((!_weekIsRecon||isAutoAct)?'<button class="custom-task-del" onclick="'+(isAutoAct?'dismissAutoReminder':'deleteCustomTask')+'('+w.num+',\''+ct.id+'\')" title="'+(isAutoAct?'Dismiss':'Remove')+'">✕</button>':'')+
+          (canWriteFinancials()&&(!_weekIsRecon||isAutoAct)?'<button class="custom-task-del" onclick="'+(isAutoAct?'dismissAutoReminder':'deleteCustomTask')+'('+w.num+',\''+ct.id+'\')" title="'+(isAutoAct?'Dismiss':'Remove')+'">✕</button>':'')+
         '</div>';
       }).join(''):'<div style="color:var(--muted);font-size:13px;padding:4px 0 8px">No action items this week.</div>')+
-      // Add Task form / button
-      (_addingAct?
+      // Add Task form / button (writers only; guard stale customTaskState)
+      (canWriteFinancials()&&_addingAct?
         '<div class="custom-task-form"><input class="custom-task-input" id="ct-inp-'+w.num+'" type="text" placeholder="Review / confirm / investigate..." maxlength="200"><button class="custom-task-save-btn" onclick="saveCustomTask('+w.num+',\'action\')">Add</button><button class="custom-task-add-btn" onclick="customTaskState=null;renderApp()">Cancel</button></div>':
-        '<button class="custom-task-add-btn" onclick="customTaskState={addingWeek:'+w.num+',addingType:\'action\'};renderApp()">+ Add task</button>')+
+        (canWriteFinancials()?'<button class="custom-task-add-btn" onclick="customTaskState={addingWeek:'+w.num+',addingType:\'action\'};renderApp()">+ Add task</button>':''))+
     '</div></div>';
   }
   // Notes
@@ -5942,14 +6023,17 @@ async function initAuth(){
   }
 }
 
+// Returns true on HTTP success, false on failure. Callers that depend on success must check the return value.
 async function saveGoal(key,value){
   // anthropic_key is owner-only; all other goal keys require household operational write access
-  if(key==='anthropic_key'){if(!isOwnerUser())return;}
-  else{if(!canWriteFinancials())return;}
+  if(key==='anthropic_key'){if(!isOwnerUser())return false;}
+  else{if(!canWriteFinancials())return false;}
   try{
     var h=await getAuthHeaders();
-    await fetch(SUPA_URL+'/rest/v1/goals',{method:'POST',headers:Object.assign({},h,{'Prefer':'resolution=merge-duplicates,return=minimal'}),body:JSON.stringify({key:key,value:String(value)})});
-  }catch(e){console.error('saveGoal:',e);}
+    var r=await fetch(SUPA_URL+'/rest/v1/goals',{method:'POST',headers:Object.assign({},h,{'Prefer':'resolution=merge-duplicates,return=minimal'}),body:JSON.stringify({key:key,value:String(value)})});
+    if(!r.ok){console.error('saveGoal('+key+'): HTTP '+r.status);return false;}
+    return true;
+  }catch(e){console.error('saveGoal('+key+'):',e);return false;}
 }
 
 async function loadAll(){
@@ -5974,31 +6058,43 @@ async function loadAll(){
     if(goalsR.ok){(await goalsR.json()).forEach(function(row){
       if(row.key==='ak_goal'){goalAk=Math.max(1,parseFloat(row.value)||7000);}
       if(row.key==='rt_goal'){goalRt=Math.max(1,parseFloat(row.value)||7690.98);}
-      if(row.key==='anthropic_key'){anthropicKey=row.value||'';}
-      if(row.key==='custom_tasks'){try{var ct=JSON.parse(row.value);if(ct&&typeof ct==='object'){customTaskData=ct;try{localStorage.setItem('hfos_custom_tasks',row.value);}catch(e){}}}catch(e){}}
+      // anthropicKey is owner-only; non-owners must not receive the key
+      if(row.key==='anthropic_key'&&isOwnerUser()){anthropicKey=row.value||'';try{localStorage.setItem('herndon_anthropic_key',anthropicKey);}catch(e){}}
+      if(row.key==='custom_tasks'){try{var ct=JSON.parse(row.value);if(ct&&typeof ct==='object'){customTaskData=ct;if(canWriteFinancials()){try{localStorage.setItem('hfos_custom_tasks',row.value);}catch(e){}}}}catch(e){}}
       if(row.key==='custom_task_meta'){try{var cm=typeof row.value==='string'?JSON.parse(row.value):row.value;if(cm&&typeof cm==='object'){customTaskMeta=cm;}}catch(e){}}
     });}
     if(customTasksR.ok){
       var ctRows=await customTasksR.json();
       if(ctRows.length>0){
-        // Supabase has data — use it and clear any stale localStorage
+        // Supabase has data — use it and clear any stale localStorage (writers only)
         customTaskData={};
         // Spread existing metadata to preserve any fields beyond id/label/completed
         ctRows.forEach(function(row){if(!customTaskData[row.week_num])customTaskData[row.week_num]=[];customTaskData[row.week_num].push({id:row.id,label:row.label,completed:row.completed});});
-        try{localStorage.removeItem('hfos_custom_tasks');}catch(e){}
+        if(canWriteFinancials()){try{localStorage.removeItem('hfos_custom_tasks');}catch(e){}}
       } else {
-        // Nothing in Supabase — migrate from localStorage if present
+        // Nothing in Supabase — migrate from localStorage if present (writers only)
         try{
           var lsRaw=localStorage.getItem('hfos_custom_tasks');
           if(lsRaw){
             var lsParsed=JSON.parse(lsRaw);
             if(lsParsed&&typeof lsParsed==='object'){
               customTaskData=lsParsed;
-              var toMigrate=[];
-              Object.keys(lsParsed).forEach(function(wn){(lsParsed[wn]||[]).forEach(function(t){toMigrate.push({id:t.id,week_num:parseInt(wn),label:t.label,completed:t.completed||false});});});
-              if(toMigrate.length>0){
-                getAuthHeaders().then(function(mh){fetch(SUPA_URL+'/rest/v1/custom_tasks',{method:'POST',headers:Object.assign({},mh,{'Prefer':'return=minimal'}),body:JSON.stringify(toMigrate)}).then(function(){try{localStorage.removeItem('hfos_custom_tasks');}catch(e){}}).catch(function(e){console.error('migrate custom_tasks:',e);});}).catch(function(e){console.error('migrate custom_tasks auth:',e);});
-              } else {try{localStorage.removeItem('hfos_custom_tasks');}catch(e){}}
+              if(canWriteFinancials()){
+                var toMigrate=[];
+                Object.keys(lsParsed).forEach(function(wn){(lsParsed[wn]||[]).forEach(function(t){toMigrate.push({id:t.id,week_num:parseInt(wn),label:t.label,completed:t.completed||false});});});
+                if(toMigrate.length>0){
+                  getAuthHeaders().then(function(mh){
+                    return fetch(SUPA_URL+'/rest/v1/custom_tasks',{method:'POST',headers:Object.assign({},mh,{'Prefer':'return=minimal'}),body:JSON.stringify(toMigrate)});
+                  }).then(function(mr){
+                    if(mr.ok){try{localStorage.removeItem('hfos_custom_tasks');}catch(e){}}
+                    else{console.error('migrate custom_tasks: HTTP '+mr.status+'; localStorage NOT cleared');}
+                  }).catch(function(e){console.error('migrate custom_tasks:',e);});
+                } else {
+                  // No tasks to migrate: localStorage cleanup is safe even for writers
+                  try{localStorage.removeItem('hfos_custom_tasks');}catch(e){}
+                }
+              }
+              // Non-writers: do NOT POST to custom_tasks and do NOT remove localStorage
             }
           }
         }catch(e){}
@@ -6084,7 +6180,10 @@ var wishlistPhaseFilter=[];
 var WISHLIST_BUILD_TAGS=['Phase 5B Budget Module','Phase 5A Role Enforcement','Auth v1','Stabilization S1','Phase 6A Goal Registry','Phase 5 What-If','Phase 5 Budget Rules','Phase 4','Phase 3'];
 var WISHLIST_PHASE_ORDER=['Phase 1','Phase 2','Phase 3','Phase 4','Phase 5','Phase 6','Phase 7','Security','Auth+','Platform','Backlog'];
 var scenarioState={active:false,type:null,weekNum:1,params:{},previewOverride:null,previewGoal:null,commitModal:false};
-var anthropicKey=localStorage.getItem('herndon_anthropic_key')||'';
+// anthropicKey is initialized empty. It is only populated after role is confirmed (owner-only).
+// Reading from localStorage here would expose the key to non-owner sessions that share a browser.
+// See loadAll() for role-gated assignment.
+var anthropicKey='';
 var askMessages=[];
 var askLoading=false;
 
@@ -7023,10 +7122,12 @@ async function commitScenario(){
   if(!canWriteFinancials())return;
   try{
     if(scenarioState.type==='goal'&&scenarioState.previewGoal){
-      goalAk=scenarioState.previewGoal.ak;
-      goalRt=scenarioState.previewGoal.rt;
-      await saveGoal('ak_goal',goalAk);
-      await saveGoal('rt_goal',goalRt);
+      var _newAk=scenarioState.previewGoal.ak;
+      var _newRt=scenarioState.previewGoal.rt;
+      var _akOk=await saveGoal('ak_goal',_newAk);
+      var _rtOk=await saveGoal('rt_goal',_newRt);
+      if(!_akOk||!_rtOk){throw new Error('Goal save failed (ak:'+_akOk+' rt:'+_rtOk+'); local goals NOT updated');}
+      goalAk=_newAk;goalRt=_newRt;
     }else if(scenarioState.previewOverride){
       var payload=scenarioState.previewOverride;
       payload.updated_at=new Date().toISOString();
@@ -7060,7 +7161,7 @@ function renderScenarioModal(){
     '</div>'+
     '<div class="sc-modal-btns">'+
       '<button class="sc-modal-cancel" onclick="closeScenarioCommit()">Back — keep previewing</button>'+
-      '<button class="sc-modal-confirm" onclick="commitScenario()" style="background:#dc2626">Commit to live model</button>'+
+      (canWriteFinancials()?'<button class="sc-modal-confirm" onclick="commitScenario()" style="background:#dc2626">Commit to live model</button>':'<span style="color:#9ca3af;font-size:13px">Write access required to commit.</span>')+
     '</div>'+
   '</div></div>';
 }
@@ -7341,9 +7442,9 @@ async function phaseMigrateWishlist(){
   for(var i=0;i<phase4planned.length;i++){
     var item=phase4planned[i];
     try{
-      await fetch(SUPA_URL+'/rest/v1/wishlist_items?id=eq.'+item.id,{method:'PATCH',headers:Object.assign({},ph,{'Prefer':'return=minimal'}),body:JSON.stringify({phase:'Phase 5'})});
-      item.phase='Phase 5';
-      console.log('Wishlist phase migration: "'+item.title+'" Phase 4 planned → Phase 5');
+      var _pmr=await fetch(SUPA_URL+'/rest/v1/wishlist_items?id=eq.'+item.id,{method:'PATCH',headers:Object.assign({},ph,{'Prefer':'return=minimal'}),body:JSON.stringify({phase:'Phase 5'})});
+      if(_pmr.ok){item.phase='Phase 5';console.log('Wishlist phase migration: "'+item.title+'" Phase 4 planned → Phase 5');}
+      else{console.warn('phaseMigrate PATCH failed ('+_pmr.status+') for "'+item.title+'"');}
     }catch(e){console.warn('phaseMigrate error:',e);}
   }
   // 2. Title-based corrections for items seeded with wrong phases from older code.
@@ -7358,9 +7459,9 @@ async function phaseMigrateWishlist(){
     var match=wishlistData.find(function(x){return x.title===c.title;});
     if(match&&match.phase!==c.phase){
       try{
-        await fetch(SUPA_URL+'/rest/v1/wishlist_items?id=eq.'+match.id,{method:'PATCH',headers:Object.assign({},ph,{'Prefer':'return=minimal'}),body:JSON.stringify({phase:c.phase})});
-        match.phase=c.phase;
-        console.log('Wishlist phase migration: "'+match.title+'" → '+c.phase);
+        var _pcr=await fetch(SUPA_URL+'/rest/v1/wishlist_items?id=eq.'+match.id,{method:'PATCH',headers:Object.assign({},ph,{'Prefer':'return=minimal'}),body:JSON.stringify({phase:c.phase})});
+        if(_pcr.ok){match.phase=c.phase;console.log('Wishlist phase migration: "'+match.title+'" → '+c.phase);}
+        else{console.warn('phaseMigrate PATCH failed ('+_pcr.status+') for "'+match.title+'"');}
       }catch(e){console.warn('phaseMigrate error:',e);}
     }
   }
@@ -7376,9 +7477,9 @@ async function phaseMigrateWishlist(){
     var tm=wishlistData.find(function(x){return x.title===tc.oldTitle;});
     if(tm){
       try{
-        await fetch(SUPA_URL+'/rest/v1/wishlist_items?id=eq.'+tm.id,{method:'PATCH',headers:Object.assign({},ph,{'Prefer':'return=minimal'}),body:JSON.stringify({title:tc.newTitle,phase:tc.phase,notes:tc.notes})});
-        tm.title=tc.newTitle;tm.phase=tc.phase;tm.notes=tc.notes;
-        console.log('Wishlist title migration: "'+tc.oldTitle+'" → "'+tc.newTitle+'"');
+        var _ptr=await fetch(SUPA_URL+'/rest/v1/wishlist_items?id=eq.'+tm.id,{method:'PATCH',headers:Object.assign({},ph,{'Prefer':'return=minimal'}),body:JSON.stringify({title:tc.newTitle,phase:tc.phase,notes:tc.notes})});
+        if(_ptr.ok){tm.title=tc.newTitle;tm.phase=tc.phase;tm.notes=tc.notes;console.log('Wishlist title migration: "'+tc.oldTitle+'" → "'+tc.newTitle+'"');}
+        else{console.warn('titleMigrate PATCH failed ('+_ptr.status+') for "'+tc.oldTitle+'"');}
       }catch(e){console.warn('titleMigrate error:',e);}
     }
   }
@@ -7401,7 +7502,8 @@ async function saveWishlistItem(item){
   try{
     var wh=await getAuthHeaders();
     if(item.id){
-      await fetch(SUPA_URL+'/rest/v1/wishlist_items?id=eq.'+item.id,{method:'PATCH',headers:Object.assign({},wh,{'Prefer':'return=minimal'}),body:JSON.stringify({title:item.title,notes:item.notes,phase:item.phase,status:item.status,item_type:item.item_type||'feature',updated_at:new Date().toISOString()})});
+      var _wpr=await fetch(SUPA_URL+'/rest/v1/wishlist_items?id=eq.'+item.id,{method:'PATCH',headers:Object.assign({},wh,{'Prefer':'return=minimal'}),body:JSON.stringify({title:item.title,notes:item.notes,phase:item.phase,status:item.status,item_type:item.item_type||'feature',updated_at:new Date().toISOString()})});
+      if(!_wpr.ok){console.error('saveWishlistItem PATCH: HTTP '+_wpr.status);wishlistAddOpen=false;wishlistEditId=null;renderApp();return;}
       var idx=wishlistData.findIndex(function(x){return x.id===item.id;});
       if(idx>=0)wishlistData[idx]=Object.assign({},wishlistData[idx],item);
     }else{
@@ -7416,15 +7518,17 @@ async function deleteWishlistItem(id){
   if(!confirm('Delete this item?'))return;
   try{
     var h=await getAuthHeaders();
-    await fetch(SUPA_URL+'/rest/v1/wishlist_items?id=eq.'+id,{method:'DELETE',headers:h});
+    var _dr=await fetch(SUPA_URL+'/rest/v1/wishlist_items?id=eq.'+id,{method:'DELETE',headers:h});
+    if(!_dr.ok){console.error('deleteWishlistItem: HTTP '+_dr.status);return;}
     wishlistData=wishlistData.filter(function(x){return x.id!==id;});
     renderApp();
   }catch(e){console.error('deleteWishlistItem:',e);}
 }
+// Returns true on success, false on failure. Callers must check return value before committing local side effects.
 async function moveWishlistItem(id,newStatus,buildTag){
-  if(!canWriteFinancials())return;
+  if(!canWriteFinancials())return false;
   var item=wishlistData.find(function(x){return x.id===id;});
-  if(!item)return;
+  if(!item)return false;
   var upd={status:newStatus,updated_at:new Date().toISOString()};
   if(newStatus==='done'){
     upd.completed_in=buildTag||WISHLIST_BUILD_TAGS[0];
@@ -7435,11 +7539,13 @@ async function moveWishlistItem(id,newStatus,buildTag){
   }
   try{
     var mwh=await getAuthHeaders();
-    await fetch(SUPA_URL+'/rest/v1/wishlist_items?id=eq.'+id,{method:'PATCH',headers:Object.assign({},mwh,{'Prefer':'return=minimal'}),body:JSON.stringify(upd)});
+    var _mr=await fetch(SUPA_URL+'/rest/v1/wishlist_items?id=eq.'+id,{method:'PATCH',headers:Object.assign({},mwh,{'Prefer':'return=minimal'}),body:JSON.stringify(upd)});
+    if(!_mr.ok){console.error('moveWishlistItem: HTTP '+_mr.status);renderApp();return false;}
     var idx=wishlistData.findIndex(function(x){return x.id===id;});
     if(idx>=0)wishlistData[idx]=Object.assign({},wishlistData[idx],upd);
     renderApp();
-  }catch(e){console.error('moveWishlistItem:',e);}
+    return true;
+  }catch(e){console.error('moveWishlistItem:',e);return false;}
 }
 
 function renderRoadmap(){
@@ -7540,8 +7646,8 @@ function renderRoadmap(){
     items.forEach(function(it){phaseNums[it.phase||'Backlog']=parseInt((it.phase||'').replace('Phase ',''))||99;});
     var phases=[...new Set(items.map(function(i){return i.phase||'Backlog';}))].sort(function(a,b){return(phaseNums[a]||99)-(phaseNums[b]||99);});
     var body='';
-    if(wishlistAddOpen)body+=addForm();
-    if(!items.length&&!wishlistAddOpen){body+='<div class="wl-empty">'+(wishlistPhaseFilter.length?'No planned items match the current filter':'Nothing planned yet')+'</div>';}
+    if(canWriteFinancials()&&wishlistAddOpen)body+=addForm();
+    if(!items.length&&!(canWriteFinancials()&&wishlistAddOpen)){body+='<div class="wl-empty">'+(wishlistPhaseFilter.length?'No planned items match the current filter':'Nothing planned yet')+'</div>';}
     phases.forEach(function(ph){
       var phItems=items.filter(function(i){return(i.phase||'Backlog')===ph;});
       if(!phItems.length)return;
@@ -7555,16 +7661,16 @@ function renderRoadmap(){
     });
     return'<div class="wl-col">'+
       '<div class="wl-col-header"><span class="wl-col-title">Planned</span><span class="wl-col-count">'+items.length+'</span>'+
-      '<button class="wl-add-btn" onclick="wishlistAddOpen='+(wishlistAddOpen?'false':'true')+';wishlistEditId=null;wishlistDoneId=null;renderApp()">'+(wishlistAddOpen?'✕':'+ Add')+'</button>'+
+      (canWriteFinancials()?'<button class="wl-add-btn" onclick="wishlistAddOpen='+(wishlistAddOpen?'false':'true')+';wishlistEditId=null;wishlistDoneId=null;renderApp()">'+(wishlistAddOpen?'✕':'+ Add')+'</button>':'')+
       '</div><div class="wl-col-body">'+body+'</div></div>';
   }
   function ideasCol(items){
     return'<div class="wl-col">'+
       '<div class="wl-col-header"><span class="wl-col-title">Ideas</span><span class="wl-col-count">'+items.length+'</span>'+
-      '<button class="wl-add-btn" onclick="wishlistAddOpen='+(wishlistAddOpen?'false':'true')+';wishlistEditId=null;wishlistDoneId=null;renderApp()">'+(wishlistAddOpen?'✕':'+ Add')+'</button>'+
+      (canWriteFinancials()?'<button class="wl-add-btn" onclick="wishlistAddOpen='+(wishlistAddOpen?'false':'true')+';wishlistEditId=null;wishlistDoneId=null;renderApp()">'+(wishlistAddOpen?'✕':'+ Add')+'</button>':'')+
       '</div>'+
       '<div class="wl-col-body">'+
-        (wishlistAddOpen?addForm():'')+
+        (canWriteFinancials()&&wishlistAddOpen?addForm():'')+
         (items.length?items.map(function(it){return card(it,canWriteFinancials());}).join(''):('<div class="wl-empty">'+(wishlistPhaseFilter.length?'No ideas match the current filter':'No ideas yet — click Add to capture one')+'</div>'))+
       '</div>'+
     '</div>';
@@ -7639,46 +7745,51 @@ function _togglePhaseFilter(ph){
   if(idx>=0)wishlistPhaseFilter.splice(idx,1);else wishlistPhaseFilter.push(ph);
   renderApp();
 }
-function _confirmDoneWishlist(id){
+async function _confirmDoneWishlist(id){
   if(!canWriteFinancials())return;
   var sel=document.getElementById('wl-done-tag-'+id);
   var tag=sel?sel.value:WISHLIST_BUILD_TAGS[0];
-  wishlistDoneId=null;
-  moveWishlistItem(id,'done',tag);
+  var ok=await moveWishlistItem(id,'done',tag);
+  if(ok){wishlistDoneId=null;renderApp();}
+  // if not ok: leave wishlistDoneId intact so user can see something failed and retry
 }
 
 // ── AI Q&A ─────────────────────────────────────────────────────────────────
 async function saveApiKey(key){
   if(!isOwnerUser())return;
   if(!key||!key.trim())return;
-  anthropicKey=key.trim();
-  localStorage.setItem('herndon_anthropic_key',anthropicKey);
   try{
     var h=await getAuthHeaders();
-    await fetch(SUPA_URL+'/rest/v1/goals',{method:'POST',headers:Object.assign({},h,{'Prefer':'resolution=merge-duplicates,return=minimal'}),body:JSON.stringify({key:'anthropic_key',value:anthropicKey})});
-  }catch(e){console.error('saveApiKey:',e);}
+    var r=await fetch(SUPA_URL+'/rest/v1/goals',{method:'POST',headers:Object.assign({},h,{'Prefer':'resolution=merge-duplicates,return=minimal'}),body:JSON.stringify({key:'anthropic_key',value:key.trim()})});
+    if(!r.ok){console.error('saveApiKey: HTTP '+r.status);return;} // do not cache a failed key
+    // Only set in memory and localStorage after Supabase confirms success
+    anthropicKey=key.trim();
+    try{localStorage.setItem('herndon_anthropic_key',anthropicKey);}catch(e){}
+  }catch(e){console.error('saveApiKey:',e);return;}
   renderApp();
 }
 function renderAskClaude(){
   var el=document.getElementById('ask-content');if(!el)return;
   var html='<div class="ask-page">';
-  if(!anthropicKey){
-    if(isOwnerUser()){
-      html+='<div class="ask-setup-card">'+
-        '<h3>Connect your Anthropic API key</h3>'+
-        '<p>Paste your API key from <strong>console.anthropic.com</strong> → API Keys. It will be stored in Supabase so it syncs across devices. Claude will only use it to answer questions about your model — it never modifies your data.</p>'+
-        '<div class="ask-key-row">'+
-          '<input class="ask-key-input" id="ask-key-field" type="password" placeholder="sk-ant-...">'+
-          '<button class="ask-key-save" onclick="saveApiKey(document.getElementById(\'ask-key-field\').value)">Save key</button>'+
-        '</div>'+
-      '</div>';
-    }else{
-      html+='<div class="ask-setup-card"><p style="color:var(--muted);font-size:13px">API key not configured. Ask the account owner to add a key.</p></div>';
-    }
+  if(!isOwnerUser()){
+    // Non-owner: render owner-only message and return immediately — no chat area, input, or send button
+    html+='<div class="ask-setup-card"><p style="color:var(--muted);font-size:13px">Ask Claude is available to the account owner only. Ask the owner to sign in to use this feature.</p></div>';
+    html+='</div>';
+    el.innerHTML=html;
+    return;
+  }else if(!anthropicKey){
+    html+='<div class="ask-setup-card">'+
+      '<h3>Connect your Anthropic API key</h3>'+
+      '<p>Paste your API key from <strong>console.anthropic.com</strong> → API Keys. It will be stored in Supabase so it syncs across devices. Claude will only use it to answer questions about your model — it never modifies your data.</p>'+
+      '<div class="ask-key-row">'+
+        '<input class="ask-key-input" id="ask-key-field" type="password" placeholder="sk-ant-...">'+
+        '<button class="ask-key-save" onclick="saveApiKey(document.getElementById(\'ask-key-field\').value)">Save key</button>'+
+      '</div>'+
+    '</div>';
   }else{
     html+='<div class="ask-setup-card" style="padding:10px 14px;display:flex;align-items:center;justify-content:space-between">'+
       '<span class="ask-key-status">✓ API key connected</span>'+
-      (isOwnerUser()?'<button class="wl-cancel-btn" onclick="anthropicKey=\'\';renderApp()" style="font-size:11px">Change key</button>':'')+
+      '<button class="wl-cancel-btn" onclick="anthropicKey=\'\';try{localStorage.removeItem(\'herndon_anthropic_key\');}catch(e){}renderApp()" style="font-size:11px">Change key</button>'+
     '</div>';
   }
   // Chat area
@@ -7773,6 +7884,7 @@ function _buildModelContext(){
   return lines.join('\n');
 }
 async function sendAsk(){
+  if(!isOwnerUser())return; // owner-only: defense-in-depth even if UI buttons are hidden
   var inputEl=document.getElementById('ask-input');
   var q=inputEl?inputEl.value.trim():'';
   if(!q||!anthropicKey||askLoading)return;

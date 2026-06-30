@@ -2728,6 +2728,7 @@ console.log('\n── Section 29: tr._key and Transfers This Week normalization 
 
   // ── S30-4: toggleCustomTask preserves all metadata fields ────────────────
   test('S30-4: toggleCustomTask preserves source, reminderKey, lockedLabel, dismissed, version', function(){
+    var _prevRole=USER_ROLE; USER_ROLE='owner'; // guard requires canWriteFinancials()
     customTaskData[TEST_WEEK] = [];
     customTaskMeta = {};
 
@@ -2757,6 +2758,7 @@ console.log('\n── Section 29: tr._key and Transfers This Week normalization 
     assert(meta.dismissed === false, 'dismissed was corrupted: got '+meta.dismissed);
     assert(meta.version === 1, 'version was dropped: got '+meta.version);
     assert(meta.type === 'transfer', 'type was dropped: got '+meta.type);
+    USER_ROLE=_prevRole;
   });
 
   // ── S30-5: Migrated tasks receive correct type via heuristic ─────────────
@@ -2784,6 +2786,7 @@ console.log('\n── Section 29: tr._key and Transfers This Week normalization 
 
   // ── S30-6: flipCustomTaskType toggles transfer ↔ action ──────────────────
   test('S30-6: flipCustomTaskType toggles type between transfer and action', function(){
+    var _prevRole=USER_ROLE; USER_ROLE='owner'; // guard requires canWriteFinancials()
     customTaskData[TEST_WEEK] = [{id:'flip1', label:'Transfer $200 somewhere', completed:false}];
     customTaskMeta = {};
     setTaskMeta('flip1', {type:'transfer', source:'user', version:1, reminderKey:null, lockedLabel:false, dismissed:false});
@@ -2799,6 +2802,7 @@ console.log('\n── Section 29: tr._key and Transfers This Week normalization 
     flipCustomTaskType(TEST_WEEK, 'flip1');
     var meta2 = getTaskMeta('flip1','Transfer $200 somewhere');
     assert(meta2.type === 'transfer', 'Expected transfer after second flip, got: '+meta2.type);
+    USER_ROLE=_prevRole;
   });
 
   // ── S30-7: action-type task never appears in Transfers This Week panel ────
@@ -4901,21 +4905,27 @@ test('5B-11: budget schema triggers use COALESCE for created_by (spoof-proof for
   assert(sqlSrc.includes('DROP TRIGGER IF EXISTS budget_transactions_created'),'must drop trigger before creating it (idempotent)');
 });
 
-test('5B-12: budget RLS restricts line_rules writes to owner only and migration is idempotent',()=>{
+// 5B-12: HISTORICAL — phase-5b-budget-schema.sql used is_owner() for budget_line_rules writes.
+// This was the original migration artifact. 5E-7 product decision reverses this:
+//   Budget Line Admin is household operational → app-side uses canWriteFinancials().
+//   Live DB P8/V12 check in phase-5e-7-preflight.sql is the STOP CONDITION before 5E-8.
+//   If P8/V12 returns FAIL (is_owner in live DB), a SQL migration is required before 5E-8 — NOT here.
+// The idempotency checks below remain valid (DROP POLICY IF EXISTS, CREATE INDEX IF NOT EXISTS).
+test('5B-12: HISTORICAL — phase-5b-budget-schema.sql migration is idempotent (is_owner is legacy; current desired state is canWriteFinancials())',()=>{
   var sqlSrc='';
   try{sqlSrc=require('fs').readFileSync(require('path').join(__dirname,'docs','phase-5b-budget-schema.sql'),'utf8');}catch(e){}
   assert(sqlSrc.length>0,'Could not read phase-5b-budget-schema.sql');
-  // budget_line_rules INSERT/UPDATE/DELETE must use is_owner()
-  assert(sqlSrc.includes('"budget_line_rules_insert"'),'INSERT policy for line_rules must exist');
-  assert(sqlSrc.includes('"budget_line_rules_update"'),'UPDATE policy for line_rules must exist');
-  assert(sqlSrc.includes('"budget_line_rules_delete"'),'DELETE policy for line_rules must exist');
-  var lineRulesBlock=sqlSrc.slice(sqlSrc.indexOf('"budget_line_rules_insert"'),sqlSrc.indexOf('"budget_transactions_select"'));
-  assert((lineRulesBlock.match(/is_owner\(\)/g)||[]).length>=3,'all write policies on line_rules must use is_owner()');
+  // Policy names must exist (structural check only — predicate is legacy, see note above)
+  assert(sqlSrc.includes('"budget_line_rules_insert"'),'INSERT policy for line_rules must exist in schema file');
+  assert(sqlSrc.includes('"budget_line_rules_update"'),'UPDATE policy for line_rules must exist in schema file');
+  assert(sqlSrc.includes('"budget_line_rules_delete"'),'DELETE policy for line_rules must exist in schema file');
   // Idempotent: DROP POLICY IF EXISTS before each CREATE POLICY
   assert(sqlSrc.includes('DROP POLICY IF EXISTS "budget_line_rules_select"'),'must drop line_rules SELECT policy before creating (idempotent)');
   assert(sqlSrc.includes('DROP POLICY IF EXISTS "budget_line_rules_delete"'),'must drop line_rules DELETE policy before creating (idempotent)');
   // Indexes must use CREATE INDEX IF NOT EXISTS
   assert(sqlSrc.includes('CREATE INDEX IF NOT EXISTS'),'indexes must use IF NOT EXISTS for idempotency');
+  // 5E-7 note: current desired behavior is canWriteFinancials() — not is_owner().
+  // P8/V12 live SQL audit (phase-5e-7-preflight.sql) is the authority on live policy state.
 });
 
 test('5B-13: budget RLS transactions use can_write_financials() and is_allowed_user() — not bare auth.uid()',()=>{
@@ -6457,6 +6467,630 @@ test('5E6-24: phase-5e-6-rollback.sql exists with restore logic',()=>{
   assertIncludes(sql,'RAISE EXCEPTION','Rollback must have hard-stop guard');
   // Check for end_month being set to NULL (may have aligned spaces in SQL formatting)
   assert(/end_month\s+=\s+NULL/.test(sql),'Rollback must reopen parent rule by setting end_month to NULL');
+});
+
+// ─────────────────────────────────────────────────────────────────────────
+// ── ROLE-C: 5E-7 Role Enforcement / Security Maturity Gate ────────────────
+// ─────────────────────────────────────────────────────────────────────────
+console.log('\n── ROLE-C: 5E-7 Role Enforcement — canWriteFinancials guards ──');
+
+// C1 — canWriteFinancials() exists and classifies roles correctly
+test('5E7-C1: canWriteFinancials() is a function',()=>{
+  assert(typeof canWriteFinancials==='function','canWriteFinancials must be a function');
+});
+
+test('5E7-C2: canWriteFinancials() returns true for owner',()=>{
+  var p=USER_ROLE; USER_ROLE='owner';
+  assert(canWriteFinancials()===true,'owner must be a financial writer');
+  USER_ROLE=p;
+});
+
+test('5E7-C3: canWriteFinancials() returns true for household_admin',()=>{
+  var p=USER_ROLE; USER_ROLE='household_admin';
+  assert(canWriteFinancials()===true,'household_admin must be a financial writer');
+  USER_ROLE=p;
+});
+
+test('5E7-C4: canWriteFinancials() returns false for viewer',()=>{
+  var p=USER_ROLE; USER_ROLE='viewer';
+  assert(canWriteFinancials()===false,'viewer must not be a financial writer');
+  USER_ROLE=p;
+});
+
+test('5E7-C5: canWriteFinancials() returns false for empty string (fail-closed)',()=>{
+  var p=USER_ROLE; USER_ROLE='';
+  assert(canWriteFinancials()===false,'empty USER_ROLE must fail closed');
+  USER_ROLE=p;
+});
+
+test('5E7-C6: canWriteFinancials() returns false for unknown role (fail-closed)',()=>{
+  var p=USER_ROLE; USER_ROLE='superuser';
+  assert(canWriteFinancials()===false,'unknown role must fail closed');
+  USER_ROLE=p;
+});
+
+// C2 — Source-level guards on 5E Register write functions
+console.log('\n── ROLE-D: 5E-7 Register (transactions) write-path guards ──');
+
+test('5E7-D1: _openTxForm has canWriteFinancials() guard at entry',()=>{
+  var start=html.indexOf('function _openTxForm(');
+  var end=html.indexOf('\nfunction ',start+10);
+  var fn=html.slice(start,end);
+  assertIncludes(fn,'canWriteFinancials()','_openTxForm must guard on canWriteFinancials()');
+});
+
+test('5E7-D2: _saveTxForm has canWriteFinancials() guard at entry',()=>{
+  var start=html.indexOf('async function _saveTxForm(');
+  var end=html.indexOf('\nasync function _confirmTxDelete');
+  var fn=html.slice(start,end);
+  assertIncludes(fn,'canWriteFinancials()','_saveTxForm must guard on canWriteFinancials()');
+});
+
+test('5E7-D3: _confirmTxDelete has canWriteFinancials() guard at entry',()=>{
+  var start=html.indexOf('async function _confirmTxDelete(');
+  var end=html.indexOf('\nasync function _toggleTxCleared');
+  var fn=html.slice(start,end);
+  assertIncludes(fn,'canWriteFinancials()','_confirmTxDelete must guard on canWriteFinancials()');
+});
+
+test('5E7-D4: _toggleTxCleared has canWriteFinancials() guard at entry',()=>{
+  var start=html.indexOf('async function _toggleTxCleared(');
+  var end=html.indexOf('\n// _renderTxRegister');
+  var fn=html.slice(start,end);
+  assertIncludes(fn,'canWriteFinancials()','_toggleTxCleared must guard on canWriteFinancials()');
+});
+
+test('5E7-D5: Register Add Transaction button is gated on canWriteFinancials()',()=>{
+  var regFn=html.slice(html.indexOf('function _renderTxRegister()'),
+    html.indexOf('\n// renderTransactions'));
+  assertIncludes(regFn,'canWriteFinancials()','Register Add button must be gated on canWriteFinancials()');
+});
+
+// C3 — Source-level guards on Budget (budget_transactions) write functions
+console.log('\n── ROLE-E: 5E-7 Budget (budget_transactions) write-path guards ──');
+
+test('5E7-E1: _budgetSaveTransaction has canWriteFinancials() guard at entry',()=>{
+  var start=html.indexOf('async function _budgetSaveTransaction(');
+  var end=html.indexOf('\nfunction ',start+10);
+  var fn=html.slice(start,end);
+  assertIncludes(fn,'canWriteFinancials()','_budgetSaveTransaction must guard on canWriteFinancials()');
+});
+
+test('5E7-E2: _budgetToggleCleared has canWriteFinancials() guard at entry',()=>{
+  var start=html.indexOf('async function _budgetToggleCleared(');
+  var end=html.indexOf('\nasync function _budgetDeleteTransaction');
+  var fn=html.slice(start,end);
+  assertIncludes(fn,'canWriteFinancials()','_budgetToggleCleared must guard on canWriteFinancials()');
+});
+
+test('5E7-E3: _budgetDeleteTransaction has canWriteFinancials() guard and checks r.ok before local removal',()=>{
+  var start=html.indexOf('async function _budgetDeleteTransaction(');
+  var end=html.indexOf('\nfunction ',start+10);
+  var fn=html.slice(start,end);
+  assertIncludes(fn,'canWriteFinancials()','_budgetDeleteTransaction must guard on canWriteFinancials()');
+  assertIncludes(fn,'r.ok','_budgetDeleteTransaction must check r.ok before mutating local state');
+});
+
+test('5E7-E4: _budgetOpenAddForm has canWriteFinancials() guard at entry',()=>{
+  var start=html.indexOf('window._budgetOpenAddForm=function(');
+  var end=html.indexOf('\nwindow.',start+10);
+  var fn=html.slice(start,end);
+  assertIncludes(fn,'canWriteFinancials()','_budgetOpenAddForm must guard on canWriteFinancials()');
+});
+
+test('5E7-E5: _budgetSubmitForm has canWriteFinancials() guard at entry',()=>{
+  var start=html.indexOf('window._budgetSubmitForm=function(');
+  var end=html.indexOf('\nwindow.',start+10);
+  var fn=html.slice(start,end);
+  assertIncludes(fn,'canWriteFinancials()','_budgetSubmitForm must guard on canWriteFinancials()');
+});
+
+// C4 — saveGoal split guard (anthropic_key=isOwnerUser, else=canWriteFinancials)
+console.log('\n── ROLE-F: 5E-7 saveGoal split-guard and saveApiKey owner guard ──');
+
+test('5E7-F1: saveGoal guards anthropic_key writes with isOwnerUser()',()=>{
+  var start=html.indexOf('async function saveGoal(');
+  var end=html.indexOf('\n}',start+10)+2;
+  var fn=html.slice(start,end);
+  assertIncludes(fn,'anthropic_key','saveGoal must branch on anthropic_key');
+  assertIncludes(fn,'isOwnerUser()','saveGoal must guard anthropic_key with isOwnerUser()');
+});
+
+test('5E7-F2: saveGoal guards non-anthropic_key writes with canWriteFinancials()',()=>{
+  var start=html.indexOf('async function saveGoal(');
+  var end=html.indexOf('\n}',start+10)+2;
+  var fn=html.slice(start,end);
+  assertIncludes(fn,'canWriteFinancials()','saveGoal must guard other keys with canWriteFinancials()');
+});
+
+test('5E7-F3: saveApiKey has isOwnerUser() guard at entry',()=>{
+  var start=html.indexOf('async function saveApiKey(');
+  var end=html.indexOf('\n}',start+10)+2;
+  var fn=html.slice(start,end);
+  assertIncludes(fn,'isOwnerUser()','saveApiKey must guard on isOwnerUser()');
+});
+
+// C5 — Wishlist write-path guards
+console.log('\n── ROLE-G: 5E-7 Wishlist write-path guards ──');
+
+test('5E7-G1: saveWishlistItem has canWriteFinancials() guard',()=>{
+  var start=html.indexOf('async function saveWishlistItem(');
+  var end=html.indexOf('\nasync function ',start+10);
+  var fn=html.slice(start,end);
+  assertIncludes(fn,'canWriteFinancials()','saveWishlistItem must guard on canWriteFinancials()');
+});
+
+test('5E7-G2: deleteWishlistItem has canWriteFinancials() guard',()=>{
+  var start=html.indexOf('async function deleteWishlistItem(');
+  var end=html.indexOf('\nasync function ',start+10);
+  var fn=html.slice(start,end);
+  assertIncludes(fn,'canWriteFinancials()','deleteWishlistItem must guard on canWriteFinancials()');
+});
+
+test('5E7-G3: moveWishlistItem has canWriteFinancials() guard',()=>{
+  var start=html.indexOf('async function moveWishlistItem(');
+  var end=html.indexOf('\nasync function ',start+10);
+  var fn=html.slice(start,end);
+  assertIncludes(fn,'canWriteFinancials()','moveWishlistItem must guard on canWriteFinancials()');
+});
+
+test('5E7-G4: _saveAddForm has canWriteFinancials() guard',()=>{
+  var start=html.indexOf('function _saveAddForm(');
+  var end=html.indexOf('\nfunction ',start+10);
+  var fn=html.slice(start,end);
+  assertIncludes(fn,'canWriteFinancials()','_saveAddForm must guard on canWriteFinancials()');
+});
+
+test('5E7-G5: _saveEditForm has canWriteFinancials() guard',()=>{
+  var start=html.indexOf('function _saveEditForm(');
+  var end=html.indexOf('\nfunction ',start+10);
+  var fn=html.slice(start,end);
+  assertIncludes(fn,'canWriteFinancials()','_saveEditForm must guard on canWriteFinancials()');
+});
+
+test('5E7-G6: _confirmDoneWishlist has canWriteFinancials() guard',()=>{
+  var start=html.indexOf('function _confirmDoneWishlist(');
+  var end=html.indexOf('\nfunction ',start+10);
+  var fn=html.slice(start,end);
+  assertIncludes(fn,'canWriteFinancials()','_confirmDoneWishlist must guard on canWriteFinancials()');
+});
+
+// C6 — Scenario commit guard
+console.log('\n── ROLE-H: 5E-7 Scenario commit guard ──');
+
+test('5E7-H1: openScenarioCommit has canWriteFinancials() guard',()=>{
+  var start=html.indexOf('function openScenarioCommit(');
+  var end=html.indexOf('\nfunction ',start+10);
+  var fn=html.slice(start,end);
+  assertIncludes(fn,'canWriteFinancials()','openScenarioCommit must guard on canWriteFinancials()');
+});
+
+test('5E7-H2: commitScenario has canWriteFinancials() guard and checks _csr.ok before local mutation',()=>{
+  var start=html.indexOf('async function commitScenario(');
+  var end=html.indexOf('\nfunction ',start+10);
+  var fn=html.slice(start,end);
+  assertIncludes(fn,'canWriteFinancials()','commitScenario must guard on canWriteFinancials()');
+  assertIncludes(fn,'_csr.ok','commitScenario must check _csr.ok before mutating overrideData');
+});
+
+test('5E7-H3: scenario Commit button is gated on canWriteFinancials() in render',()=>{
+  // The commit button string is inside a canWriteFinancials() ternary — not always emitted
+  assertIncludes(html,"canWriteFinancials()?'<button class=\"scenario-commit-btn\"",
+    'scenario Commit button render must be gated on canWriteFinancials()');
+});
+
+// C7 — deleteRecon and deleteWeekOverride res.ok ordering
+console.log('\n── ROLE-I: 5E-7 Optimistic mutation ordering (res.ok before local delete) ──');
+
+test('5E7-I1: deleteRecon checks r.ok before deleting local reconData',()=>{
+  var start=html.indexOf('async function deleteRecon(');
+  var end=html.indexOf('\n}',start+10)+2;
+  var fn=html.slice(start,end);
+  // r.ok check must appear before delete reconData
+  var okIdx=fn.indexOf('r.ok');
+  var delIdx=fn.indexOf('delete reconData');
+  assert(okIdx>-1,'deleteRecon must capture and check r.ok');
+  assert(delIdx>-1,'deleteRecon must delete reconData locally');
+  assert(okIdx<delIdx,'r.ok check must come before delete reconData');
+});
+
+test('5E7-I2: deleteWeekOverride checks r.ok before deleting local overrideData',()=>{
+  var start=html.indexOf('async function deleteWeekOverride(');
+  var end=html.indexOf('\n}',start+10)+2;
+  var fn=html.slice(start,end);
+  var okIdx=fn.indexOf('r.ok');
+  var delIdx=fn.indexOf('delete overrideData');
+  assert(okIdx>-1,'deleteWeekOverride must capture and check r.ok');
+  assert(delIdx>-1,'deleteWeekOverride must delete overrideData locally');
+  assert(okIdx<delIdx,'r.ok check must come before delete overrideData');
+});
+
+test('5E7-I3: _budgetDeleteTransaction checks r.ok before removing from _budgetTransactions',()=>{
+  var start=html.indexOf('async function _budgetDeleteTransaction(');
+  var end=html.indexOf('\nfunction ',start+10);
+  var fn=html.slice(start,end);
+  var okIdx=fn.indexOf('r.ok');
+  var filterIdx=fn.indexOf('_budgetTransactions=_budgetTransactions.filter');
+  assert(okIdx>-1,'_budgetDeleteTransaction must check r.ok');
+  assert(filterIdx>-1,'_budgetDeleteTransaction must filter _budgetTransactions');
+  assert(okIdx<filterIdx,'r.ok check must come before filtering _budgetTransactions');
+});
+
+// C8 — SQL audit files exist
+console.log('\n── ROLE-J: 5E-7 SQL audit file existence ──');
+
+test('5E7-J1: phase-5e-7-preflight.sql exists',()=>{
+  assert(fs.existsSync('./docs/phase-5e-7-preflight.sql'),
+    'docs/phase-5e-7-preflight.sql not found');
+});
+
+test('5E7-J2: phase-5e-7-validation.sql exists',()=>{
+  assert(fs.existsSync('./docs/phase-5e-7-validation.sql'),
+    'docs/phase-5e-7-validation.sql not found');
+});
+
+test('5E7-J3: phase-5e-7-smoke-checklist.md exists',()=>{
+  assert(fs.existsSync('./docs/phase-5e-7-smoke-checklist.md'),
+    'docs/phase-5e-7-smoke-checklist.md not found');
+});
+
+test('5E7-J4: preflight.sql contains STOP CONDITION check for budget_line_rules (P8)',()=>{
+  var sql=fs.readFileSync('./docs/phase-5e-7-preflight.sql','utf8');
+  assertIncludes(sql,'P8','preflight.sql must contain P8 check');
+  assertIncludes(sql,'budget_line_rules','preflight.sql must check budget_line_rules');
+  assertIncludes(sql,'STOP','preflight.sql P8 must reference STOP CONDITION');
+});
+
+test('5E7-J5: validation.sql contains V12 STOP CONDITION for budget_line_rules',()=>{
+  var sql=fs.readFileSync('./docs/phase-5e-7-validation.sql','utf8');
+  assertIncludes(sql,'V12','validation.sql must contain V12 check');
+  assertIncludes(sql,'budget_line_rules','validation.sql must check budget_line_rules');
+});
+
+test('5E7-J6: validation.sql output uses check_id | status | object | details columns',()=>{
+  var sql=fs.readFileSync('./docs/phase-5e-7-validation.sql','utf8');
+  assertIncludes(sql,'check_id','validation.sql must select check_id column');
+  assertIncludes(sql,"'PASS'","validation.sql must emit PASS status");
+  assertIncludes(sql,"'FAIL'","validation.sql must emit FAIL status");
+});
+
+// C9 — is_allowed_user() must never appear in write policies at source level
+console.log('\n── ROLE-K: 5E-7 is_allowed_user() never used as write guard ──');
+
+test('5E7-K1: is_allowed_user() does not appear in any write function guard in index.html',()=>{
+  // Check the key write functions for is_allowed_user() — it must never gate writes
+  var writeFns=[
+    '_openTxForm(','_saveTxForm(','_confirmTxDelete(','_toggleTxCleared(',
+    '_budgetSaveTransaction(','_budgetToggleCleared(','_budgetDeleteTransaction(',
+    'saveWishlistItem(','deleteWishlistItem(','moveWishlistItem(',
+    'saveGoal(','saveApiKey(','openScenarioCommit(','commitScenario(',
+    'deleteRecon(','deleteWeekOverride('
+  ];
+  writeFns.forEach(function(fnName){
+    var start=html.indexOf('function '+fnName);
+    if(start===-1)start=html.indexOf('async function '+fnName);
+    if(start===-1)return; // function may not exist in this build — skip
+    var end=html.indexOf('\n}',start+10)+2;
+    var fn=html.slice(start,end);
+    assert(!fn.includes('is_allowed_user()'),
+      fnName+' must not use is_allowed_user() as a write guard');
+  });
+});
+
+test('5E7-K2: smoke-checklist.md references P8 STOP CONDITION for budget_line_rules',()=>{
+  var md=fs.readFileSync('./docs/phase-5e-7-smoke-checklist.md','utf8');
+  assertIncludes(md,'P8','smoke checklist must reference P8 check');
+  assertIncludes(md,'budget_line_rules','smoke checklist must mention budget_line_rules');
+  assertIncludes(md,'STOP','smoke checklist must call out STOP CONDITION');
+});
+
+// ─────────────────────────────────────────────────────────────────────────
+// ROLE-L: Items 9–10 — saveGoal r.ok, commitScenario goal ordering,
+//         modal gate, wishlist mutation ordering, action override stubs
+// ─────────────────────────────────────────────────────────────────────────
+console.log('\n── ROLE-L: saveGoal r.ok + commitScenario goal ordering + modal gate ──');
+
+test('5E7-L1: saveGoal captures r and returns false on failure',()=>{
+  var start=html.indexOf('async function saveGoal(');
+  assert(start!==-1,'saveGoal must exist');
+  var end=html.indexOf('\n}',start+10)+2;
+  var fn=html.slice(start,end);
+  assertIncludes(fn,'return false','saveGoal must return false on permission/error');
+  assertIncludes(fn,'return true','saveGoal must return true on success');
+  assertIncludes(fn,'.ok','saveGoal must check r.ok');
+});
+
+test('5E7-L2: commitScenario goal path does not assign goalAk/goalRt before both saves succeed',()=>{
+  var start=html.indexOf('async function commitScenario(');
+  assert(start!==-1,'commitScenario must exist');
+  var end=html.indexOf('\n}',start+10)+2;
+  var fn=html.slice(start,end);
+  // goalAk= must come AFTER saveGoal calls (snapshot vars _newAk/_newRt used)
+  assertIncludes(fn,'_newAk','commitScenario must use temp var _newAk before assigning goalAk');
+  assertIncludes(fn,'_newRt','commitScenario must use temp var _newRt before assigning goalRt');
+  assertIncludes(fn,'_akOk','commitScenario must check _akOk result');
+  assertIncludes(fn,'_rtOk','commitScenario must check _rtOk result');
+  // assignment to goalAk must not precede the ok checks
+  var akAssign=fn.indexOf('goalAk=_newAk');
+  var okCheck=fn.indexOf('if(!_akOk');
+  assert(akAssign>okCheck,'goalAk must be assigned AFTER the ok check, not before');
+});
+
+test('5E7-L3: commitScenario does not call clearScenario if goal saves fail',()=>{
+  var start=html.indexOf('async function commitScenario(');
+  assert(start!==-1,'commitScenario must exist');
+  var end=html.indexOf('\n}',start+10)+2;
+  var fn=html.slice(start,end);
+  assertIncludes(fn,'throw new Error','commitScenario must throw on save failure so clearScenario is not reached');
+  // clearScenario must come after the goal assignments (in the success path, outside the throw block)
+  var clearPos=fn.indexOf('clearScenario()');
+  var throwPos=fn.indexOf('throw new Error');
+  // throw must come before clearScenario in the function body (goal path throws early)
+  assert(throwPos<clearPos,'throw must appear before clearScenario so failure skips it');
+});
+
+test('5E7-L4: renderScenarioModal gates Commit button on canWriteFinancials()',()=>{
+  var start=html.indexOf('function renderScenarioModal(');
+  assert(start!==-1,'renderScenarioModal must exist');
+  var end=html.indexOf('\n}',start+10)+2;
+  var fn=html.slice(start,end);
+  assertIncludes(fn,'canWriteFinancials()','renderScenarioModal must gate Commit button');
+  assertIncludes(fn,'sc-modal-confirm','modal must have confirm button element');
+});
+
+test('5E7-L5: action override functions all guard on canWriteFinancials()',()=>{
+  var fns=['function openActionEdit(','function saveActionOverride(','function deleteActionOverride(','function resetAllActionOverrides('];
+  fns.forEach(function(fn){
+    var start=html.indexOf(fn);
+    if(start===-1)return;
+    var end=html.indexOf('\n}',start+10)+2;
+    var body=html.slice(start,end);
+    assertIncludes(body,'canWriteFinancials()',''+fn+' must guard on canWriteFinancials()');
+  });
+});
+
+test('5E7-L6: legacy custom task stubs do not call supabase.from()',()=>{
+  var stubs=['function moveCustomTask(','function editCustomTaskLabel(','function editCustomTaskDate('];
+  stubs.forEach(function(fn){
+    var start=html.indexOf(fn);
+    if(start===-1)return; // may have been removed entirely — also acceptable
+    var end=html.indexOf('\n}',start+10)+2;
+    var body=html.slice(start,end);
+    assert(!body.includes('supabase.from('),'legacy stub '+fn+' must not call supabase.from()');
+    assertIncludes(body,'deprecated','legacy stub '+fn+' must log deprecated warning');
+  });
+});
+
+test('5E7-L7: deleteWishlistItem checks r.ok before filtering wishlistData',()=>{
+  var start=html.indexOf('async function deleteWishlistItem(');
+  assert(start!==-1,'deleteWishlistItem must exist');
+  var end=html.indexOf('\n}',start+10)+2;
+  var fn=html.slice(start,end);
+  assertIncludes(fn,'.ok','deleteWishlistItem must check r.ok');
+  var okPos=fn.indexOf('.ok');
+  var filterPos=fn.indexOf('wishlistData=wishlistData.filter');
+  assert(okPos<filterPos,'r.ok check must come before wishlistData filter');
+});
+
+test('5E7-L8: moveWishlistItem returns bool and only updates local after r.ok',()=>{
+  var start=html.indexOf('async function moveWishlistItem(');
+  assert(start!==-1,'moveWishlistItem must exist');
+  var end=html.indexOf('\n}',start+10)+2;
+  var fn=html.slice(start,end);
+  assertIncludes(fn,'return true','moveWishlistItem must return true on success');
+  assertIncludes(fn,'return false','moveWishlistItem must return false on failure/guard');
+  assertIncludes(fn,'.ok','moveWishlistItem must check r.ok');
+  var okPos=fn.indexOf('if(!_mr.ok)');
+  var localUpdate=fn.indexOf('wishlistData[idx]');
+  assert(okPos<localUpdate,'r.ok check must precede local wishlistData update');
+});
+
+test('5E7-L9: _confirmDoneWishlist awaits moveWishlistItem and gates wishlistDoneId on success',()=>{
+  var start=html.indexOf('async function _confirmDoneWishlist(');
+  assert(start!==-1,'_confirmDoneWishlist must be async');
+  var end=html.indexOf('\n}',start+10)+2;
+  var fn=html.slice(start,end);
+  assertIncludes(fn,'await moveWishlistItem','must await moveWishlistItem');
+  assertIncludes(fn,'if(ok)','must gate wishlistDoneId=null on success');
+  // wishlistDoneId=null must be inside the if(ok) block
+  var okGate=fn.indexOf('if(ok)');
+  var clearId=fn.indexOf('wishlistDoneId=null');
+  assert(okGate<clearId,'wishlistDoneId=null must come after if(ok) check');
+});
+
+test('5E7-L10: wishlist Add buttons gated on canWriteFinancials() in render',()=>{
+  // Find renderRoadmap or the wishlist render section
+  var start=html.indexOf('function renderRoadmap(');
+  assert(start!==-1,'renderRoadmap must exist');
+  // Look for the wl-add-btn section — must be inside a canWriteFinancials() ternary
+  var section=html.slice(start,start+20000); // scan first 20KB of renderRoadmap
+  // The Add button in planned column and ideas column must be conditional
+  assertIncludes(section,'canWriteFinancials()?\'<button class="wl-add-btn"','Add buttons must be gated on canWriteFinancials()');
+});
+
+test('5E7-L11: wishlist addForm not rendered when canWriteFinancials() is false',()=>{
+  var start=html.indexOf('function renderRoadmap(');
+  assert(start!==-1,'renderRoadmap must exist');
+  var section=html.slice(start,start+20000);
+  assertIncludes(section,'canWriteFinancials()&&wishlistAddOpen','addForm must require canWriteFinancials() AND wishlistAddOpen');
+});
+
+test('5E7-L12: anthropicKey initialized to empty string (not from localStorage)',()=>{
+  // The initialization line must be var anthropicKey=''; not reading from localStorage
+  var initLine=html.match(/var anthropicKey\s*=\s*[^;]+;/);
+  assert(initLine,'anthropicKey initialization must exist');
+  assert(!initLine[0].includes('localStorage'),'anthropicKey must not read localStorage at init time');
+  assert(initLine[0].includes("''"),'anthropicKey must initialize to empty string');
+});
+
+// ─────────────────────────────────────────────────────────────────────────
+// ROLE-M: Items 11 — SQL audit file hardening
+// ─────────────────────────────────────────────────────────────────────────
+console.log('\n── ROLE-M: SQL audit file hardening (V13, V5a, P2, P3, P8) ──');
+
+test('5E7-M1: preflight P2 uses LEFT JOIN to detect missing users',()=>{
+  var sql=fs.readFileSync('./docs/phase-5e-7-preflight.sql','utf8');
+  assertIncludes(sql,'LEFT JOIN public.app_users','P2 must LEFT JOIN to detect missing rows');
+  assertIncludes(sql,'ROW MISSING','P2 must emit ROW MISSING message');
+  assertIncludes(sql,'INACTIVE','P2 must emit INACTIVE message for inactive rows');
+});
+
+test('5E7-M2: preflight P3 uses LEFT JOIN to detect missing tables',()=>{
+  var sql=fs.readFileSync('./docs/phase-5e-7-preflight.sql','utf8');
+  assertIncludes(sql,'TABLE MISSING','P3 must emit TABLE MISSING for tables not in pg_tables');
+  assertIncludes(sql,'LEFT JOIN pg_tables','P3 must LEFT JOIN pg_tables');
+});
+
+test('5E7-M3: preflight P8 emits FAIL when zero write policies found for budget_line_rules',()=>{
+  var sql=fs.readFileSync('./docs/phase-5e-7-preflight.sql','utf8');
+  assertIncludes(sql,'ZERO write policies found','P8 must emit FAIL when no write policies exist');
+  assertIncludes(sql,'NOT EXISTS','P8 must use NOT EXISTS to detect zero-policy condition');
+});
+
+test('5E7-M4: validation V13 uses per-row check with no aggregate grouping error',()=>{
+  var sql=fs.readFileSync('./docs/phase-5e-7-validation.sql','utf8');
+  // V13 section must not use bool_and() — that was the bug
+  var v13start=sql.indexOf('V13');
+  assert(v13start!==-1,'V13 must exist');
+  var v13end=sql.indexOf('V14',v13start);
+  var v13=sql.slice(v13start,v13end);
+  assert(!v13.includes('bool_and('),'V13 must not use bool_and() aggregate (causes GROUP BY error)');
+  assertIncludes(v13,'VIOLATION','V13 must flag SELECT policies not using is_allowed_user()');
+});
+
+test('5E7-M5: validation V5a checks negative condition (<> or !=) not mere mention of anthropic_key',()=>{
+  var sql=fs.readFileSync('./docs/phase-5e-7-validation.sql','utf8');
+  var v5astart=sql.indexOf('V5a');
+  assert(v5astart!==-1,'V5a must exist');
+  var v5aend=sql.indexOf('V5b',v5astart);
+  var v5a=sql.slice(v5astart,v5aend);
+  // Must use regex or explicit <> / != pattern check
+  assert(
+    v5a.includes('<>') || v5a.includes('!=') || v5a.includes('~*'),
+    'V5a must look for explicit negative condition (<>, !=, or regex ~*) not just keyword presence'
+  );
+});
+
+// ─────────────────────────────────────────────────────────────────────────
+// ROLE-N: micro-pass items 1–6
+// ─────────────────────────────────────────────────────────────────────────
+console.log('\n── ROLE-N: micro-pass — localStorage gates, P8 ORDER BY, Ask Claude, meta returns, V13, 5B-12 ──');
+
+test('5E7-N1: hfos_custom_tasks localStorage.setItem in goals branch is gated on canWriteFinancials()',()=>{
+  var start=html.indexOf('async function loadAll(');
+  assert(start!==-1,'loadAll must exist');
+  var end=html.indexOf('\nasync function ',start+10);
+  var fn=html.slice(start,end>start?end:start+20000);
+  // The setItem for hfos_custom_tasks must be inside a canWriteFinancials() block
+  var setItemIdx=fn.indexOf("localStorage.setItem('hfos_custom_tasks'");
+  assert(setItemIdx!==-1,"loadAll must contain localStorage.setItem('hfos_custom_tasks')");
+  // canWriteFinancials() must appear before the setItem call in the goals branch
+  var beforeSet=fn.slice(0,setItemIdx);
+  var lastCwf=beforeSet.lastIndexOf('canWriteFinancials()');
+  assert(lastCwf!==-1,'setItem for hfos_custom_tasks must be preceded by canWriteFinancials() gate');
+});
+
+test('5E7-N2: hfos_custom_tasks localStorage.removeItem when ctRows.length>0 is gated on canWriteFinancials()',()=>{
+  var start=html.indexOf('async function loadAll(');
+  assert(start!==-1,'loadAll must exist');
+  var end=html.indexOf('\nasync function ',start+10);
+  var fn=html.slice(start,end>start?end:start+20000);
+  // Find the removeItem in the ctRows.length>0 branch (before the migration else branch)
+  var supaHasData=fn.indexOf('Supabase has data');
+  assert(supaHasData!==-1,'must have Supabase has data comment');
+  var removeItemIdx=fn.indexOf("localStorage.removeItem('hfos_custom_tasks'",supaHasData);
+  assert(removeItemIdx!==-1,'removeItem must exist in ctRows>0 branch');
+  var branchCtx=fn.slice(supaHasData,removeItemIdx+50);
+  assertIncludes(branchCtx,'canWriteFinancials()','removeItem in ctRows>0 branch must be gated on canWriteFinancials()');
+});
+
+test('5E7-N3: P8 ORDER BY uses only output columns, not cmd or policyname after UNION ALL',()=>{
+  var sql=fs.readFileSync('./docs/phase-5e-7-preflight.sql','utf8');
+  var p8start=sql.indexOf('P8');
+  assert(p8start!==-1,'P8 must exist');
+  var p8=sql.slice(p8start);
+  // Must not ORDER BY cmd or policyname (not output columns in UNION result)
+  assert(!p8.match(/ORDER BY\s+(cmd|policyname)/i),'P8 must not ORDER BY cmd or policyname after UNION ALL');
+});
+
+test('5E7-N4: renderAskClaude non-owner path returns before rendering chat area',()=>{
+  var start=html.indexOf('function renderAskClaude(');
+  assert(start!==-1,'renderAskClaude must exist');
+  var end=html.indexOf('\n}',start+10)+2;
+  var fn=html.slice(start,end);
+  // Non-owner branch must have a return statement
+  var nonOwnerStart=fn.indexOf('if(!isOwnerUser())');
+  assert(nonOwnerStart!==-1,'must have !isOwnerUser() guard');
+  var nonOwnerBlock=fn.slice(nonOwnerStart,nonOwnerStart+400);
+  assertIncludes(nonOwnerBlock,'return','non-owner branch must return before rendering chat area');
+});
+
+test('5E7-N5: renderAskClaude non-owner path does not include ask-input or ask-send-btn',()=>{
+  var start=html.indexOf('function renderAskClaude(');
+  assert(start!==-1,'renderAskClaude must exist');
+  var end=html.indexOf('\n}',start+10)+2;
+  var fn=html.slice(start,end);
+  var nonOwnerStart=fn.indexOf('if(!isOwnerUser())');
+  // Extract just the non-owner block (up to the return + closing brace of that if)
+  var returnIdx=fn.indexOf('return;',nonOwnerStart);
+  var nonOwnerPath=fn.slice(nonOwnerStart,returnIdx+7);
+  assert(!nonOwnerPath.includes('ask-input'),'non-owner path must not render ask-input');
+  assert(!nonOwnerPath.includes('ask-send-btn'),'non-owner path must not render ask-send-btn');
+});
+
+test('5E7-N6: saveCustomTask checks saveCustomTaskMeta() return value',()=>{
+  var start=html.indexOf('async function saveCustomTask(');
+  assert(start!==-1,'saveCustomTask must exist');
+  var end=html.indexOf('\n}',start+10)+2;
+  var fn=html.slice(start,end);
+  // Must capture the return value of saveCustomTaskMeta
+  assertIncludes(fn,'metaOk=await saveCustomTaskMeta()','saveCustomTask must capture saveCustomTaskMeta() return value');
+});
+
+test('5E7-N7: autoCustomTask branch checks saveCustomTaskMeta() return value',()=>{
+  var start=html.indexOf('async function saveWeekEdits(');
+  assert(start!==-1,'saveWeekEdits must exist');
+  var end=html.indexOf('\n}',start+10)+2;
+  var fn=html.slice(start,end);
+  assertIncludes(fn,'_ctMetaOk=await saveCustomTaskMeta()','autoCustomTask branch must capture saveCustomTaskMeta() return value');
+});
+
+test('5E7-N8: autoCustomTaskGoal branch checks saveCustomTaskMeta() return value',()=>{
+  var start=html.indexOf('async function saveWeekEdits(');
+  assert(start!==-1,'saveWeekEdits must exist');
+  var end=html.indexOf('\n}',start+10)+2;
+  var fn=html.slice(start,end);
+  assertIncludes(fn,'_gMetaOk=await saveCustomTaskMeta()','autoCustomTaskGoal branch must capture saveCustomTaskMeta() return value');
+});
+
+test('5E7-N9: V13 uses LEFT JOIN expected table list for fail-loud missing SELECT policy detection',()=>{
+  var sql=fs.readFileSync('./docs/phase-5e-7-validation.sql','utf8');
+  var v13start=sql.indexOf('V13');
+  assert(v13start!==-1,'V13 must exist');
+  var v13end=sql.indexOf('V14',v13start);
+  var v13=sql.slice(v13start,v13end);
+  assertIncludes(v13,'LEFT JOIN','V13 must use LEFT JOIN to detect missing SELECT policies');
+  assertIncludes(v13,'ZERO SELECT policies','V13 must emit FAIL message for tables with no SELECT policies');
+  assert(!v13.includes('bool_and('),'V13 must not use bool_and()');
+});
+
+test('5E7-N10: 5B-12 no longer asserts is_owner() as current desired behavior for budget_line_rules',()=>{
+  // The test should be annotated as historical, not asserting is_owner() as desired state
+  // Find 5B-12 test in source
+  var src=fs.readFileSync('./test_regression.js','utf8');
+  var b12start=src.indexOf("'5B-12:");
+  assert(b12start!==-1,'5B-12 must exist');
+  var b12end=src.indexOf('\n});',b12start)+4;
+  var b12=src.slice(b12start,b12end);
+  assertIncludes(b12,'HISTORICAL','5B-12 must be marked as HISTORICAL');
+  assertIncludes(b12,'canWriteFinancials','5B-12 must reference canWriteFinancials() as current desired behavior');
+  // Must NOT assert is_owner() as current desired state (only structural/idempotency checks remain)
+  assert(!b12.includes("all write policies on line_rules must use is_owner()"),'5B-12 must not assert is_owner() as current desired behavior');
+});
+
+test('5E7-N11: USER_ROLE comment uses household_admin not editor',()=>{
+  assertIncludes(html,"'owner'|'household_admin'|'viewer'",'USER_ROLE comment must use household_admin not editor');
+  assert(!html.includes("'owner'|'editor'|'viewer'"),'USER_ROLE comment must not say editor');
 });
 
 // ─────────────────────────────────────────────────────────────────────────
