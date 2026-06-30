@@ -10,7 +10,7 @@
 | 5E-4   | Budget Correctness + Display Fixes             | Complete           |
 | 5E-5   | Budget Line Admin (required before 7/1)        | Complete                         |
 | 5E-6   | Monthly Entertainment Buckets                  | Complete                         |
-| 5E-7   | Role Enforcement / Security Maturity Gate      | Code/tests complete; live P8/V12 pending |
+| 5E-7   | Role Enforcement / Security Maturity Gate      | Complete — live P8/V12 verified (2026-06-30) |
 | 5E-8   | 7/1 Wendy Operating Readiness                  | Not started        |
 | 5E-9   | Category Registry Admin                        | Deferred (unless 7/1 blocker found) |
 | 5F-0   | Needs Attention / Dashboard Usefulness         | Not started        |
@@ -166,7 +166,7 @@ Post-smoke state: Entertainment group $1,500 budget, balanced at $0 for July. Ju
 
 ---
 
-### Phase 5E-7 — Role Enforcement / Security Maturity Gate (CODE/TESTS COMPLETE; live SQL P8/V12 pending before 5E-8)
+### Phase 5E-7 — Role Enforcement / Security Maturity Gate (COMPLETE — live verified 2026-06-30)
 Absorbs deferred Phase 4C. Hardens and audits all write-path role enforcement before any 5F+ work begins.
 
 **What shipped:**
@@ -275,8 +275,19 @@ Absorbs deferred Phase 4C. Hardens and audits all write-path role enforcement be
 
 **Owner-only writes:** accounts, categories, category registry keys, `goals.anthropic_key`, RLS/policy/platform config, destructive admin actions.
 
-**STOP CONDITION (budget_line_rules):**
-Migration docs show `budget_line_rules` write policies may use `is_owner()`, blocking Wendy. App-side `_blrSave*` functions already use `canWriteFinancials()` (correct). If P8/V12 returns FAIL, a SQL migration is required before 5E-8 to align DB with product decision. WC-7 in the smoke checklist will surface this.
+**BLR RLS alignment (2026-06-30 — post-code surgical migration):**
+Live P8 audit confirmed `budget_line_rules` write policies were using `is_owner()`, blocking Wendy (household_admin) from Budget Line Admin. A surgical RLS migration was applied:
+- Dropped: `budget_line_rules_insert`, `budget_line_rules_update`, `budget_line_rules_delete` (all using `is_owner()`)
+- Created: same three policies using `can_write_financials()` — grants INSERT/UPDATE/DELETE to owner AND household_admin
+- SELECT policy (`is_allowed_user()`) untouched
+- No schema changes. No data changes. No function changes.
+- P8 PASS confirmed: 3 write policies, all `can_write_financials()`, zero `is_owner()` on writes
+- V12 PASS confirmed (isolated query): `Write policies: 3 | Uses can_write_financials: true | Uses is_owner (blocks Wendy): false`
+- Wendy (household_admin) is no longer blocked at RLS for Budget Line Admin
+- Migration file: `docs/phase-5e-7-blr-rls-migration.sql`
+- Validation file: `docs/phase-5e-7-blr-rls-validation.sql` (BM1–BM5 authoritative; BM4 NULL-handling false alarm documented)
+
+**STOP CONDITION: CLEARED** — P8 and V12 both PASS. 5E-7 is fully live verified. 5E-8 unblocked.
 
 **Non-goals (held):**
 - No Budget math changes
@@ -297,7 +308,7 @@ Confirm the system is operationally ready for Wendy to use as of July 1.
 - Known limitations documented (no splits, no transfers, no imports, no reconciliation yet)
 - No major new feature build unless a readiness blocker is found during this phase
 
-**Gate:** Unblocked after 5E-7 code/tests pass AND live SQL P8/V12 audit returns no STOP CONDITION. Resolve P8/V12 (budget_line_rules write policy) before starting. No other code changes expected unless a blocker surfaces.
+**Gate:** CLEARED — 5E-7 code/tests complete and live P8/V12 audit passed (2026-06-30). BLR RLS aligned. Do not start until explicitly approved.
 
 ---
 
