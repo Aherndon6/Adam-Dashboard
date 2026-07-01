@@ -19,13 +19,27 @@ Once Phase 5F-1 is built and committed, the agreed near-term build order is:
 2. **5G-1** — Wendy daily transaction-entry polish
 3. **5I-3** — Test hardening around Wendy workflows
 4. **5G-2** — Budget variance clarity
-5. **5F-3** — Pending / posted transaction rules
+5. **5F-3** — Pending / posted transaction rules *(carries the month-boundary/carryover design item below)*
 6. **5G-3** — Reimbursables
 7. **5F-4** — Full usable reconciliation workflow
 
 ### Guardrail
 
 Do not jump to bank import, AI finance assistant, weekly forecast integration, or broader household OS expansion until there is at least one clean July operating week with Wendy entering transactions.
+
+### Design backlog item — month-boundary / carryover charge treatment
+
+**Captured:** Jul 1, 2026, during the AMEX Gold starting-balance correction (5E-8 Wendy readiness).
+**Target phase: 5F-3 (Pending / posted transaction rules).**
+
+Reasoning: the underlying problem is exactly what 5F-3 is scoped to solve — the relationship between `posted_date` and the date a charge should count against for budget purposes. It is a data-model and workflow question, not a display question, so it belongs in 5F-3 rather than 5G-2 (Budget variance clarity), which is about presenting variance once the underlying numbers are already correct. 5G-2 may end up consuming this once 5F-3 ships (e.g., surfacing carried-over charges in variance views), but the mechanism itself is 5F-3's job.
+
+Problem: end-of-month charges regularly post in one calendar month but belong to the next month's budget (e.g., the AMEX Gold Diablos/Fandango case on 7/1/26, corrected via one-off starting-balance adjustment).
+
+Future rule:
+- Starting balances are go-live anchors, not a recurring monthly adjustment tool. Do not solve recurring month-boundary cases by editing `starting_balance`.
+- Build a proper workflow for "posted in prior month, assigned to next month's budget" using the existing distinction between transaction date / budget date and posted date.
+- `posted_date` already exists on `public.transactions` but is not currently wired into any budget or reconciliation logic. Do not rely on it until 5F-3 formally defines its behavior.
 
 ---
 
