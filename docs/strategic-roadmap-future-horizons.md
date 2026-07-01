@@ -17,15 +17,20 @@ Once Phase 5F-1 is built and committed, the agreed near-term build order is:
 
 1. **5F-2** — Quicken parallel-run comparison, read-only
 2. **5G-1** — Wendy daily transaction-entry polish
-3. **5I-3** — Test hardening around Wendy workflows
-4. **5G-2** — Budget variance clarity
-5. **5F-3** — Pending / posted transaction rules *(carries the month-boundary/carryover design item below)*
-6. **5G-3** — Reimbursables
-7. **5F-4** — Full usable reconciliation workflow
+3. **5I-0** — Local operator workflow hardening *(see Section 4 for full definition)*
+4. **5I-3** — Test hardening around Wendy workflows
+5. **5G-2** — Budget variance clarity
+6. **5F-3** — Pending / posted transaction rules *(carries the month-boundary/carryover design item below)*
+7. **5G-3** — Reimbursables
+8. **5F-4** — Full usable reconciliation workflow
+
+Beyond this list, **5I-4 — Architecture modernization plan** (Section 4) comes later still: after 5I-3 test hardening, before any frontend modularization, and well before any framework migration decision.
 
 ### Guardrail
 
 Do not jump to bank import, AI finance assistant, weekly forecast integration, or broader household OS expansion until there is at least one clean July operating week with Wendy entering transactions.
+
+Do not refactor architecture during the 5F-1 / Wendy adoption window. Do not rewrite the app now. Do not move off Supabase now. Do not move hosting now. See Section 4 for the full architecture modernization guardrail.
 
 ### Design backlog item — month-boundary / carryover charge treatment
 
@@ -74,7 +79,92 @@ The long-term owner-facing planning layer that connects household actuals, savin
 
 ---
 
-## 4. Explicitly Out of Scope Right Now
+## 4. Platform / Architecture Roadmap Items
+
+Future phases, not active work. Captured Jul 1, 2026, ahead of the 5F-1 build session, per explicit instruction not to refactor architecture during 5F-1 / Wendy adoption.
+
+### 5I-0 — Local Operator Workflow Hardening
+
+**Purpose:** Make Adam's local commit/push process safer and easier.
+
+**Problem:**
+- `push_to_github.sh` is not consistently available from Terminal unless called correctly.
+- Claude/Codex sandbox can prepare files but may fail on commits due to permission/`index.lock` issues.
+- There are intentionally untracked files (e.g. `docs/phase-5f-1-spec.md`), so `git add -A` is risky.
+- Adam is often running multiple manual commands and handling lock files by hand.
+
+**Future scope:**
+- Create a safe local commit/push script.
+- Script stages only explicitly passed files — never `git add -A`.
+- Script detects `.git/index.lock` and stops with clear instructions rather than guessing.
+- Script shows `git status` before and after.
+- Script commits with a provided message and pushes to `origin/main`.
+- Script preserves intentionally untracked files unless explicitly included.
+- Standard operating model: Claude prepares/reviews files; Adam runs the final local commit/push.
+
+**Example future command shape:**
+```
+./scripts/safe_commit_push.sh "docs: message here" file1 file2 file3
+```
+
+### 5I-4 — Architecture Modernization Plan
+
+**Purpose:** Create a deliberate path for Herndon Financial OS to become Herndon Household OS without a risky rewrite.
+
+**Current architecture:**
+- Static app hosted at dashboard.herndons.us
+- Supabase backend/auth/data/RLS
+- Large single-file frontend centered on `index.html`
+- Regression/e2e test scripts
+
+**Assessment:** This architecture is acceptable for the current Financial OS launch and Wendy adoption window, but it will not scale cleanly forever as the OS expands into retirement planning, household planning, travel, documents, family tasks, AI, and future bank/import capabilities.
+
+**Future target direction:**
+- Keep Supabase as the backend for now.
+- Keep current hosting for now unless there is a specific reason to move.
+- First stabilize Budget + Transactions + Reconciliation.
+- Then improve tests.
+- Then document a target architecture.
+- Then gradually modularize the frontend.
+- Only later consider framework migration, such as Vite/React or Next.js.
+
+**Target architecture concepts:**
+
+*Frontend:*
+- Modular components
+- Feature folders for budget, transactions, reconciliation, planning, goals, household, admin
+- Shared utilities for Supabase, auth, roles, money, dates
+- Eventually TypeScript, if/when the app is migrated
+
+*Backend/data:*
+- Supabase Postgres
+- Supabase Auth
+- RLS
+- Migrations
+- Audit logs
+- SQL views/RPC functions for financial calculations where useful
+
+*Future server-side layer:*
+- Only when needed for AI, bank integrations, scheduled jobs, imports, or secrets.
+- Possible options: Supabase Edge Functions, Vercel/Netlify serverless functions, or a small backend.
+
+**Sequencing guardrail:** Do not refactor architecture during the 5F-1 / Wendy adoption window. Do not rewrite the app now. Do not move off Supabase now. Do not move hosting now.
+
+**Recommended order:**
+1. Finish 5F-1.
+2. Complete 5F-2 Quicken parallel-run comparison.
+3. Complete Wendy daily transaction-entry stabilization.
+4. Add 5I-0 local operator workflow hardening.
+5. Add 5I-3 test hardening.
+6. Then create 5I-4 architecture modernization plan.
+7. Later: careful frontend modularization with no behavior change.
+8. Much later: framework migration only if justified.
+
+**Principle to preserve:** The current setup is good enough for launch, but not the final Household OS architecture. Stabilize first, modularize later, rewrite last if needed.
+
+---
+
+## 5. Explicitly Out of Scope Right Now
 
 - No app code
 - No schema or migration work
