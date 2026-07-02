@@ -857,12 +857,18 @@ button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-vis
 // ── Constants (unchanged) ──────────────────────────────────────────────────
 // Simplified architecture — $8,250 total from LC · $6,500 operating floor · no legacy mechanics
 // Real-world moves: keep $2,250 in chk, move $2,750 sav→chk, move $1,000 LC→chk, move $2,250 LC→chk (Option 1 correction)
-const BUILD_TS='2026-07-01T09:26:12'; // updated each push — local time string
+const BUILD_TS='2026-07-01T22:20:28'; // updated each push — local time string
 const START_CHK=18037.73,START_SAV=3772.77,START_AMX=103.64,START_TAX=0,START_LC=13488.88;
 const EF_AMT=13488.88; // LC/EF balance — static this model year (no transfers in or out)
 const BASE_TAX=521.36,RET_SAV_XFR=3772.74;
 const COMM_TAX=707.18,COMM_AK=1060.76;
 const OP_FL=6500,MIN_XFR=100,AK_START=5;
+// ── Phase 5F-1: Cash Availability Engine ────────────────────────────────────
+// PLAN_YEAR scopes cash_commitments rows to the current model year. Existing
+// hardcoded 2026/2027 literals elsewhere (date/week-mapping helpers) are left
+// untouched here — that refactor is out of scope for this step; only new
+// 5F-1 code below reads PLAN_YEAR.
+const PLAN_YEAR=2026;
 const AMX_SWEEP_LOOKAHEAD_WEEKS=5; // weeks ahead to project before allowing AMEX sweep
 const VAR_THRESHOLD=250;
 
@@ -905,6 +911,7 @@ const WD=[
 
 // ── State (Supabase-backed; no localStorage) ───────────────────────────────
 var reconData={};
+var commitmentData=[]; // Phase 5F-1: cash_commitments rows for PLAN_YEAR (populated in loadAll())
 var taskData={};
 var noteData={};
 var overrideData={};
@@ -1637,6 +1644,37 @@ function maxSafeAmxSweep(proposedAmt,curChk,weekNum,ewd,floor,ahead){
 }
 
 // ── runModel — full waterfall-integrated model ─────────────────────────────
+// ── Phase 5F-1: Cash Availability Engine — helper functions ─────────────────
+// Verbatim from docs/phase-5f-1-spec.md "isReservedAsOf()" section. Do not
+// reorder the guard clauses — reflected_model_week is checked before
+// resolved_model_week deliberately (see spec's Balance-Basis Decision Matrix
+// note: reflected_model_week is authoritative independent of status).
+function isReservedAsOf(c,weekNum){
+  if(c.model_year!==PLAN_YEAR)return false;
+  if(c.origin_model_week>weekNum)return false;
+  if(!c.affects_deployable_cash)return false;
+  if(c.status==='voided')return false;
+  if(c.resolution_type==='voided')return false;
+  if(c.resolution_type==='paid_from_other_account')return false;
+  if(c.reflected_model_week!=null&&c.reflected_model_week<=weekNum)return false;
+  if(c.resolved_model_week==null)return true;
+  return c.resolved_model_week>weekNum;
+}
+// Verbatim from docs/phase-5f-1-spec.md "getCashAvailabilityEngine()" section.
+// rawSurplusAboveFloorCents is informational only — never used to gate a
+// transfer; adjustedDeployableSurplusCents is the reserve-adjusted figure the
+// waterfall sweep clamp (remainingAdjustedSweep, below) is seeded from.
+function getCashAvailabilityEngine(actualBalanceCents,floorCents,commitments,sourceAccount,modelWeekNum){
+  var reservedProtectedCents=commitments
+    .filter(function(c){return c.source_account===sourceAccount&&isReservedAsOf(c,modelWeekNum);})
+    .reduce(function(sum,c){return sum+c.amount_cents;},0);
+  return{
+    rawSurplusAboveFloorCents:actualBalanceCents-floorCents,
+    reservedProtectedCents:reservedProtectedCents,
+    adjustedAvailableCashCents:actualBalanceCents-reservedProtectedCents,
+    adjustedDeployableSurplusCents:Math.max(0,(actualBalanceCents-reservedProtectedCents)-floorCents)
+  };
+}
 function runModel(akGoal,rtGoal,flags){
   flags=flags||goalFlags;
   var akTarget=akGoal!=null?akGoal:((GOALS_REGISTRY.find(function(g){return g.id==='alaska';})||{}).target||7000);
@@ -1680,6 +1718,11 @@ function runModel(akGoal,rtGoal,flags){
   // ── Budget Rules — Phase 5 delta overlay ─────────────────────────────
   ruleAudit=[];
   var ruleContext=buildBudgetRuleContext(budgetRules);
+  // ── Phase 5F-1: reconciledWeeks guard (built once, before week loop) ────
+  // Prevents unreconciled/seed commitments from reducing sweep capacity for
+  // projected (not-yet-reconciled) weeks — see Engine block below.
+  var _reconciledWeekNums={};
+  for(var _rw in reconData){_reconciledWeekNums[parseInt(_rw,10)]=true;}
   for(const wd of effectiveWD){
     const[num,dates,inflows,obs,evs,ct,ca,calNote]=wd;
     const startChk=r(chk),startSav=r(sav),startAmx=r(amx),startTax=r(tax),startLc=r(lc);
@@ -1816,6 +1859,59 @@ function runModel(akGoal,rtGoal,flags){
     var laFl=_laNetOut>LA_THRESHOLD?r(effFl+_laNetOut):effFl;
     var isCommWk=ct>0||ca>0;
     var wf=isCommWk?varWF:regWF;
+    // ── Phase 5F-1: Cash Availability Engine ─────────────────────────────────
+    // Spec placement: "inside week loop, after recon override, before
+    // waterfall." In this codebase the recon-override assignment (chk=rec.chk
+    // etc.) runs later in the loop body (near the week-object push), after the
+    // waterfall — moving it earlier would change the modeled dollar amounts the
+    // waterfall computes for every already-reconciled week, a much larger and
+    // riskier change than 5F-1 calls for. Instead, this block reads reconData[num]
+    // directly for the "actual balance" input, which gives the same result the
+    // spec's "after recon override" ordering intends (use the real reconciled
+    // balance for reserve math on reconciled weeks) without moving any existing
+    // code or altering historical waterfall output. chk itself is never modified
+    // here or by anything below in this block — read-only informational input.
+    var _isReconciled=!!(reconData[num]);
+    var _actualChkForEngine=_isReconciled?reconData[num].chk:chk;
+    var _caCommitments;
+    if(_isReconciled){
+      _caCommitments=commitmentData.filter(function(c){
+        return c.source_account==='truist_checking'&&isReservedAsOf(c,num);
+      });
+    }else{
+      // Projected: carry-forward only. origin_model_week<num prevents double-reserve with WD.
+      // reconciledWeeks guard prevents unreconciled/seed commitments from reducing sweep capacity.
+      _caCommitments=commitmentData.filter(function(c){
+        return c.source_account==='truist_checking'
+          &&c.origin_model_week<num
+          &&(_reconciledWeekNums[c.origin_model_week]||c.commitment_source==='historical_repair')
+          &&isReservedAsOf(c,num);
+      });
+    }
+    var _cae=getCashAvailabilityEngine(
+      Math.round(_actualChkForEngine*100),Math.round(effFl*100),
+      _caCommitments,'truist_checking',num
+    );
+    var adjustedAvailableForSweep=_cae.adjustedDeployableSurplusCents/100;
+    var _balanceBasisUnknown=_isReconciled&&reconData[num].balance_basis==='unknown';
+    var _hasActiveReserves=_caCommitments.length>0&&_cae.reservedProtectedCents>0;
+    // bank_pending is the shared "genuine uncertainty" status for both "not sure if
+    // cleared" (posted_current_balance) and "not sure if already reflected"
+    // (available_balance) — either kind of uncertainty on an active reserve
+    // triggers Review Required, not just an unknown week-level basis.
+    var _hasBankPendingReserve=_caCommitments.some(function(c){return c.status==='bank_pending';});
+    var _reviewRequired=_hasActiveReserves&&(_balanceBasisUnknown||_hasBankPendingReserve);
+    var remainingAdjustedSweep=adjustedAvailableForSweep;
+    // ── Scope boundary note (status, not a TODO) ──────────────────────────────
+    // remainingAdjustedSweep only clamps the GOAL WATERFALL sweep site below.
+    // Commission-tax and tax-backlog transfers to Vio (mv(ct,'tax') / mv(commTaxPending,
+    // 'tax') / mv(taxTodo,'tax'), above this block) remain governed by the pre-5F-1
+    // floor-based mv()/sm() behavior only — they are NOT reserve-aware. This is
+    // intentional for this step (spec's AC-17/19 waterfall-cap language is scoped to
+    // goal funding, not tax reserve transfers) and is not a regression: tax transfers
+    // behave identically to before 5F-1. Making tax-reserve transfers reserve-aware
+    // is deferred to a separate, explicitly scoped phase if it turns out to be needed.
+    // ──────────────────────────────────────────────────────────────────────────
     for(var wi=0;wi<wf.length;wi++){
       if(r(Math.max(0,chk-laFl))<0.005)break;
       var goalId=wf[wi];
@@ -1853,9 +1949,16 @@ function runModel(akGoal,rtGoal,flags){
         }
         rem0=r(safeAmt);
       }
+      // Phase 5F-1: waterfall sweep pattern — defensively clamp the proposed
+      // amount against reserve-adjusted remaining capacity before the existing
+      // floor-based mv()/sm() clamp runs. remainingAdjustedSweep decrements only
+      // by what actually moves (m below), never by the proposed amount, so a
+      // partial/suppressed mv() doesn't over-consume the aggregate cap.
+      rem0=r(Math.max(0,Math.min(rem0,remainingAdjustedSweep)));
       var allowFin=rem0<MIN_XFR*2; // allow tiny final contribution to complete goal
       var m=mv(rem0,dst,allowFin);
       if(m>0){
+        remainingAdjustedSweep=Math.max(0,r(remainingAdjustedSweep-m));
         goalSaved[goalId]=r(funded0+m);
         var remAfter=r(Math.max(0,gTgt-goalSaved[goalId]));
         var sfx=remAfter<0.01?' — '+gdef.name+' funded!':(': $'+fc(remAfter)+' remaining');
@@ -1963,7 +2066,22 @@ function runModel(akGoal,rtGoal,flags){
       akRem:r(Math.max(0,akTarget-(goalSaved['alaska']||0))),
       retRem:r(Math.max(0,7000-(goalSaved['adam_ira']||0))), // retRem now tracks adam_ira remaining (backwards compat)
       ol:r(chk+sav),surplusSwept:r(surplusSwept),surplusStart,
-      startChk,startSav,startAmx,startTax,startLc,reconciled,variance,actualBals});
+      startChk,startSav,startAmx,startTax,startLc,reconciled,variance,actualBals,
+      // ── Phase 5F-1: Cash Availability Engine output (non-UI; consumed by
+      // regression tests and future reconciliation-UI work, not rendered yet) ──
+      cashAvailability:{
+        rawSurplusAboveFloorCents:_cae.rawSurplusAboveFloorCents,
+        reservedProtectedCents:_cae.reservedProtectedCents,
+        adjustedAvailableCashCents:_cae.adjustedAvailableCashCents,
+        adjustedDeployableSurplusCents:_cae.adjustedDeployableSurplusCents,
+        adjustedAvailableForSweep:adjustedAvailableForSweep,
+        remainingAdjustedSweepEnd:remainingAdjustedSweep,
+        reservedCommitmentCount:_caCommitments.length,
+        hasActiveReserves:_hasActiveReserves,
+        balanceBasisUnknown:_balanceBasisUnknown,
+        hasBankPendingReserve:_hasBankPendingReserve,
+        reviewRequired:_reviewRequired
+      }});
   }
   return weeks;
 }
@@ -6039,7 +6157,7 @@ async function saveGoal(key,value){
 async function loadAll(){
   try{
     var h=await getAuthHeaders();
-    var[reconR,tasksR,notesR,overridesR,goalsR,wishlistR,customTasksR,budgetRulesR,goalRegistryR,budgetLineRulesR]=await Promise.all([
+    var[reconR,tasksR,notesR,overridesR,goalsR,wishlistR,customTasksR,budgetRulesR,goalRegistryR,budgetLineRulesR,cashCommitmentsR]=await Promise.all([
       fetch(SUPA_URL+'/rest/v1/weekly_reconciliations?select=*',{headers:h}),
       fetch(SUPA_URL+'/rest/v1/weekly_tasks?select=*',{headers:h}),
       fetch(SUPA_URL+'/rest/v1/weekly_notes?select=*',{headers:h}),
@@ -6049,9 +6167,13 @@ async function loadAll(){
       fetch(SUPA_URL+'/rest/v1/custom_tasks?select=*&order=created_at.asc',{headers:h}),
       fetch(SUPA_URL+'/rest/v1/budget_rules?active=eq.true&order=start_date.asc',{headers:h}),
       fetch(SUPA_URL+'/rest/v1/goal_registry?order=priority.asc',{headers:h}),
-      fetch(SUPA_URL+'/rest/v1/budget_line_rules?is_active=eq.true&select=*&order=category_key.asc',{headers:h})
+      fetch(SUPA_URL+'/rest/v1/budget_line_rules?is_active=eq.true&select=*&order=category_key.asc',{headers:h}),
+      fetch(SUPA_URL+'/rest/v1/cash_commitments?model_year=eq.'+PLAN_YEAR+'&select=*',{headers:h})
     ]);
-    if(reconR.ok){(await reconR.json()).forEach(function(row){reconData[row.week_num]={chk:row.chk,sav:row.sav,amx:row.amx,tax:row.tax,lc:row.lc,date:new Date(row.recorded_at).toLocaleDateString('en-US',{month:'short',day:'numeric'})};});}
+    if(reconR.ok){(await reconR.json()).forEach(function(row){reconData[row.week_num]={chk:row.chk,sav:row.sav,amx:row.amx,tax:row.tax,lc:row.lc,balance_basis:row.balance_basis||null,date:new Date(row.recorded_at).toLocaleDateString('en-US',{month:'short',day:'numeric'})};});}
+    // ── Phase 5F-1: cash_commitments load ─────────────────────────────────
+    if(cashCommitmentsR.ok){commitmentData=await cashCommitmentsR.json();}
+    else{commitmentData=[];console.warn('[CashCommitments] Load failed: HTTP '+cashCommitmentsR.status+' — cash availability engine will treat reserves as empty');}
     if(tasksR.ok){(await tasksR.json()).forEach(function(row){taskData[row.week_num+'_'+row.task_idx]={completed:row.completed,completedAt:row.completed_at,completedAmount:row.completed_amount!=null?parseFloat(row.completed_amount):null,actionKey:row.action_key||null,completedLabel:row.completed_label||null};});}
     if(notesR.ok){(await notesR.json()).forEach(function(row){noteData[row.week_num]=row.note;});}
     if(overridesR.ok){(await overridesR.json()).forEach(function(row){overrideData[row.week_num]=row;});}

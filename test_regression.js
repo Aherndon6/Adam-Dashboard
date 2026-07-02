@@ -7093,6 +7093,702 @@ test('5E7-N11: USER_ROLE comment uses household_admin not editor',()=>{
   assert(!html.includes("'owner'|'editor'|'viewer'"),'USER_ROLE comment must not say editor');
 });
 
+
+// ═══════════════════════════════════════════════════════════════════════════
+// Phase 5F-1 — Cash Commitment Capture + Cash Availability Engine
+// DB/RPC-layer regression coverage (source-pattern assertions against the
+// live, validated phase-5f-1-migration.sql — same convention as ROLE-J/K/M
+// above, which tested 5E-7's SQL files this same way).
+//
+// SCOPE NOTE: 5F-1 spec defines 116 ACs total (AC-1 through AC-116). Of
+// those, 82 describe DB/RPC-layer behavior that this file's SQL-file-text
+// convention can verify now. The remaining 34 (33 JS-engine ACs — AC-1–6,
+// AC-13–21, AC-28, AC-47, AC-77–80, AC-88–92, AC-96–97, AC-101, AC-105–108 —
+// plus AC-76, a process-check rather than a runtime assertion) describe
+// JS engine behavior (isReservedAsOf(), getCashAvailabilityEngine(), the
+// 4-phase reconciliation form, dashboard Review Required verdict) or are
+// process-checks (AC-76) — none of that code exists in index.html yet
+// (Build Sequence steps 6-12 are not started). Writing those as runtime
+// tests now would either fail immediately (calling undefined functions) or
+// require adding index.html stubs, which is out of scope for this
+// checkpoint per explicit instruction. They are listed as NOT YET
+// IMPLEMENTED below, grouped at the end of this section, so the gap is
+// visible in test output rather than silently absent.
+// ═══════════════════════════════════════════════════════════════════════════
+
+console.log('\n── Section 5F1-A: DB grants & privileges ──');
+(function(){
+var sql=fs.readFileSync('./docs/phase-5f-1-migration.sql','utf8');
+var repairSql=fs.readFileSync('./docs/phase-5f-1-grant-repair.sql','utf8');
+
+test('AC-11: all three functions REVOKE PUBLIC/anon/authenticated on validate_commitment_state; authenticated-only on both RPCs',()=>{
+  assertIncludes(sql,"REVOKE ALL ON FUNCTION validate_commitment_state(\n  UUID, TEXT, INT, INT, TEXT, INT, INT, INT, TEXT, BOOLEAN, DATE, TEXT\n) FROM PUBLIC, anon, authenticated;");
+  assertIncludes(sql,"REVOKE ALL ON FUNCTION save_reconciliation_with_commitments(\n  INT, INT, NUMERIC, NUMERIC, NUMERIC, NUMERIC, NUMERIC, TEXT, TIMESTAMPTZ, JSONB, JSONB\n) FROM PUBLIC, anon, authenticated;");
+  assertIncludes(sql,"GRANT EXECUTE ON FUNCTION save_reconciliation_with_commitments(\n  INT, INT, NUMERIC, NUMERIC, NUMERIC, NUMERIC, NUMERIC, TEXT, TIMESTAMPTZ, JSONB, JSONB\n) TO authenticated;");
+  assertIncludes(sql,"REVOKE ALL ON FUNCTION repair_commitments_for_week(INT, INT, TEXT, JSONB, JSONB) FROM PUBLIC, anon, authenticated;");
+  assertIncludes(sql,"GRANT EXECUTE ON FUNCTION repair_commitments_for_week(INT, INT, TEXT, JSONB, JSONB) TO authenticated;");
+});
+
+test('AC-11b: no GRANT statement exists anywhere for validate_commitment_state (internal helper only)',()=>{
+  var idx=sql.indexOf('CREATE OR REPLACE FUNCTION validate_commitment_state');
+  var nextFn=sql.indexOf('CREATE OR REPLACE FUNCTION save_reconciliation_with_commitments');
+  var slice=sql.slice(idx,nextFn);
+  assert(!/GRANT EXECUTE ON FUNCTION validate_commitment_state/.test(slice),'validate_commitment_state must never be GRANTed');
+});
+
+test('AC-29/30: cash_commitments REVOKEs INSERT/UPDATE from authenticated before granting SELECT only',()=>{
+  assertIncludes(sql,'REVOKE ALL ON cash_commitments FROM PUBLIC;');
+  assertIncludes(sql,'REVOKE ALL ON cash_commitments FROM anon;');
+  assertIncludes(sql,'REVOKE ALL ON cash_commitments FROM authenticated;');
+  assertIncludes(sql,'GRANT SELECT ON cash_commitments TO authenticated;');
+  assert(!/GRANT (INSERT|UPDATE) ON cash_commitments/.test(sql),'no direct INSERT/UPDATE grant on cash_commitments should exist — mutations go through the RPCs only');
+});
+
+test('AC-31: validate_commitment_state has no SECURITY DEFINER clause (defaults to INVOKER)',()=>{
+  var idx=sql.indexOf('CREATE OR REPLACE FUNCTION validate_commitment_state');
+  var bodyEnd=sql.indexOf('$$;',idx);
+  var slice=sql.slice(idx,bodyEnd);
+  assert(!/SECURITY DEFINER/.test(slice),'validate_commitment_state must not be SECURITY DEFINER');
+});
+
+test('AC-48: table grants — both RPCs are SECURITY DEFINER (bypass the REVOKE) while cash_commitments direct grants stay SELECT-only',()=>{
+  var saveIdx=sql.indexOf('CREATE OR REPLACE FUNCTION save_reconciliation_with_commitments');
+  var repairIdx=sql.indexOf('CREATE OR REPLACE FUNCTION repair_commitments_for_week');
+  var saveSlice=sql.slice(saveIdx,saveIdx+2000);
+  var repairSlice=sql.slice(repairIdx,repairIdx+2000);
+  assertIncludes(saveSlice,'SECURITY DEFINER');
+  assertIncludes(repairSlice,'SECURITY DEFINER');
+});
+
+test('AC-grant-repair: grant-repair file targets the same three exact function signatures as the migration',()=>{
+  assertIncludes(repairSql,"validate_commitment_state(\n  UUID, TEXT, INT, INT, TEXT, INT, INT, INT, TEXT, BOOLEAN, DATE, TEXT\n) FROM PUBLIC, anon, authenticated;");
+  assertIncludes(repairSql,'TO authenticated;');
+  assert((repairSql.match(/REVOKE ALL ON FUNCTION/g)||[]).length===3,'expected 3 REVOKE ALL ON FUNCTION statements in grant-repair.sql');
+});
+})();
+
+console.log('\n── Section 5F1-B: cash_commitments schema, constraints, scope ──');
+(function(){
+var sql=fs.readFileSync('./docs/phase-5f-1-migration.sql','utf8');
+
+test('AC-22: chk_week_origin_range, chk_resolved_after_origin, and amount_cents > 0 constraints exist',()=>{
+  assertIncludes(sql,'CONSTRAINT chk_week_origin_range\n    CHECK (origin_model_week BETWEEN 1 AND 31)');
+  assertIncludes(sql,'CONSTRAINT chk_resolved_after_origin\n    CHECK (resolved_model_week IS NULL OR resolved_model_week >= origin_model_week)');
+  assertIncludes(sql,'amount_cents               INT NOT NULL CHECK (amount_cents > 0)');
+  assertIncludes(sql,'original_amount_cents      INT CHECK (original_amount_cents IS NULL OR original_amount_cents > 0)');
+});
+
+test('AC-25: expected_item_id is UNIQUE NOT NULL, with a server-generated UUID primary key — two distinct manual entries never collide',()=>{
+  assertIncludes(sql,'id                         UUID PRIMARY KEY DEFAULT gen_random_uuid()');
+  assertIncludes(sql,'expected_item_id           TEXT UNIQUE NOT NULL');
+});
+
+test('AC-64: chk_source_account_only_truist CHECK constraint exists at the table level',()=>{
+  assertIncludes(sql,'CONSTRAINT chk_source_account_only_truist\n    CHECK (source_account IN (\'truist_checking\'))');
+});
+
+test('AC-53: no 5F-1 SQL object references budget_transactions or budget_line_rules — Budget/Transactions tables are untouched',()=>{
+  assert(!/budget_transactions/.test(sql),'migration must not reference budget_transactions');
+  assert(!/budget_line_rules/.test(sql),'migration must not reference budget_line_rules');
+});
+
+test('AC-67: spec states 116 ACs consistently and grep -c matches',()=>{
+  var spec=fs.readFileSync('./docs/phase-5f-1-spec.md','utf8');
+  var count=(spec.match(/^### AC-\d+/gm)||[]).length;
+  assert(count===116,'expected 116 AC headers in spec, found '+count);
+});
+})();
+
+console.log('\n── Section 5F1-C: validate_commitment_state helper ──');
+(function(){
+var sql=fs.readFileSync('./docs/phase-5f-1-migration.sql','utf8');
+var idx=sql.indexOf('CREATE OR REPLACE FUNCTION validate_commitment_state');
+var end=sql.indexOf('REVOKE ALL ON FUNCTION validate_commitment_state',idx);
+var vcs=sql.slice(idx,end);
+
+test('AC-49: validate_commitment_state rejects null/invalid status and required_or_discretionary',()=>{
+  assertIncludes(vcs,"RAISE EXCEPTION 'status is required (%)', v_ctx;");
+  assertIncludes(vcs,"RAISE EXCEPTION 'invalid status: % (%)', p_status, v_ctx;");
+  assertIncludes(vcs,"RAISE EXCEPTION 'required_or_discretionary is required (%)', v_ctx;");
+  assertIncludes(vcs,"RAISE EXCEPTION 'invalid required_or_discretionary: % (%)', p_required_or_discretionary, v_ctx;");
+});
+
+test('AC-50: protected_required with affects_deployable_cash=false is rejected',()=>{
+  assertIncludes(vcs,"IF p_required_or_discretionary = 'protected_required' AND NOT p_affects_deployable_cash THEN");
+  assertIncludes(vcs,"RAISE EXCEPTION 'protected_required commitment must have affects_deployable_cash=true (%)', v_ctx;");
+});
+
+test('AC-75: origin_model_week NULL and out-of-range are rejected independently of caller checks',()=>{
+  assertIncludes(vcs,"RAISE EXCEPTION 'origin_model_week is required (%)', v_ctx;");
+  assertIncludes(vcs,"RAISE EXCEPTION 'origin_model_week out of range (%)', v_ctx;");
+});
+
+test('AC-81: affects_deployable_cash NULL is rejected explicitly, not assumed pre-defaulted',()=>{
+  assertIncludes(vcs,'IF p_affects_deployable_cash IS NULL THEN');
+  assertIncludes(vcs,"RAISE EXCEPTION 'affects_deployable_cash is required (%)', v_ctx;");
+});
+
+test('AC-82: amount_changed requires original_amount_cents present and different from amount_cents',()=>{
+  assertIncludes(vcs,"RAISE EXCEPTION 'amount_changed requires original_amount_cents (%)', v_ctx;");
+  assertIncludes(vcs,"RAISE EXCEPTION 'amount_changed requires original_amount_cents <> amount_cents (%)', v_ctx;");
+});
+
+test('AC-83: cleared_date rejected unless status=cleared',()=>{
+  assertIncludes(vcs,"IF p_cleared_date IS NOT NULL AND p_status <> 'cleared' THEN");
+  assertIncludes(vcs,"RAISE EXCEPTION 'cleared_date must be null unless status=cleared (%)', v_ctx;");
+});
+
+test('AC-33/34: full status/resolution_type consistency matrix — all six documented combinations rejected with the right message (AC-34: initiated+paid_from_other_account is the active-status branch)',()=>{
+  assertIncludes(vcs,"RAISE EXCEPTION 'cleared requires resolution_type=cleared (%)', v_ctx;");
+  assertIncludes(vcs,"RAISE EXCEPTION 'voided requires resolution_type in (voided, paid_from_other_account) (%)', v_ctx;");
+  assertIncludes(vcs,"'carried_unresolved resolution_type must be null, carried_unresolved, or amount_changed (%)'");
+  assertIncludes(vcs,"RAISE EXCEPTION 'active status % must have null resolution_type (%)', p_status, v_ctx;");
+  assertIncludes(vcs,"RAISE EXCEPTION 'voided with resolution_type=voided requires non-empty resolution_notes (%)', v_ctx;");
+});
+
+test('AC-93/94/95: cleared requires reflected_model_week <= resolved_model_week (rejects >, allows < and =)',()=>{
+  assertIncludes(vcs,'IF p_reflected_model_week > p_resolved_model_week THEN');
+  assertIncludes(vcs,"RAISE EXCEPTION 'cleared requires reflected_model_week <= resolved_model_week (%)', v_ctx;");
+});
+
+test('AC-24: amount_changed is a valid resolution_type value in the CHECK domain and requires resolved_model_week to stay null',()=>{
+  assertIncludes(sql,"resolution_type            TEXT\n                               CHECK (resolution_type IN (\n                                 'cleared','voided','paid_from_other_account',\n                                 'amount_changed','carried_unresolved'\n                               ))");
+});
+})();
+
+console.log('\n── Section 5F1-D: save_reconciliation_with_commitments — insert path ──');
+(function(){
+var sql=fs.readFileSync('./docs/phase-5f-1-migration.sql','utf8');
+var idx=sql.indexOf('CREATE OR REPLACE FUNCTION save_reconciliation_with_commitments');
+var patchIdx=sql.indexOf('-- ── Patch existing commitments',idx);
+var ins=sql.slice(idx,patchIdx);
+
+test('AC-9/27: save insert conflict on expected_item_id raises exception, not silent overwrite (ON CONFLICT DO NOTHING + GET DIAGNOSTICS check)',()=>{
+  assertIncludes(ins,'ON CONFLICT (expected_item_id) DO NOTHING;');
+  assertIncludes(ins,'GET DIAGNOSTICS v_count = ROW_COUNT;');
+  assertIncludes(ins,"RAISE EXCEPTION\n        'commitment already exists: expected_item_id=%. Route updates through p_patched.',");
+});
+
+test('AC-32: missing status defaults to planned before validation runs',()=>{
+  assertIncludes(ins,"v_status  := COALESCE(NULLIF(v_item->>'status',''), 'planned');");
+});
+
+test('AC-35: new commitment origin_model_week must equal p_week_num',()=>{
+  assertIncludes(ins,'IF v_owm <> p_week_num THEN');
+  assertIncludes(ins,"'save: new commitment origin_model_week (%) must equal p_week_num (%) — prior-week patches via p_patched; historical inserts via repair_commitments_for_week',");
+});
+
+test('AC-36: invalid commitment_source in p_new_commitments rejected',()=>{
+  assertIncludes(ins,"IF v_csource NOT IN ('wd_reconciliation', 'manual_reconciliation') THEN");
+  assertIncludes(ins,"'save: invalid commitment_source: % (allowed: wd_reconciliation, manual_reconciliation — historical repairs use repair_commitments_for_week)',");
+});
+
+test('AC-44: missing expected_item_id rejected on save insert',()=>{
+  assertIncludes(ins,"RAISE EXCEPTION 'commitment missing expected_item_id';");
+});
+
+test('AC-45: invalid commitment_class rejected on save insert with save-prefixed message',()=>{
+  assertIncludes(ins,"RAISE EXCEPTION 'save: invalid commitment_class: %', v_item->>'commitment_class';");
+});
+
+test('AC-46: p_recorded_at null rejected before any write',()=>{
+  assertIncludes(sql,"IF p_recorded_at IS NULL THEN\n    RAISE EXCEPTION 'recorded_at must not be null — reconciliation is an audit event';");
+});
+
+test('AC-52/71: commitment_source missing defaults to wd_reconciliation; empty string rejected',()=>{
+  assertIncludes(ins,"IF (v_item ? 'commitment_source') AND NULLIF(v_item->>'commitment_source','') IS NULL THEN");
+  assertIncludes(ins,"RAISE EXCEPTION 'save: commitment_source cannot be empty';");
+  assertIncludes(ins,"v_csource := CASE WHEN v_item ? 'commitment_source'\n                   THEN v_item->>'commitment_source' ELSE 'wd_reconciliation' END;");
+});
+
+test('AC-62/72: source_account missing defaults to truist_checking; empty and typo values rejected on save insert',()=>{
+  assertIncludes(ins,"IF (v_item ? 'source_account') AND NULLIF(v_item->>'source_account','') IS NULL THEN");
+  assertIncludes(ins,"RAISE EXCEPTION 'invalid source_account: (empty). 5F-1 only supports truist_checking';");
+  assertIncludes(ins,"IF v_source_account <> 'truist_checking' THEN\n      RAISE EXCEPTION 'invalid source_account: %. 5F-1 only supports truist_checking', v_source_account;");
+});
+
+test('AC-23/68: save RPC rejects NULL and non-2026 p_model_year (e.g. 2025), NULL p_week_num, NULL p_balance_basis — all explicit IS NULL OR checks, not bare comparison',()=>{
+  assertIncludes(sql,"IF p_model_year IS NULL OR p_model_year <> 2026 THEN\n    RAISE EXCEPTION 'invalid model_year: %', p_model_year;");
+  assertIncludes(sql,"IF p_week_num IS NULL OR p_week_num NOT BETWEEN 1 AND 31 THEN\n    RAISE EXCEPTION 'invalid week_num: %', p_week_num;");
+  assertIncludes(sql,"IF p_balance_basis IS NULL OR p_balance_basis NOT IN ('posted_current_balance','available_balance','unknown') THEN");
+});
+
+test('AC-70: JSON null payload rejected via IS DISTINCT FROM, not bare <> comparison',()=>{
+  assertIncludes(sql,"IF jsonb_typeof(COALESCE(p_new_commitments,'[]'::jsonb)) IS DISTINCT FROM 'array' THEN\n    RAISE EXCEPTION 'p_new_commitments must be a JSON array';");
+  assertIncludes(sql,"IF jsonb_typeof(COALESCE(p_patched,'[]'::jsonb)) IS DISTINCT FROM 'array' THEN\n    RAISE EXCEPTION 'p_patched must be a JSON array';");
+});
+
+test('AC-85: pre-cast validation rejects non-numeric model_year, origin_model_week, amount_cents with field-specific errors',()=>{
+  assertIncludes(ins,"IF v_item->>'model_year' !~ '^-?[0-9]+$' THEN\n      RAISE EXCEPTION 'commitment model_year must be a valid integer, got: %', v_item->>'model_year';");
+  assertIncludes(ins,"IF v_item->>'origin_model_week' !~ '^-?[0-9]+$' THEN\n      RAISE EXCEPTION 'commitment origin_model_week must be a valid integer, got: %', v_item->>'origin_model_week';");
+  assertIncludes(ins,"IF v_item->>'amount_cents' !~ '^-?[0-9]+$' THEN\n      RAISE EXCEPTION 'commitment amount_cents must be a valid integer, got: %', v_item->>'amount_cents';");
+});
+
+test('AC-86: pre-cast validation rejects invalid affects_deployable_cash with the accepted-forms regex',()=>{
+  assertIncludes(ins,"v_item->>'affects_deployable_cash' !~* '^(true|false|t|f|1|0|yes|no|on|off)$' THEN");
+  assertIncludes(ins,"RAISE EXCEPTION 'commitment affects_deployable_cash must be a valid boolean, got: %', v_item->>'affects_deployable_cash';");
+});
+
+test('AC-87 (insert half): new non-terminal commitment reflected_model_week must equal p_week_num',()=>{
+  assertIncludes(ins,"IF v_status NOT IN ('cleared','voided') AND v_rfm IS NOT NULL AND v_rfm IS DISTINCT FROM p_week_num THEN");
+  assertIncludes(ins,"'save: new commitment reflected_model_week (%) must equal p_week_num (%) for non-terminal status — a live reconciliation can only mark a debit as reflected in the balance being entered this week',");
+});
+
+test('AC-39: new cleared commitment must have reflected/resolved week both equal to p_week_num',()=>{
+  assertIncludes(ins,"IF v_rfm IS DISTINCT FROM p_week_num OR v_rwm IS DISTINCT FROM p_week_num THEN");
+  assertIncludes(ins,"'save: new cleared commitment must have reflected_model_week=% and resolved_model_week=% — later clearance goes through repair_commitments_for_week',");
+});
+
+test('AC-40: new voided commitment must have resolved_model_week equal to p_week_num',()=>{
+  assertIncludes(ins,"'save: new voided commitment must have resolved_model_week=%', p_week_num;");
+});
+})();
+
+console.log('\n── Section 5F1-E: save_reconciliation_with_commitments — patch path ──');
+(function(){
+var sql=fs.readFileSync('./docs/phase-5f-1-migration.sql','utf8');
+var idx=sql.indexOf('-- ── Patch existing commitments',sql.indexOf('save_reconciliation_with_commitments'));
+var end=sql.indexOf('RETURN jsonb_build_object',idx);
+var pat=sql.slice(idx,end);
+
+test('AC-7: cleared patch missing resolved_model_week is rejected by validate_commitment_state (post-UPDATE call present)',()=>{
+  assertIncludes(pat,'PERFORM validate_commitment_state(');
+  assertIncludes(pat,'v_row.id, v_row.status, v_row.resolved_model_week, v_row.reflected_model_week,');
+});
+
+test('AC-8: patch key-existence — key present with null clears the field, key absent leaves it unchanged',()=>{
+  assertIncludes(pat,"reflected_model_week = CASE WHEN v_item ? 'reflected_model_week'\n                               THEN NULLIF(v_item->>'reflected_model_week','')::INT\n                               ELSE reflected_model_week END,");
+});
+
+test('AC-37: save patch pre-fetch scope guard rejects origin_model_week > p_week_num (row not found)',()=>{
+  assertIncludes(pat,'AND origin_model_week <= p_week_num\n    FOR UPDATE;');
+  assertIncludes(pat,"'commitment not found, model_year mismatch, or origin_model_week > p_week_num for id=%',");
+});
+
+test('AC-41: terminal immutability guard blocks amount/status/week/resolution fields on cleared/voided rows',()=>{
+  assertIncludes(pat,"IF v_existing.status IN ('cleared', 'voided') THEN");
+  assertIncludes(pat,"(v_item ? 'amount_cents')\n         OR (v_item ? 'original_amount_cents')\n         OR (v_item ? 'status')\n         OR (v_item ? 'reflected_model_week')\n         OR (v_item ? 'resolved_model_week')\n         OR (v_item ? 'resolution_type')\n         OR (v_item ? 'cleared_date')\n         OR (v_item ? 'resolved_at')\n         OR (v_item ? 'resolved_by')");
+  assertIncludes(pat,"'save: cannot mutate terminal fields on % commitment id=%. Only notes and resolution_notes may be patched.',");
+});
+
+test('AC-42/59: notes and resolution_notes are the only patchable fields on a terminal row — resolved_at/resolved_by included in the blocklist',()=>{
+  assert(pat.indexOf("(v_item ? 'resolved_at')")>-1 && pat.indexOf("(v_item ? 'resolved_by')")>-1,'resolved_at/resolved_by must be in the terminal-field blocklist');
+  assert(pat.indexOf("(v_item ? 'notes')")===-1 || pat.indexOf('IF v_existing.status')<pat.indexOf("(v_item ? 'notes')"),'notes must not be in the terminal immutability blocklist');
+});
+
+test('AC-43/87 (patch half): non-terminal reflected_model_week guard uses status NOT IN (cleared,voided), covers every active status by construction',()=>{
+  assertIncludes(pat,"IF v_row.status NOT IN ('cleared','voided')\n         AND v_row.reflected_model_week IS NOT NULL\n         AND v_row.reflected_model_week IS DISTINCT FROM p_week_num THEN");
+  assertIncludes(pat,"'save patch: reflected_model_week (%) on non-terminal commitment (status=%) must equal p_week_num=% — a live reconciliation can only mark a debit as reflected in the balance being entered this week, or explicitly clear reflected_model_week to null',");
+});
+
+test('AC-102/103/104: non-terminal reflected-week guard covers carried_unresolved (not an explicit status list)',()=>{
+  assert(!/'planned','scheduled','initiated','bank_pending','stale_review'\).*reflected_model_week/.test(pat),'guard must not use an explicit active-status enumeration that could omit carried_unresolved');
+  assertIncludes(pat,"v_row.status NOT IN ('cleared','voided')");
+});
+
+test('AC-65: amount_cents patch auto-preserves original_amount_cents the first time, client cannot override it in live save',()=>{
+  assertIncludes(pat,'v_amount_changed := (v_item ? \'amount_cents\')');
+  assertIncludes(pat,"original_amount_cents= CASE\n                               WHEN v_amount_changed AND v_existing.original_amount_cents IS NULL\n                                 THEN v_existing.amount_cents\n                               ELSE original_amount_cents\n                             END,");
+});
+
+test('AC-66: resolution_type normalizes to amount_changed only when the row resolves to carried_unresolved',()=>{
+  assertIncludes(pat,"WHEN v_amount_changed AND v_new_status = 'carried_unresolved'\n                         THEN 'amount_changed'");
+});
+
+test('AC-74: live save patch silently ignores a client-supplied original_amount_cents (no ELSE branch reads v_item for it)',()=>{
+  var snippet=pat.slice(pat.indexOf('original_amount_cents= CASE'),pat.indexOf('reflected_model_week = CASE'));
+  assert(!/v_item\s*\?\s*'original_amount_cents'/.test(snippet),'live save UPDATE must not branch on client-supplied original_amount_cents');
+});
+
+test('AC-56/57/58: resolved_at/resolved_by are computed from v_becomes_resolved + COALESCE(existing, NOW()/auth.uid()) — never read from v_item on patch',()=>{
+  assertIncludes(pat,'resolved_at          = CASE WHEN v_becomes_resolved\n                               THEN COALESCE(v_existing.resolved_at, NOW()) ELSE v_existing.resolved_at END,');
+  assertIncludes(pat,'resolved_by          = CASE WHEN v_becomes_resolved\n                               THEN COALESCE(v_existing.resolved_by, auth.uid()) ELSE v_existing.resolved_by END,');
+  // Note: v_item ? 'resolved_at' / 'resolved_by' DO appear elsewhere in this slice —
+  // in the terminal-immutability blocklist (AC-59), which checks for their presence
+  // specifically to REJECT the patch. That's a separate, correct use; the SET clauses
+  // asserted above are what prove resolved_at/resolved_by are never itself assigned
+  // from v_item.
+});
+
+test('AC-98: save patch path has no pre-cast regex validation (malformed fields surface a raw Postgres cast exception by design)',()=>{
+  assert(!/'commitment (amount_cents|reflected_model_week|resolved_model_week) must be a valid integer'/.test(pat),'patch path deliberately has no pre-cast validation, unlike the insert path');
+});
+})();
+
+console.log('\n── Section 5F1-F: repair_commitments_for_week ──');
+(function(){
+var sql=fs.readFileSync('./docs/phase-5f-1-migration.sql','utf8');
+var idx=sql.indexOf('CREATE OR REPLACE FUNCTION repair_commitments_for_week');
+var patchIdx=sql.indexOf('-- ── Patch existing commitments',idx);
+var end=sql.indexOf('RETURN jsonb_build_object',patchIdx);
+var rep=sql.slice(idx,end);
+var repIns=sql.slice(idx,patchIdx);
+var repPat=sql.slice(patchIdx,end);
+
+test('AC-10: repair insert reflected_model_week must reference an existing reconciliation row',()=>{
+  assertIncludes(repIns,"IF NOT EXISTS (SELECT 1 FROM weekly_reconciliations WHERE week_num = v_rfm) THEN");
+  assertIncludes(repIns,"'repair: reflected_model_week=% has no reconciliation row — cannot attribute clearance to unreconciled week',");
+});
+
+test('AC-38: repair patch enforces strict origin_model_week = p_week_num (not <=)',()=>{
+  assertIncludes(repPat,'AND origin_model_week = p_week_num    -- strict equality — repair only touches its own week\n    FOR UPDATE;');
+});
+
+test('AC-51: repair patch rejects merged reflected/resolved weeks with no reconciliation row',()=>{
+  assertIncludes(repPat,"'repair patch: merged reflected_model_week=% has no reconciliation row',");
+  assertIncludes(repPat,"'repair patch: merged resolved_model_week=% has no reconciliation row for cleared status',");
+});
+
+test('AC-63: invalid source_account rejected on repair insert (same validation as save)',()=>{
+  assertIncludes(repIns,"RAISE EXCEPTION 'invalid source_account: (empty). 5F-1 only supports truist_checking';");
+  assertIncludes(repIns,"RAISE EXCEPTION 'invalid source_account: %. 5F-1 only supports truist_checking', v_source_account;");
+});
+
+test('AC-69: repair RPC rejects NULL p_model_year/p_week_num but treats NULL p_balance_basis as optional (leave-alone)',()=>{
+  assertIncludes(sql,"IF p_model_year IS NULL OR p_model_year <> 2026 THEN\n    RAISE EXCEPTION 'invalid model_year: %', p_model_year;\n  END IF;\n  IF p_week_num IS NULL OR p_week_num NOT BETWEEN 1 AND 31 THEN\n    RAISE EXCEPTION 'invalid week_num: %', p_week_num;\n  END IF;\n  IF NOT EXISTS (SELECT 1 FROM weekly_reconciliations WHERE week_num = p_week_num) THEN");
+  assertIncludes(sql,'IF p_balance_basis IS NOT NULL\n     AND p_balance_basis NOT IN (\'posted_current_balance\',\'available_balance\',\'unknown\') THEN');
+});
+
+test('AC-84: repair patch has no terminal-immutability blocklist (by design) — save does',()=>{
+  assert(!/status IN \('cleared', 'voided'\)/.test(rep),'repair patch must not carry save\'s terminal-field blocklist');
+});
+
+test('AC-99: repair patch path has no pre-cast regex validation, same scoping as save',()=>{
+  assert(!/'commitment (amount_cents|reflected_model_week|resolved_model_week) must be a valid integer'/.test(repPat),'repair patch path deliberately has no pre-cast validation');
+});
+})();
+
+console.log('\n── Section 5F1-G: server-owned audit fields (resolved_at / resolved_by / recorded_at) ──');
+(function(){
+var sql=fs.readFileSync('./docs/phase-5f-1-migration.sql','utf8');
+
+test('AC-54: insert paths (both RPCs) derive resolved_at/resolved_by from NOW()/auth.uid(), never from v_item',()=>{
+  var occurrences=sql.match(/v_resolved_at := NOW\(\);\s*\n\s*v_resolved_by := auth\.uid\(\);/g)||[];
+  assert(occurrences.length===2,'expected exactly 2 insert-path server-owned resolved_at/resolved_by assignments (save + repair), found '+occurrences.length);
+  assert(!/v_resolved_at\s*:=\s*\(?v_item/.test(sql) && !/v_resolved_by\s*:=\s*\(?v_item/.test(sql),'resolved_at/resolved_by must never be assigned from v_item on insert');
+});
+
+test('AC-55: patch paths (both RPCs) derive resolved_at/resolved_by via COALESCE(existing, NOW()/auth.uid())',()=>{
+  var occurrences=sql.match(/COALESCE\(v_existing\.resolved_at, NOW\(\)\)/g)||[];
+  assert(occurrences.length===2,'expected 2 patch-path COALESCE(v_existing.resolved_at, NOW()) sites (save + repair), found '+occurrences.length);
+});
+
+test('AC-73: recorded_at is always NOW() in the upsert, never p_recorded_at — p_recorded_at is validated but its value is discarded',()=>{
+  assertIncludes(sql,"VALUES\n    (p_week_num, p_chk, p_sav, p_amx, p_tax, p_lc, p_balance_basis, NOW())");
+  assertIncludes(sql,'recorded_at   = NOW();');
+  assert(!/VALUES[^;]*p_recorded_at/.test(sql),'p_recorded_at must never be written to weekly_reconciliations.recorded_at');
+});
+})();
+
+console.log('\n── Section 5F1-H: atomicity / concurrency structural guarantees ──');
+(function(){
+var sql=fs.readFileSync('./docs/phase-5f-1-migration.sql','utf8');
+
+test('AC-12/100: both RPCs are single atomic plpgsql function calls with EXCEPTION WHEN OTHERS THEN RAISE (no partial commit on failure)',()=>{
+  var occurrences=sql.match(/EXCEPTION WHEN OTHERS THEN\s*\n\s*RAISE;/g)||[];
+  assert(occurrences.length===2,'expected exactly 2 EXCEPTION WHEN OTHERS RAISE blocks (save + repair), found '+occurrences.length);
+});
+
+test('AC-60: save patch pre-fetch uses FOR UPDATE to lock the row before merge',()=>{
+  var idx=sql.indexOf('CREATE OR REPLACE FUNCTION save_reconciliation_with_commitments');
+  var next=sql.indexOf('CREATE OR REPLACE FUNCTION repair_commitments_for_week');
+  var slice=sql.slice(idx,next);
+  assertIncludes(slice,'FOR UPDATE;');
+});
+
+test('AC-61: repair patch pre-fetch uses FOR UPDATE to lock the row before merge',()=>{
+  var idx=sql.indexOf('CREATE OR REPLACE FUNCTION repair_commitments_for_week');
+  var slice=sql.slice(idx);
+  assertIncludes(slice,'FOR UPDATE;');
+});
+})();
+
+console.log('\n── Section 5F1-I: resolution_notes requirement for plain voided/voided ──');
+(function(){
+var sql=fs.readFileSync('./docs/phase-5f-1-migration.sql','utf8');
+var idx=sql.indexOf('CREATE OR REPLACE FUNCTION validate_commitment_state');
+var end=sql.indexOf('REVOKE ALL ON FUNCTION validate_commitment_state',idx);
+var vcs=sql.slice(idx,end);
+
+test('AC-110/111: voided/voided with null or whitespace-only resolution_notes rejected; the check uses btrim so real content passes',()=>{
+  assertIncludes(vcs,"IF p_resolution_type = 'voided'\n       AND (p_resolution_notes IS NULL OR btrim(p_resolution_notes) = '') THEN");
+  assertIncludes(vcs,"RAISE EXCEPTION 'voided with resolution_type=voided requires non-empty resolution_notes (%)', v_ctx;");
+});
+
+test('AC-112/113/114: the resolution_notes rule lives in validate_commitment_state, so it applies uniformly to every caller — both RPCs, both insert and patch, with no per-caller scoping',()=>{
+  var callSites=sql.match(/PERFORM validate_commitment_state\(/g)||[];
+  assert(callSites.length===4,'expected exactly 4 validate_commitment_state call sites (save insert+patch, repair insert+patch), found '+callSites.length);
+  var voidedRuleOccurrences=(sql.match(/voided with resolution_type=voided requires non-empty resolution_notes/g)||[]).length;
+  assert(voidedRuleOccurrences===1,'the rule should be defined exactly once, inside validate_commitment_state — finding it more than once would mean it got duplicated per-RPC instead of shared, found '+voidedRuleOccurrences);
+});
+
+test('AC-115: resolution_notes is patchable on a terminal row, but the post-UPDATE validate_commitment_state call re-validates it, closing the blank-out gap',()=>{
+  var patchIdx=sql.indexOf('-- ── Patch existing commitments',sql.indexOf('save_reconciliation_with_commitments'));
+  var end2=sql.indexOf('RETURN jsonb_build_object',patchIdx);
+  var pat=sql.slice(patchIdx,end2);
+  assertIncludes(pat,"resolution_notes     = CASE WHEN v_item ? 'resolution_notes'\n                               THEN NULLIF(v_item->>'resolution_notes','') ELSE resolution_notes END,");
+  assertIncludes(pat,'PERFORM validate_commitment_state(');
+});
+
+test('AC-116: paid_from_other_account is exempt — the resolution_notes guard is scoped to resolution_type=voided specifically',()=>{
+  assertIncludes(vcs,"IF p_resolution_type NOT IN ('voided','paid_from_other_account') THEN");
+  assertIncludes(vcs,"IF p_resolution_type = 'voided'\n       AND (p_resolution_notes IS NULL OR btrim(p_resolution_notes) = '') THEN");
+});
+})();
+
+console.log('\n── Section 5F1-J: validator call-site consistency & documentation correctness ──');
+(function(){
+var sql=fs.readFileSync('./docs/phase-5f-1-migration.sql','utf8');
+
+test('AC-26: validate_commitment_state is called before INSERT and on the RETURNING row after UPDATE, in both RPCs',()=>{
+  var callSites=sql.match(/PERFORM validate_commitment_state\(/g)||[];
+  assert(callSites.length===4,'expected 4 call sites, found '+callSites.length);
+  assertIncludes(sql,'NULL, v_status, v_rwm, v_rfm, v_rt, v_owm, v_ac, v_oac, v_rod, v_adc, v_cd, v_rn');
+  assertIncludes(sql,'v_row.id, v_row.status, v_row.resolved_model_week, v_row.reflected_model_week,');
+});
+
+test('AC-109: chk_cleared_reflected_before_resolved documentation states the correct direction (reflection at or before resolution, never after)',()=>{
+  assertIncludes(sql,'A cleared debit cannot first be reflected AFTER it is resolved — reflection must occur');
+  assert(!/reflected.*after.*resolved.*never.*before|cannot.*first.*resolved.*before.*reflected/i.test(sql),'must not contain the inverted (pre-v3.10) phrasing');
+});
+})();
+
+console.log('\n── Section 5F1-K: Cash Availability Engine — isReservedAsOf() / getCashAvailabilityEngine() / runModel() wiring ──');
+(function(){
+// Helper: run the model with synthetic commitmentData/reconData, restoring the
+// real globals afterward. commitmentData/reconData are top-level vars leaked
+// into this scope by the eval() at the top of this file (same mechanism WD,
+// OP_FL, GOALS_REGISTRY etc. use).
+function withCashAvailability(commitments,reconOverrides,fn){
+  var oldCommitments=commitmentData.slice();
+  var oldReconKeys=Object.keys(reconData);
+  var oldRecon={};
+  oldReconKeys.forEach(function(k){oldRecon[k]=reconData[k];});
+  commitmentData=(commitments||[]).slice();
+  oldReconKeys.forEach(function(k){delete reconData[k];});
+  Object.assign(reconData,reconOverrides||{});
+  try{ fn(runModel(7000,7694.87)); }
+  finally{
+    commitmentData=oldCommitments;
+    Object.keys(reconData).forEach(function(k){delete reconData[k];});
+    Object.assign(reconData,oldRecon);
+  }
+}
+function baseCommitment(overrides){
+  return Object.assign({
+    id:'test-'+Math.random().toString(36).slice(2),
+    model_year:2026,origin_model_week:3,source_account:'truist_checking',
+    affects_deployable_cash:true,status:'initiated',resolution_type:null,
+    reflected_model_week:null,resolved_model_week:null,amount_cents:100000,
+    commitment_source:'wd_reconciliation'
+  },overrides||{});
+}
+function _r2(n){return Math.round(n*100)/100;}
+
+test('AC-1: getCashAvailabilityEngine Week 3 exact math ($10,265.40 deployable)',()=>{
+  var r=getCashAvailabilityEngine(2313388,650000,[baseCommitment({amount_cents:636848})],'truist_checking',3);
+  assert(r.adjustedDeployableSurplusCents===1026540,'got '+r.adjustedDeployableSurplusCents);
+  assert(r.rawSurplusAboveFloorCents===1663388,'got '+r.rawSurplusAboveFloorCents);
+});
+
+test('AC-2: adjustedDeployable invariant is stable as a reserved debit posts (reserve unwinds, balance drops by the same amount)',()=>{
+  var before=getCashAvailabilityEngine(2313388,650000,[baseCommitment({amount_cents:636848})],'truist_checking',3);
+  var after=getCashAvailabilityEngine(2313388-636848,650000,[],'truist_checking',3);
+  assert(before.adjustedDeployableSurplusCents===after.adjustedDeployableSurplusCents,'before='+before.adjustedDeployableSurplusCents+' after='+after.adjustedDeployableSurplusCents);
+  assert(before.adjustedDeployableSurplusCents===1026540);
+});
+
+test('AC-3: reflected+resolved at Week 4 reserves at Week 3 but not at Week 4',()=>{
+  var c=baseCommitment({reflected_model_week:4,resolved_model_week:4});
+  assert(isReservedAsOf(c,3)===true,'expected reserved at week 3');
+  assert(isReservedAsOf(c,4)===false,'expected not reserved at week 4');
+});
+
+test('AC-4: reflected_model_week=3 clears the reserve at week 3 itself',()=>{
+  assert(isReservedAsOf(baseCommitment({reflected_model_week:3}),3)===false);
+});
+
+test('AC-5: carried_unresolved stays reserved indefinitely',()=>{
+  var c=baseCommitment({status:'carried_unresolved',origin_model_week:2,reflected_model_week:null,resolved_model_week:null});
+  assert(isReservedAsOf(c,3)===true);
+  assert(isReservedAsOf(c,5)===true);
+});
+
+test('AC-6: terminal statuses never reserve (voided status, voided resolution, paid_from_other_account)',()=>{
+  assert(isReservedAsOf(baseCommitment({status:'voided'}),3)===false);
+  assert(isReservedAsOf(baseCommitment({resolution_type:'voided'}),3)===false);
+  assert(isReservedAsOf(baseCommitment({resolution_type:'paid_from_other_account'}),3)===false);
+});
+
+test('AC-19: multiple commitments aggregate (Amex $6,368.48 + Disney $5,925.13 → $4,340.27 deployable)',()=>{
+  var r=getCashAvailabilityEngine(2313388,650000,[
+    baseCommitment({amount_cents:636848}),baseCommitment({amount_cents:592513})
+  ],'truist_checking',3);
+  assert(r.adjustedDeployableSurplusCents===434027,'got '+r.adjustedDeployableSurplusCents);
+});
+
+test('AC-20: below-floor protection never lets adjustedDeployableSurplusCents go negative',()=>{
+  var r=getCashAvailabilityEngine(100000,650000,[],'truist_checking',3);
+  assert(r.adjustedDeployableSurplusCents===0,'got '+r.adjustedDeployableSurplusCents);
+  var r2=getCashAvailabilityEngine(100000,650000,[baseCommitment({amount_cents:5000000})],'truist_checking',3);
+  assert(r2.adjustedDeployableSurplusCents===0,'reserve exceeding balance still clamps to 0, got '+r2.adjustedDeployableSurplusCents);
+});
+
+test('AC-13: projected carry-forward ignores a commitment whose origin week was never reconciled',()=>{
+  withCashAvailability(
+    [baseCommitment({id:'ac13',origin_model_week:7,commitment_source:'wd_reconciliation',amount_cents:100000})],
+    {}, // week 7 never reconciled
+    function(weeks){
+      var w8=weeks.find(function(w){return w.num===8;});
+      assert(w8.cashAvailability.reservedCommitmentCount===0,'expected 0, got '+w8.cashAvailability.reservedCommitmentCount);
+      assert(w8.cashAvailability.reservedProtectedCents===0);
+    }
+  );
+});
+
+test('AC-14: historical_repair commitments carry into projected weeks with no reconciliation row',()=>{
+  withCashAvailability(
+    [baseCommitment({id:'ac14',origin_model_week:3,commitment_source:'historical_repair',amount_cents:50000})],
+    {},
+    function(weeks){
+      var w4=weeks.find(function(w){return w.num===4;});
+      assert(w4.cashAvailability.reservedCommitmentCount===1,'expected 1, got '+w4.cashAvailability.reservedCommitmentCount);
+      assert(w4.cashAvailability.reservedProtectedCents===50000);
+    }
+  );
+});
+
+test('AC-16: no double-reservation in a commitment\'s own origin week (projected mode excludes it)',()=>{
+  withCashAvailability(
+    [baseCommitment({id:'ac16',origin_model_week:3,commitment_source:'wd_reconciliation',amount_cents:636848})],
+    {},
+    function(weeks){
+      var w3=weeks.find(function(w){return w.num===3;});
+      assert(w3.cashAvailability.reservedCommitmentCount===0,'origin week itself must not self-reserve pre-reconciliation, got '+w3.cashAvailability.reservedCommitmentCount);
+    }
+  );
+});
+
+test('AC-17/AC-47: waterfall sweep is hard-capped at adjustedAvailableForSweep for the week, and remainingAdjustedSweep never goes negative',()=>{
+  // Validated against the real 31-week model (not the spec's isolated 2-goal toy
+  // example — reproducing that exact scenario would require a second, parallel
+  // toy model rather than testing the actual runModel() code path). Proves the
+  // same underlying guarantee: a week whose deployable capacity is driven to
+  // zero funds nothing via the waterfall that week, and the running cap never
+  // goes negative.
+  var w14A=WEEKS.find(function(w){return w.num===14;});
+  var w15A=WEEKS.find(function(w){return w.num===15;});
+  var wfIds=REGULAR_WATERFALL.concat(VARIABLE_WATERFALL).filter(function(id,i,arr){return arr.indexOf(id)===i;});
+  function wfTotal(w){return wfIds.reduce(function(s,id){return s+(w.goalSaved[id]||0);},0);}
+  var baselineActivity=_r2(wfTotal(w15A)-wfTotal(w14A));
+  assertGt(baselineActivity,0,'precondition failed: week 15 has no natural waterfall activity in the baseline run to constrain — pick a different week');
+  withCashAvailability(
+    // origin_model_week=14 + reconciling week 14 to the baseline's own week-14
+    // ending balances makes weeks 1-14 byte-for-byte identical to the baseline
+    // run, then the commitment (larger than any plausible balance) zeroes out
+    // week 15's adjustedAvailableForSweep entirely via the projected carry-forward path.
+    [baseCommitment({id:'ac17',origin_model_week:14,commitment_source:'wd_reconciliation',amount_cents:5000000})],
+    {14:{chk:w14A.chk,sav:w14A.sav,amx:w14A.amx,tax:w14A.tax,lc:w14A.lc,balance_basis:'posted_current_balance'}},
+    function(weeksB){
+      var w14B=weeksB.find(function(w){return w.num===14;});
+      var w15B=weeksB.find(function(w){return w.num===15;});
+      assertApprox(w14B.chk,w14A.chk,'week 14 checking must match baseline (forced via reconciliation override)',0.01);
+      assert(w15B.cashAvailability.adjustedAvailableForSweep===0,'expected fully reserved-out week 15, got '+w15B.cashAvailability.adjustedAvailableForSweep);
+      assert(w15B.cashAvailability.remainingAdjustedSweepEnd===0,'remainingAdjustedSweepEnd must clamp to exactly 0, got '+w15B.cashAvailability.remainingAdjustedSweepEnd);
+      var constrainedActivity=_r2(wfTotal(w15B)-wfTotal(w14B));
+      assert(constrainedActivity===0,'expected 0 waterfall funding in week 15 once fully reserved out, got '+constrainedActivity);
+      assertGt(w15B.chk,w15A.chk-0.01,'blocked sweep dollars must remain in checking, not vanish');
+    }
+  );
+});
+
+test('AC-47: remainingAdjustedSweep is non-negative on every week, across both an unconstrained run and a heavily-reserved run',()=>{
+  WEEKS.forEach(function(w){assert(w.cashAvailability.remainingAdjustedSweepEnd>=0,'W'+w.num+' went negative: '+w.cashAvailability.remainingAdjustedSweepEnd);});
+  withCashAvailability(
+    [baseCommitment({id:'ac47',origin_model_week:1,commitment_source:'historical_repair',amount_cents:1})], // $0.01 — smallest possible non-zero cap, stresses the float-residue guard
+    {},
+    function(weeksB){
+      weeksB.forEach(function(w){assert(w.cashAvailability.remainingAdjustedSweepEnd>=0,'W'+w.num+' (constrained run) went negative: '+w.cashAvailability.remainingAdjustedSweepEnd);});
+    }
+  );
+});
+
+test('AC-deviation: reconciled-week engine input uses reconData[num].chk (actual), not modeled chk — the recon-override-timing deviation is cash-safe',()=>{
+  // Context: the frozen spec places the engine block "after recon override,
+  // before waterfall." In this codebase the recon-override assignment
+  // (chk=rec.chk) physically runs later in the loop (after the waterfall,
+  // near the week-object push) — moving it would change historical waterfall
+  // dollar amounts for every already-reconciled week, a bigger change than
+  // this step calls for. The implementation instead reads reconData[num].chk
+  // directly as the engine's balance input on reconciled weeks. This test
+  // proves that resolution is cash-safe: when the reconciled (actual) balance
+  // is materially lower than what the model projected, the engine caps
+  // sweeps against the LOWER real number, not the higher modeled one — the
+  // unsafe failure mode (sweeping money the bank doesn't actually have,
+  // because it used the optimistic modeled figure) does not occur.
+  var w17A=WEEKS.find(function(w){return w.num===17;});
+  var w18A=WEEKS.find(function(w){return w.num===18;}); // baseline: unconstrained, unreconciled
+  var wfIds=REGULAR_WATERFALL.concat(VARIABLE_WATERFALL).filter(function(id,i,arr){return arr.indexOf(id)===i;});
+  function wfTotal(w){return wfIds.reduce(function(s,id){return s+(w.goalSaved[id]||0);},0);}
+  var baselineActivity=_r2(wfTotal(w18A)-wfTotal(w17A));
+  assertGt(baselineActivity,0,'precondition: week 18 needs natural waterfall activity to test suppression against');
+  assertGt(w18A.chk-OP_FL,1000,'precondition: modeled week 18 needs meaningful room above floor for this scenario to be a fair test');
+
+  // Reconciled chk pulled below the operating floor — "the bank shows less
+  // than the model projected," a realistic reconciliation scenario — despite
+  // the model believing there was real room to sweep.
+  var reconciledChk=_r2(OP_FL-500);
+  assertLt(reconciledChk,w18A.chk-1000,'precondition: reconciled chk must be materially lower than modeled chk');
+  var reserveAmountCents=30000; // $300 reserved commitment, stacked on top of the below-floor balance
+
+  withCashAvailability(
+    [baseCommitment({id:'devcheck',origin_model_week:18,commitment_source:'wd_reconciliation',amount_cents:reserveAmountCents})],
+    {18:{chk:reconciledChk,sav:w18A.sav,amx:w18A.amx,tax:w18A.tax,lc:w18A.lc,balance_basis:'posted_current_balance'}},
+    function(weeksB){
+      var w17B=weeksB.find(function(w){return w.num===17;});
+      var w18B=weeksB.find(function(w){return w.num===18;});
+      var capFromActual=getCashAvailabilityEngine(Math.round(reconciledChk*100),Math.round(OP_FL*100),[baseCommitment({amount_cents:reserveAmountCents})],'truist_checking',18).adjustedDeployableSurplusCents/100;
+      var capFromModeled=getCashAvailabilityEngine(Math.round(w18A.chk*100),Math.round(OP_FL*100),[baseCommitment({amount_cents:reserveAmountCents})],'truist_checking',18).adjustedDeployableSurplusCents/100;
+      assertLt(capFromActual,capFromModeled-0.01,'precondition: reconciled-chk cap must be materially smaller than a modeled-chk cap would be, or this test cannot distinguish the two implementations');
+      assert(capFromActual===0,'sanity: below-floor reconciled balance should clamp the actual-chk cap to exactly 0, got '+capFromActual);
+      assertGt(capFromModeled,1000,'sanity: modeled chk should have shown meaningful room to sweep, got '+capFromModeled);
+      // 1. adjustedAvailableForSweep must match the reconciled/actual-chk cap (0), not the modeled-chk cap (>$1,000 of apparent room).
+      assertApprox(w18B.cashAvailability.adjustedAvailableForSweep,capFromActual,'engine must use reconciled chk, not modeled chk — got '+w18B.cashAvailability.adjustedAvailableForSweep+', expected '+capFromActual+' (a modeled-chk implementation would have produced '+capFromModeled+')',0.01);
+      // 2. Waterfall funding this week is fully suppressed despite modeled chk showing room — no dollars get swept
+      //    to goals beyond what the real (lower) balance can support. Money that's blocked is simply never moved
+      //    (mv() returns 0 before touching any account) — it doesn't vanish, it's never deployed in the first place.
+      var fundedThisWeek=_r2(wfTotal(w18B)-wfTotal(w17B));
+      assertLt(fundedThisWeek,baselineActivity,'expected waterfall funding suppressed vs. baseline given the lower reconciled balance');
+      assert(fundedThisWeek===0,'waterfall funding must be fully suppressed once the reconciled-chk-based cap is 0, got '+fundedThisWeek);
+      // 3. Non-negative guarantee holds under this scenario too.
+      assert(w18B.cashAvailability.remainingAdjustedSweepEnd>=0,'remainingAdjustedSweepEnd must stay >= 0, got '+w18B.cashAvailability.remainingAdjustedSweepEnd);
+    }
+  );
+});
+})();
+
+console.log('\n── Section 5F1-NOTSTARTED: JS-engine-layer ACs still blocked pending the 4-phase reconciliation UI / dashboard verdict rendering (Build Sequence steps 10-12) ──');
+(function(){
+// 13 of the original 33 JS-engine-layer ACs were unblocked by this step (Section
+// 5F1-K, above): AC-1,2,3,4,5,6 (isReservedAsOf/getCashAvailabilityEngine pure
+// math), AC-13,14,16 (projected carry-forward filter logic), AC-17,19,20,47
+// (waterfall aggregate cap + non-negative guarantee). The 20 remaining below all
+// require the 4-phase reconciliation form and/or dashboard verdict-text
+// rendering — explicitly out of scope for this step (engine layer only, no UI).
+// Note AC-15/18/21 are NOT in the unblocked list even though this step computes
+// their underlying data correctly (reviewRequired flag, adjustedAvailableForSweep):
+// the AC text itself describes a rendered verdict string ("⚠ Review Required —
+// est. deployable $X", "Deployable +$10,265.40") or the repair-form UI, which
+// doesn't exist yet. Listed here as explicit skips (not silent gaps) so
+// `grep -c '^test('` and the AC coverage count both reflect the true state.
+var blockedACs=[15,18,21,28,77,78,79,80,88,89,90,91,92,96,97,101,105,106,107,108];
+test('5F1-NOTSTARTED: 20 UI-layer ACs are tracked as blocked, not silently skipped (plus AC-76, a process-check, tracked separately)',()=>{
+  assert(blockedACs.length===20,'expected 20 blocked ACs, found '+blockedACs.length);
+});
+console.log('  ⚠ AC-'+blockedACs.join(', AC-')+' — BLOCKED pending the 4-phase reconciliation form / dashboard verdict rendering (Build Sequence steps 10-12)');
+console.log('  ⚠ AC-76 — process-check only (grep -c \'^test(\' baseline), not a runtime assertion; verified manually at Step 1 (832 confirmed)');
+})();
+
 // ─────────────────────────────────────────────────────────────────────────
 console.log('\n╔══════════════════════════════════════════════════════════════╗');
 console.log('║                       RESULTS                               ║');
