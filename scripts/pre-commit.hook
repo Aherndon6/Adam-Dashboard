@@ -1,6 +1,14 @@
 #!/bin/bash
 # Auto-update BUILD_TS in index.html to current local time before every commit.
 # Source of truth: scripts/pre-commit.hook — reinstall via: bash scripts/install-hooks.sh
+#
+# Portability note: uses `sed ... > tmp && mv tmp orig` instead of `sed -i`.
+# BSD/macOS sed requires `sed -i ''` (empty string as a separate arg for "no
+# backup suffix"); GNU/Linux sed parses `-i ''` differently and silently fails
+# with "sed: can't read s|...|: No such file or directory" — the pre-commit
+# hook has no `set -e`, so that failure doesn't block the commit, it just
+# silently skips the BUILD_TS update. The temp-file-and-move approach avoids
+# the -i flag entirely and behaves identically on both sed variants.
 TS=$(date '+%Y-%m-%dT%H:%M:%S')
-sed -i '' "s|const BUILD_TS='[^']*';|const BUILD_TS='${TS}';|" index.html
+sed "s|const BUILD_TS='[^']*';|const BUILD_TS='${TS}';|" index.html > index.html.tmp && mv index.html.tmp index.html
 git add index.html
