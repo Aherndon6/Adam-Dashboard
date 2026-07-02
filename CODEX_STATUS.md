@@ -48,6 +48,27 @@ Test status: static regression 1039/1039 passing. `5E8-R1`–`R20`, `R22` all re
 
 5E-8 is fully closed pending Adam's e2e.js re-run. 5F-1 remains gated behind 5E-7 and 5E-8 per the existing rule below — with 5E-8 now closed (contingent on e2e confirmation), that gate condition is satisfied, but 5F-1 should not resume without Adam's explicit go-ahead in a future session.
 
+## 5E-9 IN PROGRESS: Budget/Register Spend Integration (2026-07-02)
+
+Live-use bug: July AMEX Gold transactions were entered and categorized correctly in Register, but Budget's "Spent" column showed $0.00 across every category. Root cause: `public.transactions` (Register, Phase 5E-1+) and `public.budget_transactions` (Budget's own CRUD, Phase 5B) are two fully disconnected tables. `renderBudget()`'s `spentByKey` aggregation only ever read `_budgetTransactions` (sourced from `budget_transactions`) — no code path anywhere read Register's data into Budget. This was a missing aggregation path left over from when Register was built as a new module, not a regression from 5E-8.
+
+Audit findings (full 9-point audit run before any code changed, per Adam's instruction):
+- No double-count risk today — confirmed via live preflight, `budget_transactions` has 0 July 2026 rows. Ongoing risk flagged: Budget's own "+ Add Transaction" form is still live: Register should be treated as the actual-spend source of truth going forward; that form should be considered legacy/manual-entry-only to avoid future double-entry (documented, not yet enforced in code).
+- Month/date logic: reused `_budgetLoadTransactions`'s exact local-date month-boundary math (avoids known UTC-shift bug) rather than reinventing it.
+- Uncleared transactions count toward spent — matches `budget_transactions`' own existing behavior (no `cleared` check there either).
+- Account-agnostic — no account_key filtering, matching `budget_transactions` (which has no account concept at all).
+- Category filter (`_isCountableBudgetSpend`, new helper near `_normalizeCatRow`): active leaf categories only; excludes `behavior_class` IN (income, commission_income, reimbursable_income, transfer, savings_allocation) and `budget_treatment` IN (excluded, display_only, planned_allocation) or null. Verified against real confirmed live category data: `business.jabian_expenses_2026` (reimbursable_expense/excluded — does NOT count), `business.jabian_deposits_2026` (reimbursable_income/display_only — does not count), `taxes.actual_tax_payment` (expense/excluded — does not count), `taxes.vio_transfer_2026` "Taxes 2026" (transfer/excluded — does not count), `transfers.greenlight` (transfer/excluded — does not count), `business.jabian_2026_dup` (lifecycle_status=merged — does not count).
+
+Fix (index.html only, no schema/RLS/reconciliation changes):
+- New `_budgetRegisterSpendCache`/`_budgetRegisterSpendLoadStatus` state + `_budgetLoadRegisterSpend(monthIso)` loader, querying `/rest/v1/transactions` for the selected month.
+- `renderBudget()`'s loading gate now awaits both `_budgetTransLoadStatus` and `_budgetRegisterSpendLoadStatus` before computing `spentByKey`.
+- `spentByKey` gets a second accumulation pass over `_budgetRegisterSpendCache`: outflow only (`amount<0`), category gated through `_isCountableBudgetSpend`, summed as `Math.abs(amount)` (converts Register's signed convention to `budget_transactions`' positive-magnitude convention).
+- Refresh: `_budgetChangeMonth` resets the new cache/status on month switch; `setSection('budget')` resets `_budgetRegisterSpendLoadStatus` on every Budget tab entry, so a Register edit made from a different tab isn't shown stale (`budget_transactions` itself already refreshes correctly — its own CRUD reloads it directly).
+
+Test status: static regression 1059/1059 passing (20 new tests, `5E9-01`–`5E9-20`: pure-function coverage of `_isCountableBudgetSpend` against real confirmed live category data, plus source-pattern coverage of the loader/merge/refresh wiring; two pre-existing tests, `5B-15` and `5E8-R20`, had their fixed-offset slice windows widened after the new code pushed target strings further into `renderBudget()`/`_setTxFormField`, no assertions changed). New e2e test `BUD-6` (Playwright) exercises the real merge end-to-end: injects Adam's actual July 2 example (Fandango $40.00 + Barn $32.68 + mend coffee $12.98 = $85.66 tagged `entertainment.week_1`), a same-category inflow that must not count, and a Jabian Expenses / Greenlight outflow that must not count — asserts the rendered Budget grid shows exactly $85.66 for Entertainment Week 1 and never surfaces the excluded $7.17. Pending Adam's e2e.js run for final confirmation.
+
+Not done in this pass: Budget's own manual "Add Transaction" form was not hidden or disabled — the double-entry risk this creates is documented above, not resolved. Reconciliation panel was explicitly left untouched (still `budget_transactions`-only, per existing 5F-1/5F-2 migration plan).
+
 ## 5F-1 Handoff (next session)
 
 - 5F-1 v3.12 is build-ready but NOT started.

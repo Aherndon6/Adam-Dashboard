@@ -857,7 +857,7 @@ button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-vis
 // ── Constants (unchanged) ──────────────────────────────────────────────────
 // Simplified architecture — $8,250 total from LC · $6,500 operating floor · no legacy mechanics
 // Real-world moves: keep $2,250 in chk, move $2,750 sav→chk, move $1,000 LC→chk, move $2,250 LC→chk (Option 1 correction)
-const BUILD_TS='2026-07-02T11:07:24'; // updated each push — local time string
+const BUILD_TS='2026-07-02T17:08:15'; // updated each push — local time string
 const START_CHK=18037.73,START_SAV=3772.77,START_AMX=103.64,START_TAX=0,START_LC=13488.88;
 const EF_AMT=13488.88; // LC/EF balance — static this model year (no transfers in or out)
 const BASE_TAX=521.36,RET_SAV_XFR=3772.74;
@@ -1275,6 +1275,11 @@ var _budgetLineRulesLoadStatus='not_loaded'; // 'not_loaded'|'loaded'|'failed'
 var _blrModal=null; // Phase 5E-5: Budget Line Rule Admin modal state; null=closed
 var _budgetTransactions=[];               // loaded for selected month
 var _budgetTransLoadStatus='not_loaded';  // 'not_loaded'|'loaded'|'failed'
+// Phase 5E-9: Register-entered transactions (public.transactions) for the selected month,
+// merged into Budget's spentByKey alongside _budgetTransactions. Separate cache/status
+// because it's a different table/query, loaded in parallel — see renderBudget().
+var _budgetRegisterSpendCache=[];
+var _budgetRegisterSpendLoadStatus='not_loaded'; // 'not_loaded'|'loading'|'loaded'|'failed'
 var _budgetSelectedMonth='';             // ISO first-of-month e.g. '2026-06-01'; '' = current month
 var _budgetShowAddForm=false;
 var _budgetEditId=null;                   // uuid of transaction being edited
@@ -2632,6 +2637,10 @@ function updateReconLabel(weeks){
 const SECTION_TITLES={overview:'Overview',weekly:'Weekly Model',goals:'Goals',scenarios:'Scenarios',history:'History',assumptions:'Assumptions',roadmap:'Wishlist',ask:'Ask Claude',budget:'Budget',transactions:'Transactions'};
 function setSection(s){
   if(s!=='roadmap'){wishlistPhaseFilter=[];wishlistDoneId=null;}
+  // Phase 5E-9: force a fresh Register-spend fetch whenever entering Budget, so a Register
+  // edit made from a different tab isn't shown stale. budget_transactions itself doesn't
+  // need this — Budget's own CRUD already reloads it directly after every mutation.
+  if(s==='budget'){_budgetRegisterSpendLoadStatus='not_loaded';}
   activeSection=s;
   document.querySelectorAll('.section').forEach(function(el){el.classList.remove('active');});
   var sec=document.getElementById('s-'+s);if(sec)sec.classList.add('active');
@@ -5653,6 +5662,38 @@ async function _budgetLoadTransactions(monthIso){
   renderApp();
 }
 
+// Phase 5E-9: load Register-entered transactions (public.transactions) for the selected
+// month, so Budget's spentByKey can include Register spend alongside budget_transactions.
+// Mirrors _budgetLoadTransactions's local-date month-boundary math exactly (same
+// UTC-shift-avoidance reasoning applies here).
+async function _budgetLoadRegisterSpend(monthIso){
+  _budgetRegisterSpendLoadStatus='loading';
+  try{
+    var h=await getAuthHeaders();
+    var parts=monthIso.split('-');
+    var y=parseInt(parts[0],10);
+    var m=parseInt(parts[1],10)-1; // 0-indexed local month
+    var startIso=monthIso; // already first of month
+    var endD=new Date(y,m+1,0); // last day of month (local)
+    var endIso=endD.getFullYear()+'-'+String(endD.getMonth()+1).padStart(2,'0')+'-'+String(endD.getDate()).padStart(2,'0');
+    var r=await fetch(
+      SUPA_URL+'/rest/v1/transactions?transaction_date=gte.'+startIso+'&transaction_date=lte.'+endIso+'&select=category_key,amount,transaction_date',
+      {headers:h}
+    );
+    if(r.ok){
+      _budgetRegisterSpendCache=await r.json();
+      _budgetRegisterSpendLoadStatus='loaded';
+    } else {
+      _budgetRegisterSpendLoadStatus='failed';
+      console.error('[Budget] Failed to load Register spend: HTTP '+r.status);
+    }
+  }catch(e){
+    _budgetRegisterSpendLoadStatus='failed';
+    console.error('[Budget] Exception loading Register spend:',e);
+  }
+  renderApp();
+}
+
 // Save (insert or update) a budget transaction
 async function _budgetSaveTransaction(formData, editId){
   if(!canWriteFinancials())return;
@@ -5748,10 +5789,12 @@ function renderBudget(){
 
   var monthIso=_budgetGetMonthIso();
 
-  // Load transactions on first access or month change
-  if(_budgetTransLoadStatus==='not_loaded'){
-    _budgetTransLoadStatus='loading';
-    _budgetLoadTransactions(monthIso);
+  // Load transactions on first access or month change.
+  // Phase 5E-9: also load Register spend (public.transactions) in parallel — both gate
+  // the same loading screen so spentByKey is never computed from a partial fetch.
+  if(_budgetTransLoadStatus==='not_loaded'||_budgetRegisterSpendLoadStatus==='not_loaded'){
+    if(_budgetTransLoadStatus==='not_loaded'){_budgetTransLoadStatus='loading';_budgetLoadTransactions(monthIso);}
+    if(_budgetRegisterSpendLoadStatus==='not_loaded'){_budgetRegisterSpendLoadStatus='loading';_budgetLoadRegisterSpend(monthIso);}
     el.innerHTML='<div style="padding:24px;color:var(--muted);font-size:13px">Loading budget data...</div>';
     return;
   }
@@ -5853,6 +5896,20 @@ function renderBudget(){
     if(t.excluded_from_budget)return;
     if(!t.category_key)return;
     spentByKey[t.category_key]=(spentByKey[t.category_key]||0)+parseFloat(t.amount);
+  });
+  // Phase 5E-9: fold in Register-entered spend (public.transactions) alongside
+  // budget_transactions. Outflow only (amount<0, Register's signed convention);
+  // category must pass _isCountableBudgetSpend (active leaf, spend-like behavior_class,
+  // budget-tracked treatment) — see that function for the full exclusion list
+  // (transfers, income, savings_allocation, excluded/display_only/planned_allocation).
+  var _catByKeyForSpend={};
+  (_categoriesCache||[]).forEach(function(c){_catByKeyForSpend[c.key]=c;});
+  (_budgetRegisterSpendCache||[]).forEach(function(t){
+    var amt=parseFloat(t.amount);
+    if(!(amt<0))return;
+    if(!t.category_key)return;
+    if(!_isCountableBudgetSpend(_catByKeyForSpend[t.category_key]))return;
+    spentByKey[t.category_key]=(spentByKey[t.category_key]||0)+Math.abs(amt);
   });
 
   // Render INCOME section
@@ -6230,6 +6287,9 @@ window._budgetChangeMonth=function(iso){
   _budgetSelectedMonth=iso;
   _budgetTransLoadStatus='not_loaded';
   _budgetTransactions=[];
+  // Phase 5E-9: force a fresh Register-spend fetch for the new month too.
+  _budgetRegisterSpendLoadStatus='not_loaded';
+  _budgetRegisterSpendCache=[];
   _budgetShowAddForm=false;_budgetEditId=null;_budgetFormData={};
   renderApp();
 };
@@ -6779,6 +6839,29 @@ function _normalizeCatRow(c){
     budget_line_key:c.budget_line_key,
     budget_group_key:c.budget_group_key
   };
+}
+
+// Phase 5E-9: determines whether a Register-entered transaction's category should count
+// toward Budget's spentByKey total. Stricter than _normalizeCatRow's 'assignable' derivation
+// above — assignable only excludes savings_allocation/planned_allocation, which still lets
+// transfer-type and excluded/display_only categories (Transfers, Greenlight, Taxes 2026,
+// Jabian Expenses 2026) through, since those are legitimately selectable in Register for
+// non-budget purposes. This predicate additionally excludes any income-type behavior_class,
+// 'transfer' behavior_class, and any budget_treatment that isn't affirmatively budget-tracked
+// (excluded/display_only/planned_allocation/null). Takes a raw _categoriesCache row (not the
+// _normalizeCatRow shape — that drops lifecycle_status).
+function _isCountableBudgetSpend(cat){
+  if(!cat)return false;
+  if(!cat.is_leaf)return false;
+  if(cat.lifecycle_status!=='active')return false;
+  var bc=cat.behavior_class;
+  if(bc==='income'||bc==='commission_income'||bc==='reimbursable_income')return false;
+  if(bc==='transfer')return false;
+  if(bc==='savings_allocation')return false;
+  var bt=cat.budget_treatment;
+  if(!bt)return false;
+  if(bt==='excluded'||bt==='display_only'||bt==='planned_allocation')return false;
+  return true;
 }
 
 // Returns the active category registry.

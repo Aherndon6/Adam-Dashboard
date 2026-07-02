@@ -4965,7 +4965,7 @@ test('5B-15: Budget UI shows Spent | Budget | Remaining columns in correct order
   try{htmlSrc=require('fs').readFileSync(require('path').join(__dirname,'index.html'),'utf8');}catch(e){}
   assert(htmlSrc.length>0,'Could not read index.html');
   var budgetFnIdx=htmlSrc.indexOf('function renderBudget()');
-  var budgetFnSrc=htmlSrc.slice(budgetFnIdx,budgetFnIdx+8000);
+  var budgetFnSrc=htmlSrc.slice(budgetFnIdx,budgetFnIdx+10000);
   // Use </th> to distinguish column headers from section headings like <h2>Budget</h2>
   var spentIdx=budgetFnSrc.indexOf('>Spent</th>');
   var budgetIdx=budgetFnSrc.indexOf('>Budget</th>');
@@ -7490,6 +7490,141 @@ test('5E8-R20: transaction_date field change triggers a re-render (dropdown labe
   // per keystroke/segment, so oninput+renderApp() would cause a jarring re-render mid-edit.
   assertIncludes(html,"onchange=\"_setTxFormField(\\'transaction_date\\',this.value)\"",
     'Register date input must use onchange (not oninput) for transaction_date');
+});
+
+// ═══════════════════════════════════════════════════════════════════════════
+// Phase 5E-9 — Budget/Register spend integration (Budget spent was $0.00 for
+// July despite correctly-categorized Register transactions, because Budget's
+// spentByKey read only budget_transactions, never Register's transactions
+// table). Fix folds Register spend into the same spentByKey map, filtered
+// through _isCountableBudgetSpend using the real behavior_class/budget_treatment
+// values confirmed live in Supabase (business.jabian_expenses_2026,
+// business.jabian_deposits_2026, taxes.actual_tax_payment,
+// taxes.vio_transfer_2026, transfers.greenlight, business.jabian_2026_dup).
+// ═══════════════════════════════════════════════════════════════════════════
+
+console.log('\n── Section 5E-9: Budget/Register spend integration ──');
+
+test('5E9-01: _isCountableBudgetSpend function exists',()=>{
+  assert(typeof _isCountableBudgetSpend==='function','_isCountableBudgetSpend must be defined');
+});
+
+test('5E9-02: normal tracked expense categories count (Entertainment Week 1, Groceries)',()=>{
+  assert(_isCountableBudgetSpend({key:'entertainment.week_1',is_leaf:true,lifecycle_status:'active',behavior_class:'expense',budget_treatment:'tracked'})===true,'Entertainment Week 1 should count');
+  assert(_isCountableBudgetSpend({key:'food_dining.groceries',is_leaf:true,lifecycle_status:'active',behavior_class:'expense',budget_treatment:'tracked'})===true,'Groceries should count');
+});
+
+test('5E9-03: real confirmed live categories — Jabian Expenses 2026 excluded (budget_treatment=excluded, despite behavior_class=reimbursable_expense)',()=>{
+  var cat={key:'business.jabian_expenses_2026',label:'Jabian Expenses 2026',is_leaf:true,lifecycle_status:'active',behavior_class:'reimbursable_expense',budget_treatment:'excluded'};
+  assert(_isCountableBudgetSpend(cat)===false,'Jabian Expenses 2026 must NOT count toward normal Budget spent — budget_treatment=excluded overrides spend-like behavior_class');
+});
+
+test('5E9-04: real confirmed live categories — Jabian Deposits 2026 excluded (income + display_only, double-excluded)',()=>{
+  var cat={key:'business.jabian_deposits_2026',label:'Jabian Deposits 2026',is_leaf:true,lifecycle_status:'active',behavior_class:'reimbursable_income',budget_treatment:'display_only'};
+  assert(_isCountableBudgetSpend(cat)===false,'Jabian Deposits 2026 must not count — reimbursable_income behavior_class alone excludes it');
+});
+
+test('5E9-05: real confirmed live categories — Tax Payment excluded (behavior_class=expense but budget_treatment=excluded)',()=>{
+  var cat={key:'taxes.actual_tax_payment',label:'Tax Payment',is_leaf:true,lifecycle_status:'active',behavior_class:'expense',budget_treatment:'excluded'};
+  assert(_isCountableBudgetSpend(cat)===false,'Tax Payment must not count — budget_treatment=excluded');
+});
+
+test('5E9-06: real confirmed live categories — Taxes 2026 (taxes.vio_transfer_2026) excluded (behavior_class=transfer)',()=>{
+  var cat={key:'taxes.vio_transfer_2026',label:'Taxes 2026',is_leaf:true,lifecycle_status:'active',behavior_class:'transfer',budget_treatment:'excluded'};
+  assert(_isCountableBudgetSpend(cat)===false,'Taxes 2026 (actually a Vio transfer category, not a real expense) must not count');
+});
+
+test('5E9-07: real confirmed live categories — Greenlight excluded (behavior_class=transfer)',()=>{
+  var cat={key:'transfers.greenlight',label:'Greenlight',is_leaf:true,lifecycle_status:'active',behavior_class:'transfer',budget_treatment:'excluded'};
+  assert(_isCountableBudgetSpend(cat)===false,'Greenlight must not count — it is a transfer, not household spend');
+});
+
+test('5E9-08: real confirmed live categories — merged/duplicate category (business.jabian_2026_dup) excluded (lifecycle_status=merged, null behavior_class/budget_treatment)',()=>{
+  var cat={key:'business.jabian_2026_dup',label:'jabian 2026',is_leaf:true,lifecycle_status:'merged',behavior_class:null,budget_treatment:null};
+  assert(_isCountableBudgetSpend(cat)===false,'A merged/dead category must never count, regardless of null behavior_class/budget_treatment');
+});
+
+test('5E9-09: parent/group categories never count, even if mistakenly passed in',()=>{
+  var cat={key:'taxes',label:'Taxes',is_leaf:false,lifecycle_status:'active',behavior_class:null,budget_treatment:null};
+  assert(_isCountableBudgetSpend(cat)===false,'Non-leaf parent/group category must not count');
+});
+
+test('5E9-10: savings_allocation and plain income categories excluded',()=>{
+  assert(_isCountableBudgetSpend({key:'x.sweep',is_leaf:true,lifecycle_status:'active',behavior_class:'savings_allocation',budget_treatment:'tracked'})===false,'savings_allocation must not count');
+  assert(_isCountableBudgetSpend({key:'income.net_salary',is_leaf:true,lifecycle_status:'active',behavior_class:'income',budget_treatment:null})===false,'income must not count');
+  assert(_isCountableBudgetSpend({key:'income.commission',is_leaf:true,lifecycle_status:'active',behavior_class:'commission_income',budget_treatment:null})===false,'commission_income must not count');
+});
+
+test('5E9-11: inactive/archived leaf category excluded even if otherwise spend-like',()=>{
+  var cat={key:'old.leaf',is_leaf:true,lifecycle_status:'archived',behavior_class:'expense',budget_treatment:'tracked'};
+  assert(_isCountableBudgetSpend(cat)===false,'Archived category must not count');
+});
+
+test('5E9-12: undefined/missing category (category_key with no matching live row) excluded, fail-closed',()=>{
+  assert(_isCountableBudgetSpend(undefined)===false,'Missing category lookup must fail closed, not count');
+  assert(_isCountableBudgetSpend(null)===false,'null category must fail closed');
+});
+
+test('5E9-13: _budgetLoadRegisterSpend exists and queries public.transactions with a month-range filter, mirroring _budgetLoadTransactions boundary math',()=>{
+  var fnIdx=html.indexOf('function _budgetLoadRegisterSpend');
+  assert(fnIdx>-1,'_budgetLoadRegisterSpend must be defined');
+  var fnBlock=html.slice(fnIdx,fnIdx+1200);
+  assertIncludes(fnBlock,"/rest/v1/transactions?transaction_date=gte.",'_budgetLoadRegisterSpend must query public.transactions filtered by transaction_date');
+  assertIncludes(fnBlock,'_budgetRegisterSpendCache=await r.json()','_budgetLoadRegisterSpend must populate _budgetRegisterSpendCache');
+  assertIncludes(fnBlock,"new Date(y,m+1,0)",'_budgetLoadRegisterSpend must use the same local-date last-day-of-month math as _budgetLoadTransactions (avoids UTC-shift bug)');
+});
+
+test('5E9-14: renderBudget spentByKey folds in Register spend — outflow-only, category-filtered, absolute value',()=>{
+  var fnIdx=html.indexOf('function renderBudget()');
+  assert(fnIdx>-1,'renderBudget must be defined');
+  var fnBlock=html.slice(fnIdx,fnIdx+10000);
+  assertIncludes(fnBlock,'_budgetRegisterSpendCache','renderBudget must reference _budgetRegisterSpendCache in its spentByKey computation');
+  assertIncludes(fnBlock,'if(!(amt<0))return;','Register merge must only count outflow (negative amount) rows');
+  assertIncludes(fnBlock,'_isCountableBudgetSpend(_catByKeyForSpend[t.category_key])','Register merge must gate each row through _isCountableBudgetSpend');
+  assertIncludes(fnBlock,'Math.abs(amt)','Register merge must convert Register\'s signed outflow to a positive spend amount, matching budget_transactions\' convention');
+});
+
+test('5E9-15: Register merge does not require cleared=true (matches existing budget_transactions behavior, which has no cleared check either)',()=>{
+  var fnIdx=html.indexOf('function renderBudget()');
+  var spentIdx=html.indexOf('Compute spent by category_key',fnIdx);
+  var mergeIdx=html.indexOf('_budgetRegisterSpendCache||[]).forEach',fnIdx);
+  assert(spentIdx>-1&&mergeIdx>-1,'Could not locate spentByKey computation block');
+  var mergeBlock=html.slice(mergeIdx,mergeIdx+700);
+  assert(mergeBlock.indexOf('.cleared')===-1,'Register spend merge must not filter on t.cleared — uncleared Register transactions must still count toward Budget spent');
+});
+
+test('5E9-16: Register merge is account-agnostic (no account_key filtering — AMEX Gold and every other account count the same)',()=>{
+  var fnIdx=html.indexOf('function _budgetLoadRegisterSpend');
+  var fnBlock=html.slice(fnIdx,fnIdx+1200);
+  assert(fnBlock.indexOf('account_key')===-1,'_budgetLoadRegisterSpend must not filter by account_key — Budget spend should be account-agnostic, matching budget_transactions (which has no account concept)');
+});
+
+test('5E9-17: renderBudget loading gate awaits both budget_transactions and Register spend before computing spentByKey',()=>{
+  var fnIdx=html.indexOf('function renderBudget()');
+  var fnBlock=html.slice(fnIdx,fnIdx+1000);
+  assertIncludes(fnBlock,"_budgetTransLoadStatus==='not_loaded'||_budgetRegisterSpendLoadStatus==='not_loaded'",'renderBudget must gate its loading screen on both load statuses, not just budget_transactions');
+  assertIncludes(fnBlock,'_budgetLoadRegisterSpend(monthIso)','renderBudget must trigger _budgetLoadRegisterSpend alongside _budgetLoadTransactions');
+});
+
+test('5E9-18: _budgetChangeMonth resets Register spend cache/status, so switching months refetches Register spend too',()=>{
+  var fnIdx=html.indexOf('window._budgetChangeMonth=function');
+  assert(fnIdx>-1,'_budgetChangeMonth must be defined');
+  var fnBlock=html.slice(fnIdx,fnIdx+500);
+  assertIncludes(fnBlock,"_budgetRegisterSpendLoadStatus='not_loaded'",'_budgetChangeMonth must reset _budgetRegisterSpendLoadStatus');
+  assertIncludes(fnBlock,'_budgetRegisterSpendCache=[]','_budgetChangeMonth must clear the stale Register spend cache');
+});
+
+test('5E9-19: setSection resets Register spend status when entering Budget, so a Register edit from another tab is not shown stale',()=>{
+  var fnIdx=html.indexOf('function setSection(s){');
+  assert(fnIdx>-1,'setSection must be defined');
+  var fnBlock=html.slice(fnIdx,fnIdx+500);
+  assertIncludes(fnBlock,"if(s==='budget'){_budgetRegisterSpendLoadStatus='not_loaded';}",'setSection must force a fresh Register-spend fetch on Budget tab entry');
+});
+
+test('5E9-20: no schema/RLS changes — this fix is confined to index.html only',()=>{
+  assert(!/CREATE POLICY|ALTER TABLE|DROP TABLE|GRANT (INSERT|UPDATE|DELETE)/.test(
+    html.slice(html.indexOf('function _budgetLoadRegisterSpend'), html.indexOf('function _budgetLoadRegisterSpend')+1500)
+  ),'5E-9 fix must not contain schema/RLS/grant statements');
 });
 
 

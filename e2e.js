@@ -1460,6 +1460,11 @@ async function clickNav(page, id) {
         created_at: new Date().toISOString()
       }];
       _budgetTransLoadStatus = 'loaded';
+      // Phase 5E-9: renderBudget's loading gate now also awaits Register spend before
+      // rendering the grid. Mark it loaded (empty cache) so this test's direct state
+      // injection isn't blocked behind a real, unmocked fetch.
+      _budgetRegisterSpendCache = [];
+      _budgetRegisterSpendLoadStatus = 'loaded';
       _budgetReconAccount = 'AMEX Gold';
       _budgetReconBalance = '';
       activeSection = 'budget';
@@ -1480,6 +1485,8 @@ async function clickNav(page, id) {
       // Restore state
       _budgetTransactions = [];
       _budgetTransLoadStatus = 'not_loaded';
+      _budgetRegisterSpendCache = [];
+      _budgetRegisterSpendLoadStatus = 'not_loaded';
       return { clearedBeforeAmt, clearedAfterAmt };
     });
     assert(result.clearedBeforeAmt === '0.00', 'Cleared should be $0.00 before toggle, got: ' + result.clearedBeforeAmt);
@@ -1507,6 +1514,11 @@ async function clickNav(page, id) {
         created_at: new Date().toISOString()
       }];
       _budgetTransLoadStatus = 'loaded';
+      // Phase 5E-9: renderBudget's loading gate now also awaits Register spend before
+      // rendering the grid. Mark it loaded (empty cache) so this test's direct state
+      // injection isn't blocked behind a real, unmocked fetch.
+      _budgetRegisterSpendCache = [];
+      _budgetRegisterSpendLoadStatus = 'loaded';
       activeSection = 'budget';
       // Trigger delete confirm state
       _budgetDeleteConfirmId = testId;
@@ -1518,10 +1530,68 @@ async function clickNav(page, id) {
       _budgetDeleteConfirmId = null;
       _budgetTransactions = [];
       _budgetTransLoadStatus = 'not_loaded';
+      _budgetRegisterSpendCache = [];
+      _budgetRegisterSpendLoadStatus = 'not_loaded';
       return { hasYes, hasNo };
     });
     assert(result.hasYes, 'Yes button not found in delete confirm UI');
     assert(result.hasNo,  'No button not found in delete confirm UI');
+    await context.close();
+  });
+
+  await test('BUD-6 (Phase 5E-9): Register-entered transactions roll up into Budget spent — additive with budget_transactions, excludes non-countable categories', async () => {
+    // Reproduces Adam's live bug report: July had correctly-categorized Register
+    // transactions but Budget spent showed $0.00, because Budget's spentByKey only
+    // read budget_transactions, never Register's transactions table. This test
+    // injects post-fetch state directly (mirrors how BUD-4/BUD-5 mock _budgetTransactions)
+    // rather than mocking the network fetch — 5E9-13 in test_regression.js separately
+    // verifies the fetch itself queries the correct month range.
+    const { page, context } = await openApp(browser);
+    const result = await page.evaluate(() => {
+      _categoriesCache = [
+        {key:'entertainment',label:'Entertainment',parent_key:null,is_leaf:false,lifecycle_status:'active',behavior_class:null,budget_treatment:null},
+        {key:'entertainment.week_1',label:'Entertainment Week 1',parent_key:'entertainment',is_leaf:true,lifecycle_status:'active',behavior_class:'expense',budget_treatment:'tracked'},
+        // Real confirmed live category — reimbursable_expense but budget_treatment=excluded,
+        // must not count even though it's outflow-shaped and has a spend-like behavior_class.
+        {key:'business.jabian_expenses_2026',label:'Jabian Expenses 2026',parent_key:'business',is_leaf:true,lifecycle_status:'active',behavior_class:'reimbursable_expense',budget_treatment:'excluded'},
+        // Real confirmed live category — transfer, must not count.
+        {key:'transfers.greenlight',label:'Greenlight',parent_key:'transfers',is_leaf:true,lifecycle_status:'active',behavior_class:'transfer',budget_treatment:'excluded'}
+      ];
+      _registriesLoadStatus = 'loaded';
+      // budget_transactions has 0 July rows (confirmed via live preflight) — additive merge
+      // is being exercised in isolation here, same as the confirmed-safe production state.
+      _budgetTransactions = [];
+      _budgetTransLoadStatus = 'loaded';
+      // Adam's real July 2 example: Fandango $40.00 + Barn $32.68 + mend coffee $12.98 = $85.66,
+      // all tagged entertainment.week_1. Plus a same-category inflow (must not count) and a
+      // Jabian Expenses / Greenlight outflow (must not count despite being real outflow spend).
+      _budgetRegisterSpendCache = [
+        {category_key:'entertainment.week_1', amount:-40.00, transaction_date:'2026-07-01'},
+        {category_key:'entertainment.week_1', amount:-32.68, transaction_date:'2026-07-01'},
+        {category_key:'entertainment.week_1', amount:-12.98, transaction_date:'2026-07-01'},
+        {category_key:'entertainment.week_1', amount:15.00,  transaction_date:'2026-07-05'}, // inflow, must not count
+        {category_key:'business.jabian_expenses_2026', amount:-7.17, transaction_date:'2026-07-01'}, // excluded treatment
+        {category_key:'transfers.greenlight', amount:-25.00, transaction_date:'2026-07-01'} // transfer, must not count
+      ];
+      _budgetRegisterSpendLoadStatus = 'loaded';
+      _budgetSelectedMonth = '2026-07-01';
+      setSection('budget');
+      renderApp();
+      var el = document.getElementById('budget-content');
+      var innerHtml = el ? el.innerHTML : '';
+      var innerText = el ? el.innerText : '';
+      // Restore
+      _budgetTransactions = [];
+      _budgetTransLoadStatus = 'not_loaded';
+      _budgetRegisterSpendCache = [];
+      _budgetRegisterSpendLoadStatus = 'not_loaded';
+      _budgetSelectedMonth = '';
+      return { innerHtml, innerText };
+    });
+    assert(result.innerText.includes('Entertainment Week 1'), 'Budget grid must show the Entertainment Week 1 row');
+    assert(result.innerText.includes('85.66'), 'Entertainment Week 1 spent must be $85.66 (Fandango + Barn + mend coffee), got text: ' + result.innerText.match(/Entertainment Week 1[^\n]*/));
+    assert(!result.innerText.includes('7.17'), 'Jabian Expenses 2026 ($7.17, budget_treatment=excluded) must not appear as counted spend anywhere in Budget');
+    assert(!/entertainment week 1[^\n]*100\.66/i.test(result.innerText), 'Entertainment Week 1 must not include the $15.00 inflow (would show 100.66 instead of 85.66 if inflow leaked in)');
     await context.close();
   });
 
