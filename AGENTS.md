@@ -92,6 +92,7 @@ Current functionality:
 - Diablos/GLP are in `budget_line_rules` but not in 31-week cash-flow projection; projections understated July onward; separate task to update WD array
 - auto-reminder label changes require manual Supabase cleanup if label text changes in code
 - mobile sync: custom tasks added before June 2026 still only exist in localStorage on originating device
+- `budget_line_rules.category_key` has no DB-level FK to `categories.key`. A month can go "operating" with active BLR rows whose category_key was never inserted into `categories` — Register silently can't resolve or save those categories even though Budget displays them fine (this is exactly what caused the 2026-07-02 live-use bug, data-corrected via `docs/2026-07-02-register-budget-category-sync.sql`). Reusable guard/template for future budget/category migrations: `docs/validation-blr-category-sync.sql` — copy its DO block into any migration that activates BLR rows for a new month, run as the last step. A real FK is the eventual fix but is NOT added yet — needs an audit of historical/legacy BLR rows first (see file for detail); track as its own future task, not folded into 5E-8.
 
 ## Near-Term Wishlist
 
@@ -100,6 +101,7 @@ Current functionality:
 - ID 31: Timing for credit card due date moves
 - ID 34: Add Wendy's trips and December trip to goals
 - ID 38: Ability to add task to a defined future week
+- ID 39: Audit historical/legacy `budget_line_rules` rows for category_key values missing from `categories`, then evaluate adding a DB-level FK (`budget_line_rules.category_key` → `categories.key`) so the operating-readiness guard in `docs/validation-blr-category-sync.sql` becomes unconditional instead of a manually-run check
 
 ## Session Constraints
 

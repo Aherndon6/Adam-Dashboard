@@ -7298,6 +7298,200 @@ test('5E8-R17: BUDGET_CATEGORY_REGISTRY income leaves remain assignable=false (5
   });
 });
 
+// ── Phase 5E-8 course-correction #2, CLOSED — data correction confirmed live ─
+// Adam confirmed (post-deploy, live app) the Register dropdown still showed
+// Birthday Dinner/Brunch/Big Dinner Out/Entertainment Other for July instead
+// of Seattle/Wewe's Lunches/Week 1-4. Root cause: the `categories` table's
+// real Entertainment leaves (entertainment.birthday_dinner/.brunch/
+// .big_dinner_out/.entertainment_other, seeded in phase-5d-1-migration.sql)
+// and the budget_line_rules July-override keys (entertainment.event_1/
+// event_2/week_1-4, seeded in phase-5e-6-migration.sql) were genuinely
+// non-overlapping — the event/week keys had never been inserted into
+// `categories`. _getRegisterCategoryLabel()/the dropdown filter were both
+// working exactly as coded; the gap was pure data.
+//
+// 2026-07-02: data-only correction applied via
+// docs/2026-07-02-register-budget-category-sync.sql (preflight → preview →
+// guarded INSERT → validation, entertainment.event|week_N pattern-scoped,
+// ON CONFLICT DO NOTHING only — no UPDATE/DELETE/schema/RLS). Adam confirmed
+// in production: preflight still_missing=0, all 6 new rows leaf=true/
+// active/assignable=true, parent/group rows remain non-assignable, no
+// duplicate keys, entertainment.* now shows 10 active child rows, and the
+// live Register dropdown for a July 2 transaction shows Seattle/Wewe's
+// Lunches/Entertainment Week 1-4 alongside the original 4 real categories
+// and other existing live categories (Net Salary, Deep South Commissions,
+// Auto Payment, Gas & Fuel, etc.), with "Entertainment" itself still not
+// selectable.
+//
+// The tests below were temporary diagnostic guards asserting the PRE-fix,
+// data-gap-limited state as correct-given-the-data. They're flipped here to
+// assert the confirmed POST-fix state. Why static/e2e originally missed the
+// underlying gap: a data-model mismatch between two Supabase tables isn't
+// detectable from index.html's source text or from self-consistent
+// synthetic fixtures — it required a live preflight query, which is what
+// docs/2026-07-02-register-budget-category-sync.sql and
+// docs/validation-blr-category-sync.sql now exist to make repeatable.
+// ═══════════════════════════════════════════════════════════════════════════
+
+test('5E8-R18: the 2026-07-02 data-correction migration is documented in the repo and scoped exactly to the 6 known entertainment.event/week keys',()=>{
+  var fs2=require('fs');
+  var sqlPath='./docs/2026-07-02-register-budget-category-sync.sql';
+  assert(fs2.existsSync(sqlPath),'Expected data-correction migration file missing: '+sqlPath);
+  var sql=fs2.readFileSync(sqlPath,'utf8');
+  // Guarded, pattern-scoped, no UPDATE/DELETE, no schema/RLS — the properties Adam required before execution.
+  assertIncludes(sql,"'^entertainment\\.(event|week)_[1-9][0-9]*$'",'Migration must scope the INSERT to the known entertainment.event_N/week_N pattern');
+  assertIncludes(sql,'ON CONFLICT (key) DO NOTHING','Migration must be insert-only (no UPDATE on conflict)');
+  assert(!/\bUPDATE\s+categories\b/i.test(sql),'Migration must not UPDATE existing categories rows');
+  assert(!/\bDELETE\s+FROM\s+categories\b/i.test(sql.replace(/--.*$/gm,'')),'Migration must not DELETE categories rows outside the commented-out rollback reference block');
+  assert(!/CREATE TABLE|ALTER TABLE|DROP TABLE/i.test(sql),'Migration must not contain schema changes');
+  assert(!/GRANT |REVOKE |CREATE POLICY|DROP POLICY/i.test(sql),'Migration must not contain RLS/grant changes');
+  assertIncludes(sql,'RAISE EXCEPTION','Migration must hard-stop on unexpected findings, not silently proceed');
+});
+
+test('5E8-R19: Register safely falls back to a category\'s own live label when no BLR override exists — verified for both the original 4 real leaves AND the 6 newly-inserted slot categories, in a month with no override',()=>{
+  var origStatus=_budgetLineRulesLoadStatus;
+  var origCache=_budgetLineRulesCache;
+  var origCatCache=_categoriesCache;
+  try{
+    // July BLR overrides (matches the real, confirmed-live production seed).
+    _budgetLineRulesLoadStatus='loaded';
+    _budgetLineRulesCache=[
+      {is_active:true,category_key:'entertainment.event_1',line_label:'Seattle',amount:300,start_month:'2026-07-01',end_month:'2026-07-01'},
+      {is_active:true,category_key:'entertainment.event_2',line_label:"Wewe's Lunches",amount:200,start_month:'2026-07-01',end_month:'2026-07-01'},
+      {is_active:true,category_key:'entertainment.week_1',line_label:'Entertainment Week 1',amount:250,start_month:'2026-07-01',end_month:'2026-07-01'},
+      {is_active:true,category_key:'entertainment.week_2',line_label:'Entertainment Week 2',amount:250,start_month:'2026-07-01',end_month:'2026-07-01'},
+      {is_active:true,category_key:'entertainment.week_3',line_label:'Entertainment Week 3',amount:250,start_month:'2026-07-01',end_month:'2026-07-01'},
+      {is_active:true,category_key:'entertainment.week_4',line_label:'Entertainment Week 4',amount:250,start_month:'2026-07-01',end_month:'2026-07-01'}
+    ];
+    // Post-fix categories cache: original 4 real leaves + the 6 newly-inserted slot rows
+    // (matching docs/2026-07-02-register-budget-category-sync.sql's proposed_label exactly).
+    _categoriesCache=[
+      {key:'entertainment.birthday_dinner',label:'Birthday Dinner',lifecycle_status:'active',is_leaf:true,parent_key:'entertainment',behavior_class:'expense',budget_treatment:'tracked'},
+      {key:'entertainment.brunch',label:'Brunch',lifecycle_status:'active',is_leaf:true,parent_key:'entertainment',behavior_class:'expense',budget_treatment:'tracked'},
+      {key:'entertainment.big_dinner_out',label:'Big Dinner Out',lifecycle_status:'active',is_leaf:true,parent_key:'entertainment',behavior_class:'expense',budget_treatment:'tracked'},
+      {key:'entertainment.entertainment_other',label:'Entertainment Other',lifecycle_status:'active',is_leaf:true,parent_key:'entertainment',behavior_class:'expense',budget_treatment:'tracked'},
+      {key:'entertainment.event_1',label:'Entertainment Event 1',lifecycle_status:'active',is_leaf:true,parent_key:'entertainment',behavior_class:'expense',budget_treatment:'tracked'},
+      {key:'entertainment.event_2',label:'Entertainment Event 2',lifecycle_status:'active',is_leaf:true,parent_key:'entertainment',behavior_class:'expense',budget_treatment:'tracked'},
+      {key:'entertainment.week_1',label:'Entertainment Week 1',lifecycle_status:'active',is_leaf:true,parent_key:'entertainment',behavior_class:'expense',budget_treatment:'tracked'},
+      {key:'entertainment.week_2',label:'Entertainment Week 2',lifecycle_status:'active',is_leaf:true,parent_key:'entertainment',behavior_class:'expense',budget_treatment:'tracked'},
+      {key:'entertainment.week_3',label:'Entertainment Week 3',lifecycle_status:'active',is_leaf:true,parent_key:'entertainment',behavior_class:'expense',budget_treatment:'tracked'},
+      {key:'entertainment.week_4',label:'Entertainment Week 4',lifecycle_status:'active',is_leaf:true,parent_key:'entertainment',behavior_class:'expense',budget_treatment:'tracked'}
+    ];
+
+    // POST-FIX: the 6 slot keys now resolve to their July BLR override.
+    assert(_getRegisterCategoryLabel('entertainment.event_1','2026-07-01')==='Seattle','July entertainment.event_1 must resolve to "Seattle" now that the row exists in categories');
+    assert(_getRegisterCategoryLabel('entertainment.event_2','2026-07-01')==="Wewe's Lunches",'July entertainment.event_2 must resolve to "Wewe\'s Lunches"');
+    assert(_getRegisterCategoryLabel('entertainment.week_1','2026-07-01')==='Entertainment Week 1','July entertainment.week_1 must resolve to its BLR line_label');
+    assert(_getRegisterCategoryLabel('entertainment.week_4','2026-07-01')==='Entertainment Week 4','July entertainment.week_4 must resolve to its BLR line_label');
+
+    // Safe fallback #1 (unchanged): the original 4 real leaves have no BLR row — resolve to their own live label.
+    assert(_getRegisterCategoryLabel('entertainment.birthday_dinner','2026-07-01')==='Birthday Dinner','entertainment.birthday_dinner has no BLR row — must fall back to its own live label');
+    assert(_getRegisterCategoryLabel('entertainment.entertainment_other','2026-07-01')==='Entertainment Other','entertainment.entertainment_other has no BLR row — must fall back to its own live label');
+
+    // Safe fallback #2 (new): in a month with NO active override for the 6 slot keys (e.g. June),
+    // they must fall back to their own live/default label, not to July's override or a blank/raw key.
+    assert(_getRegisterCategoryLabel('entertainment.event_1','2026-06-01')==='Entertainment Event 1','June entertainment.event_1 (no active BLR row that month) must fall back to its own live label, not July\'s "Seattle"');
+    assert(_getRegisterCategoryLabel('entertainment.week_2','2026-06-01')==='Entertainment Week 2','June entertainment.week_2 (no active BLR row that month) must fall back to its own live label');
+  }finally{
+    _budgetLineRulesLoadStatus=origStatus;
+    _budgetLineRulesCache=origCache;
+    _categoriesCache=origCatCache;
+  }
+});
+
+test('5E8-R22: end-to-end — Register Add Transaction dropdown (via _renderTxRegister) reproduces Adam\'s confirmed live production result exactly',()=>{
+  var origRegStatus=_registriesLoadStatus, origAcctCache=_accountsCache, origCatCache=_categoriesCache,
+      origBlrStatus=_budgetLineRulesLoadStatus, origBlrCache=_budgetLineRulesCache,
+      origTxLedgerStatus=_txLedgerLoadStatus, origTxLedgerAcctKey=_txLedgerAccountKey,
+      origTxFormMode=_txFormMode, origTxFormData=_txFormData;
+  try{
+    _registriesLoadStatus='loaded';
+    _accountsCache=[{key:'amex_gold',label:'AMEX Gold',lifecycle_status:'active'}];
+    _txLedgerLoadStatus='loaded';
+    _txLedgerAccountKey='amex_gold';
+    _budgetLineRulesLoadStatus='loaded';
+    _budgetLineRulesCache=[
+      {is_active:true,category_key:'entertainment.event_1',line_label:'Seattle',amount:300,start_month:'2026-07-01',end_month:'2026-07-01'},
+      {is_active:true,category_key:'entertainment.event_2',line_label:"Wewe's Lunches",amount:200,start_month:'2026-07-01',end_month:'2026-07-01'},
+      {is_active:true,category_key:'entertainment.week_1',line_label:'Entertainment Week 1',amount:250,start_month:'2026-07-01',end_month:'2026-07-01'},
+      {is_active:true,category_key:'entertainment.week_2',line_label:'Entertainment Week 2',amount:250,start_month:'2026-07-01',end_month:'2026-07-01'},
+      {is_active:true,category_key:'entertainment.week_3',line_label:'Entertainment Week 3',amount:250,start_month:'2026-07-01',end_month:'2026-07-01'},
+      {is_active:true,category_key:'entertainment.week_4',line_label:'Entertainment Week 4',amount:250,start_month:'2026-07-01',end_month:'2026-07-01'}
+    ];
+    // Full post-fix category universe: 10 entertainment children + a representative mix of
+    // other real, unrelated live categories Adam confirmed still appear (Net Salary, a
+    // Deep South Commissions-style income key, Auto Payment, Gas & Fuel), plus the
+    // 'entertainment' parent itself (must NOT show up as a selectable option).
+    _categoriesCache=[
+      {key:'entertainment',label:'Entertainment',lifecycle_status:'active',is_leaf:false,parent_key:null,behavior_class:null,budget_treatment:null},
+      {key:'entertainment.birthday_dinner',label:'Birthday Dinner',lifecycle_status:'active',is_leaf:true,parent_key:'entertainment',behavior_class:'expense',budget_treatment:'tracked'},
+      {key:'entertainment.brunch',label:'Brunch',lifecycle_status:'active',is_leaf:true,parent_key:'entertainment',behavior_class:'expense',budget_treatment:'tracked'},
+      {key:'entertainment.big_dinner_out',label:'Big Dinner Out',lifecycle_status:'active',is_leaf:true,parent_key:'entertainment',behavior_class:'expense',budget_treatment:'tracked'},
+      {key:'entertainment.entertainment_other',label:'Entertainment Other',lifecycle_status:'active',is_leaf:true,parent_key:'entertainment',behavior_class:'expense',budget_treatment:'tracked'},
+      {key:'entertainment.event_1',label:'Entertainment Event 1',lifecycle_status:'active',is_leaf:true,parent_key:'entertainment',behavior_class:'expense',budget_treatment:'tracked'},
+      {key:'entertainment.event_2',label:'Entertainment Event 2',lifecycle_status:'active',is_leaf:true,parent_key:'entertainment',behavior_class:'expense',budget_treatment:'tracked'},
+      {key:'entertainment.week_1',label:'Entertainment Week 1',lifecycle_status:'active',is_leaf:true,parent_key:'entertainment',behavior_class:'expense',budget_treatment:'tracked'},
+      {key:'entertainment.week_2',label:'Entertainment Week 2',lifecycle_status:'active',is_leaf:true,parent_key:'entertainment',behavior_class:'expense',budget_treatment:'tracked'},
+      {key:'entertainment.week_3',label:'Entertainment Week 3',lifecycle_status:'active',is_leaf:true,parent_key:'entertainment',behavior_class:'expense',budget_treatment:'tracked'},
+      {key:'entertainment.week_4',label:'Entertainment Week 4',lifecycle_status:'active',is_leaf:true,parent_key:'entertainment',behavior_class:'expense',budget_treatment:'tracked'},
+      {key:'income.net_salary',label:'Net Salary',lifecycle_status:'active',is_leaf:true,parent_key:'income',behavior_class:'income',budget_treatment:null},
+      {key:'income.deep_south_commissions',label:'Deep South Commissions',lifecycle_status:'active',is_leaf:true,parent_key:'income',behavior_class:'commission_income',budget_treatment:null},
+      {key:'auto_transport.auto_payment',label:'Auto Payment',lifecycle_status:'active',is_leaf:true,parent_key:'auto_transport',behavior_class:'expense',budget_treatment:'tracked'},
+      {key:'auto_transport.gas_fuel',label:'Gas & Fuel',lifecycle_status:'active',is_leaf:true,parent_key:'auto_transport',behavior_class:'expense',budget_treatment:'tracked'}
+    ];
+    _txFormMode='add';
+    _txFormData={transaction_date:'2026-07-02',payee:'',memo:'',category_key:'',outflow:'',inflow:'',cleared:false};
+
+    var html2=_renderTxRegister();
+
+    // The 6 previously-missing July slot categories now appear with their BLR-resolved labels.
+    assert(html2.indexOf('>Seattle<')>-1,'Dropdown must show "Seattle" for July (matches Adam\'s confirmed live result)');
+    assert(html2.indexOf("Wewe's Lunches")>-1,'Dropdown must show "Wewe\'s Lunches" for July');
+    assert(html2.indexOf('>Entertainment Week 1<')>-1,'Dropdown must show "Entertainment Week 1"');
+    assert(html2.indexOf('>Entertainment Week 2<')>-1,'Dropdown must show "Entertainment Week 2"');
+    assert(html2.indexOf('>Entertainment Week 3<')>-1,'Dropdown must show "Entertainment Week 3"');
+    assert(html2.indexOf('>Entertainment Week 4<')>-1,'Dropdown must show "Entertainment Week 4"');
+
+    // The original 4 real Entertainment categories still appear (existing categories preserved).
+    assert(html2.indexOf('>Birthday Dinner<')>-1,'Dropdown must still show "Birthday Dinner"');
+    assert(html2.indexOf('>Brunch<')>-1,'Dropdown must still show "Brunch"');
+    assert(html2.indexOf('>Big Dinner Out<')>-1,'Dropdown must still show "Big Dinner Out"');
+    assert(html2.indexOf('>Entertainment Other<')>-1,'Dropdown must still show "Entertainment Other"');
+
+    // Other, unrelated existing live categories still appear (Adam's confirmed live spot-check).
+    assert(html2.indexOf('>Net Salary<')>-1,'Dropdown must still show "Net Salary"');
+    assert(html2.indexOf('>Deep South Commissions<')>-1,'Dropdown must still show "Deep South Commissions"');
+    assert(html2.indexOf('>Auto Payment<')>-1,'Dropdown must still show "Auto Payment"');
+    assert(html2.indexOf('>Gas &amp; Fuel<')>-1,'Dropdown must still show "Gas & Fuel" (HTML-escaped as Gas &amp; Fuel via _esc)');
+
+    // Parent/group row is NOT a selectable option (exact value match, not substring —
+    // "Entertainment" legitimately appears inside child option text like "Entertainment Week 1").
+    assert(html2.indexOf('value="entertainment"')===-1,'The bare "entertainment" parent/group key must not appear as a selectable option value');
+  }finally{
+    _registriesLoadStatus=origRegStatus;
+    _accountsCache=origAcctCache;
+    _categoriesCache=origCatCache;
+    _budgetLineRulesLoadStatus=origBlrStatus;
+    _budgetLineRulesCache=origBlrCache;
+    _txLedgerLoadStatus=origTxLedgerStatus;
+    _txLedgerAccountKey=origTxLedgerAcctKey;
+    _txFormMode=origTxFormMode;
+    _txFormData=origTxFormData;
+  }
+});
+
+test('5E8-R20: transaction_date field change triggers a re-render (dropdown labels are month-derived and must not go stale while the form stays open)',()=>{
+  var fnIdx=html.indexOf('function _setTxFormField');
+  assert(fnIdx>-1,'_setTxFormField function missing from index.html');
+  var fnBlock=html.slice(fnIdx,fnIdx+900);
+  assertIncludes(fnBlock,"field==='transaction_date'",
+    '_setTxFormField must trigger renderApp() when the transaction_date field changes, same as category_key/cleared');
+  // The date input must use onchange, not oninput — native date inputs fire "input" repeatedly
+  // per keystroke/segment, so oninput+renderApp() would cause a jarring re-render mid-edit.
+  assertIncludes(html,"onchange=\"_setTxFormField(\\'transaction_date\\',this.value)\"",
+    'Register date input must use onchange (not oninput) for transaction_date');
+});
+
 
 // ═══════════════════════════════════════════════════════════════════════════
 // Phase 5F-1 — Cash Commitment Capture + Cash Availability Engine

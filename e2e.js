@@ -2017,6 +2017,109 @@ async function clickNav(page, id) {
     await context.close();
   });
 
+  // RG-7c originally reproduced the live failure Adam reported after deploy: Register's Add
+  // Transaction dropdown for July showed Birthday Dinner/Brunch/Big Dinner Out/Entertainment
+  // Other instead of Seattle/Wewe's Lunches/Week 1-4. Root cause (see test_regression.js
+  // 5E8-R18/R19/R22): entertainment.event_1/event_2/week_1-4 were seeded into budget_line_rules
+  // for July but never inserted into `categories`.
+  //
+  // 2026-07-02: data-only correction applied via
+  // docs/2026-07-02-register-budget-category-sync.sql. Adam confirmed live in production:
+  // preflight still_missing=0, all 6 new rows leaf=true/active/assignable=true, parent/group
+  // rows still non-assignable, no duplicate keys, entertainment.* now shows 10 active children,
+  // and the Register dropdown for a July 2 transaction shows Seattle/Wewe's Lunches/Entertainment
+  // Week 1-4 alongside the original 4 real categories and other existing live categories.
+  // This test is flipped to assert that confirmed post-fix state using the REAL key pairs.
+  const POST_FIX_ENTERTAINMENT_CATEGORIES = [
+    { key: 'entertainment', label: 'Entertainment', parent_key: null, is_leaf: false, lifecycle_status: 'active', behavior_class: null, budget_treatment: null },
+    { key: 'entertainment.birthday_dinner', label: 'Birthday Dinner', parent_key: 'entertainment', is_leaf: true, lifecycle_status: 'active', behavior_class: 'expense', budget_treatment: 'tracked' },
+    { key: 'entertainment.brunch', label: 'Brunch', parent_key: 'entertainment', is_leaf: true, lifecycle_status: 'active', behavior_class: 'expense', budget_treatment: 'tracked' },
+    { key: 'entertainment.big_dinner_out', label: 'Big Dinner Out', parent_key: 'entertainment', is_leaf: true, lifecycle_status: 'active', behavior_class: 'expense', budget_treatment: 'tracked' },
+    { key: 'entertainment.entertainment_other', label: 'Entertainment Other', parent_key: 'entertainment', is_leaf: true, lifecycle_status: 'active', behavior_class: 'expense', budget_treatment: 'tracked' },
+    // The 6 rows inserted by the 2026-07-02 data correction:
+    { key: 'entertainment.event_1', label: 'Entertainment Event 1', parent_key: 'entertainment', is_leaf: true, lifecycle_status: 'active', behavior_class: 'expense', budget_treatment: 'tracked' },
+    { key: 'entertainment.event_2', label: 'Entertainment Event 2', parent_key: 'entertainment', is_leaf: true, lifecycle_status: 'active', behavior_class: 'expense', budget_treatment: 'tracked' },
+    { key: 'entertainment.week_1', label: 'Entertainment Week 1', parent_key: 'entertainment', is_leaf: true, lifecycle_status: 'active', behavior_class: 'expense', budget_treatment: 'tracked' },
+    { key: 'entertainment.week_2', label: 'Entertainment Week 2', parent_key: 'entertainment', is_leaf: true, lifecycle_status: 'active', behavior_class: 'expense', budget_treatment: 'tracked' },
+    { key: 'entertainment.week_3', label: 'Entertainment Week 3', parent_key: 'entertainment', is_leaf: true, lifecycle_status: 'active', behavior_class: 'expense', budget_treatment: 'tracked' },
+    { key: 'entertainment.week_4', label: 'Entertainment Week 4', parent_key: 'entertainment', is_leaf: true, lifecycle_status: 'active', behavior_class: 'expense', budget_treatment: 'tracked' },
+    // A representative mix of other real, unrelated live categories Adam confirmed still appear.
+    { key: 'income.net_salary', label: 'Net Salary', parent_key: 'income', is_leaf: true, lifecycle_status: 'active', behavior_class: 'income', budget_treatment: null },
+    { key: 'income.deep_south_commissions', label: 'Deep South Commissions', parent_key: 'income', is_leaf: true, lifecycle_status: 'active', behavior_class: 'commission_income', budget_treatment: null },
+    { key: 'auto_transport.auto_payment', label: 'Auto Payment', parent_key: 'auto_transport', is_leaf: true, lifecycle_status: 'active', behavior_class: 'expense', budget_treatment: 'tracked' },
+    { key: 'auto_transport.gas_fuel', label: 'Gas & Fuel', parent_key: 'auto_transport', is_leaf: true, lifecycle_status: 'active', behavior_class: 'expense', budget_treatment: 'tracked' }
+  ];
+  const REAL_JULY_BLR_OVERRIDES = [
+    { is_active: true, category_key: 'entertainment.event_1', line_label: 'Seattle', amount: 300, start_month: '2026-07-01', end_month: '2026-07-01' },
+    { is_active: true, category_key: 'entertainment.event_2', line_label: "Wewe's Lunches", amount: 200, start_month: '2026-07-01', end_month: '2026-07-01' },
+    { is_active: true, category_key: 'entertainment.week_1', line_label: 'Entertainment Week 1', amount: 250, start_month: '2026-07-01', end_month: '2026-07-01' },
+    { is_active: true, category_key: 'entertainment.week_2', line_label: 'Entertainment Week 2', amount: 250, start_month: '2026-07-01', end_month: '2026-07-01' },
+    { is_active: true, category_key: 'entertainment.week_3', line_label: 'Entertainment Week 3', amount: 250, start_month: '2026-07-01', end_month: '2026-07-01' },
+    { is_active: true, category_key: 'entertainment.week_4', line_label: 'Entertainment Week 4', amount: 250, start_month: '2026-07-01', end_month: '2026-07-01' }
+  ];
+
+  await test('RG-7c: Register Add Transaction dropdown, July 2 date, post-2026-07-02-data-correction category/BLR set — reproduces Adam\'s confirmed live production result', async () => {
+    const { page, context } = await openApp(browser);
+    const result = await page.evaluate(([mockAccounts, postFixCats, julyBlr]) => {
+      FEATURE_FLAGS.showTransactionLedger = true;
+      _accountsCache = mockAccounts;
+      _categoriesCache = postFixCats;
+      _registriesLoadStatus = 'loaded';
+      _budgetLineRulesCache = julyBlr;
+      _budgetLineRulesLoadStatus = 'loaded';
+      _txLedgerLoadStatus = 'loaded';
+      _txLedgerCache = [];
+      _txLedgerAccountKey = 'truist_checking';
+      renderApp();
+      setSection('transactions');
+      setTxSubNav('register');
+      // Open the Add Transaction form with July 2 selected, same as Adam's live repro.
+      _openTxForm('add', null);
+      _txFormData.transaction_date = '2026-07-02';
+      renderApp();
+      var html = document.getElementById('transactions-content')?.innerHTML || '';
+      return {
+        showsSeattle: html.includes('Seattle'),
+        showsWewesLunches: html.includes("Wewe's Lunches"),
+        showsWeek1: html.includes('Entertainment Week 1'),
+        showsWeek2: html.includes('Entertainment Week 2'),
+        showsWeek3: html.includes('Entertainment Week 3'),
+        showsWeek4: html.includes('Entertainment Week 4'),
+        showsBirthdayDinner: html.includes('Birthday Dinner'),
+        showsBrunch: html.includes('Brunch'),
+        showsBigDinnerOut: html.includes('Big Dinner Out'),
+        showsEntertainmentOther: html.includes('Entertainment Other'),
+        showsNetSalary: html.includes('Net Salary'),
+        showsDeepSouthCommissions: html.includes('Deep South Commissions'),
+        showsAutoPayment: html.includes('Auto Payment'),
+        showsGasFuel: html.includes('Gas &amp; Fuel') || html.includes('Gas & Fuel'),
+        // Exact literal match — 'value="entertainment"' does not match 'value="entertainment.event_1"'
+        // (the next character after "entertainment" differs: closing quote vs dot).
+        entertainmentParentSelectable: html.includes('value="entertainment"')
+      };
+    }, [TX_MOCK_ACCOUNTS, POST_FIX_ENTERTAINMENT_CATEGORIES, REAL_JULY_BLR_OVERRIDES]);
+    // The 6 previously-missing July slot categories now appear with their BLR-resolved labels.
+    assert(result.showsSeattle, 'Dropdown must show "Seattle" for July (confirmed live)');
+    assert(result.showsWewesLunches, 'Dropdown must show "Wewe\'s Lunches" for July (confirmed live)');
+    assert(result.showsWeek1, 'Dropdown must show "Entertainment Week 1"');
+    assert(result.showsWeek2, 'Dropdown must show "Entertainment Week 2"');
+    assert(result.showsWeek3, 'Dropdown must show "Entertainment Week 3"');
+    assert(result.showsWeek4, 'Dropdown must show "Entertainment Week 4"');
+    // Existing categories preserved — the original 4 real Entertainment leaves still appear.
+    assert(result.showsBirthdayDinner, 'Dropdown must still show "Birthday Dinner"');
+    assert(result.showsBrunch, 'Dropdown must still show "Brunch"');
+    assert(result.showsBigDinnerOut, 'Dropdown must still show "Big Dinner Out"');
+    assert(result.showsEntertainmentOther, 'Dropdown must still show "Entertainment Other"');
+    // Existing, unrelated live categories preserved (Adam's confirmed live spot-check).
+    assert(result.showsNetSalary, 'Dropdown must still show "Net Salary"');
+    assert(result.showsDeepSouthCommissions, 'Dropdown must still show "Deep South Commissions"');
+    assert(result.showsAutoPayment, 'Dropdown must still show "Auto Payment"');
+    assert(result.showsGasFuel, 'Dropdown must still show "Gas & Fuel"');
+    // Parent/group row still not selectable.
+    assert(!result.entertainmentParentSelectable, 'The bare "entertainment" parent/group key must not appear as a selectable option value');
+    await context.close();
+  });
+
   await test('RG-8: running balance computes correctly from mock transactions', async () => {
     const { page, context } = await openApp(browser);
     const result = await page.evaluate(([mockAccounts, mockTxns]) => {

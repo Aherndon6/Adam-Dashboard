@@ -857,7 +857,7 @@ button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-vis
 // ── Constants (unchanged) ──────────────────────────────────────────────────
 // Simplified architecture — $8,250 total from LC · $6,500 operating floor · no legacy mechanics
 // Real-world moves: keep $2,250 in chk, move $2,750 sav→chk, move $1,000 LC→chk, move $2,250 LC→chk (Option 1 correction)
-const BUILD_TS='2026-07-02T10:00:57'; // updated each push — local time string
+const BUILD_TS='2026-07-02T11:07:24'; // updated each push — local time string
 const START_CHK=18037.73,START_SAV=3772.77,START_AMX=103.64,START_TAX=0,START_LC=13488.88;
 const EF_AMT=13488.88; // LC/EF balance — static this model year (no transfers in or out)
 const BASE_TAX=521.36,RET_SAV_XFR=3772.74;
@@ -5096,7 +5096,11 @@ function _setTxFormField(field,val){
     var el=document.getElementById('tx-form-outflow');
     if(el)el.value='';
   }
-  if(field==='category_key'||field==='cleared')renderApp();
+  // Phase 5E-8: transaction_date must also trigger a re-render — the category dropdown's
+  // option labels are month-derived (_regMonthIso from fd.transaction_date), so changing the
+  // date without re-rendering would leave the dropdown showing labels resolved for whatever
+  // date the form had at open time, not the currently-selected date.
+  if(field==='category_key'||field==='cleared'||field==='transaction_date')renderApp();
 }
 
 // Open delete confirmation strip. Resets form state (one action at a time).
@@ -5405,7 +5409,10 @@ function _renderTxRegister(){
       // Date
       +'<div><label style="font-size:11px;font-weight:600;color:var(--muted);display:block;margin-bottom:3px">Date*</label>'
       +'<input type="date" value="'+_esc(fd.transaction_date||_today)+'" '
-      +'oninput="_setTxFormField(\'transaction_date\',this.value)" '
+      // onchange (not oninput): date now triggers a full re-render (dropdown is month-derived),
+      // and native date inputs fire "input" repeatedly per keystroke/segment — onchange fires
+      // once when the value is actually committed, avoiding a jarring re-render mid-edit.
+      +'onchange="_setTxFormField(\'transaction_date\',this.value)" '
       +'style="font-family:inherit;font-size:13px;padding:5px 8px;border:1px solid var(--line);'
       +'border-radius:6px;background:var(--surface);color:var(--text);width:100%"></div>'
       // Payee
