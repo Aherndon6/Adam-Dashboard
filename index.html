@@ -857,7 +857,7 @@ button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-vis
 // ── Constants (unchanged) ──────────────────────────────────────────────────
 // Simplified architecture — $8,250 total from LC · $6,500 operating floor · no legacy mechanics
 // Real-world moves: keep $2,250 in chk, move $2,750 sav→chk, move $1,000 LC→chk, move $2,250 LC→chk (Option 1 correction)
-const BUILD_TS='2026-07-02T00:01:35'; // updated each push — local time string
+const BUILD_TS='2026-07-02T10:00:57'; // updated each push — local time string
 const START_CHK=18037.73,START_SAV=3772.77,START_AMX=103.64,START_TAX=0,START_LC=13488.88;
 const EF_AMT=13488.88; // LC/EF balance — static this model year (no transfers in or out)
 const BASE_TAX=521.36,RET_SAV_XFR=3772.74;
@@ -5277,6 +5277,29 @@ async function _toggleTxCleared(id,currentCleared){
   }
 }
 
+// _getRegisterCategoryLabel(key, monthIso) — Phase 5E-8
+// Register's own label resolver — deliberately separate from _getCategoryDisplayLabel()/
+// getBudgetCatLabel(), which fall back to _budgetCatByKey (built only from
+// _getActiveCategoryRegistry(), scoped to the fixed 31-line Budget registry and gated
+// behind FEATURE_FLAGS.useSupabaseRegistries=false in production). Register needs the
+// full live categories table, so its fallback reads the category's own .label straight
+// from _categoriesCache instead.
+// Priority, same convention as _getCategoryDisplayLabel: active budget_line_rules.line_label
+// for the given month, then the category's own live label, then the raw key as a last resort.
+function _getRegisterCategoryLabel(key,monthIso){
+  if(monthIso&&_budgetLineRulesLoadStatus==='loaded'&&_budgetLineRulesCache){
+    for(var i=0;i<_budgetLineRulesCache.length;i++){
+      var r=_budgetLineRulesCache[i];
+      if(!r.is_active||r.category_key!==key)continue;
+      if(r.start_month>monthIso)continue;
+      if(r.end_month!==null&&r.end_month!==undefined&&r.end_month<monthIso)continue;
+      if(r.line_label&&r.line_label.trim())return r.line_label.trim();
+    }
+  }
+  var c=(_categoriesCache||[]).find(function(x){return x.key===key;});
+  return (c&&c.label)||key;
+}
+
 // _renderTxRegister — Phase 5E-2 account register with write support
 // Shows account selector, inline add/edit form, starting balance row, and transaction list.
 // Write controls (add/edit/delete/cleared) gated on tx.source==='manual'.
@@ -5329,11 +5352,36 @@ function _renderTxRegister(){
   var form='';
   if(_txFormMode==='add'||_txFormMode==='edit'){
     var fd=_txFormData;
-    var activeCategories=(_categoriesCache||[]).filter(function(c){return c.lifecycle_status==='active';});
+    // Phase 5E-8: Register sources categories from the live _categoriesCache (normalized via
+    // _normalizeCatRow), NOT the Budget module's category-registry helper. That registry
+    // is intentionally scoped to the fixed 31-line household Budget structure and is gated behind
+    // FEATURE_FLAGS.useSupabaseRegistries, which is false in production — routing Register through
+    // it would silently drop every category outside the 31 (Business, Trips, Taxes, Transfers,
+    // Greenlight, Jabian Deposits, individual trip funds, etc.), which is exactly what the original
+    // bug report was about in reverse. leaf&&assignable filtering still applies; isIncome is NOT
+    // excluded, since Register logs both Outflow and Inflow and needs income/deposit categories
+    // (Net Salary, Deep South Commissions, Jabian Deposits 2026, etc.) selectable for inflow rows.
+    var activeCategories=(_categoriesCache||[])
+      .filter(function(c){return c.lifecycle_status==='active';})
+      .map(_normalizeCatRow)
+      .filter(function(c){return c.leaf&&c.assignable;});
+    // Month for label resolution: transaction's own date (falls back to today if blank).
+    var _regMonthIso=_txDateToMonthIso(fd.transaction_date)||_txDateToMonthIso(_today);
     var catOpts='<option value="">— No category —</option>';
     activeCategories.forEach(function(c){
-      catOpts+='<option value="'+_esc(c.key)+'"'+(fd.category_key===c.key?' selected':'')+'>'+_esc(c.label)+'</option>';
+      var _optLabel=_getRegisterCategoryLabel(c.key,_regMonthIso);
+      catOpts+='<option value="'+_esc(c.key)+'"'+(fd.category_key===c.key?' selected':'')+'>'+_esc(_optLabel)+'</option>';
     });
+    // Legacy category support: if the current category_key is no longer leaf&&assignable
+    // (e.g. it became a parent/group, or was retired), show it as a selectable legacy option
+    // so existing transactions can still be saved/re-categorized without breaking.
+    if(fd.category_key){
+      var _inFilteredList=activeCategories.some(function(c){return c.key===fd.category_key;});
+      if(!_inFilteredList){
+        var _legCat=(_categoriesCache||[]).find(function(c){return c.key===fd.category_key;});
+        catOpts+='<option value="'+_esc(fd.category_key)+'" selected>'+_esc(_legCat?_legCat.label:fd.category_key)+' (legacy — re-categorize)</option>';
+      }
+    }
     var inp=function(field,placeholder,value,extra){
       return '<input type="text" placeholder="'+_esc(placeholder)+'" value="'+_esc(value||'')+'" '
         +'oninput="_setTxFormField(\''+field+'\',this.value)" '
@@ -5447,8 +5495,10 @@ function _renderTxRegister(){
         var outflow=amt<0?'$'+Math.abs(amt).toFixed(2):'';
         var inflow=amt>0?'$'+amt.toFixed(2):'';
         runBal+=amt;
-        var catObj=tx.category_key?(_categoriesCache||[]).find(function(c){return c.key===tx.category_key;}):null;
-        var catDisplay=catObj?catObj.label:(tx.category_key||'');
+        // Phase 5E-8: resolve via _getRegisterCategoryLabel using the transaction's OWN date/month
+        // (not raw categories.label) so row display picks up month-aware BLR overrides while still
+        // correctly labeling categories outside the fixed Budget registry (Business, Trips, Taxes, etc.).
+        var catDisplay=tx.category_key?_getRegisterCategoryLabel(tx.category_key,_txDateToMonthIso(tx.transaction_date)):'';
         var isManual=tx.source==='manual';
         var isBeingEdited=_txEditId===tx.id;
         var isDeleteConfirm=_txDeleteConfirmId===tx.id;
@@ -6760,6 +6810,12 @@ function _rebuildBudgetCatByKey(){
 // Format: parent_key.child_key for subcategories; bare key for standalone leaves.
 // assignable=false: display-only, cannot be chosen for transactions.
 // leaf=true: bottom of hierarchy, selectable if also assignable=true.
+// NOTE (Phase 5E-8): this registry is intentionally scoped to the fixed 31-line household
+// Budget structure and is gated behind FEATURE_FLAGS.useSupabaseRegistries (production
+// default false) inside _getActiveCategoryRegistry(). Register does NOT use this registry —
+// it needs the full live categories table (Business, Trips, Taxes, Transfers, and other
+// keys that were never meant to roll into the Budget grid's 31-line structure). See
+// _renderTxRegister() for Register's own category source/filter/label-resolution.
 var BUDGET_CATEGORY_REGISTRY=[
   // Income (display-only)
   {key:'income',             label:'Income',                      parent:null,           leaf:false, assignable:false, isIncome:true},

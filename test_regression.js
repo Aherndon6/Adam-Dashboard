@@ -4764,6 +4764,11 @@ test('5B-2: misc.goal_sweep is not assignable',()=>{
 });
 
 test('5B-3: Income keys are not assignable',()=>{
+  // Reverted in Phase 5E-8 course-correction: Register does not read BUDGET_CATEGORY_REGISTRY
+  // at all (it's scoped to the fixed 31-line household Budget structure and gated behind
+  // FEATURE_FLAGS.useSupabaseRegistries, which is false in production). Register income/
+  // deposit-category preservation is asserted against _categoriesCache/_normalizeCatRow in
+  // the 5E8-R block below instead.
   var incomeLeaves=BUDGET_CATEGORY_REGISTRY.filter(function(c){return c.isIncome&&c.leaf;});
   assert(incomeLeaves.length>=2,'must have at least 2 income leaf rows');
   incomeLeaves.forEach(function(c){
@@ -7091,6 +7096,206 @@ test('5E7-N10: 5B-12 no longer asserts is_owner() as current desired behavior fo
 test('5E7-N11: USER_ROLE comment uses household_admin not editor',()=>{
   assertIncludes(html,"'owner'|'household_admin'|'viewer'",'USER_ROLE comment must use household_admin not editor');
   assert(!html.includes("'owner'|'editor'|'viewer'"),'USER_ROLE comment must not say editor');
+});
+
+// ═══════════════════════════════════════════════════════════════════════════
+// Phase 5E-8 — Register category-label / assignability live-use bugfix
+// Adam reported the Register "Add Transaction" category dropdown didn't match
+// Budget's categories (e.g. "Wewe's Lunches" missing, stale labels like
+// "Birthday Dinner" showing instead).
+//
+// Course-correction (caught by RG-7b in e2e, not by this file originally):
+// the first pass routed Register through _getActiveCategoryRegistry() /
+// BUDGET_CATEGORY_REGISTRY, the same source _renderBudgetForm() uses. That
+// registry is intentionally scoped to the fixed 31-line household Budget
+// structure and is gated behind FEATURE_FLAGS.useSupabaseRegistries, which
+// is FALSE in production (confirmed: it is set once, at declaration, and
+// never reassigned anywhere in index.html). Routing Register through it
+// would have silently dropped every category outside the 31 — Business,
+// Trips, Taxes, Transfers, Greenlight, Jabian Deposits, individual trip
+// funds — which is exactly what the ORIGINAL bug report was about, just in
+// reverse (comprehensive-but-wrong-labels became correct-labels-but-narrow).
+//
+// Corrected design: Register sources from the live _categoriesCache
+// (normalized per-row via the existing _normalizeCatRow(), same
+// leaf/assignable derivation Supabase-backed Budget would use, without the
+// useSupabaseRegistries gate) and resolves labels via a Register-only
+// helper, _getRegisterCategoryLabel(key,monthIso), which checks
+// budget_line_rules.line_label first (same month-aware behavior as Budget's
+// _getCategoryDisplayLabel) but falls back to the category's own live
+// .label instead of the scoped registry. Register does NOT exclude
+// isIncome, because it logs both Outflow and Inflow and needs income/
+// deposit leaf categories selectable for Inflow rows.
+// ═══════════════════════════════════════════════════════════════════════════
+
+(function(){
+  var fnStart=html.indexOf('function _renderTxRegister');
+  var fnEnd=html.indexOf('function renderTransactions');
+  var registerBlock=(fnStart>-1&&fnEnd>fnStart)?html.slice(fnStart,fnEnd):'';
+
+  test('5E8-R1: _renderTxRegister exists and renderTransactions boundary found for scoped assertions',()=>{
+    assert(fnStart>-1,'_renderTxRegister function missing from index.html');
+    assert(fnEnd>fnStart,'renderTransactions boundary not found after _renderTxRegister');
+  });
+
+  test('5E8-R2: Register add/edit dropdown sources from live _categoriesCache via _normalizeCatRow, filtered to leaf&&assignable',()=>{
+    assertIncludes(registerBlock,"filter(function(c){return c.lifecycle_status==='active';})",
+      'Register dropdown must start from active rows in _categoriesCache');
+    assertIncludes(registerBlock,'.map(_normalizeCatRow)',
+      'Register dropdown must normalize rows via _normalizeCatRow (same leaf/assignable derivation as Supabase-backed Budget)');
+    assertIncludes(registerBlock,'.filter(function(c){return c.leaf&&c.assignable;})',
+      'Register dropdown must filter normalized rows to leaf&&assignable');
+  });
+
+  test('5E8-R2b: Register does NOT depend on _getActiveCategoryRegistry() or BUDGET_CATEGORY_REGISTRY (the Budget-scoped, useSupabaseRegistries-gated registry)',()=>{
+    // Check actual code usage (function calls / property access), not mere mentions in
+    // explanatory comments (this block's own header comment references both names by design).
+    assert(!/_getActiveCategoryRegistry\(\)/.test(registerBlock),
+      'Register must not call _getActiveCategoryRegistry() — that registry is scoped to Budget\'s fixed 31 lines and gated behind useSupabaseRegistries=false in production');
+    assert(!/BUDGET_CATEGORY_REGISTRY\.(filter|find|forEach|map|some|every)\(/.test(registerBlock),
+      'Register must not read BUDGET_CATEGORY_REGISTRY directly either');
+    assert(!/[^_]_budgetCatByKey\[/.test(registerBlock)&&!registerBlock.includes('=_budgetCatByKey'),
+      'Register must not depend on _budgetCatByKey — that lookup is only ever built from the Budget-scoped registry');
+  });
+
+  test('5E8-R3: Register dropdown filter does NOT exclude isIncome (Register supports Inflow rows)',()=>{
+    // The Budget-form filter is "!c.isIncome&&c.leaf&&c.assignable" — Register must NOT copy the !c.isIncome clause.
+    assert(!registerBlock.includes('!c.isIncome&&c.leaf&&c.assignable'),
+      'Register dropdown filter must not exclude isIncome — income/deposit categories are needed for Inflow rows');
+  });
+
+  test('5E8-R4: Register dropdown no longer builds options from raw c.label off unfiltered _categoriesCache',()=>{
+    assert(!registerBlock.includes("(_categoriesCache||[]).filter(function(c){return c.lifecycle_status==='active';})"),
+      'Old unfiltered-then-raw-label _categoriesCache pattern (no _normalizeCatRow, no leaf/assignable filter) must be removed from Register dropdown');
+  });
+
+  test('5E8-R5: Register dropdown resolves option labels through _getRegisterCategoryLabel(c.key,_regMonthIso)',()=>{
+    assertIncludes(registerBlock,'_getRegisterCategoryLabel(c.key,_regMonthIso)',
+      'Register dropdown options must resolve labels via _getRegisterCategoryLabel, not raw c.label');
+  });
+
+  test('5E8-R6: Register dropdown derives monthIso from the transaction form date via _txDateToMonthIso(fd.transaction_date)',()=>{
+    assertIncludes(registerBlock,'_txDateToMonthIso(fd.transaction_date)',
+      'Register dropdown must derive its month from fd.transaction_date, same convention as Budget form (_txMonthIso)');
+  });
+
+  test('5E8-R7: Register add/edit form includes legacy category fallback sourced from live _categoriesCache (not _budgetCatByKey)',()=>{
+    assertIncludes(registerBlock,'legacy — re-categorize',
+      'Register form must render a legacy option so an existing tx keeps a visible/selected value if its category is no longer leaf&&assignable');
+    assertIncludes(registerBlock,"(_categoriesCache||[]).find(function(c){return c.key===fd.category_key;})",
+      'Register legacy-option lookup must read the live category\'s own label from _categoriesCache, not the Budget-scoped registry');
+  });
+
+  test('5E8-R8: Register transaction list row resolves category display via _getRegisterCategoryLabel(tx.category_key, month-of-tx-date)',()=>{
+    assertIncludes(registerBlock,'_getRegisterCategoryLabel(tx.category_key,_txDateToMonthIso(tx.transaction_date))',
+      'Register row category display must use _getRegisterCategoryLabel with the transaction\'s own date, not raw categories.label');
+  });
+
+  test('5E8-R9: Register row display no longer looks up raw catObj.label from unnormalized _categoriesCache',()=>{
+    assert(!registerBlock.includes('(_categoriesCache||[]).find(function(c){return c.key===tx.category_key;}):null'),
+      'Old raw catObj lookup (unnormalized, feeding catObj.label directly) must be removed from Register row display');
+    assert(!registerBlock.includes('catObj?catObj.label:'),
+      'Old raw catObj.label fallback must be removed from Register row display');
+  });
+})();
+
+test('5E8-R10: _getRegisterCategoryLabel function exists, checks budget_line_rules first, falls back to the category\'s own live .label (not getBudgetCatLabel/registry)',()=>{
+  var fnIdx=html.indexOf('function _getRegisterCategoryLabel');
+  assert(fnIdx>-1,'_getRegisterCategoryLabel function missing from index.html');
+  var fnBlock=html.slice(fnIdx,fnIdx+900);
+  assertIncludes(fnBlock,'_budgetLineRulesCache','_getRegisterCategoryLabel must scan _budgetLineRulesCache first, same as Budget\'s resolver');
+  assertIncludes(fnBlock,'line_label','_getRegisterCategoryLabel must return an active line_label when present');
+  assertIncludes(fnBlock,'_categoriesCache','_getRegisterCategoryLabel must fall back to the category\'s own record in _categoriesCache');
+  assert(!fnBlock.includes('getBudgetCatLabel'),'_getRegisterCategoryLabel must NOT fall back through getBudgetCatLabel (that reads the Budget-scoped registry lookup, not the live category label)');
+});
+
+test('5E8-R11: _normalizeCatRow-based leaf&&assignable filter excludes parent/group rows and non-assignable behavior classes (realistic Supabase category shapes)',()=>{
+  var groupRow=_normalizeCatRow({key:'trips',label:'Trips',parent_key:null,is_leaf:false,lifecycle_status:'active',behavior_class:null,budget_treatment:null});
+  assert(!(groupRow.leaf&&groupRow.assignable),'a non-leaf parent/group row (e.g. "Trips") must not pass leaf&&assignable');
+
+  var savingsRow=_normalizeCatRow({key:'misc.goal_sweep',label:'Extra Pay Going to Spreadsheet',parent_key:'misc',is_leaf:true,lifecycle_status:'active',behavior_class:'savings_allocation',budget_treatment:null});
+  assert(!(savingsRow.leaf&&savingsRow.assignable),'a savings_allocation leaf must not pass leaf&&assignable');
+
+  var plannedRow=_normalizeCatRow({key:'goals.alaska_sweep',label:'Alaska Sweep',parent_key:'goals',is_leaf:true,lifecycle_status:'active',behavior_class:null,budget_treatment:'planned_allocation'});
+  assert(!(plannedRow.leaf&&plannedRow.assignable),'a planned_allocation leaf must not pass leaf&&assignable');
+});
+
+test('5E8-R12: _normalizeCatRow-based filter preserves non-hardcoded-registry categories AND income/deposit categories for Register (the RG-7b / original-bug scenario)',()=>{
+  // "Business", "Trips", "Taxes"-style child keys are NOT in BUDGET_CATEGORY_REGISTRY's 31
+  // entries at all — this is the exact scenario the first-pass fix (via _getActiveCategoryRegistry())
+  // would have silently broken. They must still pass Register's filter.
+  var businessRow=_normalizeCatRow({key:'business.jabian_expenses_2026',label:'Jabian Expenses 2026',parent_key:'business',is_leaf:true,lifecycle_status:'active',behavior_class:'expense',budget_treatment:'tracked'});
+  assert(businessRow.leaf&&businessRow.assignable,'a live-only category outside the hardcoded 31 (e.g. business.jabian_expenses_2026) must pass Register\'s leaf&&assignable filter');
+  assert(BUDGET_CATEGORY_REGISTRY.every(function(c){return c.key!=='business.jabian_expenses_2026';}),
+    'sanity check: business.jabian_expenses_2026 must genuinely be absent from the hardcoded 31-entry registry');
+
+  // Income/deposit categories (Net Salary, Jabian Deposits, etc.) must remain selectable for Inflow rows.
+  var incomeRow=_normalizeCatRow({key:'income.net_salary',label:'Net Salary',parent_key:'income',is_leaf:true,lifecycle_status:'active',behavior_class:'income',budget_treatment:null});
+  assert(incomeRow.leaf&&incomeRow.assignable,'income leaf categories must pass Register\'s leaf&&assignable filter (needed for Inflow rows)');
+});
+
+test('5E8-R13: _getRegisterCategoryLabel resolves month-specific BLR line_label (Seattle/Wewe\'s-Lunches style July override) AND resolves a non-hardcoded-registry key from its own live label',()=>{
+  var origStatus=_budgetLineRulesLoadStatus;
+  var origCache=_budgetLineRulesCache;
+  var origCatCache=_categoriesCache;
+  try{
+    _budgetLineRulesLoadStatus='loaded';
+    _budgetLineRulesCache=[
+      {is_active:true,category_key:'entertainment.week_1',line_label:'Seattle',amount:300,start_month:'2026-07-01',end_month:'2026-07-01'},
+      {is_active:true,category_key:'entertainment.week_2',line_label:"Wewe's Lunches",amount:200,start_month:'2026-07-01',end_month:'2026-07-01'}
+    ];
+    assert(_getRegisterCategoryLabel('entertainment.week_1','2026-07-01')==='Seattle',
+      'July entertainment.week_1 must resolve to BLR line_label "Seattle"');
+    assert(_getRegisterCategoryLabel('entertainment.week_2','2026-07-01')==="Wewe's Lunches",
+      'July entertainment.week_2 must resolve to BLR line_label "Wewe\'s Lunches"');
+    // June has no matching BLR row for these keys — must fall back to the live category label, not carry July's override forward.
+    _categoriesCache=[{key:'entertainment.week_1',label:'Entertainment Week 1',lifecycle_status:'active',is_leaf:true,parent_key:'entertainment',behavior_class:null,budget_treatment:null}];
+    assert(_getRegisterCategoryLabel('entertainment.week_1','2026-06-01')==='Entertainment Week 1',
+      'June entertainment.week_1 (no active BLR row) must fall back to the live category\'s own label, not July\'s "Seattle" override');
+    // A key with no BLR row and no hardcoded-registry entry at all must still resolve from its own live label —
+    // this is the exact case RG-7b caught (health_fitness.flexible_spending_2026 / business.* style keys).
+    _categoriesCache=[{key:'business.jabian_expenses_2026',label:'Jabian Expenses 2026',lifecycle_status:'active',is_leaf:true,parent_key:'business',behavior_class:'expense',budget_treatment:'tracked'}];
+    assert(_getRegisterCategoryLabel('business.jabian_expenses_2026','2026-07-01')==='Jabian Expenses 2026',
+      'a category outside the hardcoded 31-entry registry must resolve from its own live _categoriesCache label, not fall back to the raw key');
+  }finally{
+    _budgetLineRulesLoadStatus=origStatus;
+    _budgetLineRulesCache=origCache;
+    _categoriesCache=origCatCache;
+  }
+});
+
+test('5E8-R14: _txDateToMonthIso derives a transaction row\'s own month independent of any globally "selected" month',()=>{
+  assert(_txDateToMonthIso('2026-06-15')==='2026-06-01','June transaction date must resolve to 2026-06-01');
+  assert(_txDateToMonthIso('2026-07-03')==='2026-07-01','July transaction date must resolve to 2026-07-01');
+  // A June-dated row and a July-dated row must resolve to different monthIso values,
+  // which is what lets Register row display use each transaction's own date/month (AC per Adam's approved scope).
+  assert(_txDateToMonthIso('2026-06-15')!==_txDateToMonthIso('2026-07-03'),
+    'June-dated and July-dated transactions must resolve to different monthIso values for row label resolution');
+});
+
+test('5E8-R15: Register dropdown monthIso falls back to today\'s date (via _today) when the form date is blank, never to null',()=>{
+  assertIncludes(html,'_txDateToMonthIso(fd.transaction_date)||_txDateToMonthIso(_today)',
+    'Register dropdown must fall back to _txDateToMonthIso(_today) so _regMonthIso is never null');
+});
+
+test('5E8-R16: 5E-8 fix is index.html-only — no SQL/migration/RLS files touched',()=>{
+  // Process-level guard: this phase\'s scope note says index.html (and this test file) only.
+  // Sanity-check that the register fix did not introduce any CREATE POLICY / GRANT / ALTER TABLE
+  // text into index.html itself (would indicate scope creep into inline SQL).
+  var fnStart=html.indexOf('function _renderTxRegister');
+  var fnEnd=html.indexOf('function renderTransactions');
+  var registerBlock=(fnStart>-1&&fnEnd>fnStart)?html.slice(fnStart,fnEnd):'';
+  ['CREATE POLICY','ALTER TABLE','GRANT ','DROP POLICY'].forEach(function(sqlKw){
+    assert(!registerBlock.includes(sqlKw),'Register fix must not introduce SQL/RLS text ('+sqlKw+') into index.html');
+  });
+});
+
+test('5E8-R17: BUDGET_CATEGORY_REGISTRY income leaves remain assignable=false (5E-8 income-flip was reverted — Register no longer reads this registry)',()=>{
+  var incomeLeaves=BUDGET_CATEGORY_REGISTRY.filter(function(c){return c.isIncome&&c.leaf;});
+  assert(incomeLeaves.length>=2,'must have at least 2 income leaf rows');
+  incomeLeaves.forEach(function(c){
+    assert(c.assignable===false,'income leaf '+c.key+' must be assignable=false — Budget\'s own filter/behavior is unaffected by the Register fix');
+  });
 });
 
 

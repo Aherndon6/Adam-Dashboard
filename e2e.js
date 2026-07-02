@@ -291,7 +291,20 @@ async function clickNav(page, id) {
     const { page, context } = await openApp(browser);
     await clickNav(page, 'weekly');
     await page.waitForTimeout(300);
-    const reconEl = await page.$('button:has-text("Reconcile"), .recon-btn, [onclick*="recon"], input[placeholder*="actual"]');
+    // Prior selector had two gaps (not related to the 5E-8 Register fix):
+    // 1. [onclick*="recon"] is case-sensitive — the real handler is openRecon() (capital R),
+    //    so that clause never matched anything.
+    // 2. It only covered the not-yet-reconciled state (.recon-open-btn / "Reconcile this
+    //    week"). If the displayed week is already reconciled, index.html renders
+    //    .recon-edit-btn ("Edit actuals") or the read-only .recon-done-row instead — neither
+    //    contains the word "Reconcile", so the old selector found nothing even though the
+    //    reconciliation control/state was legitimately present.
+    // Widened to cover all three valid states, case-insensitive on the onclick handler.
+    const reconEl = await page.$(
+      'button:has-text("Reconcile"), button:has-text("Update actuals"), button:has-text("Edit actuals"), ' +
+      '.recon-btn, .recon-open-btn, .recon-edit-btn, .recon-done-row, ' +
+      '[onclick*="recon" i], [onclick*="Recon"], input[placeholder*="actual"]'
+    );
     assert(reconEl, 'Reconciliation button or input not found in weekly view');
     await context.close();
   });
@@ -1551,16 +1564,23 @@ async function clickNav(page, id) {
       budget_line_key:null, budget_group_key:'business', merged_into_key:'business.jabian_expenses_2026', display_order:9010 }
   ];
 
-  await test('TX-1: flag=false — Transactions nav hidden, no nav-transactions-wrap visible', async () => {
+  await test('TX-1: production defaults — showTransactionSection=false, showTransactionLedger=true, nav visible (Register live by default since Phase 5E-3)', async () => {
     const { page, context } = await openApp(browser);
     const result = await page.evaluate(() => ({
-      flagDefault: FEATURE_FLAGS.showTransactionSection,
+      sectionFlagDefault: FEATURE_FLAGS.showTransactionSection,
+      ledgerFlagDefault: FEATURE_FLAGS.showTransactionLedger,
       navWrapDisplay: document.getElementById('nav-transactions-wrap')?.style.display,
       registriesStatus: _registriesLoadStatus
     }));
-    assert(result.flagDefault === false, 'showTransactionSection must default false');
-    assert(result.navWrapDisplay === 'none', 'nav-transactions-wrap must be display:none when flag=false');
-    assert(result.registriesStatus === 'not_loaded', 'Supabase registries must not load when both flags false');
+    assert(result.sectionFlagDefault === false, 'showTransactionSection must default false');
+    assert(result.ledgerFlagDefault === true, 'showTransactionLedger must default true (Phase 5E-3 production default — Register live by default)');
+    // nav visibility is showTransactionSection||showTransactionLedger — with showTransactionLedger=true
+    // by default, the Transactions nav is visible out of the box, not hidden.
+    assert(result.navWrapDisplay !== 'none', 'nav-transactions-wrap must be visible by default since showTransactionLedger defaults true');
+    // showTransactionLedger=true triggers the registry load in loadAll() (see 5E1-03), so registries
+    // must have at least attempted to load — assert "not stuck at not_loaded" rather than a specific
+    // end status, since 'loading'/'loaded'/'failed' are all valid outcomes depending on network timing.
+    assert(result.registriesStatus !== 'not_loaded', 'Supabase registries must attempt to load since showTransactionLedger defaults true');
     await context.close();
   });
 
@@ -1713,9 +1733,13 @@ async function clickNav(page, id) {
     await context.close();
   });
 
-  await test('TX-8: Future tabs labeled with phase — Register Phase 5E, Reconciliation Phase 5F', async () => {
+  await test('TX-8: Reconciliation still labeled future-phase; Register is live/clickable under production defaults (Phase 5E-3+)', async () => {
     const { page, context } = await openApp(browser);
     const result = await page.evaluate((mockAccounts) => {
+      // showTransactionLedger is left at its production default (true) here on purpose —
+      // the showTransactionLedger=false / "Register — Phase 5E" disabled-span path is
+      // already covered by RG-1. This test covers the current production-default path,
+      // where Register is live and Reconciliation (Phase 5F) is still not built.
       FEATURE_FLAGS.showTransactionSection = true;
       _accountsCache = mockAccounts;
       _categoriesCache = [];
@@ -1724,26 +1748,34 @@ async function clickNav(page, id) {
       setSection('transactions');
       var html = document.getElementById('transactions-content')?.innerHTML || '';
       return {
-        registerLabel: html.includes('Register — Phase 5E'),
+        registerIsPlainLabel: (html.match(/<button[^>]*>Register<\/button>/) || []).length > 0,
+        registerNotDisabledSpan: !html.includes('Register — Phase 5E'),
         reconciliationLabel: html.includes('Reconciliation — Phase 5F'),
         registerNotClickable: html.includes('cursor:not-allowed') || html.includes('cursor: not-allowed')
       };
     }, TX_MOCK_ACCOUNTS);
-    assert(result.registerLabel, 'Register future tab must be labeled "Register — Phase 5E"');
-    assert(result.reconciliationLabel, 'Reconciliation future tab must be labeled "Reconciliation — Phase 5F"');
-    assert(result.registerNotClickable, 'Future tabs must have cursor:not-allowed to signal they are disabled');
+    assert(result.registerIsPlainLabel, 'Register must render as a plain clickable "Register" button when showTransactionLedger=true (production default)');
+    assert(result.registerNotDisabledSpan, 'Register must NOT show the "Register — Phase 5E" disabled label when showTransactionLedger=true');
+    assert(result.reconciliationLabel, 'Reconciliation future tab must still be labeled "Reconciliation — Phase 5F" (Phase 5F-1 not yet built)');
+    assert(result.registerNotClickable, 'Reconciliation (the one remaining future tab) must have cursor:not-allowed to signal it is disabled');
     await context.close();
   });
 
-  await test('TX-9: flag reset to false — Transactions nav hidden, budget module unaffected', async () => {
+  await test('TX-9: both flags reset to false — Transactions nav hidden, budget module unaffected', async () => {
     const { page, context } = await openApp(browser);
     const result = await page.evaluate((mockAccounts) => {
-      // Enable then disable
+      // Enable then disable. Nav visibility is showTransactionSection||showTransactionLedger
+      // (see 5E1-04/comment at the renderApp nav-wrap block), and showTransactionLedger now
+      // defaults true (Phase 5E-3), so a true "reset to hidden" state must reset BOTH flags —
+      // resetting showTransactionSection alone (the old assumption, pre-5E-3) is no longer
+      // sufficient to hide the nav.
       FEATURE_FLAGS.showTransactionSection = true;
+      FEATURE_FLAGS.showTransactionLedger = true;
       _accountsCache = mockAccounts;
       _registriesLoadStatus = 'loaded';
       renderApp();
       FEATURE_FLAGS.showTransactionSection = false;
+      FEATURE_FLAGS.showTransactionLedger = false;
       renderApp();
       return {
         navHidden: document.getElementById('nav-transactions-wrap')?.style.display === 'none',
@@ -1751,7 +1783,7 @@ async function clickNav(page, id) {
         runModelWorks: typeof runModel === 'function'
       };
     }, TX_MOCK_ACCOUNTS);
-    assert(result.navHidden, 'Transactions nav must be hidden again after flag reset to false');
+    assert(result.navHidden, 'Transactions nav must be hidden again after both flags reset to false');
     assert(result.budgetCatRegistryIntact, 'BUDGET_CATEGORY_REGISTRY must remain intact after Transactions module runs');
     assert(result.runModelWorks, 'runModel must still be callable after Transactions module runs');
     await context.close();
@@ -1952,13 +1984,18 @@ async function clickNav(page, id) {
     await context.close();
   });
 
-  await test('RG-7b: category displays resolved label from _categoriesCache, not raw key (updated in 5E-2)', async () => {
+  await test('RG-7b: category displays resolved label via _getRegisterCategoryLabel, not raw key (updated in 5E-8)', async () => {
     const { page, context } = await openApp(browser);
     const result = await page.evaluate(([mockAccounts, mockCategories, mockTxns]) => {
       FEATURE_FLAGS.showTransactionLedger = true;
       _accountsCache = mockAccounts;
       _categoriesCache = mockCategories;
       _registriesLoadStatus = 'loaded';
+      // Phase 5E-8: row display resolves via _getRegisterCategoryLabel(key,monthIso), which reads
+      // _categoriesCache directly (BLR line_label first, then the category's own live .label) —
+      // deliberately NOT _budgetCatByKey/_getActiveCategoryRegistry(), which are scoped to Budget's
+      // fixed 31-line registry and gated behind useSupabaseRegistries=false in production. No extra
+      // setup needed beyond _categoriesCache itself.
       _txLedgerLoadStatus = 'loaded';
       _txLedgerCache = mockTxns;
       _txLedgerAccountKey = 'truist_checking';
@@ -1966,7 +2003,6 @@ async function clickNav(page, id) {
       setSection('transactions');
       setTxSubNav('register');
       var html = document.getElementById('transactions-content')?.innerHTML || '';
-      // In 5E-2, the raw key appears in the edit button's onclick JSON payload (attribute data).
       // The display cell should show the resolved label, not the raw key as visible text.
       // We check the label is present, and that the raw key only appears in attribute context.
       // A simple proxy: the label text appears, and the raw key does NOT appear in a <td> cell.
