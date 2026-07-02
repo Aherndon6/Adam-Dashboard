@@ -7627,6 +7627,111 @@ test('5E9-20: no schema/RLS changes — this fix is confined to index.html only'
   ),'5E-9 fix must not contain schema/RLS/grant statements');
 });
 
+// ═══════════════════════════════════════════════════════════════════════════
+// Phase 5E-10 — Budget/Register source-of-truth + entry safety (Wendy feedback)
+// Disables Budget's own manual actual-entry path (Register is now the source of
+// truth for actual spend), updates Budget's help copy to match, makes Register
+// payee required, and sorts Register rows uncleared-first while preserving
+// chronologically-correct running balances. Account dropdown ABC sort and
+// category typeahead/payee memory are explicitly deferred to 5E-11.
+// ═══════════════════════════════════════════════════════════════════════════
+
+console.log('\n── Section 5E-10: Budget/Register source-of-truth + entry safety ──');
+
+(function(){
+var budgetFnStart=html.indexOf('function renderBudget()');
+var budgetFnSrc=html.slice(budgetFnStart,html.indexOf('function _renderBudgetRecon'));
+var registerFnStart=html.indexOf('function _renderTxRegister()');
+var registerFnSrc=html.slice(registerFnStart,html.indexOf('function renderTransactions()'));
+var saveFnSrc=html.slice(html.indexOf('async function _saveTxForm('),html.indexOf('\nasync function _confirmTxDelete'));
+
+test('5E10-01: Budget "+ Add Transaction" button is disabled, not an active control',()=>{
+  assertIncludes(budgetFnSrc,'<button disabled title="Actual spending is now entered in Transactions → Register.',
+    'Budget Add Transaction button must be rendered disabled with explanatory tooltip');
+  assert(!/<button onclick="window\._budgetOpenAddForm\(\)"/.test(budgetFnSrc),
+    'Budget must no longer render an active, clickable Add Transaction button');
+});
+
+test('5E10-02: Budget header shows visible helper text pointing to Register as the actual-spend entry point',()=>{
+  assertIncludes(budgetFnSrc,'Actual spending is now entered in Transactions → Register.',
+    'Budget header must show helper text directing actual entry to Register');
+});
+
+test('5E10-03: Manage Lines (Budget Line Admin) remains a fully active, separate control, unaffected by the Add Transaction disable',()=>{
+  assertIncludes(budgetFnSrc,"onclick=\"window._blrOpenAdd(",'Manage Lines button must remain active and wired to _blrOpenAdd');
+  // Check the Manage Lines <button ...> opening tag itself (not surrounding text/comments)
+  // for a disabled attribute — a broader nearby-text scan previously false-matched the
+  // "disabled" comment explaining the separate Add Transaction change a few lines later.
+  var mlIdx=budgetFnSrc.indexOf("onclick=\"window._blrOpenAdd(");
+  var mlTagStart=budgetFnSrc.lastIndexOf('<button',mlIdx);
+  var mlTagEnd=budgetFnSrc.indexOf('>',mlIdx);
+  var mlTag=budgetFnSrc.slice(mlTagStart,mlTagEnd+1);
+  assert(mlTag.indexOf('disabled')===-1,'Manage Lines <button> tag itself must not have been accidentally disabled: '+mlTag);
+});
+
+test('5E10-04: Help panel "Entering a transaction" section no longer instructs clicking Budget\'s own Add Transaction button',()=>{
+  assertIncludes(budgetFnSrc,'Entering a transaction','Help panel section header must be present');
+  assert(!/Click <strong>\+ Add Transaction<\/strong> \(top right\)/.test(budgetFnSrc),
+    'Help panel must not tell Wendy to click the now-disabled Budget button');
+  assertIncludes(budgetFnSrc,'Transactions → Register','Help panel must redirect to Register for actual entry');
+});
+
+test('5E10-05: Help panel "Logging a Jabian expense" section points to the Jabian Expenses 2026 category in Register and discloses the reimbursement-status tracking gap',()=>{
+  assertIncludes(budgetFnSrc,'Logging a Jabian expense','Help panel section header must be present');
+  assertIncludes(budgetFnSrc,'Jabian Expenses 2026','Help panel must name the correct live category');
+  assert(!/Reimbursement source defaults to Jabian\. Status starts as <em>Pending<\/em>/.test(budgetFnSrc),
+    'Help panel must not describe the old Budget-only pending/submitted/reimbursed workflow as if it still applies to new entries');
+  assertIncludes(budgetFnSrc,'does not yet track reimbursement status',
+    'Help panel must honestly disclose that Register has no reimbursement-status tracking yet');
+});
+
+test('5E10-06: Help panel reconciliation/printout sections are unmodified (guardrail: do not touch reconciliation)',()=>{
+  assertIncludes(budgetFnSrc,'Clearing transactions against your statement','Reconciliation help section header must be unchanged');
+  assertIncludes(budgetFnSrc,'In the <strong>Reconciliation</strong> panel, select the account and enter the statement ending balance.',
+    'Reconciliation help instructions must be untouched');
+});
+
+test('5E10-07: _saveTxForm rejects a blank payee before the Supabase call',()=>{
+  assertIncludes(saveFnSrc,'Payee is required','payee-required validation error message must exist');
+  var payeeCheckIdx=saveFnSrc.indexOf('Payee is required');
+  var supabaseCallIdx=saveFnSrc.indexOf('Supabase call');
+  assert(payeeCheckIdx>-1&&supabaseCallIdx>-1&&payeeCheckIdx<supabaseCallIdx,
+    'Payee validation must run before the Supabase POST/PATCH call, matching the existing date/amount/account/category validation pattern');
+});
+
+test('5E10-08: Register payee input is marked required in the UI (label + placeholder), not just validated on save',()=>{
+  assertIncludes(registerFnSrc,'Payee *','Payee label must show a required-field indicator');
+  assertIncludes(registerFnSrc,"inp('payee','Required'",'Payee input placeholder must read Required, not Optional');
+});
+
+test('5E10-09: Register rows are grouped uncleared-first using a two-pass balance-then-sort approach',()=>{
+  assertIncludes(registerFnSrc,'rowsWithBalance','Register must compute a chronological balance-attached array before any display sort');
+  assertIncludes(registerFnSrc,'displayRows','Register must build a separate display-ordered copy for rendering');
+  assertIncludes(registerFnSrc,'.slice().sort(function(a,b){','Register must sort a non-mutating copy (slice), matching the existing _renderTxAccounts convention');
+  assertIncludes(registerFnSrc,'(a.tx.cleared?1:0)-(b.tx.cleared?1:0)','Sort comparator must place uncleared (false) rows before cleared (true) rows');
+});
+
+test('5E10-10: running balance is precomputed in original chronological order and never recomputed after the display sort',()=>{
+  var mapIdx=registerFnSrc.indexOf('rowsWithBalance=rows.map(function(tx){');
+  var sortIdx=registerFnSrc.indexOf('displayRows=rowsWithBalance');
+  var forEachIdx=registerFnSrc.indexOf('displayRows.forEach(function(entry){');
+  assert(mapIdx>-1&&sortIdx>-1&&forEachIdx>-1,'Could not locate the balance-then-sort-then-render sequence');
+  assert(mapIdx<sortIdx&&sortIdx<forEachIdx,'Balance must be computed (map), then sorted (displayRows), then rendered (forEach), in that order');
+  var mapBlock=registerFnSrc.slice(mapIdx,sortIdx);
+  assertIncludes(mapBlock,'runBal+=amt','Balance accumulation must happen during the chronological map pass');
+  var renderBlock=registerFnSrc.slice(forEachIdx,registerFnSrc.indexOf('No transactions for this account')>-1?registerFnSrc.length:registerFnSrc.length);
+  assert(!/displayRows\.forEach\(function\(entry\)\{[\s\S]{0,3000}?runBal\+=amt/.test(registerFnSrc),
+    'runBal must not be re-accumulated inside the display/render pass — only the precomputed entry.bal may be used there');
+  assertIncludes(registerFnSrc,"entry.bal.toFixed(2)",'Balance column must render the precomputed entry.bal, not a live accumulator');
+});
+
+test('5E10-11: no schema/RLS changes and no reconciliation logic touched — this fix is confined to index.html display/entry logic',()=>{
+  assert(!/CREATE POLICY|ALTER TABLE|DROP TABLE|GRANT (INSERT|UPDATE|DELETE)/.test(registerFnSrc+budgetFnSrc),
+    '5E-10 fix must not contain schema/RLS/grant statements');
+  assert(!/function _renderBudgetRecon/.test(budgetFnSrc),'renderBudget must not have absorbed reconciliation rendering logic');
+});
+})();
+
 
 // ═══════════════════════════════════════════════════════════════════════════
 // Phase 5F-1 — Cash Commitment Capture + Cash Availability Engine

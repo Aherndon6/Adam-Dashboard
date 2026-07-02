@@ -1595,6 +1595,46 @@ async function clickNav(page, id) {
     await context.close();
   });
 
+  await test('BUD-7 (Phase 5E-10): Budget "+ Add Transaction" is disabled with explanatory copy; Manage Lines stays active; help panel redirects to Register', async () => {
+    const { page, context } = await openApp(browser);
+    const result = await page.evaluate(() => {
+      _budgetTransactions = [];
+      _budgetTransLoadStatus = 'loaded';
+      _budgetRegisterSpendCache = [];
+      _budgetRegisterSpendLoadStatus = 'loaded';
+      _budgetShowHelp = true; // expand the help panel so its text is present in the DOM
+      setSection('budget');
+      renderApp();
+      var el = document.getElementById('budget-content');
+      var innerHtml = el ? el.innerHTML : '';
+      var innerText = el ? el.innerText : '';
+      // Restore
+      _budgetTransactions = [];
+      _budgetTransLoadStatus = 'not_loaded';
+      _budgetRegisterSpendCache = [];
+      _budgetRegisterSpendLoadStatus = 'not_loaded';
+      _budgetShowHelp = false;
+      return { innerHtml, innerText };
+    });
+    // Add Transaction button present but disabled, with explanatory text visible nearby.
+    assert(/<button disabled[^>]*>\+ Add Transaction<\/button>/.test(result.innerHtml),
+      'Add Transaction button must render as a disabled control');
+    assert(result.innerText.includes('Actual spending is now entered in Transactions'),
+      'Helper text directing Wendy to Register must be visible in the Budget header');
+    // Manage Lines must remain a real, clickable button.
+    assert(/<button onclick="window\._blrOpenAdd\(/.test(result.innerHtml),
+      'Manage Lines button must remain active and unaffected');
+    // Help panel no longer tells Wendy to click Budget's own Add Transaction button.
+    assert(!result.innerText.includes('Click + Add Transaction (top right)'),
+      'Help panel must not reference the disabled Budget Add Transaction button');
+    assert(result.innerText.includes('Jabian Expenses 2026'),
+      'Help panel must reference the correct live Jabian category for Register entry');
+    // Reconciliation help copy must be untouched (guardrail).
+    assert(result.innerText.includes('Clearing transactions against your statement'),
+      'Reconciliation help section must remain present and unmodified');
+    await context.close();
+  });
+
   // ── Section TX: Transactions Module (Phase 5D-2) ─────────────────────
   // All tests use injected mock data — no Supabase connection required.
   // Flag defaults false; each test that needs the section enables it in JS.
@@ -2255,6 +2295,58 @@ async function clickNav(page, id) {
     await context.close();
   });
 
+  await test('RG-12 (Phase 5E-10): uncleared rows display above cleared rows, with chronologically-correct running balances preserved (Wendy feedback #4)', async () => {
+    const { page, context } = await openApp(browser);
+    // Chronological order: Kroger (cleared) -> Fandango (uncleared) -> Paycheck (cleared).
+    // Running balance (starting_balance: null -> starts at $0.00):
+    //   Kroger:   -100.00  -> balance -100.00
+    //   Fandango: -50.00   -> balance -150.00
+    //   Paycheck: +2000.00 -> balance 1850.00
+    // Expected DISPLAY order: Fandango (only uncleared row) first, then Kroger, then Paycheck
+    // (cleared group keeps its original chronological order) — each showing its balance from
+    // the chronological pass above, not a value recomputed from the new display position.
+    const sortTxns = [
+      { id: 'rg12-1', account_key: 'truist_checking', transaction_date: '2026-06-01',
+        payee: 'Kroger', memo: '', amount: -100.00, category_key: null,
+        cleared: true, source: 'manual', created_at: '2026-06-01T10:00:00Z' },
+      { id: 'rg12-2', account_key: 'truist_checking', transaction_date: '2026-06-05',
+        payee: 'Fandango', memo: '', amount: -50.00, category_key: null,
+        cleared: false, source: 'manual', created_at: '2026-06-05T10:00:00Z' },
+      { id: 'rg12-3', account_key: 'truist_checking', transaction_date: '2026-06-10',
+        payee: 'Paycheck', memo: '', amount: 2000.00, category_key: null,
+        cleared: true, source: 'manual', created_at: '2026-06-10T10:00:00Z' }
+    ];
+    const result = await page.evaluate(([mockAccounts, mockTxns]) => {
+      FEATURE_FLAGS.showTransactionLedger = true;
+      _accountsCache = mockAccounts;
+      _categoriesCache = [];
+      _registriesLoadStatus = 'loaded';
+      _txLedgerLoadStatus = 'loaded';
+      _txLedgerCache = mockTxns;
+      _txLedgerAccountKey = 'truist_checking';
+      renderApp();
+      setSection('transactions');
+      setTxSubNav('register');
+      var html = document.getElementById('transactions-content')?.innerHTML || '';
+      return {
+        html,
+        fandangoIdx: html.indexOf('Fandango'),
+        krogerIdx: html.indexOf('Kroger'),
+        paycheckIdx: html.indexOf('Paycheck')
+      };
+    }, [TX_MOCK_ACCOUNTS, sortTxns]);
+    assert(result.fandangoIdx > -1 && result.krogerIdx > -1 && result.paycheckIdx > -1,
+      'All three rows must render');
+    assert(result.fandangoIdx < result.krogerIdx,
+      'Uncleared row (Fandango) must display above cleared rows (Kroger)');
+    assert(result.krogerIdx < result.paycheckIdx,
+      'Within the cleared group, original chronological order must be preserved (Kroger before Paycheck)');
+    assert(result.html.includes('$-150.00'), 'Fandango (uncleared) must show its correct chronological balance of $-150.00, not a value recomputed from its new display position');
+    assert(result.html.includes('$-100.00'), 'Kroger must show its correct chronological balance of $-100.00');
+    assert(result.html.includes('$1850.00'), 'Paycheck must show its correct chronological balance of $1850.00');
+    await context.close();
+  });
+
   await test('RG-11: cleared transaction shows checked checkbox in Clr column (updated in 5E-2)', async () => {
     const { page, context } = await openApp(browser);
     const result = await page.evaluate(([mockAccounts, mockTxns]) => {
@@ -2585,6 +2677,39 @@ async function clickNav(page, id) {
     const error = await page.evaluate(() => _txFormError);
     assert(!postFired, 'POST must not fire for invalid amount');
     assert(error.includes('positive number'), 'Error must mention positive number format');
+    await context.close();
+  });
+
+  await test('WR-6b (Phase 5E-10): Save with blank payee shows validation error, no POST fired (Wendy feedback #3)', async () => {
+    const { page, context } = await openApp(browser);
+    let postFired = false;
+    await page.route('**/rest/v1/transactions**', route => {
+      if (route.request().method() === 'POST') { postFired = true; }
+      route.fulfill({ status: 201, body: '[]' });
+    });
+    await setupRegister(page, { txCache: [], formMode: 'add',
+      formData: { transaction_date: '2026-06-27', outflow: '45.00', payee: '' } });
+    await page.evaluate(() => { _saveTxForm(); });
+    await page.waitForTimeout(100);
+    const result = await page.evaluate(() => ({ error: _txFormError, formStillOpen: _txFormMode === 'add' }));
+    assert(!postFired, 'POST must not fire when payee is blank');
+    assert(result.error.toLowerCase().includes('payee'), 'Error must mention payee, got: ' + result.error);
+    assert(result.formStillOpen, 'Form must remain open after validation error');
+    await context.close();
+  });
+
+  await test('WR-6c (Phase 5E-10): Save with a non-blank payee is not blocked by the payee-required check', async () => {
+    const { page, context } = await openApp(browser);
+    let postFired = false;
+    await page.route('**/rest/v1/transactions**', route => {
+      if (route.request().method() === 'POST') { postFired = true; }
+      route.fulfill({ status: 201, body: '[]' });
+    });
+    await setupRegister(page, { txCache: [], formMode: 'add',
+      formData: { transaction_date: '2026-06-27', outflow: '45.00', payee: 'Fandango' } });
+    await page.evaluate(() => { _saveTxForm(); });
+    await page.waitForTimeout(200);
+    assert(postFired, 'POST must fire once a non-blank payee is provided alongside a valid date/amount/account');
     await context.close();
   });
 
@@ -3097,8 +3222,11 @@ async function clickNav(page, id) {
       _openTxForm('add', null); // do NOT pass a date
     }, [WR_MOCK_ACCOUNTS, WR_MOCK_CATEGORIES, WR_MOCK_TX]);
     // Do NOT touch the date field — leave it at whatever the form initialized
-    // Enter only outflow
+    // Enter outflow and payee (Phase 5E-10: payee is now required — this test's purpose is
+    // verifying the default date is used untouched, not testing payee validation, so a valid
+    // payee is filled here to isolate that).
     await page.fill('#tx-form-outflow', '42.00');
+    await page.fill('input[placeholder="Required"]', 'WR2-8 Test Payee');
     // Capture today's date in the same format _todayTxDate() would return
     const expectedDate = await page.evaluate(() => {
       var n = new Date();

@@ -857,7 +857,7 @@ button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-vis
 // ── Constants (unchanged) ──────────────────────────────────────────────────
 // Simplified architecture — $8,250 total from LC · $6,500 operating floor · no legacy mechanics
 // Real-world moves: keep $2,250 in chk, move $2,750 sav→chk, move $1,000 LC→chk, move $2,250 LC→chk (Option 1 correction)
-const BUILD_TS='2026-07-02T17:08:15'; // updated each push — local time string
+const BUILD_TS='2026-07-02T18:39:42'; // updated each push — local time string
 const START_CHK=18037.73,START_SAV=3772.77,START_AMX=103.64,START_TAX=0,START_LC=13488.88;
 const EF_AMT=13488.88; // LC/EF balance — static this model year (no transfers in or out)
 const BASE_TAX=521.36,RET_SAV_XFR=3772.74;
@@ -5161,8 +5161,10 @@ async function _saveTxForm(){
     if(!catObj||catObj.lifecycle_status!=='active'){_txFormError='Selected category is no longer active.';renderApp();return;}
   }
 
-  // Payee and memo: trim, blank -> null
+  // Phase 5E-10: Payee is now required (Wendy feedback #3) — Register is the actual-spend
+  // source of truth, so every row needs an identifiable payee. Memo stays optional.
   var payee=(d.payee||'').trim()||null;
+  if(!payee){_txFormError='Payee is required.';renderApp();return;}
   var memo=(d.memo||'').trim()||null;
 
   // ── Supabase call ──
@@ -5424,9 +5426,9 @@ function _renderTxRegister(){
       +'onchange="_setTxFormField(\'transaction_date\',this.value)" '
       +'style="font-family:inherit;font-size:13px;padding:5px 8px;border:1px solid var(--line);'
       +'border-radius:6px;background:var(--surface);color:var(--text);width:100%"></div>'
-      // Payee
-      +'<div><label style="font-size:11px;font-weight:600;color:var(--muted);display:block;margin-bottom:3px">Payee</label>'
-      +inp('payee','Optional',fd.payee)+'</div>'
+      // Payee (Phase 5E-10: required, Wendy feedback #3)
+      +'<div><label style="font-size:11px;font-weight:600;color:var(--muted);display:block;margin-bottom:3px">Payee *</label>'
+      +inp('payee','Required',fd.payee)+'</div>'
       // Memo
       +'<div><label style="font-size:11px;font-weight:600;color:var(--muted);display:block;margin-bottom:3px">Memo</label>'
       +inp('memo','Optional',fd.memo)+'</div>'
@@ -5506,11 +5508,26 @@ function _renderTxRegister(){
       tbl+='<tr><td colspan="9" style="padding:24px 12px;text-align:center;'
         +'color:var(--muted);font-style:italic">No transactions for this account.</td></tr>';
     }else{
-      rows.forEach(function(tx){
+      // Phase 5E-10 (Wendy feedback #4): uncleared rows display above cleared rows. The running
+      // Balance column must still reflect real chronological order, so this is two passes:
+      // 1) walk `rows` in its original server order (transaction_date.asc,created_at.asc,id.asc)
+      //    and attach each transaction's correct running balance at that point in time.
+      // 2) build a display-only copy sorted uncleared-first — Array.prototype.sort is stable
+      //    (guaranteed since ES2019), so chronological order is preserved within each group.
+      // The render loop below uses the precomputed balance, never recomputes it post-sort.
+      var rowsWithBalance=rows.map(function(tx){
+        var amt=parseFloat(tx.amount)||0;
+        runBal+=amt;
+        return {tx:tx,bal:runBal};
+      });
+      var displayRows=rowsWithBalance.slice().sort(function(a,b){
+        return(a.tx.cleared?1:0)-(b.tx.cleared?1:0);
+      });
+      displayRows.forEach(function(entry){
+        var tx=entry.tx;
         var amt=parseFloat(tx.amount)||0;
         var outflow=amt<0?'$'+Math.abs(amt).toFixed(2):'';
         var inflow=amt>0?'$'+amt.toFixed(2):'';
-        runBal+=amt;
         // Phase 5E-8: resolve via _getRegisterCategoryLabel using the transaction's OWN date/month
         // (not raw categories.label) so row display picks up month-aware BLR overrides while still
         // correctly labeling categories outside the fixed Budget registry (Business, Trips, Taxes, etc.).
@@ -5565,7 +5582,7 @@ function _renderTxRegister(){
           +'<td style="padding:8px 12px;text-align:right;color:var(--red)">'+outflow+'</td>'
           +'<td style="padding:8px 12px;text-align:right;color:var(--green)">'+inflow+'</td>'
           +clrCell
-          +'<td style="padding:8px 12px;text-align:right;font-weight:600">$'+runBal.toFixed(2)+'</td>'
+          +'<td style="padding:8px 12px;text-align:right;font-weight:600">$'+entry.bal.toFixed(2)+'</td>'
           +actionCell
           +'</tr>';
 
@@ -5820,7 +5837,17 @@ function renderBudget(){
   if(canWriteFinancials()){
     html+='<button onclick="window._blrOpenAdd(\''+monthIso+'\')" style="padding:6px 12px;background:var(--surface2);color:var(--ink);border:1px solid var(--border);border-radius:6px;font-size:12px;font-weight:600;cursor:pointer">Manage Lines</button>';
   }
-  if(canWriteFinancials()){html+='<button onclick="window._budgetOpenAddForm()" style="padding:6px 14px;background:var(--blue);color:#fff;border:none;border-radius:6px;font-size:12px;font-weight:600;cursor:pointer">+ Add Transaction</button>';}
+  // Phase 5E-10: Budget's own manual actual-entry path is disabled (not removed) — Register
+  // is now the source of truth for actual spend, to prevent double-entry across the two
+  // disconnected tables (see AGENTS.md Known Gaps). Disabled rather than hidden so Wendy sees
+  // an explanation instead of a button that silently vanished. _budgetOpenAddForm() itself is
+  // left intact/unwired — nothing else calls it.
+  if(canWriteFinancials()){
+    html+='<button disabled title="Actual spending is now entered in Transactions → Register." '
+      +'style="padding:6px 14px;background:var(--muted2,#cbd5e1);color:#fff;border:none;border-radius:6px;'
+      +'font-size:12px;font-weight:600;cursor:not-allowed;opacity:.7">+ Add Transaction</button>'
+      +'<span style="font-size:11px;color:var(--muted);margin-left:6px">Actual spending is now entered in Transactions → Register.</span>';
+  }
   html+='</div>';
   html+='</div>';
 
@@ -5832,21 +5859,18 @@ function renderBudget(){
   if(_budgetShowHelp){
     html+='<div style="margin-top:10px;padding:14px 16px;background:var(--surface2);border:1px solid var(--border);border-radius:8px;font-size:12px;line-height:1.7;color:var(--ink)">';
 
-    html+='<div style="font-weight:700;font-size:12px;margin-bottom:6px;color:var(--ink)">Adding a transaction</div>';
+    html+='<div style="font-weight:700;font-size:12px;margin-bottom:6px;color:var(--ink)">Entering a transaction</div>';
     html+='<ol style="margin:0 0 14px 18px;padding:0">';
-    html+='<li>Click <strong>+ Add Transaction</strong> (top right).</li>';
-    html+='<li>Fill in Date, Amount, Type, Category, and Payment Account. Description is optional but helpful.</li>';
-    html+='<li>For <strong>Type</strong>, choose <em>Household Expense</em> for anything paid from household money (groceries, gas, utilities, etc.). The category you pick is what shows up in the budget printout above.</li>';
-    html+='<li>Payment Account is required — pick the card or account you used.</li>';
-    html+='<li>Click <strong>Save</strong>. The transaction appears in the list and the budget printout updates immediately.</li>';
+    html+='<li>Actual spending is entered in <strong>Transactions → Register</strong>, not here. This tab is for reviewing your plan, what you have spent, and what is remaining.</li>';
+    html+='<li>In Register, choose the account you paid with, click <strong>+ Add Transaction</strong>, and fill in Date, Payee (required), Outflow amount, and Category.</li>';
+    html+='<li>The category you pick is what shows up as Spent in the budget printout above — it updates automatically, no separate step needed.</li>';
     html+='</ol>';
 
-    html+='<div style="font-weight:700;font-size:12px;margin-bottom:6px;color:var(--ink)">Logging a Jabian reimbursable</div>';
+    html+='<div style="font-weight:700;font-size:12px;margin-bottom:6px;color:var(--ink)">Logging a Jabian expense</div>';
     html+='<ol style="margin:0 0 14px 18px;padding:0">';
-    html+='<li>Click <strong>+ Add Transaction</strong> and set Type to <em>Reimbursable (Business)</em>.</li>';
-    html+='<li>Reimbursement source defaults to Jabian. Status starts as <em>Pending</em> — leave it there until you submit the expense report.</li>';
-    html+='<li>When you submit to Jabian, edit the row and change Status to <em>Submitted</em>. When the check arrives, change it to <em>Reimbursed</em>.</li>';
-    html+='<li>Reimbursables show a <strong style="background:#fef3c7;color:#92400e;padding:1px 5px;border-radius:3px">REIMB</strong> badge and are <em>excluded</em> from budget totals — they do not count against your Spent or Remaining amounts.</li>';
+    html+='<li>Enter it in Register like any other transaction, using the <strong>Jabian Expenses 2026</strong> category.</li>';
+    html+='<li>It is automatically excluded from your budget Spent/Remaining totals, since it is business spend, not household spend.</li>';
+    html+='<li>Register does not yet track reimbursement status (pending/submitted/reimbursed) the way this tab previously did — flag any Jabian expense to Adam separately until that is added.</li>';
     html+='</ol>';
 
     html+='<div style="font-weight:700;font-size:12px;margin-bottom:6px;color:var(--ink)">Clearing transactions against your statement</div>';
