@@ -7767,6 +7767,118 @@ test('AC-deviation: reconciled-week engine input uses reconData[num].chk (actual
 });
 })();
 
+console.log('\n── Section 5F1-L: WD Event Tagging (Build Sequence step 2 — eid/cc/rod metadata for the future Phase 2 matching UI) ──');
+(function(){
+// getTaggedWD/tagProtectedWDEvent are pure and additive — not called by
+// runModel() or anything on the render path. These tests exercise them
+// directly against the real, live WD array.
+var tagged=getTaggedWD(WD);
+function allTaggedEvents(){
+  var out=[];
+  tagged.forEach(function(wd){wd[4].forEach(function(ev){if(ev.eid||ev.cc||ev.rod)out.push(Object.assign({weekNum:wd[0]},ev));});});
+  return out;
+}
+
+test('WD tagging: does not mutate the original WD array or its event objects',()=>{
+  assert(!('eid'in WD[0][4][0]),'original WD event object must not have been mutated with eid');
+  assert(!('cc'in WD[0][4][0]),'original WD event object must not have been mutated with cc');
+  assert(WD.length===31,'original WD array length must be unchanged, got '+WD.length);
+});
+
+test('WD tagging: every real ob event in WD is tagged as one of the 5 protected categories (no untagged obligations in this model)',()=>{
+  var obCount=0;
+  WD.forEach(function(wd){(wd[4]||[]).forEach(function(ev){if(ev.t==='ob')obCount++;});});
+  var taggedObCount=0,untagged=[];
+  tagged.forEach(function(wd){
+    wd[4].filter(function(e){return!e.synthetic;}).forEach(function(ev){
+      if(ev.t==='ob'){
+        taggedObCount++;
+        if(!ev.eid||!ev.cc||!ev.rod)untagged.push(ev.l);
+      }
+    });
+  });
+  assert(obCount===taggedObCount,'tagged copy must preserve the same ob event count, got '+taggedObCount+' vs original '+obCount);
+  assert(untagged.length===0,'found untagged protected-looking ob events: '+untagged.join('; '));
+});
+
+test('WD tagging: all 5 payee categories present with correct cc/rod',()=>{
+  var byCC={};
+  allTaggedEvents().forEach(function(ev){byCC[ev.cc]=(byCC[ev.cc]||0)+1;});
+  ['credit_card_payment','rent','bill_payment','tax_transfer'].forEach(function(cc){
+    assertGt(byCC[cc]||0,0,'expected at least one tagged event with cc='+cc);
+  });
+  allTaggedEvents().forEach(function(ev){assert(ev.rod==='protected_required','expected rod=protected_required for all tagged events, got '+ev.rod+' on '+ev.l);});
+  // AMEX Gold and AMEX Platinum are both credit_card_payment but distinct normalized payees
+  var normPayees={};
+  tagged.forEach(function(wd){wd[4].forEach(function(ev){if(ev.eid)normPayees[ev.eid.split('_').slice(1,-3).join('_')||'?']=true;});});
+  var amexGold=allTaggedEvents().some(function(ev){return/amex_gold/.test(ev.eid||'');});
+  var amexPlat=allTaggedEvents().some(function(ev){return/amex_platinum/.test(ev.eid||'');});
+  assert(amexGold,'expected at least one amex_gold-tagged event');
+  assert(amexPlat,'expected at least one amex_platinum-tagged event');
+});
+
+test('WD tagging: exact eid format matches spec — {model_year}mw{model_week}_{normalized_payee}_{due_date_YYYY_MM_DD}, underscore-delimited throughout',()=>{
+  var w1=tagged.find(function(wd){return wd[0]===1;})[4].find(function(ev){return ev.l.indexOf('Kia payment')>=0;});
+  assert(w1.eid==='2026mw1_kia_payment_2026_06_07','got '+w1.eid);
+  var w3=tagged.find(function(wd){return wd[0]===3;})[4];
+  var disney=w3.find(function(ev){return ev.l.indexOf('Disney Visa')>=0;});
+  assert(disney.eid==='2026mw3_disney_visa_2026_06_23','got '+disney.eid);
+  var plat=w3.find(function(ev){return ev.l.indexOf('AMEX Platinum')>=0;});
+  assert(plat.eid==='2026mw3_amex_platinum_2026_06_27','got '+plat.eid);
+});
+
+test('WD tagging: rent weeks with multiple same-week payments get distinct eids (one per due date)',()=>{
+  var w4Rent=tagged.find(function(wd){return wd[0]===4;})[4].filter(function(ev){return ev.cc==='rent';});
+  assert(w4Rent.length===3,'expected 3 rent events in week 4, got '+w4Rent.length);
+  var eids=w4Rent.map(function(ev){return ev.eid;});
+  assert(new Set(eids).size===3,'expected 3 distinct eids, got '+eids.join(', '));
+  assert(eids.indexOf('2026mw4_rent_tiffany_dye_2026_07_01')>=0);
+  assert(eids.indexOf('2026mw4_rent_tiffany_dye_2026_07_02')>=0);
+  assert(eids.indexOf('2026mw4_rent_tiffany_dye_2026_07_03')>=0);
+});
+
+test('WD tagging: "sent X, due Y" label prefers the due date over the sent date',()=>{
+  var w21=tagged.find(function(wd){return wd[0]===21;})[4].find(function(ev){return ev.cc==='rent';});
+  assert(w21.eid==='2026mw21_rent_tiffany_dye_2026_11_01','expected due date (11/1) not sent date (10/31), got '+w21.eid);
+});
+
+test('WD tagging: January weeks (30-31) roll the due-date year to PLAN_YEAR+1',()=>{
+  var w30=tagged.find(function(wd){return wd[0]===30;})[4].filter(function(ev){return ev.cc==='rent';});
+  w30.forEach(function(ev){assert(ev.eid.indexOf('_2027_01_0')>=0,'expected 2027 due date, got '+ev.eid);});
+  var w31Kia=tagged.find(function(wd){return wd[0]===31;})[4].find(function(ev){return ev.cc==='bill_payment';});
+  assert(w31Kia.eid==='2026mw31_kia_payment_2027_01_07','got '+w31Kia.eid);
+});
+
+test('WD tagging: tax transfers have no static WD event, so a synthetic tagged event is generated for the one commission week (week 6)',()=>{
+  var commWeeks=[];
+  WD.forEach(function(wd){if(wd[5]>0)commWeeks.push(wd[0]);});
+  assertGt(commWeeks.length,0,'precondition: model must have at least one commission (ct>0) week');
+  commWeeks.forEach(function(wk){
+    var wdTagged=tagged.find(function(w){return w[0]===wk;});
+    var synth=wdTagged[4].find(function(ev){return ev.synthetic===true;});
+    assert(synth,'expected a synthetic tax_transfer event on commission week '+wk);
+    assert(synth.cc==='tax_transfer'&&synth.rod==='protected_required','got cc='+synth.cc+' rod='+synth.rod);
+    assert(synth.eid.indexOf('2026mw'+wk+'_tax_transfer_vio_')===0,'got '+synth.eid);
+  });
+  // Non-commission weeks must not get a synthetic tax_transfer event
+  var nonCommWeek=tagged.find(function(wd){return wd[0]===2;});
+  assert(!nonCommWeek[4].some(function(ev){return ev.synthetic;}),'week 2 (ct=0) must not have a synthetic tax_transfer event');
+});
+
+test('WD tagging: all eids across the tagged array are unique',()=>{
+  var eids=allTaggedEvents().map(function(ev){return ev.eid;}).filter(Boolean);
+  assertGt(eids.length,40,'sanity: expected a substantial number of tagged events, got '+eids.length);
+  assert(new Set(eids).size===eids.length,'found duplicate eids — this would violate cash_commitments.expected_item_id UNIQUE constraint');
+});
+
+test('WD tagging: non-protected events (paychecks, and a constructed unmatched ob event) are left untagged',()=>{
+  var paycheck=tagged.find(function(wd){return wd[0]===1;})[4].find(function(ev){return ev.t==='in';});
+  assert(paycheck===undefined||(!paycheck.eid&&!paycheck.cc&&!paycheck.rod),'inflow events must never be tagged');
+  var untaggedOb=tagProtectedWDEvent({l:'Costco Visa ~$300 due ~7/5',t:'ob',a:-300},7);
+  assert(!untaggedOb.eid&&!untaggedOb.cc&&!untaggedOb.rod,'a non-protected-payee ob event must not be tagged, got '+JSON.stringify(untaggedOb));
+});
+})();
+
 console.log('\n── Section 5F1-NOTSTARTED: JS-engine-layer ACs still blocked pending the 4-phase reconciliation UI / dashboard verdict rendering (Build Sequence steps 10-12) ──');
 (function(){
 // 13 of the original 33 JS-engine-layer ACs were unblocked by this step (Section

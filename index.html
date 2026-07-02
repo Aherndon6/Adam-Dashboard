@@ -857,7 +857,7 @@ button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-vis
 // ── Constants (unchanged) ──────────────────────────────────────────────────
 // Simplified architecture — $8,250 total from LC · $6,500 operating floor · no legacy mechanics
 // Real-world moves: keep $2,250 in chk, move $2,750 sav→chk, move $1,000 LC→chk, move $2,250 LC→chk (Option 1 correction)
-const BUILD_TS='2026-07-01T22:20:28'; // updated each push — local time string
+const BUILD_TS='2026-07-01T22:52:11'; // updated each push — local time string
 const START_CHK=18037.73,START_SAV=3772.77,START_AMX=103.64,START_TAX=0,START_LC=13488.88;
 const EF_AMT=13488.88; // LC/EF balance — static this model year (no transfers in or out)
 const BASE_TAX=521.36,RET_SAV_XFR=3772.74;
@@ -1674,6 +1674,90 @@ function getCashAvailabilityEngine(actualBalanceCents,floorCents,commitments,sou
     adjustedAvailableCashCents:actualBalanceCents-reservedProtectedCents,
     adjustedDeployableSurplusCents:Math.max(0,(actualBalanceCents-reservedProtectedCents)-floorCents)
   };
+}
+// ── Phase 5F-1: WD Event Tagging (Build Sequence step 2) ────────────────────
+// Adds eid (expected_item_id) / cc (commitment_class) / rod
+// (required_or_discretionary) metadata to protected WD outflow events, per
+// docs/phase-5f-1-spec.md's "WD Event Tagging" section — groundwork for the
+// not-yet-built Phase 2 reconciliation matching UI. Pure and additive only:
+// getTaggedWD() returns tagged COPIES of WD's rows/events. It never mutates
+// WD/effectiveWD, and nothing in runModel()'s balance calculations calls or
+// depends on any function below — this is a metadata layer only, not wired
+// into the cash model.
+var WD_PROTECTED_PAYEE_RULES=[
+  {test:function(l){return/AMEX\s+Gold/i.test(l);},           normalized:'amex_gold',        cc:'credit_card_payment', rod:'protected_required'},
+  {test:function(l){return/AMEX\s+Plat(inum)?/i.test(l);},    normalized:'amex_platinum',    cc:'credit_card_payment', rod:'protected_required'},
+  {test:function(l){return/Disney\s+Visa/i.test(l);},         normalized:'disney_visa',      cc:'credit_card_payment', rod:'protected_required'},
+  {test:function(l){return/Rent\b.*Tiffany\s+Dye/i.test(l);}, normalized:'rent_tiffany_dye', cc:'rent',                rod:'protected_required'},
+  {test:function(l){return/Kia\s+payment/i.test(l);},         normalized:'kia_payment',      cc:'bill_payment',        rod:'protected_required'}
+];
+// Extracts an MM/DD due date from a WD event label. Prefers an explicit
+// "due M/D" mention (AMEX/Disney labels); falls back to the first "(M/D"
+// parenthetical (Rent/Kia labels record a transfer date, not a "due" date —
+// e.g. "Rent $2,000 — Zelle to Tiffany Dye (7/1)"). If a label contains both
+// a "sent" and "due" date in the same parenthetical (week 21's rent), the
+// "due" date wins since the due-keyword regex runs first.
+function _wdExtractDueMD(label){
+  var m=label.match(/due\s+~?(\d{1,2})\/(\d{1,2})/i);
+  if(!m)m=label.match(/\((\d{1,2})\/(\d{1,2})/);
+  if(!m)return null;
+  return{month:parseInt(m[1],10),day:parseInt(m[2],10)};
+}
+// Model spans Jun 2026 (week 1) through Jan 2027 (week 31) only — January is
+// the sole month that rolls into the next calendar year; every other month
+// (Jun-Dec) belongs to PLAN_YEAR. This simple rule is unambiguous because no
+// other months appear anywhere in the 31-week WD array.
+function _wdResolveDueYear(month){return month===1?PLAN_YEAR+1:PLAN_YEAR;}
+function _wdPad2(n){return String(n).length<2?'0'+n:String(n);}
+// Spec's format string uses underscores as the sole separator throughout
+// ({model_year}mw{model_week}_{normalized_payee}_{due_date_YYYY_MM_DD}) — the
+// due-date placeholder name itself is underscore-delimited, so the rendered
+// date uses underscores too (2026_06_27), not hyphens, keeping the full eid
+// splittable on a single delimiter.
+function _wdDueDateStr(month,day,year){return year+'_'+_wdPad2(month)+'_'+_wdPad2(day);}
+// Verbatim format from docs/phase-5f-1-spec.md "WD Event Tagging":
+// {model_year}mw{model_week}_{normalized_payee}_{due_date_YYYY_MM_DD}
+function buildExpectedItemId(modelYear,modelWeek,normalizedPayee,dueDateStr){
+  return modelYear+'mw'+modelWeek+'_'+normalizedPayee+'_'+dueDateStr;
+}
+// Tags a single WD event if it matches a protected payee rule; otherwise
+// returns an unchanged shallow copy. Never mutates the input event object.
+function tagProtectedWDEvent(ev,weekNum){
+  if(!ev||ev.t!=='ob')return Object.assign({},ev);
+  var rule=WD_PROTECTED_PAYEE_RULES.find(function(r){return r.test(ev.l);});
+  if(!rule)return Object.assign({},ev);
+  var md=_wdExtractDueMD(ev.l);
+  var dueDateStr=md?_wdDueDateStr(md.month,md.day,_wdResolveDueYear(md.month)):null;
+  return Object.assign({},ev,{
+    eid:dueDateStr?buildExpectedItemId(PLAN_YEAR,weekNum,rule.normalized,dueDateStr):null,
+    cc:rule.cc,
+    rod:rule.rod
+  });
+}
+// Returns a tagged COPY of a WD-shaped array (pass WD, or later effectiveWD).
+// Static protected events (AMEX/Disney/Rent/Kia) are tagged on event copies.
+// Tax transfers have no static WD event — they're computed at runtime from
+// ct (the commission-tax column) — so a synthetic tagged event (marked
+// synthetic:true) is appended to any week with ct>0, using the same eid
+// format and the week's start date as the due-date proxy (a tax sweep has no
+// external bill-due-date the way a credit card payment does).
+function getTaggedWD(wdArray){
+  return(wdArray||[]).map(function(wd){
+    var num=wd[0],evs=wd[4],ct=wd[5];
+    var taggedEvs=(evs||[]).map(function(ev){return tagProtectedWDEvent(ev,num);});
+    if(ct>0){
+      var wkStart=getWeekStartDate(num);
+      var dueDateStr=_wdDueDateStr(wkStart.getMonth()+1,wkStart.getDate(),wkStart.getFullYear());
+      taggedEvs=taggedEvs.concat([{
+        l:'Commission tax transfer — Vio Bank Tax Reserve (projected)',t:'ob',a:-ct,
+        eid:buildExpectedItemId(PLAN_YEAR,num,'tax_transfer_vio',dueDateStr),
+        cc:'tax_transfer',rod:'protected_required',synthetic:true
+      }]);
+    }
+    var copy=wd.slice();
+    copy[4]=taggedEvs;
+    return copy;
+  });
 }
 function runModel(akGoal,rtGoal,flags){
   flags=flags||goalFlags;
