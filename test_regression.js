@@ -7879,23 +7879,279 @@ test('WD tagging: non-protected events (paychecks, and a constructed unmatched o
 });
 })();
 
-console.log('\n── Section 5F1-NOTSTARTED: JS-engine-layer ACs still blocked pending the 4-phase reconciliation UI / dashboard verdict rendering (Build Sequence steps 10-12) ──');
+console.log('\n── Section 5F1-M: Reconciliation Form Phase 0/1 — UI logic + state machine (PARTIAL — persistence not wired; see 5F1-PARTIAL below) ──');
 (function(){
-// 13 of the original 33 JS-engine-layer ACs were unblocked by this step (Section
-// 5F1-K, above): AC-1,2,3,4,5,6 (isReservedAsOf/getCashAvailabilityEngine pure
-// math), AC-13,14,16 (projected carry-forward filter logic), AC-17,19,20,47
-// (waterfall aggregate cap + non-negative guarantee). The 20 remaining below all
-// require the 4-phase reconciliation form and/or dashboard verdict-text
-// rendering — explicitly out of scope for this step (engine layer only, no UI).
-// Note AC-15/18/21 are NOT in the unblocked list even though this step computes
-// their underlying data correctly (reviewRequired flag, adjustedAvailableForSweep):
-// the AC text itself describes a rendered verdict string ("⚠ Review Required —
-// est. deployable $X", "Deployable +$10,265.40") or the repair-form UI, which
-// doesn't exist yet. Listed here as explicit skips (not silent gaps) so
-// `grep -c '^test('` and the AC coverage count both reflect the true state.
-var blockedACs=[15,18,21,28,77,78,79,80,88,89,90,91,92,96,97,101,105,106,107,108];
-test('5F1-NOTSTARTED: 20 UI-layer ACs are tracked as blocked, not silently skipped (plus AC-76, a process-check, tracked separately)',()=>{
-  assert(blockedACs.length===20,'expected 20 blocked ACs, found '+blockedACs.length);
+// IMPORTANT — read before trusting the AC-77..92 test names below at face
+// value: these tests prove computePhase1Step1Patch()/applyPhase1Step2()/
+// isReservedAsOf() compute the CORRECT patch shape and the correct resulting
+// reserve behavior for each Phase 1 scenario the spec describes. They do NOT
+// prove those patches ever reach the server — saveRecon() still only writes
+// weekly_reconciliations directly and never calls
+// save_reconciliation_with_commitments, so no Phase 1 patch this section
+// computes is actually persisted anywhere yet. The corresponding ACs are
+// tracked as PARTIAL, not unblocked — see the 5F1-PARTIAL section below for
+// the explicit classification and the fail-safe tests further down this
+// section proving the UI cannot silently discard these answers on save.
+function baseCommitmentFixture(overrides){
+  return Object.assign({
+    id:'test-'+Math.random().toString(36).slice(2),
+    model_year:2026,origin_model_week:2,source_account:'truist_checking',
+    affects_deployable_cash:true,status:'initiated',resolution_type:null,
+    reflected_model_week:null,resolved_model_week:null,amount_cents:100000,
+    commitment_source:'wd_reconciliation',payee:'Test Payee'
+  },overrides||{});
+}
+function withStagingState(commitments,basis,answers,fn){
+  var oldC=commitmentData.slice(),oldB=_reconBasis,oldA=_reconPhase1Answers;
+  commitmentData=commitments||[];_reconBasis=basis;_reconPhase1Answers=answers||{};
+  try{fn();}finally{commitmentData=oldC;_reconBasis=oldB;_reconPhase1Answers=oldA;}
+}
+
+test('AC-88 [PARTIAL — logic only, not persisted]: reflected-but-unresolved prior item appears in Phase 1 even though isReservedAsOf() is false',()=>{
+  var c=baseCommitmentFixture({id:'ac88',origin_model_week:3,reflected_model_week:3});
+  assert(isReservedAsOf(c,3)===false,'expected not reserved at week 3 (reflected at week 3)');
+  var rows=getPhase1Commitments([c],4);
+  assert(rows.length===1&&rows[0].id==='ac88','expected the item to still appear in Phase 1 at week 4, got '+rows.length);
+});
+
+test('AC-89 [PARTIAL — logic only, not persisted]: user can mark a reflected-but-unresolved item cleared',()=>{
+  var c=baseCommitmentFixture({id:'ac89',origin_model_week:3,reflected_model_week:3});
+  var patch=computePhase1Step1Patch(c,'cleared',4);
+  assert(patch.status==='cleared'&&patch.reflected_model_week===4&&patch.resolved_model_week===4&&patch.resolution_type==='cleared','got '+JSON.stringify(patch));
+});
+
+test('AC-90 [PARTIAL — logic only, not persisted]: "No change, still accurate" produces no patch entry and still satisfies the Phase 1 gate',()=>{
+  var c=baseCommitmentFixture({id:'ac90',origin_model_week:3,reflected_model_week:3});
+  var patch=computePhase1Step1Patch(c,'no_change',4);
+  assert(patch===null,'expected null (no-op), got '+JSON.stringify(patch));
+  assert(isPhase1RowResolved(c,'no_change','unknown',null,null)===true,'no_change must satisfy the per-item gate without a patch');
+});
+
+test('AC-91 [PARTIAL — logic only, not persisted]: "hold fell off" clears reflected_model_week back to null and touches no other field',()=>{
+  var c=baseCommitmentFixture({id:'ac91',origin_model_week:3,reflected_model_week:3});
+  var patch=computePhase1Step1Patch(c,'hold_fell_off',4);
+  assert(Object.keys(patch).sort().join(',')==='id,reflected_model_week','expected exactly id+reflected_model_week keys, got '+Object.keys(patch).join(','));
+  assert(patch.reflected_model_week===null);
+  var merged=Object.assign({},c,patch);
+  assert(isReservedAsOf(merged,4)===true,'reserve must reactivate once reflected_model_week clears, got isReservedAsOf='+isReservedAsOf(merged,4));
+});
+
+test('AC-92 [PARTIAL — logic only, not persisted]: void and paid-from-other-account both terminate a reflected-but-unresolved item regardless of its stale reflected_model_week',()=>{
+  var c=baseCommitmentFixture({id:'ac92',origin_model_week:3,reflected_model_week:3});
+  var voidPatch=computePhase1Step1Patch(c,'voided',4,'no longer owed');
+  assert(voidPatch.status==='voided'&&voidPatch.resolution_type==='voided'&&voidPatch.resolved_model_week===4&&voidPatch.resolution_notes==='no longer owed','got '+JSON.stringify(voidPatch));
+  assert(isReservedAsOf(Object.assign({},c,voidPatch),4)===false,'voided must not reserve regardless of stale reflected_model_week=3');
+  var paidPatch=computePhase1Step1Patch(c,'paid_other_account',4);
+  assert(paidPatch.status==='voided'&&paidPatch.resolution_type==='paid_from_other_account'&&paidPatch.resolved_model_week===4,'got '+JSON.stringify(paidPatch));
+  assert(isReservedAsOf(Object.assign({},c,paidPatch),4)===false);
+});
+
+test('AC-77 [PARTIAL — logic only, not persisted]: available_balance + Step 2 "Yes" sets reflected_model_week to the current week, reserve clears',()=>{
+  var c=baseCommitmentFixture({id:'ac77'});
+  var base=computePhase1Step1Patch(c,'still_not_cleared',4);
+  var merged=applyPhase1Step2(base,'still_not_cleared','available_balance','yes',4);
+  assert(merged.reflected_model_week===4,'got '+JSON.stringify(merged));
+  assert(isReservedAsOf(Object.assign({},c,merged),4)===false,'must not double-count a debit already netted into this week\'s available balance');
+});
+
+test('AC-78 [PARTIAL — logic only, not persisted]: available_balance + Step 2 "No" leaves reflected_model_week null, reserve stays active',()=>{
+  var c=baseCommitmentFixture({id:'ac78'});
+  var base=computePhase1Step1Patch(c,'still_not_cleared',4);
+  var merged=applyPhase1Step2(base,'still_not_cleared','available_balance','no',4);
+  assert(merged.reflected_model_week===null,'got '+JSON.stringify(merged));
+  assert(isReservedAsOf(Object.assign({},c,merged),4)===true);
+});
+
+test('AC-79 [PARTIAL — logic only, not persisted]: available_balance + Step 2 "Not sure" forces bank_pending and Review Required; posted_current_balance "Cleared, not sure" also triggers Review Required',()=>{
+  var c=baseCommitmentFixture({id:'ac79a'});
+  var base=computePhase1Step1Patch(c,'still_not_cleared',4);
+  var merged=applyPhase1Step2(base,'still_not_cleared','available_balance','not_sure',4);
+  assert(merged.status==='bank_pending'&&merged.reflected_model_week===null,'got '+JSON.stringify(merged));
+  var mergedRow=Object.assign({},c,merged);
+  assert(isReservedAsOf(mergedRow,4)===true,'conservative — reserve must stay active');
+  // Review Required generalizes across bases — integration-check via the real engine.
+  withStagingState([mergedRow],'available_balance',{},function(){
+    reconData[4]={chk:10000,sav:0,amx:0,tax:0,lc:0,balance_basis:'available_balance'};
+    try{
+      var weeks=runModel(7000,7694.87);
+      var w4=weeks.find(function(w){return w.num===4;});
+      assert(w4.cashAvailability.reviewRequired===true,'expected reviewRequired=true for a bank_pending reserve under a KNOWN basis (available_balance)');
+    }finally{delete reconData[4];}
+  });
+  // posted_current_balance "Cleared, not sure" path also lands on bank_pending.
+  var cnsPatch=computePhase1Step1Patch(c,'cleared_not_sure',4);
+  assert(cnsPatch.status==='bank_pending'&&cnsPatch.reflected_model_week===null&&cnsPatch.resolved_model_week===null,'got '+JSON.stringify(cnsPatch));
+});
+
+test('AC-80 [PARTIAL — logic only, not persisted]: posted_current_balance + "Still not cleared" reserves, and Step 2 never applies under this basis',()=>{
+  var c=baseCommitmentFixture({id:'ac80'});
+  var base=computePhase1Step1Patch(c,'still_not_cleared',4);
+  var afterStep2Attempt=applyPhase1Step2(base,'still_not_cleared','posted_current_balance','yes',4);
+  assert(afterStep2Attempt===base,'Step 2 must be a no-op when basis is not available_balance, even if a step2Answer is passed');
+  assert(base.reflected_model_week===null&&base.status==='carried_unresolved');
+  assert(isReservedAsOf(Object.assign({},c,base),4)===true);
+});
+
+test('Phase 1 row options: "hold fell off" only offered when reflected_model_week is non-null',()=>{
+  var fresh=baseCommitmentFixture({reflected_model_week:null});
+  var reflected=baseCommitmentFixture({reflected_model_week:3});
+  assert(reconPhase1RowOptions(fresh).indexOf('hold_fell_off')<0,'must not offer hold_fell_off on a never-reflected row');
+  assert(reconPhase1RowOptions(reflected).indexOf('hold_fell_off')>=0,'must offer hold_fell_off on a reflected row');
+});
+
+test('buildPhase1PatchArray: assembles patches for answered rows, skips no-ops, and respects Step 2 overlays',()=>{
+  var c1=baseCommitmentFixture({id:'row1',origin_model_week:2});
+  var c2=baseCommitmentFixture({id:'row2',origin_model_week:2});
+  var c3=baseCommitmentFixture({id:'row3',origin_model_week:2});
+  var arr=buildPhase1PatchArray([c1,c2,c3],{
+    row1:{step1:'no_change'},
+    row2:{step1:'still_not_cleared',step2:'yes'},
+    row3:{step1:'cleared'}
+  },'available_balance',5);
+  assert(arr.length===2,'expected row1 (no_change) to be skipped, got '+arr.length);
+  var row2Patch=arr.find(function(p){return p.id==='row2';});
+  assert(row2Patch.reflected_model_week===5,'row2 Step2=yes must set reflected_model_week=5, got '+JSON.stringify(row2Patch));
+  var row3Patch=arr.find(function(p){return p.id==='row3';});
+  assert(row3Patch.status==='cleared');
+});
+
+test('Phase 0/1 save gate: canSaveRecon blocks without a selected balance basis',()=>{
+  withStagingState([],null,{},function(){
+    assert(canSaveRecon(10)===false,'expected blocked with no basis selected');
+  });
+});
+
+test('Phase 0/1 save gate: canSaveRecon allows save when basis is selected and there are no Phase 1 rows',()=>{
+  withStagingState([],'posted_current_balance',{},function(){
+    assert(canSaveRecon(10)===true);
+  });
+});
+
+test('Phase 0/1 completion gate: canCompleteReconPhase01 requires every Phase 1 row answered, including the Step 2 follow-up under available_balance',()=>{
+  var c=baseCommitmentFixture({id:'gatecheck',origin_model_week:2});
+  withStagingState([c],'available_balance',{},function(){
+    assert(canCompleteReconPhase01(5)===false,'no answer yet — must not be complete');
+    _reconPhase1Answers['gatecheck']={step1:'still_not_cleared'};
+    assert(canCompleteReconPhase01(5)===false,'Step 2 required under available_balance for still_not_cleared — still incomplete');
+    _reconPhase1Answers['gatecheck']={step1:'still_not_cleared',step2:'no'};
+    assert(canCompleteReconPhase01(5)===true,'fully answered — must be complete');
+  });
+});
+
+test('Phase 0/1 completion gate: Void requires non-empty resolution_notes before it counts as complete',()=>{
+  var c=baseCommitmentFixture({id:'voidcheck',origin_model_week:2});
+  withStagingState([c],'unknown',{},function(){
+    _reconPhase1Answers.voidcheck={step1:'voided',notes:''};
+    assert(canCompleteReconPhase01(5)===false,'empty notes must not be complete');
+    _reconPhase1Answers.voidcheck={step1:'voided',notes:'  '};
+    assert(canCompleteReconPhase01(5)===false,'whitespace-only notes must not be complete');
+    _reconPhase1Answers.voidcheck={step1:'voided',notes:'confirmed refunded elsewhere'};
+    assert(canCompleteReconPhase01(5)===true,'real notes must satisfy completeness');
+  });
+});
+
+test('Phase 0/1 save gate: a resolved Phase 1 row from a prior origin week does not block a later week\'s save',()=>{
+  var c=baseCommitmentFixture({id:'stale',origin_model_week:2,status:'cleared',resolved_model_week:2});
+  withStagingState([c],'posted_current_balance',{},function(){
+    assert(getPhase1Commitments([c],5).length===0,'a cleared row must not appear in Phase 1 at all');
+    assert(canSaveRecon(5)===true);
+  });
+});
+
+// ── Fail-safe hardening: Phase 1 answers must never be silently discarded ──
+// saveRecon() still only writes weekly_reconciliations directly — it does not
+// call save_reconciliation_with_commitments, so a Phase 1 patch has nowhere
+// to persist yet. canPersistReconNow() must refuse to save whenever there is
+// a Phase 1 row to lose, independent of whether that row is fully answered.
+test('Fail-safe: canSaveRecon (canPersistReconNow) blocks save when Phase 1 rows exist, even when every row is fully and correctly answered',()=>{
+  var c=baseCommitmentFixture({id:'failsafe1',origin_model_week:2});
+  withStagingState([c],'posted_current_balance',{},function(){
+    _reconPhase1Answers.failsafe1={step1:'cleared'};
+    assert(canCompleteReconPhase01(5)===true,'precondition: the row must be considered fully answered');
+    assert(canSaveRecon(5)===false,'save must still be blocked — persistence for Phase 1 patches is not wired up yet');
+    assert(canPersistReconNow(5)===false);
+  });
+});
+
+test('Fail-safe: canSaveRecon allows save only when basis is selected AND zero Phase 1 rows exist',()=>{
+  withStagingState([],'posted_current_balance',{},function(){
+    assert(canSaveRecon(10)===true,'zero Phase 1 rows — safe to persist balance_basis via the existing direct write');
+  });
+  var c=baseCommitmentFixture({id:'failsafe2',origin_model_week:2});
+  withStagingState([c],'posted_current_balance',{failsafe2:{step1:'cleared'}},function(){
+    assert(canSaveRecon(5)===false,'one unresolved-in-persistence-terms Phase 1 row present — must block regardless of answer completeness');
+  });
+});
+
+test('Fail-safe: reconSaveBlockedReason gives the "staged but not yet persisted" message specifically when Phase 1 rows are fully answered but cannot save',()=>{
+  var c=baseCommitmentFixture({id:'failsafe3',origin_model_week:2});
+  withStagingState([c],'posted_current_balance',{failsafe3:{step1:'cleared'}},function(){
+    var reason=reconSaveBlockedReason(5);
+    assertIncludes(reason,'staged but not yet persisted');
+    assertIncludes(reason,'Phase 4/RPC integration');
+  });
+  withStagingState([c],'posted_current_balance',{},function(){
+    var reason=reconSaveBlockedReason(5);
+    assert(reason.indexOf('staged but not yet persisted')<0,'an UNanswered row should get the "respond to every item" message, not the persistence message, got: '+reason);
+  });
+  withStagingState([],null,{},function(){
+    var reason=reconSaveBlockedReason(10);
+    assertIncludes(reason,'Select a balance basis');
+  });
+});
+
+test('Deferred: "amount_changed" is not offered as a Phase 1 response option (patch shape is not yet validator-compatible — see AC-82)',()=>{
+  var fresh=baseCommitmentFixture({reflected_model_week:null});
+  var reflected=baseCommitmentFixture({reflected_model_week:3});
+  assert(reconPhase1RowOptions(fresh).indexOf('amount_changed')<0,'amount_changed must not be offered on a fresh row');
+  assert(reconPhase1RowOptions(reflected).indexOf('amount_changed')<0,'amount_changed must not be offered on a reflected row either');
+});
+})();
+
+console.log('\n── Section 5F1-PARTIAL: ACs with correct, tested logic but no persistence path yet ──');
+(function(){
+// AC-77,78,79,80,88,89,90,91,92 (Section 5F1-M) are DELIBERATELY NOT counted
+// as unblocked. Their state-machine logic (computePhase1Step1Patch/
+// applyPhase1Step2/isReservedAsOf interactions) is implemented and proven
+// correct with real runtime assertions — but saveRecon() still only writes
+// weekly_reconciliations directly and never calls
+// save_reconciliation_with_commitments, so none of these patches are ever
+// persisted or sent to the server. Passing a pure-logic test is not the same
+// claim as "this AC's end-to-end behavior works" — per explicit instruction,
+// pure helper/state-machine tests passing must not reduce the blocked count.
+// canPersistReconNow() (Section 5F1-M's fail-safe tests) confirms the UI
+// refuses to save at all while any Phase 1 row exists, specifically so these
+// answers are never silently discarded — but that is a safety guard, not a
+// persistence path. These 9 move to fully unblocked only once Phase 4/RPC
+// integration actually sends p_patched to save_reconciliation_with_commitments
+// and a server round-trip can be asserted.
+var partialACs=[77,78,79,80,88,89,90,91,92];
+test('5F1-PARTIAL: 9 ACs have correct tested logic but remain non-persisted, tracked separately from both "unblocked" and "blocked"',()=>{
+  assert(partialACs.length===9,'expected 9 partial ACs, found '+partialACs.length);
+});
+console.log('  ◐ AC-'+partialACs.join(', AC-')+' — PARTIAL: Phase 1 state-machine logic implemented and tested; persistence/RPC integration not yet wired (Section 5F1-M)');
+})();
+
+console.log('\n── Section 5F1-NOTSTARTED: JS-engine-layer ACs still blocked pending the 4-phase reconciliation UI (Phase 2/3/4) / dashboard verdict rendering / historical repair mode / RPC save integration (Build Sequence steps 10-12) ──');
+(function(){
+// Accounting for all 33 original JS-engine-layer ACs: 13 fully unblocked
+// (AC-1,2,3,4,5,6,13,14,16,17,19,20,47 — Section 5F1-K, engine layer only,
+// no persistence involved so "unblocked" is an honest end-to-end claim there)
+// + 9 partial (AC-77,78,79,80,88,89,90,91,92 — Section 5F1-PARTIAL, logic
+// correct, persistence not wired) + 11 still fully blocked below = 33.
+// The 11 below all require Phase 2/3/4 of the reconciliation form, the
+// historical repair form, actual save-with-RPC integration, and/or dashboard
+// verdict-text rendering — none of that exists yet.
+// Note AC-15/18/21 are NOT in the unblocked or partial list even though the
+// underlying data (reviewRequired flag, adjustedAvailableForSweep) is
+// computed correctly: the AC text describes a rendered verdict string
+// ("⚠ Review Required — est. deployable $X", "Deployable +$10,265.40") or the
+// repair-form UI, neither of which exists yet. Listed here as explicit skips
+// (not silent gaps) so `grep -c '^test('` and the AC coverage count both
+// reflect the true state.
+var blockedACs=[15,18,21,28,96,97,101,105,106,107,108];
+test('5F1-NOTSTARTED: 11 UI-layer ACs are tracked as blocked, not silently skipped (plus AC-76, a process-check, tracked separately)',()=>{
+  assert(blockedACs.length===11,'expected 11 blocked ACs, found '+blockedACs.length);
 });
 console.log('  ⚠ AC-'+blockedACs.join(', AC-')+' — BLOCKED pending the 4-phase reconciliation form / dashboard verdict rendering (Build Sequence steps 10-12)');
 console.log('  ⚠ AC-76 — process-check only (grep -c \'^test(\' baseline), not a runtime assertion; verified manually at Step 1 (832 confirmed)');

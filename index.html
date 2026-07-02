@@ -916,6 +916,11 @@ var taskData={};
 var noteData={};
 var overrideData={};
 var reconOpen=null;
+// Phase 5F-1 reconciliation form Phase 0/1 staging state — always reset on
+// openRecon()/cancelRecon(), never persisted to cash_commitments or sent to
+// any RPC in this step. See computePhase1Step1Patch()/applyPhase1Step2().
+var _reconBasis=null; // 'posted_current_balance' | 'available_balance' | 'unknown' | null (unselected)
+var _reconPhase1Answers={}; // { [commitmentId]: {step1, step2, notes} } for the currently-open week only
 
 // ── Budget Rules (Phase 5) ─────────────────────────────────────────────────
 var budgetRules=[];
@@ -1759,6 +1764,107 @@ function getTaggedWD(wdArray){
     return copy;
   });
 }
+
+// ── Phase 5F-1: Reconciliation Form — Phase 0 (Balance Basis) + Phase 1 ─────
+// (Prior Unresolved Commitment Resolution). Pure state-computation helpers
+// only — no DOM, no fetch, no RPC call. Mirrors docs/phase-5f-1-spec.md's
+// "Reconciliation Form — 4-Phase Flow" section (Phase 0 + Phase 1 only —
+// Phase 2/3/4 and the RPC integration are explicitly out of scope for this
+// step). Consumed by the UI wiring inside renderWeekDetail()/saveRecon().
+var RECON_BALANCE_BASIS_OPTIONS=['posted_current_balance','available_balance','unknown'];
+
+// Phase 1 source query, spec v3.9: prior commitments that are non-terminal
+// and not yet resolved, independent of current isReservedAsOf() status (see
+// spec's note on why filtering by isReservedAsOf() alone drops rows that are
+// reflected-but-still-operationally-open from the workflow).
+function getPhase1Commitments(commitments,currentWeek){
+  return(commitments||[]).filter(function(c){
+    return c.origin_model_week<currentWeek
+      &&c.status!=='cleared'&&c.status!=='voided'
+      &&c.resolved_model_week==null;
+  });
+}
+
+// Step 1 clearance/status question. Returns the base patch object (before any
+// Step 2 reflection overlay), null for a no-op ("no change" — satisfies the
+// per-item gate without a patch entry, per AC-90), or undefined if no answer
+// has been given yet. Field presence follows AC-8 key-existence semantics: an
+// included key with value null explicitly clears that field; an omitted key
+// leaves it untouched. reflected_model_week is intentionally omitted (left
+// untouched) only for voided/paid_other_account, since isReservedAsOf() short-
+// circuits on status/resolution_type before ever reading that field for a
+// terminal-voided row (see AC-92) — every other branch sets it explicitly so
+// a stale non-null value from an earlier "already reflected" answer (the
+// AC-88 scenario) can never silently survive into a branch that didn't mean
+// to preserve it.
+function computePhase1Step1Patch(commitment,answer,currentWeek,resolutionNotes){
+  switch(answer){
+    case'cleared':
+      return{id:commitment.id,status:'cleared',reflected_model_week:currentWeek,resolved_model_week:currentWeek,resolution_type:'cleared'};
+    case'cleared_not_sure':
+      return{id:commitment.id,status:'bank_pending',reflected_model_week:null,resolved_model_week:null};
+    case'still_not_cleared':
+      return{id:commitment.id,status:'carried_unresolved',reflected_model_week:null,resolved_model_week:null,resolution_type:'carried_unresolved'};
+    case'amount_changed':
+      return{id:commitment.id,status:'carried_unresolved',reflected_model_week:null,resolved_model_week:null,resolution_type:'amount_changed'};
+    case'paid_other_account':
+      return{id:commitment.id,status:'voided',resolved_model_week:currentWeek,resolution_type:'paid_from_other_account'};
+    case'voided':
+      return{id:commitment.id,status:'voided',resolved_model_week:currentWeek,resolution_type:'voided',resolution_notes:resolutionNotes||''};
+    case'no_change':
+      return null;
+    case'hold_fell_off':
+      return{id:commitment.id,reflected_model_week:null};
+    default:
+      return undefined;
+  }
+}
+// Step 1 answers eligible for the Step 2 reflection follow-up.
+var RECON_PHASE1_STEP2_ELIGIBLE=['still_not_cleared','amount_changed'];
+// Step 2 — reflection question, asked only when balance_basis==='available_balance'
+// AND Step 1's answer was 'still_not_cleared' or 'amount_changed'. Applies the
+// available_balance row of the Balance-Basis Decision Matrix on top of Step 1's
+// result. Note (flagged, not silently resolved): the spec's Decision Matrix
+// table lists reflected_model_week='null' (an explicit value) for the "No"/
+// "Not sure" rows, while worked example AC-78 shows the field omitted from the
+// merged patch entirely. Both are functionally identical when the row starts
+// from a fresh (never-reflected) state, but only the explicit-null approach is
+// provably safe against a row that already carries a stale non-null
+// reflected_model_week from an earlier week (the AC-88 scenario) — so this
+// implementation always sends reflected_model_week explicitly rather than
+// omitting it, for every Step 2 branch.
+function applyPhase1Step2(basePatch,step1Answer,basis,step2Answer,currentWeek){
+  if(!basePatch)return basePatch;
+  if(basis!=='available_balance')return basePatch;
+  if(RECON_PHASE1_STEP2_ELIGIBLE.indexOf(step1Answer)<0)return basePatch;
+  if(step2Answer==='yes')return Object.assign({},basePatch,{reflected_model_week:currentWeek});
+  if(step2Answer==='not_sure')return Object.assign({},basePatch,{reflected_model_week:null,status:'bank_pending'});
+  if(step2Answer==='no')return Object.assign({},basePatch,{reflected_model_week:null});
+  return basePatch; // no Step 2 answer yet
+}
+// Whether a Phase 1 row's classification is complete enough to count toward
+// the "every row shown in Phase 1 has an explicit response" save gate.
+function isPhase1RowResolved(commitment,step1Answer,basis,step2Answer,resolutionNotes){
+  if(!step1Answer)return false;
+  if(step1Answer==='voided'&&!(resolutionNotes&&resolutionNotes.trim().length>0))return false;
+  if(basis==='available_balance'&&RECON_PHASE1_STEP2_ELIGIBLE.indexOf(step1Answer)>=0&&!step2Answer)return false;
+  return true;
+}
+// Builds the full p_patched-shaped array for the currently-open recon week
+// from staged UI answers. Filters out no-ops (null) and not-yet-answered
+// (undefined) rows. Not currently sent anywhere — staged only, per this
+// step's scope (Phase 2/3/4 + RPC integration are a later step).
+function buildPhase1PatchArray(commitments,answers,basis,currentWeek){
+  var out=[];
+  getPhase1Commitments(commitments,currentWeek).forEach(function(c){
+    var a=(answers&&answers[c.id])||{};
+    var base=computePhase1Step1Patch(c,a.step1,currentWeek,a.notes);
+    var final=applyPhase1Step2(base,a.step1,basis,a.step2,currentWeek);
+    if(final)out.push(final);
+  });
+  return out;
+}
+
 function runModel(akGoal,rtGoal,flags){
   flags=flags||goalFlags;
   var akTarget=akGoal!=null?akGoal:((GOALS_REGISTRY.find(function(g){return g.id==='alaska';})||{}).target||7000);
@@ -2200,23 +2306,46 @@ function goWeek(dir){
 }
 
 // ── Reconcile (unchanged) ──────────────────────────────────────────────────
-function openRecon(n){if(!canWriteFinancials())return;reconOpen=n;renderApp();setTimeout(function(){var el=document.querySelector('.recon-form');if(el)el.scrollIntoView({behavior:'smooth',block:'nearest'});},80);}
-function cancelRecon(){reconOpen=null;renderApp();}
+function openRecon(n){
+  if(!canWriteFinancials())return;
+  reconOpen=n;
+  // Phase 5F-1: fresh Phase 0/1 staging state per open — pre-fill basis from
+  // a prior save if this week was already reconciled (edit flow), otherwise
+  // start unselected so the required-selection gate is meaningful.
+  _reconBasis=(reconData[n]&&reconData[n].balance_basis)||null;
+  _reconPhase1Answers={};
+  renderApp();setTimeout(function(){var el=document.querySelector('.recon-form');if(el)el.scrollIntoView({behavior:'smooth',block:'nearest'});},80);
+}
+function cancelRecon(){reconOpen=null;_reconBasis=null;_reconPhase1Answers={};renderApp();}
 function confirmReconDelete(n){if(!canWriteFinancials())return;reconDeleteConfirm=n;renderApp();}
 function cancelReconDelete(){reconDeleteConfirm=false;renderApp();}
 async function saveRecon(n){
   if(!canWriteFinancials())return;
+  // Phase 5F-1 Phase 0/1 gate — client-side re-check (defense in depth; the
+  // Save button is also disabled in the DOM via canSaveRecon()/canPersistReconNow()).
+  // This does NOT call save_reconciliation_with_commitments or write to
+  // cash_commitments. Fail-safe: if any Phase 1 rows exist, this function
+  // must refuse to save at all — even if every row is fully answered —
+  // because there is no persistence path for those answers yet, and saving
+  // anyway would silently discard cash-safety responses the user just gave.
+  // balance_basis is persisted below via the existing direct write to
+  // weekly_reconciliations only when there are zero Phase 1 rows to lose.
+  if(!canSaveRecon(n)){
+    var gateErrEl=document.querySelector('.recon-error');
+    if(gateErrEl){gateErrEl.textContent=reconSaveBlockedReason(n)||'Save is blocked — resolve the items above before saving.';gateErrEl.style.display='block';}
+    return;
+  }
   function gv(id){return parseFloat(document.getElementById(id).value)||0;}
   const data={chk:gv('ri_chk'),sav:gv('ri_sav'),amx:gv('ri_amx'),tax:gv('ri_tax'),lc:gv('ri_lc')};
   const now=new Date();
   var prevRecon=reconData[n]?Object.assign({},reconData[n]):undefined; // snapshot
-  reconData[n]={...data,date:now.toLocaleDateString('en-US',{month:'short',day:'numeric'})};
+  reconData[n]={...data,balance_basis:_reconBasis,date:now.toLocaleDateString('en-US',{month:'short',day:'numeric'})};
   reconSaving=true;renderApp();
   try{
     var h=await getAuthHeaders();
-    var r=await fetch(SUPA_URL+'/rest/v1/weekly_reconciliations',{method:'POST',headers:Object.assign({},h,{'Prefer':'resolution=merge-duplicates,return=minimal'}),body:JSON.stringify({week_num:n,chk:data.chk,sav:data.sav,amx:data.amx,tax:data.tax,lc:data.lc,recorded_at:now.toISOString()})});
+    var r=await fetch(SUPA_URL+'/rest/v1/weekly_reconciliations',{method:'POST',headers:Object.assign({},h,{'Prefer':'resolution=merge-duplicates,return=minimal'}),body:JSON.stringify({week_num:n,chk:data.chk,sav:data.sav,amx:data.amx,tax:data.tax,lc:data.lc,balance_basis:_reconBasis,recorded_at:now.toISOString()})});
     if(!r.ok)throw new Error('HTTP '+r.status);
-    reconSaving=false;reconOpen=null;renderApp();
+    reconSaving=false;reconOpen=null;_reconBasis=null;_reconPhase1Answers={};renderApp();
   }catch(e){
     // Roll back local state so stale data is not displayed
     if(prevRecon!==undefined){reconData[n]=prevRecon;}else{delete reconData[n];}
@@ -3030,6 +3159,135 @@ function renderOverview(vm){
   initFlightPathChart(vm);
 }
 
+// ── Phase 5F-1: Reconciliation form Phase 0/1 UI ────────────────────────────
+// Renders into .recon-form (see renderWeekDetail below). Pure string
+// generation, no fetch/RPC — reads/writes only the staging state declared
+// near reconOpen (_reconBasis/_reconPhase1Answers) and the pure functions
+// above runModel() (getPhase1Commitments/computePhase1Step1Patch/
+// applyPhase1Step2/isPhase1RowResolved).
+var RECON_PHASE1_STEP1_LABELS={
+  cleared:'Cleared / posted',
+  cleared_not_sure:'Cleared — not sure',
+  still_not_cleared:'Still not cleared',
+  amount_changed:'Amount changed',
+  paid_other_account:'Paid from a different account',
+  voided:'Void — no longer owed',
+  no_change:'No change, still accurate',
+  hold_fell_off:'Still pending, no longer reflected — hold fell off'
+};
+// 'amount_changed' is DEFERRED — not offered in the UI yet. computePhase1Step1Patch()
+// still implements it correctly per the Phase 1 table, but that patch shape omits
+// original_amount_cents/a real new amount_cents, which validate_commitment_state's
+// AC-82 check requires (original_amount_cents present AND different from amount_cents).
+// Sending it as-is would fail server-side once the RPC is wired up. Re-enable only
+// once this form collects the actual new amount and both fields are included.
+function reconPhase1RowOptions(c){
+  var opts=['cleared','cleared_not_sure','still_not_cleared','paid_other_account','voided','no_change'];
+  if(c.reflected_model_week!=null)opts.push('hold_fell_off'); // only offered when there's a reflection to undo
+  return opts;
+}
+function setReconBasis(basis){_reconBasis=basis;renderApp();}
+function setPhase1Step1(id,val){
+  if(!_reconPhase1Answers[id])_reconPhase1Answers[id]={};
+  _reconPhase1Answers[id].step1=val||undefined;
+  _reconPhase1Answers[id].step2=null; // any Step 1 change invalidates a stale Step 2 answer
+  renderApp();
+}
+function setPhase1Step2(id,val){
+  if(!_reconPhase1Answers[id])_reconPhase1Answers[id]={};
+  _reconPhase1Answers[id].step2=val||undefined;
+  renderApp();
+}
+function setPhase1Notes(id,el){
+  if(!_reconPhase1Answers[id])_reconPhase1Answers[id]={};
+  _reconPhase1Answers[id].notes=el.value;
+  renderApp(); // onblur only — safe to re-render without disrupting typing
+}
+// Phase 0 basis selected AND every Phase 1 row has an explicit, complete
+// response (per docs/phase-5f-1-spec.md Phase 1 "Save disabled until every
+// row shown in Phase 1 has an explicit response"). Being "complete" is NOT
+// the same as being safe to persist — see canPersistReconNow() below.
+function canCompleteReconPhase01(weekNum){
+  if(!_reconBasis)return false;
+  return getPhase1Commitments(commitmentData,weekNum).every(function(c){
+    var a=_reconPhase1Answers[c.id]||{};
+    return isPhase1RowResolved(c,a.step1,_reconBasis,a.step2,a.notes);
+  });
+}
+// Fail-safe gate: saveRecon() still only writes weekly_reconciliations
+// directly — it does NOT call save_reconciliation_with_commitments, so any
+// Phase 1 patch computed by buildPhase1PatchArray() has nowhere to go yet.
+// If any Phase 1 rows exist, saving now would silently discard cash-safety
+// answers the user just gave, while cash_commitments stays unchanged. That's
+// harmless today only because commitmentData is empty; the moment a real
+// prior-unresolved commitment exists, it stops being harmless. So: allow
+// persisting only when there are zero Phase 1 rows to lose. Once Phase 1
+// patches are actually sent as part of the RPC-integrated save (a later,
+// explicitly separate step), this function should be updated to drop the
+// zero-rows requirement.
+function canPersistReconNow(weekNum){
+  return canCompleteReconPhase01(weekNum)&&getPhase1Commitments(commitmentData,weekNum).length===0;
+}
+function canSaveRecon(weekNum){return canPersistReconNow(weekNum);}
+// Shared blocked-reason text — used by both the disabled-button hint and
+// saveRecon()'s defense-in-depth guard, so the two can never drift apart.
+function reconSaveBlockedReason(weekNum){
+  if(!_reconBasis)return'Select a balance basis above before saving.';
+  var rows=getPhase1Commitments(commitmentData,weekNum);
+  if(rows.length&&!canCompleteReconPhase01(weekNum))return'Select a balance basis above and respond to every Phase 1 item before saving.';
+  if(rows.length&&canCompleteReconPhase01(weekNum))return'Prior commitment responses are staged but not yet persisted. Final save requires the Phase 4/RPC integration step.';
+  return'';
+}
+function renderReconPhase01(w){
+  var html='';
+  html+='<div class="recon-phase0" style="margin-bottom:14px;padding:10px 12px;background:var(--surface);border:1px solid var(--line2);border-radius:8px">';
+  html+='<div style="font-weight:600;font-size:13px;margin-bottom:6px">Phase 0 — Balance basis <span style="color:var(--red)">*required</span></div>';
+  html+='<div style="display:flex;flex-direction:column;gap:4px;font-size:13px">';
+  [['posted_current_balance','Posted / current balance — never reflects a debit until it clears'],
+   ['available_balance','Available balance — may already net out pending holds/authorizations'],
+   ['unknown','Not sure']].forEach(function(opt){
+    var checked=_reconBasis===opt[0]?' checked':'';
+    html+='<label style="display:flex;gap:6px;align-items:flex-start;cursor:pointer"><input type="radio" name="recon-basis-radio" value="'+opt[0]+'"'+checked+' onchange="setReconBasis(\''+opt[0]+'\')" style="margin-top:2px"><span>'+esc(opt[1])+'</span></label>';
+  });
+  html+='</div></div>';
+
+  var p1rows=getPhase1Commitments(commitmentData,w.num);
+  html+='<div class="recon-phase1" style="margin-bottom:14px;padding:10px 12px;background:var(--surface);border:1px solid var(--line2);border-radius:8px">';
+  html+='<div style="font-weight:600;font-size:13px;margin-bottom:6px">Phase 1 — Prior unresolved commitments</div>';
+  if(!p1rows.length){
+    html+='<div style="color:var(--muted);font-size:13px">No prior unresolved commitments for this week.</div>';
+  }else{
+    p1rows.forEach(function(c){
+      var a=_reconPhase1Answers[c.id]||{};
+      var reserveActive=isReservedAsOf(c,w.num-1);
+      var opts=reconPhase1RowOptions(c);
+      html+='<div style="padding:8px 0;border-top:1px solid var(--line2)">';
+      html+='<div style="font-size:13px;font-weight:600">'+esc(c.payee)+' — $'+fc(c.amount_cents/100)+
+        ' <span style="font-weight:400;color:var(--muted)">(origin Wk '+getCalWeek(c.origin_model_week)+', currently '+(reserveActive?'reserved':'reflected — not reserved')+')</span></div>';
+      html+='<select onchange="setPhase1Step1(\''+c.id+'\',this.value)" style="margin-top:4px;font-size:13px">'+
+        '<option value=""'+(!a.step1?' selected':'')+'>Select response…</option>'+
+        opts.map(function(o){return'<option value="'+o+'"'+(a.step1===o?' selected':'')+'>'+esc(RECON_PHASE1_STEP1_LABELS[o])+'</option>';}).join('')+
+        '</select>';
+      if(_reconBasis==='available_balance'&&RECON_PHASE1_STEP2_ELIGIBLE.indexOf(a.step1)>=0){
+        html+='<div style="margin-top:6px;font-size:13px">Does the balance you\'re about to enter already reflect this debit? '+
+          '<select onchange="setPhase1Step2(\''+c.id+'\',this.value)">'+
+          '<option value=""'+(!a.step2?' selected':'')+'>Select…</option>'+
+          '<option value="yes"'+(a.step2==='yes'?' selected':'')+'>Yes, already reflected</option>'+
+          '<option value="no"'+(a.step2==='no'?' selected':'')+'>No, not reflected</option>'+
+          '<option value="not_sure"'+(a.step2==='not_sure'?' selected':'')+'>Not sure</option>'+
+          '</select></div>';
+      }
+      if(a.step1==='voided'){
+        html+='<div style="margin-top:6px"><textarea placeholder="Required — why is this voided?" onblur="setPhase1Notes(\''+c.id+'\',this)" style="width:100%;font-size:13px;min-height:40px">'+esc(a.notes||'')+'</textarea></div>';
+      }
+      html+='</div>';
+    });
+    html+='<div style="color:var(--muted);font-size:12px;margin-top:8px">These responses are staged for the reconciliation save and are not yet persisted to Supabase — historical commitment tracking (Phase 2-4 of this form) is still being built.</div>';
+  }
+  html+='</div>';
+  return html;
+}
+
 // ── renderWeekDetail ───────────────────────────────────────────────────────
 function renderWeekDetail(w,weeks){
   var retChkGoal=Math.max(0,Math.round(((getGoals().rt)-START_AMX-RET_SAV_XFR)*100)/100);
@@ -3346,7 +3604,10 @@ function renderWeekDetail(w,weeks){
   }
   if(reconOpen===w.num){
     var pre=w.actualBals||{chk:w.mChk,sav:w.mSav,amx:w.mAmx,tax:w.mTax,lc:w.mLc};
-    html+='<div class="recon-form"><div class="recon-form-title">Actual end-of-week balances — Wk '+getCalWeek(w.num)+' \xb7 '+w.dates+'</div>'+
+    var _canSave=canSaveRecon(w.num);
+    html+='<div class="recon-form"><div class="recon-form-title">Reconcile — Wk '+getCalWeek(w.num)+' \xb7 '+w.dates+'</div>'+
+      renderReconPhase01(w)+
+      '<div class="recon-form-title" style="margin-top:2px">Phase 4 — Actual end-of-week balances</div>'+
       '<div class="recon-guidance-note">Enter posted/cleared balances only. Do not include pending inflows, pending outflows, or in-transit transfers that have not settled. Capture those items in Week Notes, along with the expected balance after they clear.</div>'+
       '<div class="recon-inputs">'+
       '<div class="recon-field"><label>Truist Checking</label><input class="recon-input" id="ri_chk" type="number" step="0.01" value="'+pre.chk+'"></div>'+
@@ -3355,10 +3616,11 @@ function renderWeekDetail(w,weeks){
       '<div class="recon-field"><label>Vio Bank - Tax Reserve</label><input class="recon-input" id="ri_tax" type="number" step="0.01" value="'+pre.tax+'"></div>'+
       '<div class="recon-field"><label>Lending Club (EF)</label><input class="recon-input" id="ri_lc" type="number" step="0.01" value="'+pre.lc+'"></div>'+
       '</div><div class="recon-btn-row">'+
-      '<button class="recon-save" onclick="saveRecon('+w.num+')">Save actuals</button>'+
+      '<button class="recon-save" onclick="saveRecon('+w.num+')"'+(_canSave?'':' disabled style="opacity:.5;cursor:not-allowed"')+'>Save actuals</button>'+
       '<button class="recon-cancel" onclick="cancelRecon()">Cancel</button>'+
-      (!w.reconciled?'<span class="recon-hint">Pre-filled with modeled values — enter your actual end-of-week balances. These roll forward into all future weeks.</span>':
-        '<span class="recon-hint">Actuals saved '+w.actualBals.date+' — edits will update all following weeks.</span>')+
+      (!_canSave?'<span class="recon-hint" style="color:var(--red)">'+esc(reconSaveBlockedReason(w.num))+'</span>':
+        (!w.reconciled?'<span class="recon-hint">Pre-filled with modeled values — enter your actual end-of-week balances. These roll forward into all future weeks.</span>':
+        '<span class="recon-hint">Actuals saved '+w.actualBals.date+' — edits will update all following weeks.</span>'))+
       '<div class="recon-error" style="display:none;color:var(--red);font-size:12px;background:var(--redSoft);border:1px solid #fca5a5;border-radius:6px;padding:8px 10px;margin-top:8px">Save failed — check your connection and try again.</div>'+
       (w.reconciled?(reconDeleteConfirm===w.num?
         '<div class="confirm-row"><span>Remove this reconciliation?</span><button class="confirm-no" onclick="cancelReconDelete()">Keep it</button><button class="confirm-yes" onclick="deleteRecon('+w.num+')">Yes, remove</button></div>':
