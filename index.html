@@ -857,7 +857,7 @@ button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-vis
 // ── Constants (unchanged) ──────────────────────────────────────────────────
 // Simplified architecture — $8,250 total from LC · $6,500 operating floor · no legacy mechanics
 // Real-world moves: keep $2,250 in chk, move $2,750 sav→chk, move $1,000 LC→chk, move $2,250 LC→chk (Option 1 correction)
-const BUILD_TS='2026-07-03T17:18:11'; // updated each push — local time string
+const BUILD_TS='2026-07-03T17:30:19'; // updated each push — local time string
 const START_CHK=18037.73,START_SAV=3772.77,START_AMX=103.64,START_TAX=0,START_LC=13488.88;
 const EF_AMT=13488.88; // LC/EF balance — static this model year (no transfers in or out)
 const BASE_TAX=521.36,RET_SAV_XFR=3772.74;
@@ -3539,6 +3539,17 @@ function reconSaveBlockedReason(weekNum){
     return'Finish the current-week items you started: a changed amount, mismatch note, or reflection answer is missing.';
   return'';
 }
+// Phase 2 (Step 8.5) response labels, keyed to the seven-branch response_keys.
+var RECON_PHASE2_RESPONSE_ORDER=['not_paid_yet','paid_initiated','bank_pending','cleared_reflected','amount_changed','paid_other_account','wd_mismatch'];
+var RECON_PHASE2_RESPONSE_LABELS={
+  not_paid_yet:'Not paid yet / not initiated',
+  paid_initiated:'Paid / initiated',
+  bank_pending:'Bank pending',
+  cleared_reflected:'Cleared / reflected this week',
+  amount_changed:'Amount changed',
+  paid_other_account:'Paid from a different account',
+  wd_mismatch:"Doesn't apply this week (mismatch)"
+};
 function renderReconPhase01(w){
   var html='';
   html+='<div class="recon-phase0" style="margin-bottom:14px;padding:10px 12px;background:var(--surface);border:1px solid var(--line2);border-radius:8px">';
@@ -3583,7 +3594,51 @@ function renderReconPhase01(w){
       }
       html+='</div>';
     });
-    html+='<div style="color:var(--muted);font-size:12px;margin-top:8px">These responses are staged for the reconciliation save and are not yet persisted to Supabase — historical commitment tracking (Phase 2-4 of this form) is still being built.</div>';
+    html+='<div style="color:var(--muted);font-size:12px;margin-top:8px">These responses are staged for the reconciliation save. Historical commitment tracking (Phase 3-4 of this form) is still being built.</div>';
+  }
+  html+='</div>';
+
+  // ── Phase 2: current-week protected WD obligation prompts (Step 8.5) ─────────
+  // Scoped to the reconciled week (numeric w.num) using the same override-aware candidate
+  // source as the save gate. Unanswered prompts do not block save; answered-but-incomplete
+  // prompts surface through canSaveRecon()/reconSaveBlockedReason() (Step 7). No count
+  // banner here (that is Step 9).
+  var p2cands=getPhase2WDCandidates(reconEffectiveWD(),w.num,commitmentData);
+  html+='<div class="recon-phase2" style="margin-bottom:14px;padding:10px 12px;background:var(--surface);border:1px solid var(--line2);border-radius:8px">';
+  html+='<div style="font-weight:600;font-size:13px;margin-bottom:6px">Phase 2: Current-week protected obligations</div>';
+  if(!p2cands.length){
+    html+='<div style="color:var(--muted);font-size:13px">No unrecorded protected obligations for this week.</div>';
+  }else{
+    p2cands.forEach(function(ev){
+      var a=_reconPhase2Answers[ev.eid]||{};
+      html+='<div style="padding:8px 0;border-top:1px solid var(--line2)">';
+      html+='<div style="font-size:13px;font-weight:600">'+esc(ev.displayLabel||ev.payee)+' \xb7 $'+fc(Math.abs(ev.a))+
+        (ev.due_date?' <span style="font-weight:400;color:var(--muted)">(due '+esc(ev.due_date)+')</span>':'')+'</div>';
+      html+='<select onchange="setPhase2Response(\''+ev.eid+'\',this.value)" style="margin-top:4px;font-size:13px">'+
+        '<option value=""'+(!a.response?' selected':'')+'>Select response…</option>'+
+        RECON_PHASE2_RESPONSE_ORDER.map(function(k){return'<option value="'+k+'"'+(a.response===k?' selected':'')+'>'+esc(RECON_PHASE2_RESPONSE_LABELS[k])+'</option>';}).join('')+
+        '</select>';
+      if(a.response==='amount_changed'){
+        html+='<div style="margin-top:6px;font-size:13px">Actual amount <input type="text" placeholder="differs from $'+fc(Math.abs(ev.a))+'" value="'+esc(a.actualAmount||'')+'" onblur="setPhase2ActualAmount(\''+ev.eid+'\',this)" style="font-size:13px"></div>';
+      }
+      if(a.response==='wd_mismatch'){
+        html+='<div style="margin-top:6px"><textarea placeholder="Required: explain why this does not apply this week" onblur="setPhase2Notes(\''+ev.eid+'\',this)" style="width:100%;font-size:13px;min-height:40px">'+esc(a.notes||'')+'</textarea></div>';
+      }
+      if(_reconBasis==='available_balance'&&RECON_PHASE2_REFLECTION_BRANCHES.indexOf(a.response)>=0){
+        html+='<div style="margin-top:6px;font-size:13px">Does the balance you\'re about to enter already reflect this debit? '+
+          '<select onchange="setPhase2Reflection(\''+ev.eid+'\',this.value)">'+
+          '<option value=""'+(!a.reflection?' selected':'')+'>Select…</option>'+
+          '<option value="yes"'+(a.reflection==='yes'?' selected':'')+'>Yes, already reflected</option>'+
+          '<option value="no"'+(a.reflection==='no'?' selected':'')+'>No, not reflected</option>'+
+          '<option value="not_sure"'+(a.reflection==='not_sure'?' selected':'')+'>Not sure</option>'+
+          '</select></div>';
+      }
+      if(a.response){
+        html+='<div style="margin-top:4px"><button onclick="clearPhase2Answer(\''+ev.eid+'\')" style="font-size:12px;background:none;border:none;color:var(--muted);cursor:pointer;text-decoration:underline;padding:0">Clear</button></div>';
+      }
+      html+='</div>';
+    });
+    html+='<div style="color:var(--muted);font-size:12px;margin-top:8px">Recording one of these creates a tracked cash commitment on save. Prompts you leave unanswered do not block saving.</div>';
   }
   html+='</div>';
   return html;

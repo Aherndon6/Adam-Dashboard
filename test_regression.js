@@ -9017,6 +9017,65 @@ test('Phase 2 gate: existing Phase 0/1 gate (canCompleteReconPhase01) is unchang
 });
 })();
 
+console.log('\n── Section 5F1-W: Phase 2 prompt UI (Step 8.5: renderReconPhase01 renders + wires setters) ──');
+(function(){
+var W4EID='2026mw4_rent_tiffany_dye_2026_07_01';
+function render(basis,answers,commits){
+  var _cd=commitmentData,_b=_reconBasis,_a=_reconPhase2Answers,_ov=overrideData;
+  overrideData={};commitmentData=commits||[];_reconBasis=basis;_reconPhase2Answers=answers||{};
+  var html;
+  try{html=renderReconPhase01({num:4});}finally{commitmentData=_cd;_reconBasis=_b;_reconPhase2Answers=_a;overrideData=_ov;}
+  return html;
+}
+
+test('Phase 2 UI: renders a Phase 2 section with a prompt per current-week candidate, wired to setPhase2Response, using the metadata label (not ev.l)',()=>{
+  var html=render('posted_current_balance',{},[]);
+  assert(html.indexOf('Phase 2: Current-week protected obligations')>=0,'Phase 2 section header uses a colon');
+  assert(html.indexOf('Phase 2 — Current-week protected obligations')<0,'Phase 2 header must not use an em dash (no-em-dash style rule)');
+  assert(html.indexOf("setPhase2Response('"+W4EID+"'")>=0,'response select wired to setPhase2Response for the week-4 rent candidate');
+  assert(html.indexOf('Rent (Zelle to Tiffany Dye)')>=0,'uses metadata displayLabel');
+  assert(html.indexOf('Rent $2,000')<0,'must not render the raw WD label ev.l');
+});
+
+test('Phase 2 UI: amount_changed shows an actual-amount input wired to setPhase2ActualAmount',()=>{
+  var ans={};ans[W4EID]={response:'amount_changed'};
+  assert(render('posted_current_balance',ans,[]).indexOf("setPhase2ActualAmount('"+W4EID+"'")>=0,'actual-amount input wired to setPhase2ActualAmount');
+});
+
+test('Phase 2 UI: wd_mismatch shows a required notes textarea wired to setPhase2Notes',()=>{
+  var ans={};ans[W4EID]={response:'wd_mismatch'};
+  assert(render('posted_current_balance',ans,[]).indexOf("setPhase2Notes('"+W4EID+"'")>=0,'notes textarea wired to setPhase2Notes');
+});
+
+test('Phase 2 UI: reflection follow-up appears only under available_balance for an eligible branch, wired to setPhase2Reflection',()=>{
+  var ans={};ans[W4EID]={response:'bank_pending'};
+  assert(render('posted_current_balance',ans,[]).indexOf("setPhase2Reflection('"+W4EID+"'")<0,'no reflection select under posted basis');
+  assert(render('available_balance',ans,[]).indexOf("setPhase2Reflection('"+W4EID+"'")>=0,'reflection select present under available_balance + bank_pending');
+});
+
+test('Phase 2 UI: an answered prompt shows a Clear control wired to clearPhase2Answer; an unanswered prompt does not',()=>{
+  var ans={};ans[W4EID]={response:'not_paid_yet'};
+  assert(render('posted_current_balance',ans,[]).indexOf("clearPhase2Answer('"+W4EID+"'")>=0,'Clear control wired for an answered prompt');
+  assert(render('posted_current_balance',{},[]).indexOf("clearPhase2Answer('"+W4EID+"'")<0,'no Clear control on an unanswered prompt');
+});
+
+test('Phase 2 UI: a candidate already having a commitment row is not prompted (dedupe)',()=>{
+  var html=render('posted_current_balance',{},[{expected_item_id:W4EID,status:'planned'}]);
+  assert(html.indexOf("setPhase2Response('"+W4EID+"'")<0,'a candidate with an existing commitment row must not be prompted');
+});
+
+test('Phase 2 UI: prompts are scoped to the reconciled week (numeric); a week-3 eid never appears in the week-4 form',()=>{
+  assert(render('posted_current_balance',{},[]).indexOf('2026mw3_disney_visa_2026_06_23')<0,'a week-3 eid must not appear in the week-4 form');
+});
+
+test('Phase 2 UI: empty-state shown when all candidates already recorded, and it is NOT the Step 9 count banner',()=>{
+  var commits=getPhase2WDCandidates(WD,4,[]).map(function(ev){return{expected_item_id:ev.eid,status:'planned'};});
+  var html=render('posted_current_balance',{},commits);
+  assert(html.indexOf('No unrecorded protected obligations')>=0,'empty-state message present when all candidates are recorded');
+  assert(html.indexOf('not yet recorded')<0,'must NOT render the Step 9 count banner (deferred)');
+});
+})();
+
 console.log('\n── Section 5F1-M: Reconciliation Form Phase 0/1 — UI logic + state machine (persistence wired via 5F-1 RPC bridge — see 5F1-RPC-BRIDGE below) ──');
 (function(){
 // IMPORTANT — read before trusting the AC-77..92 test names below at face
