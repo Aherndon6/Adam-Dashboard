@@ -857,7 +857,7 @@ button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-vis
 // ── Constants (unchanged) ──────────────────────────────────────────────────
 // Simplified architecture — $8,250 total from LC · $6,500 operating floor · no legacy mechanics
 // Real-world moves: keep $2,250 in chk, move $2,750 sav→chk, move $1,000 LC→chk, move $2,250 LC→chk (Option 1 correction)
-const BUILD_TS='2026-07-03T11:15:17'; // updated each push — local time string
+const BUILD_TS='2026-07-03T14:42:07'; // updated each push — local time string
 const START_CHK=18037.73,START_SAV=3772.77,START_AMX=103.64,START_TAX=0,START_LC=13488.88;
 const EF_AMT=13488.88; // LC/EF balance — static this model year (no transfers in or out)
 const BASE_TAX=521.36,RET_SAV_XFR=3772.74;
@@ -1694,12 +1694,14 @@ function getCashAvailabilityEngine(actualBalanceCents,floorCents,commitments,sou
 // WD/effectiveWD, and nothing in runModel()'s balance calculations calls or
 // depends on any function below — this is a metadata layer only, not wired
 // into the cash model.
+// Phase 2 additive: payee = clean DB payee for cash_commitments (never ev.l);
+// displayLabel = UI-facing reconciliation prompt label. No em dashes.
 var WD_PROTECTED_PAYEE_RULES=[
-  {test:function(l){return/AMEX\s+Gold/i.test(l);},           normalized:'amex_gold',        cc:'credit_card_payment', rod:'protected_required'},
-  {test:function(l){return/AMEX\s+Plat(inum)?/i.test(l);},    normalized:'amex_platinum',    cc:'credit_card_payment', rod:'protected_required'},
-  {test:function(l){return/Disney\s+Visa/i.test(l);},         normalized:'disney_visa',      cc:'credit_card_payment', rod:'protected_required'},
-  {test:function(l){return/Rent\b.*Tiffany\s+Dye/i.test(l);}, normalized:'rent_tiffany_dye', cc:'rent',                rod:'protected_required'},
-  {test:function(l){return/Kia\s+payment/i.test(l);},         normalized:'kia_payment',      cc:'bill_payment',        rod:'protected_required'}
+  {test:function(l){return/AMEX\s+Gold/i.test(l);},           normalized:'amex_gold',        cc:'credit_card_payment', rod:'protected_required', payee:'AMEX Gold',          displayLabel:'AMEX Gold payment'},
+  {test:function(l){return/AMEX\s+Plat(inum)?/i.test(l);},    normalized:'amex_platinum',    cc:'credit_card_payment', rod:'protected_required', payee:'AMEX Platinum',      displayLabel:'AMEX Platinum payment'},
+  {test:function(l){return/Disney\s+Visa/i.test(l);},         normalized:'disney_visa',      cc:'credit_card_payment', rod:'protected_required', payee:'Disney Visa',        displayLabel:'Disney Visa payment'},
+  {test:function(l){return/Rent\b.*Tiffany\s+Dye/i.test(l);}, normalized:'rent_tiffany_dye', cc:'rent',                rod:'protected_required', payee:'Rent (Tiffany Dye)', displayLabel:'Rent (Zelle to Tiffany Dye)'},
+  {test:function(l){return/Kia\s+payment/i.test(l);},         normalized:'kia_payment',      cc:'bill_payment',        rod:'protected_required', payee:'Kia payment',        displayLabel:'Kia auto payment'}
 ];
 // Extracts an MM/DD due date from a WD event label. Prefers an explicit
 // "due M/D" mention (AMEX/Disney labels); falls back to the first "(M/D"
@@ -1738,10 +1740,17 @@ function tagProtectedWDEvent(ev,weekNum){
   if(!rule)return Object.assign({},ev);
   var md=_wdExtractDueMD(ev.l);
   var dueDateStr=md?_wdDueDateStr(md.month,md.day,_wdResolveDueYear(md.month)):null;
+  // Phase 2 additive: hyphen-delimited ISO (YYYY-MM-DD) for the cash_commitments.due_date
+  // DATE column. Distinct from the eid's underscore-delimited due-date token, which is
+  // left unchanged so existing eid identity/tests are untouched.
+  var dueDateISO=md?(_wdResolveDueYear(md.month)+'-'+_wdPad2(md.month)+'-'+_wdPad2(md.day)):null;
   return Object.assign({},ev,{
     eid:dueDateStr?buildExpectedItemId(PLAN_YEAR,weekNum,rule.normalized,dueDateStr):null,
     cc:rule.cc,
-    rod:rule.rod
+    rod:rule.rod,
+    payee:rule.payee,
+    displayLabel:rule.displayLabel,
+    due_date:dueDateISO
   });
 }
 // Returns a tagged COPY of a WD-shaped array (pass WD, or later effectiveWD).
@@ -1761,7 +1770,12 @@ function getTaggedWD(wdArray){
       taggedEvs=taggedEvs.concat([{
         l:'Commission tax transfer — Vio Bank Tax Reserve (projected)',t:'ob',a:-ct,
         eid:buildExpectedItemId(PLAN_YEAR,num,'tax_transfer_vio',dueDateStr),
-        cc:'tax_transfer',rod:'protected_required',synthetic:true
+        cc:'tax_transfer',rod:'protected_required',synthetic:true,
+        // Phase 2 additive: synthetic event is not in WD_PROTECTED_PAYEE_RULES, so its
+        // payee/displayLabel are set explicitly here; due_date uses the week-start proxy.
+        payee:'Commission tax transfer (Vio Bank)',
+        displayLabel:'Commission tax reserve (Vio Bank)',
+        due_date:wkStart.getFullYear()+'-'+_wdPad2(wkStart.getMonth()+1)+'-'+_wdPad2(wkStart.getDate())
       }]);
     }
     var copy=wd.slice();

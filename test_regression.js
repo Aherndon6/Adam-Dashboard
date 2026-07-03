@@ -8516,6 +8516,43 @@ test('WD tagging: non-protected events (paychecks, and a constructed unmatched o
   var untaggedOb=tagProtectedWDEvent({l:'Costco Visa ~$300 due ~7/5',t:'ob',a:-300},7);
   assert(!untaggedOb.eid&&!untaggedOb.cc&&!untaggedOb.rod,'a non-protected-payee ob event must not be tagged, got '+JSON.stringify(untaggedOb));
 });
+
+// ── Phase 2 Step 1: additive payee/displayLabel/due_date metadata (eid unchanged) ──
+test('WD tagging (Phase 2 metadata): every rule-matched tagged event carries a clean payee/displayLabel, never ev.l',()=>{
+  var expect={amex_gold:'AMEX Gold',amex_platinum:'AMEX Platinum',disney_visa:'Disney Visa',rent_tiffany_dye:'Rent (Tiffany Dye)',kia_payment:'Kia payment'};
+  var rows=allTaggedEvents().filter(function(ev){return ev.eid&&!ev.synthetic;});
+  assertGt(rows.length,40,'sanity: expected many rule-matched tagged events, got '+rows.length);
+  rows.forEach(function(ev){
+    assert(ev.payee&&ev.payee.length>0,'tagged event must have a non-empty payee, got '+JSON.stringify(ev));
+    assert(ev.displayLabel&&ev.displayLabel.length>0,'tagged event must have a non-empty displayLabel, got '+JSON.stringify(ev));
+    assert(ev.payee!==ev.l,'payee must never be the raw WD label ev.l ('+ev.payee+')');
+    var norm=ev.eid.split('_').slice(1,-3).join('_');
+    if(expect[norm])assert(ev.payee===expect[norm],'payee mismatch for '+norm+': expected '+expect[norm]+', got '+ev.payee);
+  });
+});
+
+test('WD tagging (Phase 2 metadata): synthetic tax-transfer event carries explicit payee/displayLabel with no em dashes',()=>{
+  var synth=tagged.find(function(wd){return wd[0]===6;})[4].find(function(ev){return ev.synthetic===true;});
+  assert(synth,'precondition: synthetic tax event exists on commission week 6');
+  assert(synth.payee==='Commission tax transfer (Vio Bank)','got payee '+synth.payee);
+  assert(synth.displayLabel==='Commission tax reserve (Vio Bank)','got displayLabel '+synth.displayLabel);
+  assert(synth.payee.indexOf('—')<0&&synth.displayLabel.indexOf('—')<0,'Phase 2 payee/display metadata must not use em dashes');
+});
+
+test('WD tagging (Phase 2 metadata): due_date is additive ISO YYYY-MM-DD and leaves the eid due-date token unchanged',()=>{
+  var disney=tagged.find(function(wd){return wd[0]===3;})[4].find(function(ev){return ev.l.indexOf('Disney Visa')>=0;});
+  assert(disney.due_date==='2026-06-23','expected hyphen-ISO due_date 2026-06-23, got '+disney.due_date);
+  assert(disney.eid==='2026mw3_disney_visa_2026_06_23','eid due-date token must stay underscore-delimited and unchanged, got '+disney.eid);
+  var kia=tagged.find(function(wd){return wd[0]===1;})[4].find(function(ev){return ev.l.indexOf('Kia payment')>=0;});
+  assert(kia.due_date==='2026-06-07','expected 2026-06-07, got '+kia.due_date);
+  var synth=tagged.find(function(wd){return wd[0]===6;})[4].find(function(ev){return ev.synthetic===true;});
+  assert(/^\d{4}-\d{2}-\d{2}$/.test(synth.due_date),'synthetic due_date must be ISO YYYY-MM-DD, got '+synth.due_date);
+});
+
+test('WD tagging (Phase 2 metadata): non-protected ob events get no payee/displayLabel/due_date',()=>{
+  var untaggedOb=tagProtectedWDEvent({l:'Costco Visa ~$300 due ~7/5',t:'ob',a:-300},7);
+  assert(untaggedOb.payee===undefined&&untaggedOb.displayLabel===undefined&&untaggedOb.due_date===undefined,'unmatched ob event must carry no Phase 2 metadata, got '+JSON.stringify(untaggedOb));
+});
 })();
 
 console.log('\n── Section 5F1-M: Reconciliation Form Phase 0/1 — UI logic + state machine (persistence wired via 5F-1 RPC bridge — see 5F1-RPC-BRIDGE below) ──');
@@ -8866,7 +8903,7 @@ test('5F1-NOTSTARTED: 11 UI-layer ACs are tracked as blocked, not silently skipp
   assert(blockedACs.length===11,'expected 11 blocked ACs, found '+blockedACs.length);
 });
 console.log('  ⚠ AC-'+blockedACs.join(', AC-')+' — BLOCKED pending the 4-phase reconciliation form / dashboard verdict rendering (Build Sequence steps 10-12)');
-console.log('  ⚠ AC-76 — process-check only (grep -c \'^test(\' baseline), not a runtime assertion; verified manually at Step 1 (832 confirmed)');
+console.log('  ⚠ AC-76 — process-check only (grep -c \'^test(\' baseline), not a runtime assertion; re-grep at build start is authoritative. 2026-07-03 Phase 2 Step 1 re-grep: grep -c \'^test(\' = 999, executed suite = 1081 passing (prior stale 832 note corrected; executed count is the working regression baseline)');
 })();
 
 // ─────────────────────────────────────────────────────────────────────────
