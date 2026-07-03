@@ -8948,6 +8948,75 @@ test('Phase 2 reflection completeness: ineligible branch, non-available basis, a
 });
 })();
 
+console.log('\n── Section 5F1-U: Phase 2 save gate composition (Step 7: answered-row completeness) ──');
+(function(){
+var EV={eid:'2026mw4_rent_tiffany_dye_2026_07_01',payee:'Rent (Tiffany Dye)',cc:'rent',rod:'protected_required',a:-2000,due_date:'2026-07-01'};
+
+test('Phase 2 gate: isPhase2AnswerComplete — unanswered and simple answered rows are complete',()=>{
+  assert(isPhase2AnswerComplete(EV,undefined,'posted_current_balance')===true,'unanswered -> complete (never blocks)');
+  assert(isPhase2AnswerComplete(EV,{response:'not_paid_yet'},'posted_current_balance')===true,'not_paid_yet -> complete');
+});
+
+test('Phase 2 gate: wd_mismatch requires non-empty notes',()=>{
+  assert(isPhase2AnswerComplete(EV,{response:'wd_mismatch'},'posted_current_balance')===false,'no notes -> incomplete');
+  assert(isPhase2AnswerComplete(EV,{response:'wd_mismatch',notes:'   '},'posted_current_balance')===false,'whitespace notes -> incomplete');
+  assert(isPhase2AnswerComplete(EV,{response:'wd_mismatch',notes:'due next week'},'posted_current_balance')===true,'notes -> complete');
+});
+
+test('Phase 2 gate: amount_changed requires a valid actual (composes isPhase2AmountChangedComplete)',()=>{
+  assert(isPhase2AnswerComplete(EV,{response:'amount_changed'},'posted_current_balance')===false,'no actual -> incomplete');
+  assert(isPhase2AnswerComplete(EV,{response:'amount_changed',actualAmount:'2000'},'posted_current_balance')===false,'equal to expected -> incomplete');
+  assert(isPhase2AnswerComplete(EV,{response:'amount_changed',actualAmount:'1850.50'},'posted_current_balance')===true,'valid differing actual -> complete');
+});
+
+test('Phase 2 gate: available_balance follow-up required for eligible branch (composes isPhase2ReflectionComplete)',()=>{
+  assert(isPhase2AnswerComplete(EV,{response:'bank_pending'},'available_balance')===false,'no reflection under available_balance -> incomplete');
+  assert(isPhase2AnswerComplete(EV,{response:'bank_pending',reflection:'no'},'available_balance')===true,'reflection answered -> complete');
+  assert(isPhase2AnswerComplete(EV,{response:'bank_pending'},'posted_current_balance')===true,'posted basis: no follow-up -> complete');
+});
+
+test('Phase 2 gate: canCompleteReconPhase2 — all answered complete true; one incomplete answered false; unanswered ignored',()=>{
+  var EV2={eid:'2026mw4_rent_tiffany_dye_2026_07_02',payee:'Rent (Tiffany Dye)',cc:'rent',rod:'protected_required',a:-2000,due_date:'2026-07-02'};
+  var cands=[EV,EV2];
+  assert(canCompleteReconPhase2(cands,{},'posted_current_balance')===true,'no answers -> vacuously complete (unanswered never block)');
+  var a1={};a1[EV.eid]={response:'wd_mismatch',notes:'x'};a1[EV2.eid]={response:'not_paid_yet'};
+  assert(canCompleteReconPhase2(cands,a1,'posted_current_balance')===true,'all answered complete -> true');
+  var a2={};a2[EV.eid]={response:'wd_mismatch'}; // missing notes; EV2 left unanswered
+  assert(canCompleteReconPhase2(cands,a2,'posted_current_balance')===false,'one incomplete answered row -> false');
+});
+
+test('Phase 2 gate: reconEffectiveWD() with no overrides returns the WD rows (single source for runModel + gate)',()=>{
+  var _ov=overrideData;
+  try{
+    overrideData={};
+    var e=reconEffectiveWD();
+    assert(e.length===WD.length,'no-override effectiveWD length matches WD, got '+e.length);
+    assert(e[3][0]===WD[3][0]&&e[3][4]===WD[3][4],'week rows pass through unchanged when no override');
+  }finally{overrideData=_ov;}
+});
+
+test('Phase 2 gate: canPersistReconNow composes Phase 0/1 AND answered Phase 2 completeness (source check)',()=>{
+  var src=canPersistReconNow.toString();
+  assert(/canCompleteReconPhase01/.test(src),'must still require Phase 0/1 completeness');
+  assert(/canCompleteReconPhase2/.test(src),'must add Phase 2 answered-row completeness');
+});
+
+test('Phase 2 gate: reconSaveBlockedReason keeps order basis -> Phase 1 -> answered Phase 2, no unanswered blocker',()=>{
+  var src=reconSaveBlockedReason.toString();
+  var iBasis=src.indexOf('balance basis');
+  var iP1=src.indexOf('Phase 1 item');
+  var iP2=src.indexOf('current-week items you started');
+  assert(iBasis>=0&&iP1>=0&&iP2>=0,'all three blocked reasons present');
+  assert(iBasis<iP1&&iP1<iP2,'order must be basis -> Phase 1 -> Phase 2');
+  assert(!/unanswered/i.test(src),'must never emit an unanswered-Phase-2 blocker');
+});
+
+test('Phase 2 gate: existing Phase 0/1 gate (canCompleteReconPhase01) is unchanged, no Phase 2 coupling added',()=>{
+  var src=canCompleteReconPhase01.toString();
+  assert(!/canCompleteReconPhase2|_reconPhase2Answers|getPhase2WDCandidates/.test(src),'Phase 0/1 gate must not reference Phase 2 (Phase 2 layered in canPersistReconNow only)');
+});
+})();
+
 console.log('\n── Section 5F1-M: Reconciliation Form Phase 0/1 — UI logic + state machine (persistence wired via 5F-1 RPC bridge — see 5F1-RPC-BRIDGE below) ──');
 (function(){
 // IMPORTANT — read before trusting the AC-77..92 test names below at face

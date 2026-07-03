@@ -857,7 +857,7 @@ button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-vis
 // ── Constants (unchanged) ──────────────────────────────────────────────────
 // Simplified architecture — $8,250 total from LC · $6,500 operating floor · no legacy mechanics
 // Real-world moves: keep $2,250 in chk, move $2,750 sav→chk, move $1,000 LC→chk, move $2,250 LC→chk (Option 1 correction)
-const BUILD_TS='2026-07-03T16:16:25'; // updated each push — local time string
+const BUILD_TS='2026-07-03T16:38:31'; // updated each push — local time string
 const START_CHK=18037.73,START_SAV=3772.77,START_AMX=103.64,START_TAX=0,START_LC=13488.88;
 const EF_AMT=13488.88; // LC/EF balance — static this model year (no transfers in or out)
 const BASE_TAX=521.36,RET_SAV_XFR=3772.74;
@@ -2038,6 +2038,48 @@ function isPhase2ReflectionComplete(answer,basis){
   return answer.reflection==='yes'||answer.reflection==='no'||answer.reflection==='not_sure';
 }
 
+// ── Phase 5F-1 Phase 2 (Step 7): composite answered-row completeness ─────────────
+// An answered Phase 2 row is complete only when: wd_mismatch has non-empty notes;
+// amount_changed passes the amount check; and any available_balance follow-up is
+// answered. Unanswered rows (no response) are vacuously complete, so unanswered
+// prompts NEVER block the save (they rely on backfill detection, not a hard gate).
+function isPhase2AnswerComplete(ev,answer,basis){
+  if(!answer||!answer.response)return true;
+  if(answer.response==='wd_mismatch'&&!(answer.notes&&answer.notes.trim().length>0))return false;
+  if(!isPhase2AmountChangedComplete(ev,answer))return false;
+  if(!isPhase2ReflectionComplete(answer,basis))return false;
+  return true;
+}
+// Every ANSWERED current-week Phase 2 candidate is internally complete. Iterates the
+// candidates; a candidate with no staged answer is vacuously complete.
+function canCompleteReconPhase2(candidates,answers,basis){
+  return(candidates||[]).every(function(ev){
+    return isPhase2AnswerComplete(ev,(answers&&answers[ev.eid]),basis);
+  });
+}
+
+// Override-aware effective WD array (single source of truth). runModel uses this for
+// the cash simulation; the Phase 2 save gate uses it (via getPhase2WDCandidates) to get
+// the current week's protected candidates. Extracted verbatim from runModel's prior
+// inline build so the two paths agree and cannot drift. Reads WD + overrideData only.
+function reconEffectiveWD(){
+  var effectiveWD=WD.map(function(wd){
+    var num=wd[0],dates=wd[1],evs=wd[4],ct=wd[5],ca=wd[6];
+    var ov=overrideData[num];
+    if(!ov)return wd;
+    var effEvs=(ov.events_json&&ov.events_json.length)?ov.events_json:evs;
+    var effIn=effEvs.filter(function(e){return e.t==='in';}).map(function(e){return e.a;});
+    var effObs=effEvs.filter(function(e){return e.t==='ob';}).map(function(e){return Math.abs(e.a);});
+    var origCalNote=wd[7];
+    return[num,ov.dates||dates,effIn,effObs,effEvs,ov.ct!=null?ov.ct:ct,ov.ca!=null?ov.ca:ca,origCalNote||''];
+  });
+  Object.values(overrideData).filter(function(ov){return ov.is_custom;}).sort(function(a,b){return a.week_num-b.week_num;}).forEach(function(ov){
+    var effEvs=ov.events_json||[];
+    effectiveWD.push([ov.week_num,ov.dates||'Custom week',effEvs.filter(function(e){return e.t==='in';}).map(function(e){return e.a;}),effEvs.filter(function(e){return e.t==='ob';}).map(function(e){return Math.abs(e.a);}),effEvs,ov.ct||0,ov.ca||0,'']);
+  });
+  return effectiveWD;
+}
+
 function runModel(akGoal,rtGoal,flags){
   flags=flags||goalFlags;
   var akTarget=akGoal!=null?akGoal:((GOALS_REGISTRY.find(function(g){return g.id==='alaska';})||{}).target||7000);
@@ -2065,19 +2107,9 @@ function runModel(akGoal,rtGoal,flags){
   var weeks=[];
   function r(n){return Math.round(n*100)/100}
   function sm(b,a,f){return Math.max(0,Math.min(r(a),r(r(b)-r(f))))}
-  const effectiveWD=WD.map(function(wd){
-    const[num,dates,,,evs,ct,ca]=wd;
-    const ov=overrideData[num];
-    if(!ov)return wd;
-    const effEvs=(ov.events_json&&ov.events_json.length)?ov.events_json:evs;
-    const effIn=effEvs.filter(function(e){return e.t==='in';}).map(function(e){return e.a;});
-    const effObs=effEvs.filter(function(e){return e.t==='ob';}).map(function(e){return Math.abs(e.a);});
-    const[,,,,,,,origCalNote]=wd;return[num,ov.dates||dates,effIn,effObs,effEvs,ov.ct!=null?ov.ct:ct,ov.ca!=null?ov.ca:ca,origCalNote||''];
-  });
-  Object.values(overrideData).filter(function(ov){return ov.is_custom;}).sort(function(a,b){return a.week_num-b.week_num;}).forEach(function(ov){
-    var effEvs=ov.events_json||[];
-    effectiveWD.push([ov.week_num,ov.dates||'Custom week',effEvs.filter(function(e){return e.t==='in';}).map(function(e){return e.a;}),effEvs.filter(function(e){return e.t==='ob';}).map(function(e){return Math.abs(e.a);}),effEvs,ov.ct||0,ov.ca||0,'']);
-  });
+  // effectiveWD build extracted to reconEffectiveWD() (Step 7) so the Phase 2 save gate
+  // and this cash simulation share one override-aware source and cannot drift.
+  const effectiveWD=reconEffectiveWD();
   // ── Budget Rules — Phase 5 delta overlay ─────────────────────────────
   ruleAudit=[];
   var ruleContext=buildBudgetRuleContext(budgetRules);
@@ -3468,15 +3500,24 @@ function canCompleteReconPhase01(weekNum){
 // fail-safe is gone. Gate is just: Phase 0 answered, every Phase 1 row
 // resolved.
 function canPersistReconNow(weekNum){
-  return canCompleteReconPhase01(weekNum);
+  if(!canCompleteReconPhase01(weekNum))return false;
+  // Phase 2 (Step 7): only ANSWERED current-week rows must be internally complete;
+  // unanswered prompts never block (backfill detection, not a hard gate). Layered here,
+  // not inside canCompleteReconPhase01, so the existing Phase 0/1 gate is unchanged.
+  return canCompleteReconPhase2(getPhase2WDCandidates(reconEffectiveWD(),weekNum,commitmentData),_reconPhase2Answers,_reconBasis);
 }
 function canSaveRecon(weekNum){return canPersistReconNow(weekNum);}
 // Shared blocked-reason text — used by both the disabled-button hint and
 // saveRecon()'s defense-in-depth guard, so the two can never drift apart.
 function reconSaveBlockedReason(weekNum){
+  // Order: (1) no basis, (2) incomplete Phase 1, (3) incomplete ANSWERED Phase 2.
+  // A Phase 2 prompt left with no response does not block save; only an answered-but-
+  // incomplete row produces the third message.
   if(!_reconBasis)return'Select a balance basis above before saving.';
   var rows=getPhase1Commitments(commitmentData,weekNum);
   if(rows.length&&!canCompleteReconPhase01(weekNum))return'Select a balance basis above and respond to every Phase 1 item before saving.';
+  if(!canCompleteReconPhase2(getPhase2WDCandidates(reconEffectiveWD(),weekNum,commitmentData),_reconPhase2Answers,_reconBasis))
+    return'Finish the current-week items you started: a changed amount, mismatch note, or reflection answer is missing.';
   return'';
 }
 function renderReconPhase01(w){
