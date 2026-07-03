@@ -857,7 +857,7 @@ button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-vis
 // ── Constants (unchanged) ──────────────────────────────────────────────────
 // Simplified architecture — $8,250 total from LC · $6,500 operating floor · no legacy mechanics
 // Real-world moves: keep $2,250 in chk, move $2,750 sav→chk, move $1,000 LC→chk, move $2,250 LC→chk (Option 1 correction)
-const BUILD_TS='2026-07-03T15:33:06'; // updated each push — local time string
+const BUILD_TS='2026-07-03T16:16:25'; // updated each push — local time string
 const START_CHK=18037.73,START_SAV=3772.77,START_AMX=103.64,START_TAX=0,START_LC=13488.88;
 const EF_AMT=13488.88; // LC/EF balance — static this model year (no transfers in or out)
 const BASE_TAX=521.36,RET_SAV_XFR=3772.74;
@@ -1970,12 +1970,21 @@ function buildPhase2NewCommitments(candidates,answers,basis,weekNum){
       amount_cents:_dollarsToCents(ev.a),
       due_date:ev.due_date||null
     };
+    // Reflection follow-up (Step 6): only under available_balance for the three follow-up
+    // eligible branches. Yes -> reflected=week. No -> reflected null. Not sure -> reflected
+    // null and, for paid_initiated only, status forced to bank_pending (RPC-valid, no
+    // resolution_type). bank_pending + not_sure already is bank_pending; amount_changed +
+    // not_sure keeps carried_unresolved/amount_changed (accepted ruling: bank_pending +
+    // resolution_type=amount_changed is an RPC-invalid active-status row).
     var reflectsYes=(basis==='available_balance'&&a.reflection==='yes');
+    var notSure=(basis==='available_balance'&&a.reflection==='not_sure');
     switch(resp){
       case'not_paid_yet':
         row.status='planned';row.reflected_model_week=null;row.resolved_model_week=null;break;
       case'paid_initiated':
-        row.status='initiated';row.reflected_model_week=reflectsYes?weekNum:null;row.resolved_model_week=null;break;
+        row.status='initiated';row.reflected_model_week=reflectsYes?weekNum:null;row.resolved_model_week=null;
+        if(notSure)row.status='bank_pending'; // paid_initiated + not_sure -> bank_pending (no rt conflict)
+        break;
       case'bank_pending':
         row.status='bank_pending';row.reflected_model_week=reflectsYes?weekNum:null;row.resolved_model_week=null;break;
       case'cleared_reflected':
@@ -2013,6 +2022,20 @@ function isPhase2AmountChangedComplete(ev,answer){
   var actualCents=_dollarsToCents(answer.actualAmount);
   var expectedCents=_dollarsToCents(ev&&ev.a);
   return actualCents>0&&actualCents!==expectedCents;
+}
+
+// ── Phase 5F-1 Phase 2 (Step 6): reflection follow-up completeness ───────────────
+// Pure. Under available_balance basis, the three follow-up-eligible branches are not
+// internally complete until the reflection follow-up is answered (yes/no/not_sure).
+// Any other basis or branch has no follow-up and is vacuously complete. Never forces a
+// prompt to be answered. This is the reflection slice of the answered-row completeness
+// check the save gate (Step 7) composes.
+var RECON_PHASE2_REFLECTION_BRANCHES=['paid_initiated','bank_pending','amount_changed'];
+function isPhase2ReflectionComplete(answer,basis){
+  if(!answer||!answer.response)return true;
+  if(basis!=='available_balance')return true;
+  if(RECON_PHASE2_REFLECTION_BRANCHES.indexOf(answer.response)<0)return true;
+  return answer.reflection==='yes'||answer.reflection==='no'||answer.reflection==='not_sure';
 }
 
 function runModel(akGoal,rtGoal,flags){

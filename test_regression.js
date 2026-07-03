@@ -8886,6 +8886,68 @@ test('Phase 2 amount validation: builder uses the same strict parser (comma-form
 });
 })();
 
+console.log('\n── Section 5F1-T: Phase 2 reflection follow-up (Step 6: not_sure overrides + reflection completeness) ──');
+(function(){
+var EV={eid:'2026mw4_rent_tiffany_dye_2026_07_01',payee:'Rent (Tiffany Dye)',cc:'rent',rod:'protected_required',a:-2000,due_date:'2026-07-01'};
+function build(resp,extra,basis){
+  var ans={};ans[EV.eid]=Object.assign({response:resp},extra||{});
+  return buildPhase2NewCommitments([EV],ans,basis||'available_balance',4)[0];
+}
+
+test('Phase 2 reflection: paid_initiated + available_balance + yes -> reflected=week, status initiated',()=>{
+  var r=build('paid_initiated',{reflection:'yes'});
+  assert(r.status==='initiated'&&r.reflected_model_week===4,'yes -> reflected=week, initiated');
+});
+
+test('Phase 2 reflection: paid_initiated + available_balance + no -> reflected null, status initiated',()=>{
+  var r=build('paid_initiated',{reflection:'no'});
+  assert(r.status==='initiated'&&r.reflected_model_week===null,'no -> reflected null, initiated');
+});
+
+test('Phase 2 reflection: paid_initiated + available_balance + not_sure -> status forced to bank_pending, reflected null, no resolution_type',()=>{
+  var r=build('paid_initiated',{reflection:'not_sure'});
+  assert(r.status==='bank_pending','not_sure -> bank_pending, got '+r.status);
+  assert(r.reflected_model_week===null,'reflected null');
+  assert(r.resolution_type===undefined,'no resolution_type (RPC-valid active status)');
+});
+
+test('Phase 2 reflection: not_sure override does NOT fire off available_balance',()=>{
+  var r=build('paid_initiated',{reflection:'not_sure'},'posted_current_balance');
+  assert(r.status==='initiated'&&r.reflected_model_week===null,'posted basis: no override, stays initiated');
+});
+
+test('Phase 2 reflection: bank_pending No and Not sure produce identical payloads and keep the reserve active (reflected null)',()=>{
+  var no=build('bank_pending',{reflection:'no'});
+  var ns=build('bank_pending',{reflection:'not_sure'});
+  assert(no.status==='bank_pending'&&ns.status==='bank_pending','both bank_pending');
+  assert(no.reflected_model_week===null&&ns.reflected_model_week===null,'both reflected null (reserve active)');
+  assert(JSON.stringify(no)===JSON.stringify(ns),'bank_pending No and Not sure payloads must be identical');
+});
+
+test('Phase 2 reflection: amount_changed + not_sure keeps carried_unresolved/amount_changed, reflected null, NOT bank_pending (accepted ruling)',()=>{
+  var r=build('amount_changed',{reflection:'not_sure',actualAmount:'1850.50'});
+  assert(r.status==='carried_unresolved','must stay carried_unresolved, got '+r.status);
+  assert(r.resolution_type==='amount_changed','must keep amount_changed rt');
+  assert(r.reflected_model_week===null,'reflected null');
+  assert(r.amount_cents===185050&&r.original_amount_cents===200000,'amounts preserved');
+});
+
+test('Phase 2 reflection completeness: eligible branch under available_balance is incomplete until follow-up answered',()=>{
+  assert(isPhase2ReflectionComplete({response:'paid_initiated'},'available_balance')===false,'no reflection -> incomplete');
+  assert(isPhase2ReflectionComplete({response:'paid_initiated',reflection:'yes'},'available_balance')===true,'yes -> complete');
+  assert(isPhase2ReflectionComplete({response:'bank_pending',reflection:'not_sure'},'available_balance')===true,'not_sure -> complete');
+  assert(isPhase2ReflectionComplete({response:'amount_changed'},'available_balance')===false,'amount_changed eligible, no reflection -> incomplete');
+});
+
+test('Phase 2 reflection completeness: ineligible branch, non-available basis, and unanswered are vacuously complete',()=>{
+  assert(isPhase2ReflectionComplete({response:'not_paid_yet'},'available_balance')===true,'not_paid_yet has no follow-up');
+  assert(isPhase2ReflectionComplete({response:'paid_initiated'},'posted_current_balance')===true,'posted basis: no follow-up');
+  assert(isPhase2ReflectionComplete({},'available_balance')===true,'unanswered -> complete');
+  assert(isPhase2ReflectionComplete(null,'available_balance')===true,'null answer -> complete');
+  assert(RECON_PHASE2_REFLECTION_BRANCHES.length===3,'exactly three follow-up-eligible branches');
+});
+})();
+
 console.log('\n── Section 5F1-M: Reconciliation Form Phase 0/1 — UI logic + state machine (persistence wired via 5F-1 RPC bridge — see 5F1-RPC-BRIDGE below) ──');
 (function(){
 // IMPORTANT — read before trusting the AC-77..92 test names below at face
