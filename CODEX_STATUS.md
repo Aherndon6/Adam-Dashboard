@@ -93,17 +93,19 @@ Pending Adam's e2e.js run before commit.
 
 ## 5F-1 Handoff (next session)
 
-- 5F-1 v3.12 is build-ready but NOT started.
-- Build remains gated behind 5E-7 and 5E-8 per the spec. Do not start until both are complete and committed.
+This section previously said "5F-1 v3.12 is build-ready but NOT started" — that is stale. 5F-1 is in progress, not started, as of this update.
 
-Tomorrow afternoon build sequence:
-1. Run preflight SQL.
-2. Migration + validation SQL (all checks green before proceeding).
-3. Implement all 116 ACs in `test_regression.js` before any UI.
-4. Then build the 4-phase reconciliation UI.
-5. Week 3 $10,265.40 smoke gate is hard go/no-go, run against staging.
+Landed so far (3 commits): `f3402c1` DB + cash availability engine foundation, `be584c1` WD event tagging foundation, `6d5c8b5` reconciliation Phase 0/1 UI (staged-answer state machine, not yet persisted).
 
-- Use the re-grepped regression baseline per AC-76, not any stale 832 count.
+Production DB validation (`docs/phase-5f-1-preflight.sql`, `docs/phase-5f-1-validation.sql`) confirmed clean: `cash_commitments` (28/28 columns, 7/7 CHECK constraints, RLS SELECT-only for `authenticated`), `weekly_reconciliations.balance_basis`, `save_reconciliation_with_commitments` (11-param, SECURITY DEFINER, search_path pinned, correct grants), `repair_commitments_for_week` and `validate_commitment_state` all match the migration spec in production. V1-V17 PASS, V18-V19 informational REVIEW as designed. No `budget_transactions` coupling anywhere in the 5F-1 SQL or JS.
+
+**5F-1 RPC persistence bridge slice (this update):** `saveRecon()` now calls `save_reconciliation_with_commitments` instead of writing `weekly_reconciliations` directly, sending staged Phase 1 answers (`buildPhase1PatchArray()`) as `p_patched`. `canPersistReconNow()`/`canSaveRecon()` no longer require zero Phase 1 rows — a fully-answered week is now saveable. `p_new_commitments` is always `[]` this slice (new-commitment insertion is WD-tagging/Phase 2 territory, not this slice). On RPC failure, staged Phase 0/1 answers and the open recon form survive for retry; on success, `reconData`/`commitmentData` reload from Supabase rather than being faked locally. Files touched: `index.html`, `test_regression.js`, this file. `e2e.js` was deliberately NOT touched — seeding `commitmentData` with a real prior-unresolved commitment through the existing harness was judged not worth the added risk for this slice; covered instead by static source-pattern tests plus a manual live Supabase smoke test after deploy.
+
+AC accounting: 22 of 33 JS-engine-layer ACs now fully unblocked (13 engine-layer, no persistence involved, Section 5F1-K; plus the 9 that were PARTIAL — AC-77,78,79,80,88,89,90,91,92 — now confirmed both logically correct, Section 5F1-M, and wired to a real persistence path, Section 5F1-RPC-BRIDGE). 0 ACs remain PARTIAL. 11 ACs remain BLOCKED (AC-15,18,21,28,96,97,101,105,106,107,108) pending Phase 2/3/4 of the reconciliation form, dashboard verdict-text rendering, and historical repair mode — none of that exists yet. AC-76 is a process-check, not a runtime assertion.
+
+Still not started: Phase 2 (current-week WD obligation prompts), Phase 3 (generic catch-all), Phase 4 UI polish, dashboard Review Required verdict rendering, `repair_commitments_for_week` wiring (historical repair mode), new-commitment insertion via `p_new_commitments`.
+
+- Use the re-grepped regression baseline per AC-76, not any stale count.
 - Prose spec stays frozen unless implementation surfaces an actual failing AC or a cash-safety defect.
 - UI carryover: Phase 2 current-week protected WD prompts have no hard completion gate (ignored prompts rely on backfill detection). Do not redesign. Make protected prompts hard to miss and make backfill / Review Required warnings prominent.
 

@@ -857,7 +857,7 @@ button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-vis
 // ── Constants (unchanged) ──────────────────────────────────────────────────
 // Simplified architecture — $8,250 total from LC · $6,500 operating floor · no legacy mechanics
 // Real-world moves: keep $2,250 in chk, move $2,750 sav→chk, move $1,000 LC→chk, move $2,250 LC→chk (Option 1 correction)
-const BUILD_TS='2026-07-03T10:07:07'; // updated each push — local time string
+const BUILD_TS='2026-07-03T11:00:10'; // updated each push — local time string
 const START_CHK=18037.73,START_SAV=3772.77,START_AMX=103.64,START_TAX=0,START_LC=13488.88;
 const EF_AMT=13488.88; // LC/EF balance — static this model year (no transfers in or out)
 const BASE_TAX=521.36,RET_SAV_XFR=3772.74;
@@ -2324,17 +2324,32 @@ function openRecon(n){
 function cancelRecon(){reconOpen=null;_reconBasis=null;_reconPhase1Answers={};renderApp();}
 function confirmReconDelete(n){if(!canWriteFinancials())return;reconDeleteConfirm=n;renderApp();}
 function cancelReconDelete(){reconDeleteConfirm=false;renderApp();}
+// 5F-1 RPC persistence bridge: reload weekly_reconciliations + cash_commitments
+// from Supabase after a successful save_reconciliation_with_commitments call.
+// Deliberately narrow (not a full loadAll()) — avoids re-running unrelated
+// loaders/side effects (goals, wishlist, budget rules, localStorage migration,
+// etc.) on every recon save. Several fields the RPC may set (resolved_at,
+// resolved_by, updated_at, and the merged commitment row shape generally) are
+// server-owned, so they're refetched here rather than faked client-side.
+async function reloadReconAndCommitments(){
+  var h=await getAuthHeaders();
+  var[reconR,cashCommitmentsR]=await Promise.all([
+    fetch(SUPA_URL+'/rest/v1/weekly_reconciliations?select=*',{headers:h}),
+    fetch(SUPA_URL+'/rest/v1/cash_commitments?model_year=eq.'+PLAN_YEAR+'&select=*',{headers:h})
+  ]);
+  if(reconR.ok){
+    var freshRecon={};
+    (await reconR.json()).forEach(function(row){freshRecon[row.week_num]={chk:row.chk,sav:row.sav,amx:row.amx,tax:row.tax,lc:row.lc,balance_basis:row.balance_basis||null,date:new Date(row.recorded_at).toLocaleDateString('en-US',{month:'short',day:'numeric'})};});
+    reconData=freshRecon;
+  }
+  if(cashCommitmentsR.ok){commitmentData=await cashCommitmentsR.json();}
+}
 async function saveRecon(n){
   if(!canWriteFinancials())return;
   // Phase 5F-1 Phase 0/1 gate — client-side re-check (defense in depth; the
   // Save button is also disabled in the DOM via canSaveRecon()/canPersistReconNow()).
-  // This does NOT call save_reconciliation_with_commitments or write to
-  // cash_commitments. Fail-safe: if any Phase 1 rows exist, this function
-  // must refuse to save at all — even if every row is fully answered —
-  // because there is no persistence path for those answers yet, and saving
-  // anyway would silently discard cash-safety responses the user just gave.
-  // balance_basis is persisted below via the existing direct write to
-  // weekly_reconciliations only when there are zero Phase 1 rows to lose.
+  // 5F-1 RPC persistence bridge: this now calls save_reconciliation_with_commitments,
+  // sending staged Phase 1 answers as p_patched — see buildPhase1PatchArray().
   if(!canSaveRecon(n)){
     var gateErrEl=document.querySelector('.recon-error');
     if(gateErrEl){gateErrEl.textContent=reconSaveBlockedReason(n)||'Save is blocked — resolve the items above before saving.';gateErrEl.style.display='block';}
@@ -2344,19 +2359,40 @@ async function saveRecon(n){
   const data={chk:gv('ri_chk'),sav:gv('ri_sav'),amx:gv('ri_amx'),tax:gv('ri_tax'),lc:gv('ri_lc')};
   const now=new Date();
   var prevRecon=reconData[n]?Object.assign({},reconData[n]):undefined; // snapshot
+  // Computed before any local mutation, from the staged answers as they exist
+  // right now — buildPhase1PatchArray(commitments, answers, basis, currentWeek).
+  var patched=buildPhase1PatchArray(commitmentData,_reconPhase1Answers,_reconBasis,n);
   reconData[n]={...data,balance_basis:_reconBasis,date:now.toLocaleDateString('en-US',{month:'short',day:'numeric'})};
   reconSaving=true;renderApp();
   try{
-    var h=await getAuthHeaders();
-    var r=await fetch(SUPA_URL+'/rest/v1/weekly_reconciliations',{method:'POST',headers:Object.assign({},h,{'Prefer':'resolution=merge-duplicates,return=minimal'}),body:JSON.stringify({week_num:n,chk:data.chk,sav:data.sav,amx:data.amx,tax:data.tax,lc:data.lc,balance_basis:_reconBasis,recorded_at:now.toISOString()})});
-    if(!r.ok)throw new Error('HTTP '+r.status);
-    reconSaving=false;reconOpen=null;_reconBasis=null;_reconPhase1Answers={};renderApp();
+    var h=await getAuthHeaders(); // no Prefer header — this is an RPC call, not a table upsert
+    var r=await fetch(SUPA_URL+'/rest/v1/rpc/save_reconciliation_with_commitments',{method:'POST',headers:h,body:JSON.stringify({
+      p_week_num:n,
+      p_model_year:PLAN_YEAR,
+      p_chk:data.chk,p_sav:data.sav,p_amx:data.amx,p_tax:data.tax,p_lc:data.lc,
+      p_balance_basis:_reconBasis,
+      p_recorded_at:now.toISOString(),
+      p_new_commitments:[],
+      p_patched:patched
+    })});
+    if(!r.ok){
+      var errMsg='';
+      try{var errBody=await r.json();errMsg=(errBody&&(errBody.message||errBody.hint||errBody.details))||'';}catch(parseErr){}
+      throw new Error(errMsg||('HTTP '+r.status));
+    }
+    reconSaving=false;reconOpen=null;_reconBasis=null;_reconPhase1Answers={};
+    await reloadReconAndCommitments(); // server-owned fields — reload, don't fake locally
+    renderApp();
   }catch(e){
-    // Roll back local state so stale data is not displayed
+    // Roll back local reconData so stale/optimistic data is not displayed.
+    // _reconBasis/_reconPhase1Answers/reconOpen are deliberately left alone —
+    // a failed RPC call means nothing persisted, so the user's staged Phase
+    // 0/1 answers must survive to allow retry without re-entering anything.
     if(prevRecon!==undefined){reconData[n]=prevRecon;}else{delete reconData[n];}
     console.error('saveRecon:',e);
     reconSaving=false;
-    var errEl=document.querySelector('.recon-error');if(errEl){errEl.style.display='block';}
+    var errEl=document.querySelector('.recon-error');
+    if(errEl){errEl.textContent=e.message||'Save failed — check your connection and try again.';errEl.style.display='block';}
     renderApp();
   }
 }
@@ -3214,8 +3250,10 @@ function setPhase1Notes(id,el){
 }
 // Phase 0 basis selected AND every Phase 1 row has an explicit, complete
 // response (per docs/phase-5f-1-spec.md Phase 1 "Save disabled until every
-// row shown in Phase 1 has an explicit response"). Being "complete" is NOT
-// the same as being safe to persist — see canPersistReconNow() below.
+// row shown in Phase 1 has an explicit response"). As of the 5F-1 RPC
+// persistence bridge slice, "complete" and "safe to persist" are the same
+// thing — canPersistReconNow() below is a thin alias kept for call-site
+// clarity, not a stricter gate.
 function canCompleteReconPhase01(weekNum){
   if(!_reconBasis)return false;
   return getPhase1Commitments(commitmentData,weekNum).every(function(c){
@@ -3223,19 +3261,14 @@ function canCompleteReconPhase01(weekNum){
     return isPhase1RowResolved(c,a.step1,_reconBasis,a.step2,a.notes);
   });
 }
-// Fail-safe gate: saveRecon() still only writes weekly_reconciliations
-// directly — it does NOT call save_reconciliation_with_commitments, so any
-// Phase 1 patch computed by buildPhase1PatchArray() has nowhere to go yet.
-// If any Phase 1 rows exist, saving now would silently discard cash-safety
-// answers the user just gave, while cash_commitments stays unchanged. That's
-// harmless today only because commitmentData is empty; the moment a real
-// prior-unresolved commitment exists, it stops being harmless. So: allow
-// persisting only when there are zero Phase 1 rows to lose. Once Phase 1
-// patches are actually sent as part of the RPC-integrated save (a later,
-// explicitly separate step), this function should be updated to drop the
-// zero-rows requirement.
+// 5F-1 RPC persistence bridge: saveRecon() now calls
+// save_reconciliation_with_commitments and sends staged Phase 1 answers as
+// p_patched (see buildPhase1PatchArray()), so a Phase 1 row with a complete
+// answer has a real persistence path — the old "zero Phase 1 rows only"
+// fail-safe is gone. Gate is just: Phase 0 answered, every Phase 1 row
+// resolved.
 function canPersistReconNow(weekNum){
-  return canCompleteReconPhase01(weekNum)&&getPhase1Commitments(commitmentData,weekNum).length===0;
+  return canCompleteReconPhase01(weekNum);
 }
 function canSaveRecon(weekNum){return canPersistReconNow(weekNum);}
 // Shared blocked-reason text — used by both the disabled-button hint and
@@ -3244,7 +3277,6 @@ function reconSaveBlockedReason(weekNum){
   if(!_reconBasis)return'Select a balance basis above before saving.';
   var rows=getPhase1Commitments(commitmentData,weekNum);
   if(rows.length&&!canCompleteReconPhase01(weekNum))return'Select a balance basis above and respond to every Phase 1 item before saving.';
-  if(rows.length&&canCompleteReconPhase01(weekNum))return'Prior commitment responses are staged but not yet persisted. Final save requires the Phase 4/RPC integration step.';
   return'';
 }
 function renderReconPhase01(w){
