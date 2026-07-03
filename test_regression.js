@@ -8622,6 +8622,108 @@ test('Phase 2 candidates: builder is read-only, does not mutate WD or the passed
 });
 })();
 
+console.log('\n── Section 5F1-Q: Phase 2 staged-answer state + lifecycle (Step 3: _reconPhase2Answers, state only) ──');
+(function(){
+// State + lifecycle only. No payload builder, no RPC, no save wiring this step.
+// Behavioral tests stub renderApp (setters call it); lifecycle reset/preserve is
+// covered behaviorally (cancelRecon/openRecon) and via source-pattern checks.
+
+test('Phase 2 state: setPhase2Response stores the response; a falsy value clears back to unanswered',()=>{
+  var _render=renderApp;
+  try{
+    renderApp=function(){};
+    _reconPhase2Answers={};
+    setPhase2Response('eidA','amount_changed');
+    assert(_reconPhase2Answers['eidA'].response==='amount_changed','response must be stored');
+    setPhase2Response('eidA','');
+    assert(_reconPhase2Answers['eidA']===undefined,'a falsy response must clear the entry back to unanswered');
+  }finally{renderApp=_render;_reconPhase2Answers={};}
+});
+
+test('Phase 2 state: changing the response invalidates a stale reflection answer',()=>{
+  var _render=renderApp;
+  try{
+    renderApp=function(){};
+    _reconPhase2Answers={};
+    setPhase2Response('eidA','bank_pending');
+    setPhase2Reflection('eidA','yes');
+    assert(_reconPhase2Answers['eidA'].reflection==='yes','reflection must be stored');
+    setPhase2Response('eidA','not_paid_yet');
+    assert(!_reconPhase2Answers['eidA'].reflection,'changing the response must null a stale reflection, got '+_reconPhase2Answers['eidA'].reflection);
+  }finally{renderApp=_render;_reconPhase2Answers={};}
+});
+
+test('Phase 2 state: re-setting the SAME response preserves an existing reflection answer (idempotent, no accidental loss)',()=>{
+  var _render=renderApp;
+  try{
+    renderApp=function(){};
+    _reconPhase2Answers={};
+    setPhase2Response('eidA','bank_pending');
+    setPhase2Reflection('eidA','yes');
+    setPhase2Response('eidA','bank_pending'); // same response re-triggered (e.g. UI re-click)
+    assert(_reconPhase2Answers['eidA'].reflection==='yes','re-setting the same response must NOT drop the reflection, got '+_reconPhase2Answers['eidA'].reflection);
+  }finally{renderApp=_render;_reconPhase2Answers={};}
+});
+
+test('Phase 2 state: clearPhase2Answer removes the staged answer (explicit clear-back-to-unanswered)',()=>{
+  var _render=renderApp;
+  try{
+    renderApp=function(){};
+    _reconPhase2Answers={'eidA':{response:'wd_mismatch',notes:'x'}};
+    clearPhase2Answer('eidA');
+    assert(_reconPhase2Answers['eidA']===undefined,'clearPhase2Answer must delete the entry');
+  }finally{renderApp=_render;_reconPhase2Answers={};}
+});
+
+test('Phase 2 state: notes and actual-amount setters store raw input (no gate/payload behavior this step)',()=>{
+  var _render=renderApp;
+  try{
+    renderApp=function(){};
+    _reconPhase2Answers={};
+    setPhase2Notes('eidA',{value:'due date was next week'});
+    setPhase2ActualAmount('eidA',{value:'636.48'});
+    assert(_reconPhase2Answers['eidA'].notes==='due date was next week','notes must be stored');
+    assert(_reconPhase2Answers['eidA'].actualAmount==='636.48','actualAmount must be stored');
+  }finally{renderApp=_render;_reconPhase2Answers={};}
+});
+
+test('Phase 2 state: cancelRecon clears staged Phase 2 answers',()=>{
+  var _render=renderApp;
+  try{
+    renderApp=function(){};
+    _reconPhase2Answers={'x':{response:'bank_pending'}};
+    cancelRecon();
+    assert(Object.keys(_reconPhase2Answers).length===0,'cancelRecon must clear _reconPhase2Answers');
+  }finally{renderApp=_render;_reconPhase2Answers={};reconOpen=null;_reconBasis=null;_reconPhase1Answers={};}
+});
+
+test('Phase 2 state: openRecon resets _reconPhase2Answers (no cross-week leak)',()=>{
+  var _role=USER_ROLE,_render=renderApp,_st=setTimeout;
+  try{
+    USER_ROLE='owner';renderApp=function(){};setTimeout=function(){};
+    _reconPhase2Answers={'2026mw3_disney_visa_2026_06_23':{response:'not_paid_yet'}}; // week-3 leftovers
+    openRecon(4);
+    assert(Object.keys(_reconPhase2Answers).length===0,'openRecon must clear staged Phase 2 answers, got '+JSON.stringify(_reconPhase2Answers));
+  }finally{
+    USER_ROLE=_role;renderApp=_render;setTimeout=_st;
+    reconOpen=null;_reconBasis=null;_reconPhase1Answers={};_reconPhase2Answers={};
+  }
+});
+
+test('Phase 2 state: openRecon and cancelRecon reset _reconPhase2Answers (source check)',()=>{
+  assert(/_reconPhase2Answers=\{\}/.test(openRecon.toString()),'openRecon must reset _reconPhase2Answers');
+  assert(/_reconPhase2Answers=\{\}/.test(cancelRecon.toString()),'cancelRecon must reset _reconPhase2Answers');
+});
+
+test('Phase 2 state: saveRecon clears staged answers only on success, preserves them on failure (retry-safe)',()=>{
+  var parts=saveRecon.toString().split('catch(e)');
+  assert(parts.length>=2,'saveRecon must have a main catch(e) block');
+  var successHalf=parts[0],catchHalf=parts.slice(1).join('catch(e)');
+  assert(/_reconPhase2Answers=\{\}/.test(successHalf),'success path must clear _reconPhase2Answers');
+  assert(!/_reconPhase2Answers=\{\}/.test(catchHalf),'failure/catch path must NOT reset _reconPhase2Answers (preserve for retry)');
+});
+})();
+
 console.log('\n── Section 5F1-M: Reconciliation Form Phase 0/1 — UI logic + state machine (persistence wired via 5F-1 RPC bridge — see 5F1-RPC-BRIDGE below) ──');
 (function(){
 // IMPORTANT — read before trusting the AC-77..92 test names below at face

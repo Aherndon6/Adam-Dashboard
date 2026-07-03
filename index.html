@@ -857,7 +857,7 @@ button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-vis
 // ── Constants (unchanged) ──────────────────────────────────────────────────
 // Simplified architecture — $8,250 total from LC · $6,500 operating floor · no legacy mechanics
 // Real-world moves: keep $2,250 in chk, move $2,750 sav→chk, move $1,000 LC→chk, move $2,250 LC→chk (Option 1 correction)
-const BUILD_TS='2026-07-03T14:52:52'; // updated each push — local time string
+const BUILD_TS='2026-07-03T15:08:16'; // updated each push — local time string
 const START_CHK=18037.73,START_SAV=3772.77,START_AMX=103.64,START_TAX=0,START_LC=13488.88;
 const EF_AMT=13488.88; // LC/EF balance — static this model year (no transfers in or out)
 const BASE_TAX=521.36,RET_SAV_XFR=3772.74;
@@ -921,6 +921,12 @@ var reconOpen=null;
 // any RPC in this step. See computePhase1Step1Patch()/applyPhase1Step2().
 var _reconBasis=null; // 'posted_current_balance' | 'available_balance' | 'unknown' | null (unselected)
 var _reconPhase1Answers={}; // { [commitmentId]: {step1, step2, notes} } for the currently-open week only
+// Phase 2 staged answers, keyed by candidate eid, for the currently-open week only.
+// Same lifecycle as _reconPhase1Answers: reset on openRecon()/cancelRecon() and on a
+// successful save, deliberately preserved on a failed save so the user can retry
+// without re-entering. Not read by any payload builder or RPC in this step; Step 3
+// wires staged state and lifecycle only. Shape: { [eid]: {response, actualAmount, notes, reflection} }.
+var _reconPhase2Answers={};
 
 // ── Budget Rules (Phase 5) ─────────────────────────────────────────────────
 var budgetRules=[];
@@ -2354,9 +2360,10 @@ function openRecon(n){
   // start unselected so the required-selection gate is meaningful.
   _reconBasis=(reconData[n]&&reconData[n].balance_basis)||null;
   _reconPhase1Answers={};
+  _reconPhase2Answers={}; // Phase 2 staged answers reset per open (no cross-week leak)
   renderApp();setTimeout(function(){var el=document.querySelector('.recon-form');if(el)el.scrollIntoView({behavior:'smooth',block:'nearest'});},80);
 }
-function cancelRecon(){reconOpen=null;_reconBasis=null;_reconPhase1Answers={};renderApp();}
+function cancelRecon(){reconOpen=null;_reconBasis=null;_reconPhase1Answers={};_reconPhase2Answers={};renderApp();}
 function confirmReconDelete(n){if(!canWriteFinancials())return;reconDeleteConfirm=n;renderApp();}
 function cancelReconDelete(){reconDeleteConfirm=false;renderApp();}
 // 5F-1 RPC persistence bridge: reload weekly_reconciliations + cash_commitments
@@ -2415,14 +2422,14 @@ async function saveRecon(n){
       try{var errBody=await r.json();errMsg=(errBody&&(errBody.message||errBody.hint||errBody.details))||'';}catch(parseErr){}
       throw new Error(errMsg||('HTTP '+r.status));
     }
-    reconSaving=false;reconOpen=null;_reconBasis=null;_reconPhase1Answers={};
+    reconSaving=false;reconOpen=null;_reconBasis=null;_reconPhase1Answers={};_reconPhase2Answers={};
     await reloadReconAndCommitments(); // server-owned fields — reload, don't fake locally
     renderApp();
   }catch(e){
     // Roll back local reconData so stale/optimistic data is not displayed.
-    // _reconBasis/_reconPhase1Answers/reconOpen are deliberately left alone —
-    // a failed RPC call means nothing persisted, so the user's staged Phase
-    // 0/1 answers must survive to allow retry without re-entering anything.
+    // _reconBasis/_reconPhase1Answers/_reconPhase2Answers/reconOpen are deliberately
+    // left alone — a failed RPC call means nothing persisted, so the user's staged
+    // Phase 0/1/2 answers must survive to allow retry without re-entering anything.
     if(prevRecon!==undefined){reconData[n]=prevRecon;}else{delete reconData[n];}
     console.error('saveRecon:',e);
     reconSaving=false;
@@ -3283,6 +3290,37 @@ function setPhase1Notes(id,el){
   _reconPhase1Answers[id].notes=el.value;
   renderApp(); // onblur only — safe to re-render without disrupting typing
 }
+// Phase 2 staged-answer setters (state only: no payload, no gate, no RPC this step).
+// Keyed by candidate eid. A falsy response clears the answer back to unanswered so an
+// ignored/deselected prompt cannot linger as a partial answer.
+function setPhase2Response(eid,val){
+  if(!val){delete _reconPhase2Answers[eid];renderApp();return;}
+  if(!_reconPhase2Answers[eid])_reconPhase2Answers[eid]={};
+  var prior=_reconPhase2Answers[eid].response;
+  _reconPhase2Answers[eid].response=val;
+  // Only a real response change invalidates a stale reflection follow-up. Re-setting
+  // the same response (e.g. a UI re-click) must not silently drop an existing reflection.
+  if(prior!==undefined&&prior!==val)_reconPhase2Answers[eid].reflection=null;
+  renderApp();
+}
+function setPhase2Reflection(eid,val){
+  if(!_reconPhase2Answers[eid])_reconPhase2Answers[eid]={};
+  _reconPhase2Answers[eid].reflection=val||undefined;
+  renderApp();
+}
+function setPhase2ActualAmount(eid,el){
+  if(!_reconPhase2Answers[eid])_reconPhase2Answers[eid]={};
+  _reconPhase2Answers[eid].actualAmount=el.value;
+  renderApp();
+}
+function setPhase2Notes(eid,el){
+  if(!_reconPhase2Answers[eid])_reconPhase2Answers[eid]={};
+  _reconPhase2Answers[eid].notes=el.value;
+  renderApp(); // onblur only, safe to re-render without disrupting typing
+}
+// Explicit clear-back-to-unanswered control for a Phase 2 prompt: removes the staged
+// answer entirely so it no longer counts as answered and cannot block a future save.
+function clearPhase2Answer(eid){delete _reconPhase2Answers[eid];renderApp();}
 // Phase 0 basis selected AND every Phase 1 row has an explicit, complete
 // response (per docs/phase-5f-1-spec.md Phase 1 "Save disabled until every
 // row shown in Phase 1 has an explicit response"). As of the 5F-1 RPC
