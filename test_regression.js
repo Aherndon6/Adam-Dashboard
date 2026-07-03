@@ -9281,7 +9281,7 @@ test('saveRecon() posts to /rpc/save_reconciliation_with_commitments and no long
   assert(!/fetch\(SUPA_URL\+'\/rest\/v1\/weekly_reconciliations'/.test(saveBody),'saveRecon() must no longer POST directly to weekly_reconciliations');
 });
 
-test('saveRecon() RPC payload: p_week_num, p_model_year uses PLAN_YEAR (not hardcoded 2026), p_balance_basis, p_recorded_at, p_new_commitments=[], p_patched',()=>{
+test('saveRecon() RPC payload: p_week_num, p_model_year uses PLAN_YEAR (not hardcoded 2026), p_balance_basis, p_recorded_at, p_new_commitments (Phase 2 builder), p_patched',()=>{
   assertIncludes(saveBody,'p_week_num:n');
   assertIncludes(saveBody,'p_model_year:PLAN_YEAR');
   assert(!/p_model_year\s*:\s*2026/.test(saveBody),'p_model_year must not be hardcoded to 2026 — must reference PLAN_YEAR');
@@ -9292,8 +9292,9 @@ test('saveRecon() RPC payload: p_week_num, p_model_year uses PLAN_YEAR (not hard
   assertIncludes(saveBody,'p_lc:data.lc');
   assertIncludes(saveBody,'p_balance_basis:_reconBasis');
   assertIncludes(saveBody,'p_recorded_at:now.toISOString()');
-  assertIncludes(saveBody,'p_new_commitments:[]');
-  assert(!/p_new_commitments:\s*null/.test(saveBody),'p_new_commitments must be an empty array, not null — the RPC validates jsonb_typeof for array specifically to catch a null payload');
+  assertIncludes(saveBody,'p_new_commitments:newCommitments');
+  assert(!/p_new_commitments:\[\]/.test(saveBody),'p_new_commitments must no longer be a hardcoded [] (it is now the Phase 2 builder output)');
+  assert(!/p_new_commitments:\s*null/.test(saveBody),'p_new_commitments must reference the builder output (an array), never null; the RPC validates jsonb_typeof for array specifically');
   assertIncludes(saveBody,'p_patched:patched');
 });
 
@@ -9327,6 +9328,67 @@ test('saveRecon() success path clears staging, closes the form, and reloads serv
 test('reloadReconAndCommitments() fetches weekly_reconciliations and cash_commitments scoped to PLAN_YEAR',()=>{
   assertIncludes(reloadBody,"/rest/v1/weekly_reconciliations?select=*");
   assertIncludes(reloadBody,"/rest/v1/cash_commitments?model_year=eq.'+PLAN_YEAR");
+});
+
+// ── Step 8: p_new_commitments write path + conflict/error routing ──
+test('Step 8: saveRecon() sends p_new_commitments from buildPhase2NewCommitments(...), computed before mutation, not a hardcoded []',()=>{
+  assertIncludes(saveBody,'p_new_commitments:newCommitments');
+  assert(!/p_new_commitments:\[\]/.test(saveBody),'p_new_commitments must no longer be a hardcoded []');
+  assertIncludes(saveBody,'var newCommitments=buildPhase2NewCommitments(getPhase2WDCandidates(reconEffectiveWD(),n,commitmentData),_reconPhase2Answers,_reconBasis,n)');
+  var ncIdx=saveBody.indexOf('var newCommitments=buildPhase2NewCommitments');
+  var mutateIdx=saveBody.indexOf('reconData[n]={...data');
+  assert(ncIdx>=0&&mutateIdx>ncIdx,'newCommitments must be computed before reconData[n] is optimistically mutated');
+});
+
+test('Step 8: empty Phase 2 answers build an empty p_new_commitments array (preserves existing behavior)',()=>{
+  var cands=getPhase2WDCandidates(WD,4,[]);
+  assertGt(cands.length,0,'week 4 has candidates');
+  var rows=buildPhase2NewCommitments(cands,{},'posted_current_balance',4);
+  assert(Array.isArray(rows)&&rows.length===0,'no staged answers -> [] payload, got '+JSON.stringify(rows));
+});
+
+test('Step 8: conflict path (commitment already exists) reloads commitments, routes to Phase 1, and does not clear staged answers',()=>{
+  assertIncludes(catchBody,"toLowerCase().indexOf('commitment already exists')");
+  var condIdx=catchBody.indexOf('commitment already exists');
+  var reloadIdx=catchBody.indexOf('await reloadReconAndCommitments()');
+  var returnIdx=catchBody.indexOf('return;');
+  assert(condIdx>=0&&reloadIdx>condIdx&&returnIdx>reloadIdx,'conflict branch must reload commitments then return');
+  assertIncludes(catchBody,'Prior Commitments (Phase 1)'); // route-to-Phase-1 message
+  assert(!/_reconPhase2Answers=\{\}/.test(catchBody),'conflict/catch must not clear _reconPhase2Answers');
+});
+
+test('Step 8: generic RPC error does not refresh reconData/commitmentData and preserves staged answers',()=>{
+  var reloadCount=(catchBody.match(/reloadReconAndCommitments/g)||[]).length;
+  assert(reloadCount===1,'catch must call reloadReconAndCommitments exactly once (conflict branch only), got '+reloadCount);
+  var returnIdx=catchBody.indexOf('return;');
+  var genericErrIdx=catchBody.indexOf('errEl.textContent=e.message');
+  assert(genericErrIdx>returnIdx,'generic error handling must follow the conflict branch return, so the generic path never reloads');
+  assert(!/_reconBasis=null|_reconPhase1Answers=\{\}|_reconPhase2Answers=\{\}/.test(catchBody),'catch must not clear any staged state (Phase 0/1/2)');
+});
+
+test('Step 8: successful save clears _reconPhase2Answers only in the success path, not in the catch',()=>{
+  assertIncludes(tryBody,'_reconPhase2Answers={}');
+  assert(!/_reconPhase2Answers=\{\}/.test(catchBody),'catch (conflict + generic) must never clear _reconPhase2Answers');
+});
+
+test('Step 8: conflict path renders BEFORE writing the .recon-error message (renderApp must not wipe it)',()=>{
+  var condIdx=catchBody.indexOf("indexOf('commitment already exists')");
+  var branch=catchBody.slice(condIdx);
+  var renderIdx=branch.indexOf('renderApp()');
+  var msgIdx=branch.indexOf('conflictEl.textContent');
+  assert(renderIdx>=0&&msgIdx>renderIdx,'renderApp() must run before the conflict message is written, got render@'+renderIdx+' msg@'+msgIdx);
+});
+
+test('Step 8: generic error path renders BEFORE writing the .recon-error message',()=>{
+  var returnIdx=catchBody.indexOf('return;');
+  var generic=catchBody.slice(returnIdx);
+  var renderIdx=generic.indexOf('renderApp()');
+  var msgIdx=generic.indexOf('errEl.textContent=e.message');
+  assert(renderIdx>=0&&msgIdx>renderIdx,'renderApp() must run before the generic message is written, got render@'+renderIdx+' msg@'+msgIdx);
+});
+
+test('Step 8: conflict detection is case-insensitive (lower-cases before comparing)',()=>{
+  assert(/_errMsg\.toLowerCase\(\)\.indexOf\('commitment already exists'\)/.test(catchBody),'conflict detection must lower-case _errMsg before comparing');
 });
 
 // AC-77,78,79,80,88,89,90,91,92 move from PARTIAL to fully unblocked as of

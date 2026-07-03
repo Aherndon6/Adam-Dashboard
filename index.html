@@ -857,7 +857,7 @@ button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-vis
 // ── Constants (unchanged) ──────────────────────────────────────────────────
 // Simplified architecture — $8,250 total from LC · $6,500 operating floor · no legacy mechanics
 // Real-world moves: keep $2,250 in chk, move $2,750 sav→chk, move $1,000 LC→chk, move $2,250 LC→chk (Option 1 correction)
-const BUILD_TS='2026-07-03T16:38:31'; // updated each push — local time string
+const BUILD_TS='2026-07-03T17:18:11'; // updated each push — local time string
 const START_CHK=18037.73,START_SAV=3772.77,START_AMX=103.64,START_TAX=0,START_LC=13488.88;
 const EF_AMT=13488.88; // LC/EF balance — static this model year (no transfers in or out)
 const BASE_TAX=521.36,RET_SAV_XFR=3772.74;
@@ -2563,6 +2563,9 @@ async function saveRecon(n){
   // Computed before any local mutation, from the staged answers as they exist
   // right now — buildPhase1PatchArray(commitments, answers, basis, currentWeek).
   var patched=buildPhase1PatchArray(commitmentData,_reconPhase1Answers,_reconBasis,n);
+  // Phase 2 (Step 8): staged new commitments, computed before any local mutation from the
+  // same override-aware candidates the gate used. Empty _reconPhase2Answers yields [].
+  var newCommitments=buildPhase2NewCommitments(getPhase2WDCandidates(reconEffectiveWD(),n,commitmentData),_reconPhase2Answers,_reconBasis,n);
   reconData[n]={...data,balance_basis:_reconBasis,date:now.toLocaleDateString('en-US',{month:'short',day:'numeric'})};
   reconSaving=true;renderApp();
   try{
@@ -2573,7 +2576,7 @@ async function saveRecon(n){
       p_chk:data.chk,p_sav:data.sav,p_amx:data.amx,p_tax:data.tax,p_lc:data.lc,
       p_balance_basis:_reconBasis,
       p_recorded_at:now.toISOString(),
-      p_new_commitments:[],
+      p_new_commitments:newCommitments,
       p_patched:patched
     })});
     if(!r.ok){
@@ -2585,16 +2588,32 @@ async function saveRecon(n){
     await reloadReconAndCommitments(); // server-owned fields — reload, don't fake locally
     renderApp();
   }catch(e){
-    // Roll back local reconData so stale/optimistic data is not displayed.
-    // _reconBasis/_reconPhase1Answers/_reconPhase2Answers/reconOpen are deliberately
-    // left alone — a failed RPC call means nothing persisted, so the user's staged
-    // Phase 0/1/2 answers must survive to allow retry without re-entering anything.
+    // Roll back local reconData so stale/optimistic data is not displayed. The RPC is a
+    // single transaction, so on ANY error nothing persisted (no partial write, no
+    // duplicate row). _reconBasis/_reconPhase1Answers/_reconPhase2Answers/reconOpen are
+    // deliberately left alone so the user's staged Phase 0/1/2 answers survive for retry.
     if(prevRecon!==undefined){reconData[n]=prevRecon;}else{delete reconData[n];}
     console.error('saveRecon:',e);
     reconSaving=false;
+    var _errMsg=(e&&e.message)||'';
+    // Conflict: a Phase 2 new commitment collided with an existing cash_commitments row
+    // (duplicate expected_item_id). Route updates through Phase 1, not a re-insert. Refresh
+    // commitmentData so the now-known row is reflected (AC-28), keep the form and all staged
+    // answers. Detected case-insensitively. The message is written AFTER renderApp() so the
+    // re-render (which rebuilds the .recon-error node from the form template) cannot wipe it.
+    if(_errMsg.toLowerCase().indexOf('commitment already exists')>=0){
+      await reloadReconAndCommitments();
+      renderApp();
+      var conflictEl=document.querySelector('.recon-error');
+      if(conflictEl){conflictEl.textContent='This obligation is already tracked. Resolve it under Prior Commitments (Phase 1) instead. Reloaded; your entries are kept.';conflictEl.style.display='block';}
+      return;
+    }
+    // Generic error: keep the form open with staged input and do NOT refresh
+    // reconData/commitmentData (AC-101). Render first, then write the message so the
+    // re-render cannot wipe it; the user retries against unchanged state.
+    renderApp();
     var errEl=document.querySelector('.recon-error');
     if(errEl){errEl.textContent=e.message||'Save failed — check your connection and try again.';errEl.style.display='block';}
-    renderApp();
   }
 }
 async function deleteRecon(n){
