@@ -8724,6 +8724,100 @@ test('Phase 2 state: saveRecon clears staged answers only on success, preserves 
 });
 })();
 
+console.log('\n── Section 5F1-R: Phase 2 payload builder (Step 4: buildPhase2NewCommitments, seven-branch) ──');
+(function(){
+// Pure builder. A fixture candidate exercises exact branch shapes; real
+// getPhase2WDCandidates output exercises the metadata integration.
+var FX={eid:'2026mw4_rent_tiffany_dye_2026_07_01',payee:'Rent (Tiffany Dye)',cc:'rent',rod:'protected_required',a:-2000,due_date:'2026-07-01'};
+function build(resp,extra,basis){
+  var ans={};ans[FX.eid]=Object.assign({response:resp},extra||{});
+  return buildPhase2NewCommitments([FX],ans,basis||'posted_current_balance',4)[0];
+}
+
+test('Phase 2 payload: not_paid_yet -> planned, no resolution, reflected/resolved null, common fields correct',()=>{
+  var r=build('not_paid_yet');
+  assert(r.status==='planned','status');
+  assert(r.resolution_type===undefined,'no resolution_type');
+  assert(r.reflected_model_week===null&&r.resolved_model_week===null,'reflected/resolved null');
+  assert(r.expected_item_id===FX.eid,'eid identity');
+  assert(r.payee==='Rent (Tiffany Dye)','payee from metadata, not ev.l');
+  assert(r.commitment_class==='rent'&&r.required_or_discretionary==='protected_required','cc/rod from metadata');
+  assert(r.commitment_source==='wd_reconciliation','commitment_source explicit');
+  assert(r.affects_deployable_cash===true,'adc explicit true');
+  assert(r.model_year===PLAN_YEAR&&r.origin_model_week===4,'model_year/origin_model_week');
+  assert(r.amount_cents===200000,'amount_cents = |WD expected| in cents, got '+r.amount_cents);
+  assert(r.due_date==='2026-07-01','due_date from metadata');
+  assert(!('source_account'in r),'source_account must be OMITTED (RPC default), never sent empty');
+});
+
+test('Phase 2 payload: paid_initiated -> initiated; bank_pending -> bank_pending (non-terminal, resolved null, no rt)',()=>{
+  var pi=build('paid_initiated');
+  assert(pi.status==='initiated'&&pi.resolved_model_week===null&&pi.resolution_type===undefined,'paid_initiated shape');
+  var bp=build('bank_pending');
+  assert(bp.status==='bank_pending'&&bp.resolved_model_week===null&&bp.resolution_type===undefined,'bank_pending shape');
+});
+
+test('Phase 2 payload: cleared_reflected -> cleared terminal, reflected=resolved=week, rt cleared',()=>{
+  var r=build('cleared_reflected');
+  assert(r.status==='cleared'&&r.resolution_type==='cleared','cleared/rt');
+  assert(r.reflected_model_week===4&&r.resolved_model_week===4,'reflected=resolved=week');
+});
+
+test('Phase 2 payload: paid_other_account and wd_mismatch -> voided terminals with correct resolution_type',()=>{
+  var po=build('paid_other_account');
+  assert(po.status==='voided'&&po.resolution_type==='paid_from_other_account'&&po.resolved_model_week===4&&po.reflected_model_week===null,'paid_other_account shape');
+  assert(po.resolution_notes===undefined,'paid_other_account is notes-exempt');
+  var mm=build('wd_mismatch',{notes:'due date was actually next week'});
+  assert(mm.status==='voided'&&mm.resolution_type==='voided'&&mm.resolved_model_week===4,'wd_mismatch shape');
+  assert(mm.resolution_notes==='due date was actually next week','wd_mismatch carries resolution_notes');
+});
+
+test('Phase 2 payload: amount_changed -> carried_unresolved/amount_changed, actual in amount_cents, expected in original_amount_cents (direction not reversed)',()=>{
+  var r=build('amount_changed',{actualAmount:'1850.50'});
+  assert(r.status==='carried_unresolved'&&r.resolution_type==='amount_changed','status/rt');
+  assert(r.amount_cents===185050,'amount_cents = user actual, got '+r.amount_cents);
+  assert(r.original_amount_cents===200000,'original_amount_cents = WD expected, got '+r.original_amount_cents);
+  assert(r.amount_cents>0&&r.original_amount_cents>0,'both positive');
+  assert(r.amount_cents!==r.original_amount_cents,'actual and expected differ (direction not reversed)');
+  assert(r.resolved_model_week===null,'non-terminal resolved null');
+});
+
+test('Phase 2 payload: reflection reflects only on available_balance + yes; not_sure leaves reflected null (status override deferred to Step 6)',()=>{
+  assert(build('bank_pending',{reflection:'yes'},'available_balance').reflected_model_week===4,'available_balance + yes -> reflected=week');
+  assert(build('bank_pending',{reflection:'yes'},'posted_current_balance').reflected_model_week===null,'reflection ignored unless available_balance');
+  assert(build('bank_pending',{reflection:'no'},'available_balance').reflected_model_week===null,'no -> reflected null');
+  assert(build('bank_pending',{reflection:'not_sure'},'available_balance').reflected_model_week===null,'not_sure -> reflected null this step');
+});
+
+test('Phase 2 payload: one row per ANSWERED candidate; unanswered candidates produce no row',()=>{
+  var ans={};ans[FX.eid]={response:'not_paid_yet'};
+  var extra={eid:'2026mw4_rent_tiffany_dye_2026_07_02',payee:'Rent (Tiffany Dye)',cc:'rent',rod:'protected_required',a:-2000,due_date:'2026-07-02'};
+  var rows=buildPhase2NewCommitments([FX,extra],ans,'posted_current_balance',4); // extra is unanswered
+  assert(rows.length===1&&rows[0].expected_item_id===FX.eid,'only the answered candidate yields a row, got '+rows.length);
+});
+
+test('Phase 2 payload: integrates with real getPhase2WDCandidates — payee is metadata, no source_account, positive amounts',()=>{
+  var cands=getPhase2WDCandidates(WD,4,[]);
+  var ans={};cands.forEach(function(ev){ans[ev.eid]={response:'not_paid_yet'};});
+  var rows=buildPhase2NewCommitments(cands,ans,'posted_current_balance',4);
+  assert(rows.length===cands.length,'one row per answered real candidate');
+  rows.forEach(function(r){
+    assert(r.payee&&r.payee.length>0&&r.payee.indexOf('$')<0,'payee is a clean metadata label, not the raw ev.l amount string');
+    assert(!('source_account'in r),'source_account omitted');
+    assert(r.required_or_discretionary==='protected_required'&&r.amount_cents>0,'cc/rod present, amount positive');
+  });
+});
+
+test('Phase 2 payload: synthetic tax-transfer candidate builds with its explicit payee and tax_transfer class',()=>{
+  var synth=getPhase2WDCandidates(WD,6,[]).find(function(ev){return ev.synthetic===true;});
+  var ans={};ans[synth.eid]={response:'not_paid_yet'};
+  var r=buildPhase2NewCommitments([synth],ans,'posted_current_balance',6)[0];
+  assert(r.commitment_class==='tax_transfer'&&r.required_or_discretionary==='protected_required','synthetic cc/rod');
+  assert(r.payee==='Commission tax transfer (Vio Bank)','synthetic payee from metadata');
+  assert(r.origin_model_week===6,'origin_model_week matches reconciled week');
+});
+})();
+
 console.log('\n── Section 5F1-M: Reconciliation Form Phase 0/1 — UI logic + state machine (persistence wired via 5F-1 RPC bridge — see 5F1-RPC-BRIDGE below) ──');
 (function(){
 // IMPORTANT — read before trusting the AC-77..92 test names below at face

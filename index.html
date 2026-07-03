@@ -857,7 +857,7 @@ button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-vis
 // ── Constants (unchanged) ──────────────────────────────────────────────────
 // Simplified architecture — $8,250 total from LC · $6,500 operating floor · no legacy mechanics
 // Real-world moves: keep $2,250 in chk, move $2,750 sav→chk, move $1,000 LC→chk, move $2,250 LC→chk (Option 1 correction)
-const BUILD_TS='2026-07-03T15:08:16'; // updated each push — local time string
+const BUILD_TS='2026-07-03T15:21:40'; // updated each push — local time string
 const START_CHK=18037.73,START_SAV=3772.77,START_AMX=103.64,START_TAX=0,START_LC=13488.88;
 const EF_AMT=13488.88; // LC/EF balance — static this model year (no transfers in or out)
 const BASE_TAX=521.36,RET_SAV_XFR=3772.74;
@@ -1907,6 +1907,76 @@ function buildPhase1PatchArray(commitments,answers,basis,currentWeek){
     var base=computePhase1Step1Patch(c,a.step1,currentWeek,a.notes);
     var final=applyPhase1Step2(base,a.step1,basis,a.step2,currentWeek);
     if(final)out.push(final);
+  });
+  return out;
+}
+
+// ── Phase 5F-1 Phase 2 (Step 4): p_new_commitments payload builder ──────────────
+// Pure: builds the seven-branch p_new_commitments rows for the currently-open week
+// from staged Phase 2 answers. One row per ANSWERED candidate; unanswered prompts are
+// not hard-gated, they simply produce no row. Not wired into saveRecon or the RPC in
+// this step (saveRecon still sends p_new_commitments:[]); Step 4 builds the payload only.
+//
+// Exact shapes follow docs/phase-5f-1-spec.md's Phase 2 payload table:
+//   not_paid_yet        -> planned            | rt null                     | reflected/resolved null
+//   paid_initiated      -> initiated          | rt null                     | reflected per follow-up, resolved null
+//   bank_pending        -> bank_pending       | rt null                     | reflected per follow-up, resolved null
+//   cleared_reflected   -> cleared            | rt cleared                  | reflected=resolved=week (terminal)
+//   amount_changed      -> carried_unresolved | rt amount_changed           | reflected per follow-up, resolved null
+//   paid_other_account  -> voided             | rt paid_from_other_account  | resolved=week (terminal)
+//   wd_mismatch         -> voided             | rt voided (+resolution_notes)| resolved=week (terminal)
+//
+// Identity is expected_item_id/eid only. payee/commitment_class/rod/due_date come from
+// the Step 1 WD metadata, never ev.l. amount_changed direction: amount_cents = the
+// user-entered actual, original_amount_cents = the WD-expected magnitude. source_account
+// is omitted so the RPC applies its single allowed default (truist_checking), never an
+// empty string. Reflected column is the matrix's "null unless follow-up says yes"; the
+// not-sure -> bank_pending status override is Step 6 (reflection wiring), not here.
+function _dollarsToCents(v){return Math.round(Math.abs(parseFloat(v)||0)*100);}
+function buildPhase2NewCommitments(candidates,answers,basis,weekNum){
+  var out=[];
+  (candidates||[]).forEach(function(ev){
+    var a=(answers&&answers[ev.eid])||{};
+    var resp=a.response;
+    if(!resp)return; // unanswered, no row (Phase 2 is not hard-gated)
+    var row={
+      expected_item_id:ev.eid,
+      model_year:PLAN_YEAR,
+      origin_model_week:weekNum,
+      payee:ev.payee,
+      commitment_class:ev.cc,
+      required_or_discretionary:ev.rod,
+      affects_deployable_cash:true,
+      commitment_source:'wd_reconciliation',
+      amount_cents:_dollarsToCents(ev.a),
+      due_date:ev.due_date||null
+    };
+    var reflectsYes=(basis==='available_balance'&&a.reflection==='yes');
+    switch(resp){
+      case'not_paid_yet':
+        row.status='planned';row.reflected_model_week=null;row.resolved_model_week=null;break;
+      case'paid_initiated':
+        row.status='initiated';row.reflected_model_week=reflectsYes?weekNum:null;row.resolved_model_week=null;break;
+      case'bank_pending':
+        row.status='bank_pending';row.reflected_model_week=reflectsYes?weekNum:null;row.resolved_model_week=null;break;
+      case'cleared_reflected':
+        row.status='cleared';row.resolution_type='cleared';row.reflected_model_week=weekNum;row.resolved_model_week=weekNum;break;
+      case'amount_changed':
+        row.status='carried_unresolved';row.resolution_type='amount_changed';
+        row.reflected_model_week=reflectsYes?weekNum:null;row.resolved_model_week=null;
+        row.amount_cents=_dollarsToCents(a.actualAmount);   // user-entered actual
+        row.original_amount_cents=_dollarsToCents(ev.a);    // WD-expected magnitude
+        break;
+      case'paid_other_account':
+        row.status='voided';row.resolution_type='paid_from_other_account';
+        row.reflected_model_week=null;row.resolved_model_week=weekNum;break;
+      case'wd_mismatch':
+        row.status='voided';row.resolution_type='voided';
+        row.reflected_model_week=null;row.resolved_model_week=weekNum;
+        row.resolution_notes=(a.notes||'');break;
+      default:return; // unknown response, defensive skip
+    }
+    out.push(row);
   });
   return out;
 }
