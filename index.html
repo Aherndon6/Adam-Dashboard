@@ -857,7 +857,7 @@ button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-vis
 // ── Constants (unchanged) ──────────────────────────────────────────────────
 // Simplified architecture — $8,250 total from LC · $6,500 operating floor · no legacy mechanics
 // Real-world moves: keep $2,250 in chk, move $2,750 sav→chk, move $1,000 LC→chk, move $2,250 LC→chk (Option 1 correction)
-const BUILD_TS='2026-07-03T14:42:07'; // updated each push — local time string
+const BUILD_TS='2026-07-03T14:52:52'; // updated each push — local time string
 const START_CHK=18037.73,START_SAV=3772.77,START_AMX=103.64,START_TAX=0,START_LC=13488.88;
 const EF_AMT=13488.88; // LC/EF balance — static this model year (no transfers in or out)
 const BASE_TAX=521.36,RET_SAV_XFR=3772.74;
@@ -1801,6 +1801,27 @@ function getPhase1Commitments(commitments,currentWeek){
     return c.origin_model_week<currentWeek
       &&c.status!=='cleared'&&c.status!=='voided'
       &&c.resolved_model_week==null;
+  });
+}
+
+// ── Phase 5F-1 Phase 2 (Step 2): current-week WD obligation candidate builder ──
+// Pure and read-only: no DOM, no fetch, no RPC, no mutation, not wired into any
+// save path this step (Step 2 scope is candidate identification only). Returns the
+// current-week protected WD obligations that do NOT yet have a cash_commitments
+// row, so Phase 2 can later prompt to create them. Pass effectiveWD in production
+// (so model_week_overrides are respected) or WD in tests; the reconciled week
+// number (reconOpen/n); and the loaded commitmentData.
+// Dedupe is expected_item_id === ev.eid ONLY, never payee/date/amount: identity
+// lives entirely in eid (which bakes in model_year and model_week), matching the
+// cash_commitments.expected_item_id UNIQUE constraint. Synthetic tax-transfer
+// events are included on commission weeks because they carry rod='protected_required'.
+function getPhase2WDCandidates(wdArray,weekNum,commitments){
+  var wk=getTaggedWD(wdArray||[]).find(function(wd){return wd[0]===weekNum;});
+  if(!wk)return[];
+  var existing={};
+  (commitments||[]).forEach(function(c){if(c&&c.expected_item_id)existing[c.expected_item_id]=true;});
+  return(wk[4]||[]).filter(function(ev){
+    return ev.eid&&ev.rod==='protected_required'&&!existing[ev.eid];
   });
 }
 

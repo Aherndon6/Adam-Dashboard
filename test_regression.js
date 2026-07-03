@@ -8555,6 +8555,73 @@ test('WD tagging (Phase 2 metadata): non-protected ob events get no payee/displa
 });
 })();
 
+console.log('\n── Section 5F1-P: Phase 2 candidate builder (Step 2: getPhase2WDCandidates, read-only) ──');
+(function(){
+// getPhase2WDCandidates is pure/read-only and not wired into any save path yet.
+// Exercised against the real WD array (effectiveWD == WD when no overrides apply).
+
+test('Phase 2 candidates: week 4 returns its protected WD obligations, all with an eid and rod=protected_required',()=>{
+  var cands=getPhase2WDCandidates(WD,4,[]);
+  assertGt(cands.length,0,'expected week 4 to have protected WD candidates');
+  cands.forEach(function(ev){
+    assert(ev.eid,'every candidate must carry an eid, got '+JSON.stringify(ev));
+    assert(ev.rod==='protected_required','every candidate must be protected_required, got '+ev.rod);
+  });
+  assert(cands.some(function(ev){return ev.eid==='2026mw4_rent_tiffany_dye_2026_07_01';}),'expected the week-4 rent 7/1 candidate');
+});
+
+test('Phase 2 candidates: scoped to the reconciled week only, a week-3 obligation never appears for week 4',()=>{
+  var w4=getPhase2WDCandidates(WD,4,[]).map(function(ev){return ev.eid;});
+  assert(w4.indexOf('2026mw3_disney_visa_2026_06_23')<0,'week-3 disney eid must not appear in week-4 candidates');
+  var w3=getPhase2WDCandidates(WD,3,[]).map(function(ev){return ev.eid;});
+  assert(w3.indexOf('2026mw3_disney_visa_2026_06_23')>=0,'week-3 disney eid must appear in week-3 candidates');
+  assert(w3.every(function(eid){return eid.indexOf('2026mw3_')===0;}),'every week-3 candidate eid must be a week-3 eid, got '+w3.join(', '));
+});
+
+test('Phase 2 candidates: an obligation with an existing commitment row is excluded (dedupe on expected_item_id)',()=>{
+  var all=getPhase2WDCandidates(WD,4,[]);
+  var target=all[0].eid;
+  var filtered=getPhase2WDCandidates(WD,4,[{expected_item_id:target,status:'planned'}]);
+  assert(filtered.every(function(ev){return ev.eid!==target;}),'candidate with an existing commitment row must be excluded');
+  assert(filtered.length===all.length-1,'exactly one candidate should drop, got '+filtered.length+' vs '+all.length);
+});
+
+test('Phase 2 candidates: dedupe is eid-only, a commitment with matching payee/amount but a different eid does not exclude',()=>{
+  var all=getPhase2WDCandidates(WD,4,[]);
+  var target=all[0];
+  var decoy=[{expected_item_id:'2099mw99_'+target.eid.split('_').slice(1).join('_'),payee:target.payee,amount_cents:Math.round(Math.abs(target.a)*100),status:'planned'}];
+  var filtered=getPhase2WDCandidates(WD,4,decoy);
+  assert(filtered.some(function(ev){return ev.eid===target.eid;}),'a non-matching eid (even with same payee/amount) must NOT exclude the candidate');
+  assert(filtered.length===all.length,'no candidate should drop for a non-matching eid');
+});
+
+test('Phase 2 candidates: synthetic tax-transfer obligation appears on commission week 6 and is excluded once a row exists',()=>{
+  var cands=getPhase2WDCandidates(WD,6,[]);
+  var synth=cands.find(function(ev){return ev.synthetic===true;});
+  assert(synth,'expected the synthetic tax_transfer candidate on commission week 6');
+  assert(synth.rod==='protected_required'&&synth.cc==='tax_transfer','synthetic candidate must be protected_required tax_transfer');
+  var excluded=getPhase2WDCandidates(WD,6,[{expected_item_id:synth.eid,status:'planned'}]);
+  assert(excluded.every(function(ev){return ev.eid!==synth.eid;}),'synthetic candidate must be excluded once its eid has a commitment row');
+});
+
+test('Phase 2 candidates: unknown week returns [], and null inputs are tolerated',()=>{
+  assert(getPhase2WDCandidates(WD,999,[]).length===0,'a week with no WD row returns []');
+  assert(getPhase2WDCandidates(WD,4,null).length>0,'null commitments tolerated: week 4 still yields candidates');
+  var nullWd=getPhase2WDCandidates(null,4,[]);
+  assert(Array.isArray(nullWd)&&nullWd.length===0,'a null wdArray returns [], not a throw');
+});
+
+test('Phase 2 candidates: builder is read-only, does not mutate WD or the passed commitments',()=>{
+  var beforeWDLen=WD.length;
+  var commits=[{expected_item_id:'x',status:'planned'}];
+  var snapshot=JSON.stringify(commits);
+  getPhase2WDCandidates(WD,4,commits);
+  assert(WD.length===beforeWDLen,'WD length must be unchanged');
+  assert(!('eid'in WD[0][4][0]),'original WD event objects must not be mutated with eid');
+  assert(JSON.stringify(commits)===snapshot,'passed commitments array must not be mutated');
+});
+})();
+
 console.log('\n── Section 5F1-M: Reconciliation Form Phase 0/1 — UI logic + state machine (persistence wired via 5F-1 RPC bridge — see 5F1-RPC-BRIDGE below) ──');
 (function(){
 // IMPORTANT — read before trusting the AC-77..92 test names below at face
