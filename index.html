@@ -857,7 +857,7 @@ button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-vis
 // ── Constants (unchanged) ──────────────────────────────────────────────────
 // Simplified architecture — $8,250 total from LC · $6,500 operating floor · no legacy mechanics
 // Real-world moves: keep $2,250 in chk, move $2,750 sav→chk, move $1,000 LC→chk, move $2,250 LC→chk (Option 1 correction)
-const BUILD_TS='2026-07-03T15:21:40'; // updated each push — local time string
+const BUILD_TS='2026-07-03T15:33:06'; // updated each push — local time string
 const START_CHK=18037.73,START_SAV=3772.77,START_AMX=103.64,START_TAX=0,START_LC=13488.88;
 const EF_AMT=13488.88; // LC/EF balance — static this model year (no transfers in or out)
 const BASE_TAX=521.36,RET_SAV_XFR=3772.74;
@@ -1932,7 +1932,26 @@ function buildPhase1PatchArray(commitments,answers,basis,currentWeek){
 // is omitted so the RPC applies its single allowed default (truist_checking), never an
 // empty string. Reflected column is the matrix's "null unless follow-up says yes"; the
 // not-sure -> bank_pending status override is Step 6 (reflection wiring), not here.
-function _dollarsToCents(v){return Math.round(Math.abs(parseFloat(v)||0)*100);}
+// Strict money -> cents. Accepts a number (e.g. the negative WD amount) or a user
+// string with an optional leading '$', correctly-grouped thousands commas, and an
+// optional decimal fraction (1850.50, 1,850.50, $1,850.50, $1850.50, -1850.50).
+// Rejects partial/malformed input (1850.50abc, abc1850.50, 1,85,0.50, --, empty) by
+// returning 0, rather than letting parseFloat silently accept a partial parse (e.g.
+// parseFloat('1,850.50') === 1, which would build amount_cents=100). Absolute-valued
+// positive cents after parsing.
+function _dollarsToCents(v){
+  if(v==null)return 0;
+  var n;
+  if(typeof v==='number'){
+    n=v;
+  }else{
+    var s=String(v).trim().replace(/^\$\s?/,'');
+    if(!/^-?(\d{1,3}(,\d{3})+|\d+)(\.\d+)?$/.test(s))return 0;
+    n=parseFloat(s.replace(/,/g,''));
+  }
+  if(!isFinite(n))return 0;
+  return Math.round(Math.abs(n)*100);
+}
 function buildPhase2NewCommitments(candidates,answers,basis,weekNum){
   var out=[];
   (candidates||[]).forEach(function(ev){
@@ -1979,6 +1998,21 @@ function buildPhase2NewCommitments(candidates,answers,basis,weekNum){
     out.push(row);
   });
   return out;
+}
+
+// ── Phase 5F-1 Phase 2 (Step 5): amount_changed client-side completeness ─────────
+// Pure. An amount_changed answer is complete only when the user-entered actual amount
+// is present, parses > 0, and differs from the WD-expected amount. Uses the same
+// abs-cents semantics as the payload builder (_dollarsToCents) so the client gate and
+// the built row agree exactly (validate_commitment_state requires amount_cents > 0 and
+// original_amount_cents <> amount_cents). This is the amount_changed slice of the
+// answered-row completeness check the save gate (Step 7) composes. It never forces a
+// prompt to be answered: non-amount_changed and unanswered rows are vacuously complete.
+function isPhase2AmountChangedComplete(ev,answer){
+  if(!answer||answer.response!=='amount_changed')return true; // no amount requirement here
+  var actualCents=_dollarsToCents(answer.actualAmount);
+  var expectedCents=_dollarsToCents(ev&&ev.a);
+  return actualCents>0&&actualCents!==expectedCents;
 }
 
 function runModel(akGoal,rtGoal,flags){

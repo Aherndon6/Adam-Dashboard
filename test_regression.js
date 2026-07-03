@@ -8818,6 +8818,74 @@ test('Phase 2 payload: synthetic tax-transfer candidate builds with its explicit
 });
 })();
 
+console.log('\n── Section 5F1-S: Phase 2 amount_changed validation (Step 5: isPhase2AmountChangedComplete) ──');
+(function(){
+var EV={eid:'2026mw4_rent_tiffany_dye_2026_07_01',payee:'Rent (Tiffany Dye)',cc:'rent',rod:'protected_required',a:-2000,due_date:'2026-07-01'};
+
+test('Phase 2 amount validation: a valid actual (entered, >0, differs from expected) is complete',()=>{
+  assert(isPhase2AmountChangedComplete(EV,{response:'amount_changed',actualAmount:'1850.50'})===true,'valid actual must be complete');
+});
+
+test('Phase 2 amount validation: missing/blank/zero/non-numeric actual is incomplete',()=>{
+  assert(isPhase2AmountChangedComplete(EV,{response:'amount_changed'})===false,'missing actual');
+  assert(isPhase2AmountChangedComplete(EV,{response:'amount_changed',actualAmount:''})===false,'blank actual');
+  assert(isPhase2AmountChangedComplete(EV,{response:'amount_changed',actualAmount:'0'})===false,'zero actual');
+  assert(isPhase2AmountChangedComplete(EV,{response:'amount_changed',actualAmount:'abc'})===false,'non-numeric actual');
+});
+
+test('Phase 2 amount validation: an actual equal to the WD expected is incomplete (must differ)',()=>{
+  assert(isPhase2AmountChangedComplete(EV,{response:'amount_changed',actualAmount:'2000'})===false,'equal to expected must be incomplete');
+  assert(isPhase2AmountChangedComplete(EV,{response:'amount_changed',actualAmount:'2000.00'})===false,'equal (with cents) must be incomplete');
+});
+
+test('Phase 2 amount validation: abs-cents semantics match the payload builder',()=>{
+  assert(isPhase2AmountChangedComplete(EV,{response:'amount_changed',actualAmount:'-1850.50'})===true,'abs of a negative actual, differs from expected, complete');
+  assert(isPhase2AmountChangedComplete(EV,{response:'amount_changed',actualAmount:'1850.505'})===true,'rounded actual still complete');
+});
+
+test('Phase 2 amount validation: non-amount_changed and unanswered rows are vacuously complete (never hard-gates)',()=>{
+  assert(isPhase2AmountChangedComplete(EV,{response:'not_paid_yet'})===true,'not_paid_yet has no amount requirement');
+  assert(isPhase2AmountChangedComplete(EV,{response:'bank_pending'})===true,'bank_pending has no amount requirement');
+  assert(isPhase2AmountChangedComplete(EV,{})===true,'unanswered row (no response) must not block');
+  assert(isPhase2AmountChangedComplete(EV,null)===true,'null answer must not block');
+});
+
+test('Phase 2 amount validation: agrees with the payload builder for a valid amount_changed row',()=>{
+  var ans={};ans[EV.eid]={response:'amount_changed',actualAmount:'1850.50'};
+  var row=buildPhase2NewCommitments([EV],ans,'posted_current_balance',4)[0];
+  assert(isPhase2AmountChangedComplete(EV,ans[EV.eid])===true,'predicate says complete');
+  assert(row.amount_cents===185050&&row.original_amount_cents===200000,'builder amounts match predicate expectation');
+  assert(row.amount_cents!==row.original_amount_cents,'and they differ, satisfying validate_commitment_state');
+});
+
+test('Phase 2 amount validation: comma-formatted "1,850.50" parses to 185050 and is complete when it differs from expected',()=>{
+  assert(_dollarsToCents('1,850.50')===185050,'comma-formatted must parse to 185050, got '+_dollarsToCents('1,850.50'));
+  assert(isPhase2AmountChangedComplete(EV,{response:'amount_changed',actualAmount:'1,850.50'})===true,'comma-formatted differing actual is complete');
+});
+
+test('Phase 2 amount validation: currency-formatted "$1,850.50" and "$1850.50" parse to 185050',()=>{
+  assert(_dollarsToCents('$1,850.50')===185050,'$ + comma must parse to 185050, got '+_dollarsToCents('$1,850.50'));
+  assert(_dollarsToCents('$1850.50')===185050,'$ only must parse to 185050, got '+_dollarsToCents('$1850.50'));
+});
+
+test('Phase 2 amount validation: malformed/partial inputs are rejected (0 cents), no silent partial parse',()=>{
+  assert(_dollarsToCents('1850.50abc')===0,'trailing junk must be rejected, got '+_dollarsToCents('1850.50abc'));
+  assert(_dollarsToCents('abc1850.50')===0,'leading junk must be rejected, got '+_dollarsToCents('abc1850.50'));
+  assert(_dollarsToCents('1,85,0.50')===0,'malformed comma grouping must be rejected, got '+_dollarsToCents('1,85,0.50'));
+  assert(_dollarsToCents('--')===0,'"--" must be rejected');
+  assert(_dollarsToCents('')===0,'empty must be 0');
+  assert(isPhase2AmountChangedComplete(EV,{response:'amount_changed',actualAmount:'1850.50abc'})===false,'partial parse must be incomplete, not silently 100 cents');
+  assert(isPhase2AmountChangedComplete(EV,{response:'amount_changed',actualAmount:'1,85,0.50'})===false,'malformed comma must be incomplete');
+});
+
+test('Phase 2 amount validation: builder uses the same strict parser (comma-formatted actual builds 185050, not a partial-parse 100)',()=>{
+  var ans={};ans[EV.eid]={response:'amount_changed',actualAmount:'1,850.50'};
+  var row=buildPhase2NewCommitments([EV],ans,'posted_current_balance',4)[0];
+  assert(row.amount_cents===185050,'builder must strict-parse the comma-formatted actual to 185050, got '+row.amount_cents);
+  assert(row.original_amount_cents===200000,'expected still 200000');
+});
+})();
+
 console.log('\n── Section 5F1-M: Reconciliation Form Phase 0/1 — UI logic + state machine (persistence wired via 5F-1 RPC bridge — see 5F1-RPC-BRIDGE below) ──');
 (function(){
 // IMPORTANT — read before trusting the AC-77..92 test names below at face
