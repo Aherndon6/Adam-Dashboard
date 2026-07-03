@@ -16,3 +16,4 @@ package-lock.json
 *.docx
 *.xlsx
 *.pptx
+exports/
