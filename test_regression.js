@@ -9364,6 +9364,73 @@ test('P3-2: Phase 2 builder is neither called by nor altered by the Phase 3 buil
 });
 })();
 
+console.log('\n── Section 5F1-P3-3: Phase 3 completeness predicates + save gate ──');
+(function(){
+function item(o){return Object.assign({id:'manual_x',label:'',amount:'',response:undefined,reflection:undefined},o||{});}
+
+test('P3-3: isPhase3ItemStarted true when any field has content, false for a fully-empty slot',()=>{
+  assert(isPhase3ItemStarted(item())===false,'fully-empty slot -> not started');
+  assert(isPhase3ItemStarted(item({label:'x'}))===true,'label -> started');
+  assert(isPhase3ItemStarted(item({amount:'1'}))===true,'amount -> started');
+  assert(isPhase3ItemStarted(item({response:'not_paid_yet'}))===true,'response -> started');
+  assert(isPhase3ItemStarted(item({reflection:'yes'}))===true,'reflection -> started');
+  assert(isPhase3ItemStarted(item({label:'   ',amount:'   '}))===false,'whitespace-only -> not started');
+});
+
+test('P3-3: isPhase3ItemComplete requires label + amount>0 + response; reflection only under available_balance + eligible',()=>{
+  assert(isPhase3ItemComplete(item({label:'A',amount:'10',response:'not_paid_yet'}),'posted_current_balance')===true,'complete (posted)');
+  assert(isPhase3ItemComplete(item({label:'',amount:'10',response:'not_paid_yet'}),'posted_current_balance')===false,'no label');
+  assert(isPhase3ItemComplete(item({label:'A',amount:'0',response:'not_paid_yet'}),'posted_current_balance')===false,'zero amount');
+  assert(isPhase3ItemComplete(item({label:'A',amount:'abc',response:'not_paid_yet'}),'posted_current_balance')===false,'malformed amount');
+  assert(isPhase3ItemComplete(item({label:'A',amount:'10',response:undefined}),'posted_current_balance')===false,'no response');
+  assert(isPhase3ItemComplete(item({label:'A',amount:'10',response:'amount_changed'}),'posted_current_balance')===false,'out-of-set response');
+  assert(isPhase3ItemComplete(item({label:'A',amount:'10',response:'bank_pending'}),'available_balance')===false,'available_balance + bank_pending, no reflection -> incomplete');
+  assert(isPhase3ItemComplete(item({label:'A',amount:'10',response:'bank_pending',reflection:'no'}),'available_balance')===true,'reflection answered -> complete');
+  assert(isPhase3ItemComplete(item({label:'A',amount:'10',response:'bank_pending'}),'posted_current_balance')===true,'posted basis: reflection not required');
+  assert(isPhase3ItemComplete(item({label:'A',amount:'10',response:'not_paid_yet'}),'available_balance')===true,'not_paid_yet under available_balance: no reflection required');
+  assert(isPhase3ItemComplete(item({label:'A',amount:'10',response:'cleared_reflected'}),'available_balance')===true,'terminal cleared: no reflection required');
+});
+
+test('P3-3: canCompleteReconPhase3 — blank section and fully-empty slots pass; started-but-incomplete blocks; complete passes',()=>{
+  assert(canCompleteReconPhase3([],'posted_current_balance')===true,'no items -> passes (blank section saves)');
+  assert(canCompleteReconPhase3([item()],'posted_current_balance')===true,'fully-empty slot ignored -> passes');
+  assert(canCompleteReconPhase3([item({label:'A'})],'posted_current_balance')===false,'label-only -> blocks');
+  assert(canCompleteReconPhase3([item({amount:'10'})],'posted_current_balance')===false,'amount-only -> blocks');
+  assert(canCompleteReconPhase3([item({response:'not_paid_yet'})],'posted_current_balance')===false,'response-only -> blocks');
+  assert(canCompleteReconPhase3([item({reflection:'yes'})],'posted_current_balance')===false,'reflection-only -> blocks');
+  assert(canCompleteReconPhase3([item({label:'A',amount:'10'})],'posted_current_balance')===false,'label+amount no response -> blocks');
+  assert(canCompleteReconPhase3([item({label:'A',amount:'10',response:'bank_pending'})],'available_balance')===false,'available_balance eligible, missing reflection -> blocks');
+  assert(canCompleteReconPhase3([item({label:'A',amount:'10',response:'bank_pending'})],'posted_current_balance')===true,'posted eligible, no reflection -> passes');
+  assert(canCompleteReconPhase3([item({label:'A',amount:'10',response:'not_paid_yet'})],'posted_current_balance')===true,'complete item -> passes');
+  assert(canCompleteReconPhase3([item({id:'manual_a',label:'A',amount:'10',response:'not_paid_yet'}),item({id:'manual_b'})],'posted_current_balance')===true,'complete + fully-empty -> passes');
+  assert(canCompleteReconPhase3([item({id:'manual_a',label:'A',amount:'10',response:'not_paid_yet'}),item({id:'manual_b',label:'B'})],'posted_current_balance')===false,'complete + started-incomplete -> blocks');
+});
+
+test('P3-3: canPersistReconNow composes Phase 0/1, answered Phase 2, and started Phase 3 completeness (source check)',()=>{
+  var src=canPersistReconNow.toString();
+  assert(/canCompleteReconPhase01/.test(src)&&/canCompleteReconPhase2/.test(src)&&/canCompleteReconPhase3/.test(src),'must compose all three phases');
+});
+
+test('P3-3: reconSaveBlockedReason order is basis -> Phase 1 -> answered Phase 2 -> started Phase 3',()=>{
+  var src=reconSaveBlockedReason.toString();
+  var iB=src.indexOf('balance basis'),iP1=src.indexOf('Phase 1 item'),iP2=src.indexOf('current-week items you started'),iP3=src.indexOf('manual items you started');
+  assert(iB>=0&&iP1>=0&&iP2>=0&&iP3>=0,'all four blocked reasons present');
+  assert(iB<iP1&&iP1<iP2&&iP2<iP3,'order basis -> P1 -> P2 -> P3');
+});
+
+test('P3-3: Phase 0/1 gate stays Phase 3-free and Phase 2 gate is unchanged',()=>{
+  assert(!/canCompleteReconPhase3|_reconPhase3Items|isPhase3Item/.test(canCompleteReconPhase01.toString()),'Phase 0/1 gate must not reference Phase 3');
+  assert(!/Phase3|_reconPhase3Items|isPhase3Item/.test(canCompleteReconPhase2.toString()),'Phase 2 gate must not reference Phase 3');
+});
+
+test('P3-3: builder skip is protected by the gate — a started-incomplete item builds no row AND blocks save (no silent no-row save)',()=>{
+  var it={id:'manual_z',label:'Started but no response',amount:'50',response:undefined,reflection:undefined};
+  assert(buildPhase3NewCommitments([it],'posted_current_balance',4).length===0,'builder skips it (no row)');
+  assert(isPhase3ItemStarted(it)===true,'item is started');
+  assert(canCompleteReconPhase3([it],'posted_current_balance')===false,'gate blocks it (prevents silent save with no row)');
+});
+})();
+
 console.log('\n── Section 5F1-M: Reconciliation Form Phase 0/1 — UI logic + state machine (persistence wired via 5F-1 RPC bridge — see 5F1-RPC-BRIDGE below) ──');
 (function(){
 // IMPORTANT — read before trusting the AC-77..92 test names below at face

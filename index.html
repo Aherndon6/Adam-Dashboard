@@ -857,7 +857,7 @@ button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-vis
 // ── Constants (unchanged) ──────────────────────────────────────────────────
 // Simplified architecture — $8,250 total from LC · $6,500 operating floor · no legacy mechanics
 // Real-world moves: keep $2,250 in chk, move $2,750 sav→chk, move $1,000 LC→chk, move $2,250 LC→chk (Option 1 correction)
-const BUILD_TS='2026-07-04T09:15:34'; // updated each push — local time string
+const BUILD_TS='2026-07-04T09:21:56'; // updated each push — local time string
 const START_CHK=18037.73,START_SAV=3772.77,START_AMX=103.64,START_TAX=0,START_LC=13488.88;
 const EF_AMT=13488.88; // LC/EF balance — static this model year (no transfers in or out)
 const BASE_TAX=521.36,RET_SAV_XFR=3772.74;
@@ -2119,6 +2119,39 @@ function isPhase2AnswerComplete(ev,answer,basis){
 function canCompleteReconPhase2(candidates,answers,basis){
   return(candidates||[]).every(function(ev){
     return isPhase2AnswerComplete(ev,(answers&&answers[ev.eid]),basis);
+  });
+}
+
+// ── Phase 5F-1 Phase 3 (P3-3): manual-item completeness + gate ───────────────────
+// A Phase 3 item is "started" once the user has put any value in any field; a fully-empty
+// slot is ignored (never blocks). A "started" item must be "complete" to save. Because the
+// P3-2 builder silently skips an incomplete item, this gate is what prevents a started-but-
+// incomplete manual item from saving with no row: the gate is strictly stronger than the
+// builder (it also requires the reflection answer), so gate-pass implies the builder emits
+// a row, and gate-block means no save at all.
+var PHASE3_REFLECTION_BRANCHES=['paid_initiated','bank_pending'];
+function isPhase3ItemStarted(item){
+  if(!item)return false;
+  return !!((item.label&&String(item.label).trim().length>0)
+    ||(item.amount!=null&&String(item.amount).trim().length>0)
+    ||item.response
+    ||item.reflection);
+}
+function isPhase3ItemComplete(item,basis){
+  if(!item)return false;
+  if(!(item.label&&String(item.label).trim().length>0))return false;
+  if(!(_dollarsToCents(item.amount)>0))return false;
+  if(PHASE3_RESPONSES.indexOf(item.response)<0)return false;
+  if(basis==='available_balance'&&PHASE3_REFLECTION_BRANCHES.indexOf(item.response)>=0){
+    if(item.reflection!=='yes'&&item.reflection!=='no'&&item.reflection!=='not_sure')return false;
+  }
+  return true;
+}
+// Every STARTED manual item must be complete. A blank section (no items, or only fully-empty
+// slots) never blocks.
+function canCompleteReconPhase3(items,basis){
+  return(items||[]).every(function(it){
+    return !isPhase3ItemStarted(it)||isPhase3ItemComplete(it,basis);
   });
 }
 
@@ -3610,20 +3643,25 @@ function canPersistReconNow(weekNum){
   // Phase 2 (Step 7): only ANSWERED current-week rows must be internally complete;
   // unanswered prompts never block (backfill detection, not a hard gate). Layered here,
   // not inside canCompleteReconPhase01, so the existing Phase 0/1 gate is unchanged.
-  return canCompleteReconPhase2(getPhase2WDCandidates(reconEffectiveWD(),weekNum,commitmentData),_reconPhase2Answers,_reconBasis);
+  if(!canCompleteReconPhase2(getPhase2WDCandidates(reconEffectiveWD(),weekNum,commitmentData),_reconPhase2Answers,_reconBasis))return false;
+  // Phase 3 (P3-3): every STARTED manual item must be complete; a blank section never blocks.
+  return canCompleteReconPhase3(_reconPhase3Items,_reconBasis);
 }
 function canSaveRecon(weekNum){return canPersistReconNow(weekNum);}
 // Shared blocked-reason text — used by both the disabled-button hint and
 // saveRecon()'s defense-in-depth guard, so the two can never drift apart.
 function reconSaveBlockedReason(weekNum){
-  // Order: (1) no basis, (2) incomplete Phase 1, (3) incomplete ANSWERED Phase 2.
-  // A Phase 2 prompt left with no response does not block save; only an answered-but-
-  // incomplete row produces the third message.
+  // Order: (1) no basis, (2) incomplete Phase 1, (3) incomplete ANSWERED Phase 2,
+  // (4) started-but-incomplete Phase 3 manual item. A Phase 2 prompt left with no response
+  // does not block; a fully-empty Phase 3 slot does not block; only started-but-incomplete
+  // rows produce the third/fourth message.
   if(!_reconBasis)return'Select a balance basis above before saving.';
   var rows=getPhase1Commitments(commitmentData,weekNum);
   if(rows.length&&!canCompleteReconPhase01(weekNum))return'Select a balance basis above and respond to every Phase 1 item before saving.';
   if(!canCompleteReconPhase2(getPhase2WDCandidates(reconEffectiveWD(),weekNum,commitmentData),_reconPhase2Answers,_reconBasis))
     return'Finish the current-week items you started: a changed amount, mismatch note, or reflection answer is missing.';
+  if(!canCompleteReconPhase3(_reconPhase3Items,_reconBasis))
+    return'Finish or remove the manual items you started: each needs a label, an amount, a response, and a reflection answer where required.';
   return'';
 }
 // Phase 2 (Step 8.5) response labels, keyed to the seven-branch response_keys.
