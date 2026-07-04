@@ -9431,6 +9431,74 @@ test('P3-3: builder skip is protected by the gate — a started-incomplete item 
 });
 })();
 
+console.log('\n── Section 5F1-P3-4: Phase 3 "Other reconciliation items" UI ──');
+(function(){
+var ID='manual_test1';
+function render(basis,items){
+  var _cd=commitmentData,_b=_reconBasis,_p2=_reconPhase2Answers,_p3=_reconPhase3Items,_ov=overrideData;
+  overrideData={};commitmentData=[];_reconBasis=basis;_reconPhase2Answers={};_reconPhase3Items=items||[];
+  var html;
+  try{html=renderReconPhase01({num:4});}finally{commitmentData=_cd;_reconBasis=_b;_reconPhase2Answers=_p2;_reconPhase3Items=_p3;overrideData=_ov;}
+  return html;
+}
+function oneItem(o){return[Object.assign({id:ID,label:'',amount:'',response:undefined,reflection:undefined},o||{})];}
+
+test('P3-4: section renders with the exact title and an Add item control',()=>{
+  var html=render('posted_current_balance',[]);
+  assert(html.indexOf('Phase 3: Other reconciliation items')>=0,'exact section title');
+  assert(html.indexOf('addPhase3Item()')>=0,'+ Add item wired to addPhase3Item');
+});
+
+test('P3-4: each item renders label + amount inputs wired to setPhase3ItemField',()=>{
+  var html=render('posted_current_balance',oneItem());
+  assert(html.indexOf("setPhase3ItemField('"+ID+"','label'")>=0,'label input wired');
+  assert(html.indexOf("setPhase3ItemField('"+ID+"','amount'")>=0,'amount input wired');
+});
+
+test('P3-4: response select renders the 5 plain-language options, wired, with no amount_changed/wd_mismatch',()=>{
+  var html=render('posted_current_balance',oneItem());
+  // scope to the Phase 3 section (the whole form also contains the Phase 2 select, which
+  // legitimately has amount_changed/wd_mismatch); Phase 3 is the last section rendered.
+  var p3=html.slice(html.indexOf('Phase 3: Other reconciliation items'));
+  assert(p3.indexOf("setPhase3ItemField('"+ID+"','response'")>=0,'response select wired');
+  ['not_paid_yet','paid_initiated','bank_pending','cleared_reflected','paid_other_account'].forEach(function(v){
+    assert(p3.indexOf('value="'+v+'"')>=0,'option value present in Phase 3 section: '+v);
+  });
+  ['Not paid yet / not initiated','Paid or initiated, not cleared','Pending at bank','Already cleared / reflected','Paid from another account'].forEach(function(lbl){
+    assert(p3.indexOf(lbl)>=0,'plain label present: '+lbl);
+  });
+  assert(p3.indexOf('value="amount_changed"')<0&&p3.indexOf('value="wd_mismatch"')<0,'no amount_changed/wd_mismatch options in the Phase 3 section');
+});
+
+test('P3-4: no notes field and no due_date field in the Phase 3 item UI',()=>{
+  var html=render('available_balance',oneItem({response:'bank_pending'}));
+  assert(html.indexOf("setPhase3ItemField('"+ID+"','notes'")<0,'no notes field');
+  assert(html.indexOf("setPhase3ItemField('"+ID+"','due_date'")<0,'no due_date field');
+});
+
+test('P3-4: reflection select renders only under available_balance + paid_initiated/bank_pending, never under posted/current',()=>{
+  assert(render('available_balance',oneItem({response:'bank_pending'})).indexOf("setPhase3ItemField('"+ID+"','reflection'")>=0,'available_balance + bank_pending -> reflection select');
+  assert(render('available_balance',oneItem({response:'paid_initiated'})).indexOf("setPhase3ItemField('"+ID+"','reflection'")>=0,'available_balance + paid_initiated -> reflection select');
+  assert(render('available_balance',oneItem({response:'not_paid_yet'})).indexOf("setPhase3ItemField('"+ID+"','reflection'")<0,'available_balance + not_paid_yet (non-eligible) -> no reflection select');
+  assert(render('posted_current_balance',oneItem({response:'bank_pending'})).indexOf("setPhase3ItemField('"+ID+"','reflection'")<0,'posted basis -> no reflection select');
+});
+
+test('P3-4: remove control is wired to removePhase3Item',()=>{
+  assert(render('posted_current_balance',oneItem({label:'A'})).indexOf("removePhase3Item('"+ID+"')")>=0,'remove wired');
+});
+
+test('P3-4: inline guidance for a started-incomplete item is neutral (no dashboard verdict / Review Required language)',()=>{
+  var html=render('posted_current_balance',oneItem({label:'Started'}));
+  assert(html.indexOf('to save this item, or remove it')>=0,'neutral inline guidance present for a started-incomplete item');
+  assert(!/review required/i.test(html)&&!/verdict/i.test(html),'no verdict / Review Required language');
+});
+
+test('P3-4: the existing Phase 2 section still renders alongside Phase 3, and saveRecon has no Phase 3 payload wiring yet',()=>{
+  assert(render('posted_current_balance',[]).indexOf('Phase 2: Current-week protected obligations')>=0,'Phase 2 section header still present');
+  assert(!/buildPhase3NewCommitments/.test(saveRecon.toString()),'saveRecon must not yet reference buildPhase3NewCommitments');
+});
+})();
+
 console.log('\n── Section 5F1-M: Reconciliation Form Phase 0/1 — UI logic + state machine (persistence wired via 5F-1 RPC bridge — see 5F1-RPC-BRIDGE below) ──');
 (function(){
 // IMPORTANT — read before trusting the AC-77..92 test names below at face

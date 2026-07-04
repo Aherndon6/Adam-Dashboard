@@ -857,7 +857,7 @@ button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-vis
 // ── Constants (unchanged) ──────────────────────────────────────────────────
 // Simplified architecture — $8,250 total from LC · $6,500 operating floor · no legacy mechanics
 // Real-world moves: keep $2,250 in chk, move $2,750 sav→chk, move $1,000 LC→chk, move $2,250 LC→chk (Option 1 correction)
-const BUILD_TS='2026-07-04T09:21:56'; // updated each push — local time string
+const BUILD_TS='2026-07-04T09:29:15'; // updated each push — local time string
 const START_CHK=18037.73,START_SAV=3772.77,START_AMX=103.64,START_TAX=0,START_LC=13488.88;
 const EF_AMT=13488.88; // LC/EF balance — static this model year (no transfers in or out)
 const BASE_TAX=521.36,RET_SAV_XFR=3772.74;
@@ -3675,6 +3675,14 @@ var RECON_PHASE2_RESPONSE_LABELS={
   paid_other_account:'Paid from a different account',
   wd_mismatch:"Doesn't apply this week (mismatch)"
 };
+// Phase 3 (P3-4) plain-language response labels (5-branch set; own wording per spec).
+var PHASE3_RESPONSE_LABELS={
+  not_paid_yet:'Not paid yet / not initiated',
+  paid_initiated:'Paid or initiated, not cleared',
+  bank_pending:'Pending at bank',
+  cleared_reflected:'Already cleared / reflected',
+  paid_other_account:'Paid from another account'
+};
 function renderReconPhase01(w){
   var html='';
   html+='<div class="recon-phase0" style="margin-bottom:14px;padding:10px 12px;background:var(--surface);border:1px solid var(--line2);border-radius:8px">';
@@ -3771,6 +3779,43 @@ function renderReconPhase01(w){
     });
     html+='<div style="color:var(--muted);font-size:12px;margin-top:8px">Recording one of these creates a tracked cash commitment on save. Prompts you leave unanswered do not block saving.</div>';
   }
+  html+='</div>';
+
+  // ── Phase 3: Other reconciliation items (P3-4) ──────────────────────────────
+  // Manual catch-all items. Reads the P3-1 setters; no saveRecon/gate/builder changes here.
+  // A blank section is neutral (not an error). Reflection select only under available_balance
+  // for paid_initiated/bank_pending. Inline guidance for a started-incomplete item is neutral
+  // (no verdict language).
+  html+='<div class="recon-phase3" style="margin-bottom:14px;padding:10px 12px;background:var(--surface);border:1px solid var(--line2);border-radius:8px">';
+  html+='<div style="font-weight:600;font-size:13px;margin-bottom:6px">Phase 3: Other reconciliation items</div>';
+  html+='<div style="color:var(--muted);font-size:12px;margin-bottom:6px">Optional. Record any other payment or obligation for this week that is not one of the protected items above.</div>';
+  _reconPhase3Items.forEach(function(it){
+    var eligible=(_reconBasis==='available_balance'&&PHASE3_REFLECTION_BRANCHES.indexOf(it.response)>=0);
+    html+='<div style="padding:8px 0;border-top:1px solid var(--line2)">';
+    html+='<div style="display:flex;gap:6px;flex-wrap:wrap">'+
+      '<input type="text" placeholder="Label (e.g. Plumber)" value="'+esc(it.label||'')+'" onblur="setPhase3ItemField(\''+it.id+'\',\'label\',this.value)" style="font-size:13px;flex:1;min-width:120px">'+
+      '<input type="text" placeholder="Amount" value="'+esc(it.amount||'')+'" onblur="setPhase3ItemField(\''+it.id+'\',\'amount\',this.value)" style="font-size:13px;width:100px">'+
+      '</div>';
+    html+='<select onchange="setPhase3ItemField(\''+it.id+'\',\'response\',this.value)" style="margin-top:4px;font-size:13px">'+
+      '<option value=""'+(!it.response?' selected':'')+'>Select response…</option>'+
+      PHASE3_RESPONSES.map(function(k){return'<option value="'+k+'"'+(it.response===k?' selected':'')+'>'+esc(PHASE3_RESPONSE_LABELS[k])+'</option>';}).join('')+
+      '</select>';
+    if(eligible){
+      html+='<div style="margin-top:6px;font-size:13px">Does the balance you\'re about to enter already reflect this debit? '+
+        '<select onchange="setPhase3ItemField(\''+it.id+'\',\'reflection\',this.value)">'+
+        '<option value=""'+(!it.reflection?' selected':'')+'>Select…</option>'+
+        '<option value="yes"'+(it.reflection==='yes'?' selected':'')+'>Yes, already reflected</option>'+
+        '<option value="no"'+(it.reflection==='no'?' selected':'')+'>No, not reflected</option>'+
+        '<option value="not_sure"'+(it.reflection==='not_sure'?' selected':'')+'>Not sure</option>'+
+        '</select></div>';
+    }
+    if(isPhase3ItemStarted(it)&&!isPhase3ItemComplete(it,_reconBasis)){
+      html+='<div style="margin-top:4px;font-size:12px;color:var(--muted)">Add a label, an amount, and a response'+(eligible?', and answer the reflection question,':'')+' to save this item, or remove it.</div>';
+    }
+    html+='<div style="margin-top:4px"><button onclick="removePhase3Item(\''+it.id+'\')" style="font-size:12px;background:none;border:none;color:var(--muted);cursor:pointer;text-decoration:underline;padding:0">Remove</button></div>';
+    html+='</div>';
+  });
+  html+='<div style="margin-top:8px"><button onclick="addPhase3Item()" style="font-size:12px;padding:4px 10px;border:1px solid var(--line2);border-radius:6px;background:var(--surface);cursor:pointer">+ Add item</button></div>';
   html+='</div>';
   return html;
 }
