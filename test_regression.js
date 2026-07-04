@@ -9074,6 +9074,46 @@ test('Phase 2 UI: empty-state shown when all candidates already recorded, and it
   assert(html.indexOf('No unrecorded protected obligations')>=0,'empty-state message present when all candidates are recorded');
   assert(html.indexOf('not yet recorded')<0,'must NOT render the Step 9 count banner (deferred)');
 });
+
+// ── Step 9: count-gated in-form protected-obligation banner ──
+test('Phase 2 banner: N>0 renders the exact neutral count text with the correct count',()=>{
+  var n=getPhase2WDCandidates(WD,4,[]).length;
+  assertGt(n,0,'precondition: week 4 has unrecorded candidates');
+  var html=render('posted_current_balance',{},[]);
+  assert(html.indexOf(n+' current-week protected obligations not yet recorded.')>=0,'exact banner text with count '+n);
+});
+
+test('Phase 2 banner: N=0 renders no banner and no all-clear text',()=>{
+  var commits=getPhase2WDCandidates(WD,4,[]).map(function(ev){return{expected_item_id:ev.eid,status:'planned'};});
+  var html=render('posted_current_balance',{},commits);
+  assert(html.indexOf('not yet recorded')<0,'no banner text when N=0');
+  assert(!/all\s*clear|all caught up|nothing to record|you.?re all set/i.test(html),'no all-clear message introduced');
+});
+
+test('Phase 2 banner: lives inside the reconciliation form (renderReconPhase01) only',()=>{
+  var occ=(renderReconPhase01.toString().match(/current-week protected obligations not yet recorded/g)||[]).length;
+  assert(occ===1,'banner string must appear exactly once, inside renderReconPhase01, got '+occ);
+  assert(render('posted_current_balance',{},[]).indexOf('not yet recorded')>=0,'banner is produced by the reconciliation form render');
+});
+
+test('Phase 2 banner: does not alter save eligibility (gate functions do not reference it)',()=>{
+  assert(!/not yet recorded/.test(canPersistReconNow.toString()),'canPersistReconNow must not reference the banner');
+  assert(!/not yet recorded/.test(canCompleteReconPhase01.toString()),'canCompleteReconPhase01 must not reference the banner');
+  assert(!/not yet recorded/.test(reconSaveBlockedReason.toString()),'reconSaveBlockedReason must not reference the banner');
+  assert(!/not yet recorded/.test(canCompleteReconPhase2.toString()),'canCompleteReconPhase2 must not reference the banner');
+});
+
+test('Phase 2 banner: introduces no dashboard verdict / Review Required language',()=>{
+  var html=render('posted_current_balance',{},[]);
+  assert(!/review required/i.test(html),'no Review Required language');
+  assert(!/verdict/i.test(html),'no verdict language');
+});
+
+test('Phase 2 banner: existing Step 8.5 prompt UI still renders alongside the banner',()=>{
+  var html=render('posted_current_balance',{},[]);
+  assert(html.indexOf("setPhase2Response('"+W4EID+"'")>=0,'prompts still render with the banner present');
+  assert(html.indexOf('Phase 2: Current-week protected obligations')>=0,'section header still present');
+});
 })();
 
 console.log('\n── Section 5F1-M: Reconciliation Form Phase 0/1 — UI logic + state machine (persistence wired via 5F-1 RPC bridge — see 5F1-RPC-BRIDGE below) ──');
