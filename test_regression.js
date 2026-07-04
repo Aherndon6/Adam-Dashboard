@@ -9548,6 +9548,100 @@ test('P3-5: conflict/error routing unchanged — conflict reloads + routes to Ph
 });
 })();
 
+console.log('\n── Section 5F1-P3-6: consolidated Phase 3 flow / acceptance ──');
+(function(){
+function itm(o){return Object.assign({id:'manual_ac',label:'Plumber',amount:'200',response:'not_paid_yet',reflection:undefined},o||{});}
+function build(o,basis,wk){return buildPhase3NewCommitments([itm(o)],basis||'posted_current_balance',wk||4)[0];}
+function render(basis,items){
+  var _cd=commitmentData,_b=_reconBasis,_p2=_reconPhase2Answers,_p3=_reconPhase3Items,_ov=overrideData;
+  overrideData={};commitmentData=[];_reconBasis=basis;_reconPhase2Answers={};_reconPhase3Items=items||[];
+  var html;try{html=renderReconPhase01({num:4});}finally{commitmentData=_cd;_reconBasis=_b;_reconPhase2Answers=_p2;_reconPhase3Items=_p3;overrideData=_ov;}
+  return html;
+}
+
+test('P3-6 [happy path]: complete item -> gate passes -> builder emits one row -> saveRecon concatenates it into the payload',()=>{
+  var it=itm({response:'not_paid_yet'});
+  assert(isPhase3ItemComplete(it,'posted_current_balance')===true,'complete');
+  assert(canCompleteReconPhase3([it],'posted_current_balance')===true,'gate passes');
+  var rows=buildPhase3NewCommitments([it],'posted_current_balance',4);
+  assert(rows.length===1&&rows[0].commitment_source==='manual_reconciliation'&&rows[0].expected_item_id==='manual_ac','builder emits one manual row');
+  assert(/var newCommitmentsAll=newCommitments\.concat\(buildPhase3NewCommitments/.test(saveRecon.toString()),'saveRecon concatenates Phase 3 rows into the payload');
+});
+
+test('P3-6 [blank section]: no items -> gate does not block and builder adds no rows',()=>{
+  assert(canCompleteReconPhase3([],'posted_current_balance')===true,'blank does not block');
+  assert(buildPhase3NewCommitments([],'posted_current_balance',4).length===0,'blank adds no rows');
+});
+
+test('P3-6 [started incomplete blocks before RPC]: gate returns false and builder emits no row',()=>{
+  var it=itm({label:'Started',response:undefined});
+  assert(isPhase3ItemStarted(it)===true,'item is started');
+  assert(canCompleteReconPhase3([it],'posted_current_balance')===false,'gate blocks before the RPC');
+  assert(buildPhase3NewCommitments([it],'posted_current_balance',4).length===0,'builder emits no row');
+});
+
+test('P3-6 [reflection yes]: available_balance + paid_initiated + Yes sets reflected_model_week=weekNum',()=>{
+  var r=build({response:'paid_initiated',reflection:'yes'},'available_balance',4);
+  assert(r.reflected_model_week===4&&r.status==='initiated','reflected=week, initiated');
+});
+
+test('P3-6 [paid_initiated not_sure]: forces bank_pending and remains active/reserved',()=>{
+  var r=build({response:'paid_initiated',reflection:'not_sure'},'available_balance',4);
+  assert(r.status==='bank_pending'&&r.reflected_model_week===null,'bank_pending, reflected null');
+  assert(isReservedAsOf(r,4)===true,'remains reserved (active)');
+});
+
+test('P3-6 [bank_pending No/Not sure]: both remain active/reserved with reflected null',()=>{
+  var no=build({response:'bank_pending',reflection:'no'},'available_balance',4);
+  var ns=build({response:'bank_pending',reflection:'not_sure'},'available_balance',4);
+  assert(no.reflected_model_week===null&&ns.reflected_model_week===null,'reflected null');
+  assert(isReservedAsOf(no,4)===true&&isReservedAsOf(ns,4)===true,'both reserved');
+});
+
+test('P3-6 [posted basis]: no reflection required and reflected_model_week stays null',()=>{
+  assert(isPhase3ItemComplete(itm({response:'bank_pending'}),'posted_current_balance')===true,'reflection not required under posted');
+  assert(build({response:'bank_pending'},'posted_current_balance',4).reflected_model_week===null,'no reflected week under posted');
+});
+
+test('P3-6 [paid_other_account]: terminal voided, resolved same week, not reserved',()=>{
+  var r=build({response:'paid_other_account'},'posted_current_balance',4);
+  assert(r.status==='voided'&&r.resolution_type==='paid_from_other_account'&&r.resolved_model_week===4&&r.reflected_model_week===null,'voided/resolved shape');
+  assert(isReservedAsOf(r,4)===false,'not reserved');
+});
+
+test('P3-6 [cleared_reflected]: terminal cleared, reflected+resolved same week, not reserved',()=>{
+  var r=build({response:'cleared_reflected'},'posted_current_balance',4);
+  assert(r.status==='cleared'&&r.resolution_type==='cleared'&&r.reflected_model_week===4&&r.resolved_model_week===4,'cleared shape');
+  assert(isReservedAsOf(r,4)===false,'reflected clears the reserve at the week');
+});
+
+test('P3-6 [coexist]: Phase 2 and Phase 3 rows both appear in the concatenated payload',()=>{
+  var cands=getPhase2WDCandidates(WD,4,[]);var a={};cands.forEach(function(ev){a[ev.eid]={response:'not_paid_yet'};});
+  var all=buildPhase2NewCommitments(cands,a,'posted_current_balance',4).concat(buildPhase3NewCommitments([itm({response:'not_paid_yet'})],'posted_current_balance',4));
+  assert(all.some(function(r){return r.commitment_source==='wd_reconciliation';})&&all.some(function(r){return r.commitment_source==='manual_reconciliation';}),'both commitment_sources present');
+});
+
+test('P3-6 [error routing]: generic error preserves Phase 3 items; successful save clears them',()=>{
+  var save=saveRecon.toString();
+  var catchBody=save.slice(save.indexOf('}catch(e)'));
+  var tryBody=save.slice(save.indexOf('try{'),save.indexOf('}catch(e)'));
+  assert(!/_reconPhase3Items=\[\]/.test(catchBody),'catch preserves _reconPhase3Items');
+  assert(/_reconPhase3Items=\[\]/.test(tryBody),'success clears _reconPhase3Items');
+});
+
+test('P3-6 [no Phase 2 regression]: Phase 2 builder + section still behave',()=>{
+  var cands=getPhase2WDCandidates(WD,4,[]);var a={};a[cands[0].eid]={response:'not_paid_yet'};
+  assert(buildPhase2NewCommitments(cands,a,'posted_current_balance',4)[0].commitment_source==='wd_reconciliation','Phase 2 builder unchanged');
+  assert(render('posted_current_balance',[]).indexOf('Phase 2: Current-week protected obligations')>=0,'Phase 2 section still renders');
+});
+
+test('P3-6 [no verdict rendering]: the Phase 3 UI introduces no Review Required / dashboard verdict language',()=>{
+  var html=render('available_balance',[itm({response:'bank_pending'})]);
+  var p3=html.slice(html.indexOf('Phase 3: Other reconciliation items'));
+  assert(!/review required/i.test(p3)&&!/verdict/i.test(p3),'no Review Required / verdict language in the Phase 3 section');
+});
+})();
+
 console.log('\n── Section 5F1-M: Reconciliation Form Phase 0/1 — UI logic + state machine (persistence wired via 5F-1 RPC bridge — see 5F1-RPC-BRIDGE below) ──');
 (function(){
 // IMPORTANT — read before trusting the AC-77..92 test names below at face
