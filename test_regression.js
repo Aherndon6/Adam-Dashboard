@@ -10089,30 +10089,33 @@ test('5F1-RPC-BRIDGE: the 9 formerly-PARTIAL ACs are now fully unblocked — 0 r
 console.log('  ✓ AC-'+formerlyPartialACs.join(', AC-')+' — moved PARTIAL → UNBLOCKED (Phase 1 state-machine logic + RPC persistence path both confirmed)');
 })();
 
-console.log('\n── Section 5F1-NOTSTARTED: JS-engine-layer ACs still blocked pending the 4-phase reconciliation UI (Phase 2/3/4) / dashboard verdict rendering / historical repair mode / RPC save integration (Build Sequence steps 10-12) ──');
+console.log('\n── Section 5F1-NOTSTARTED: JS-engine-layer ACs still blocked pending dashboard verdict-text rendering / historical repair mode (both deferred; NOT required for forward weekly closeout) ──');
 (function(){
-// Accounting for all 33 original JS-engine-layer ACs: 22 fully unblocked
-// (AC-1,2,3,4,5,6,13,14,16,17,19,20,47 — Section 5F1-K, engine layer only, no
-// persistence involved so "unblocked" is an honest end-to-end claim there;
-// plus AC-77,78,79,80,88,89,90,91,92 — Section 5F1-M for the state-machine
-// logic + Section 5F1-RPC-BRIDGE for the saveRecon()→RPC persistence path,
-// moved from PARTIAL to unblocked as of the 5F-1 RPC persistence bridge
-// slice) + 11 still fully blocked below = 33. 0 ACs remain PARTIAL.
-// The 11 below all require Phase 2/3/4 of the reconciliation form, the
-// historical repair form, dashboard verdict-text rendering, and/or
-// repair_commitments_for_week wiring — none of that exists yet.
-// Note AC-15/18/21 are NOT in the unblocked or partial list even though the
-// underlying data (reviewRequired flag, adjustedAvailableForSweep) is
-// computed correctly: the AC text describes a rendered verdict string
-// ("⚠ Review Required — est. deployable $X", "Deployable +$10,265.40") or the
-// repair-form UI, neither of which exists yet. Listed here as explicit skips
-// (not silent gaps) so `grep -c '^test('` and the AC coverage count both
-// reflect the true state.
-var blockedACs=[15,18,21,28,96,97,101,105,106,107,108];
-test('5F1-NOTSTARTED: 11 UI-layer ACs are tracked as blocked, not silently skipped (plus AC-76, a process-check, tracked separately)',()=>{
-  assert(blockedACs.length===11,'expected 11 blocked ACs, found '+blockedACs.length);
+// Accounting for all 33 original JS-engine-layer ACs: 30 fully unblocked, 3
+// still blocked below = 33. 0 ACs remain PARTIAL.
+//   - 22 via Section 5F1-K (AC-1,2,3,4,5,6,13,14,16,17,19,20,47 engine layer)
+//     plus Section 5F1-M + 5F1-RPC-BRIDGE (AC-77,78,79,80,88,89,90,91,92).
+//   - 8 via Section 5F1-AC-PHASE2, now that Phase 2/3 shipped and are proven in
+//     a real Week 26 closeout: AC-28,96,97,101,105,106,107,108. AC-107's
+//     reviewRequired flag is asserted directly there (w.cashAvailability.
+//     reviewRequired===true), so only the verdict *string* rendering remains.
+// The 3 below require features that are deliberately NOT built (and NOT needed
+// for a clean forward weekly reconciliation):
+//   - AC-15, AC-18: dashboard verdict-text rendering. The AC describes a
+//     rendered verdict string (a "Review Required" line with an estimated
+//     deployable amount, or a "Deployable +$X" line). The underlying
+//     reviewRequired flag and adjustedAvailableForSweep are computed and
+//     tested; only the on-dashboard verdict text is unbuilt.
+//   - AC-21: historical repair-form smoke. repair_commitments_for_week wiring
+//     is unbuilt. Backfill of past un-tagged weeks only; no effect on forward
+//     closeout.
+// Listed here as explicit skips (not silent gaps) so `grep -c '^test('` and the
+// AC coverage count both reflect the true state.
+var blockedACs=[15,18,21];
+test('5F1-NOTSTARTED: 3 UI-layer ACs are tracked as blocked, not silently skipped (plus AC-76, a process-check, tracked separately)',()=>{
+  assert(blockedACs.length===3,'expected 3 blocked ACs, found '+blockedACs.length);
 });
-console.log('  ⚠ AC-'+blockedACs.join(', AC-')+' — BLOCKED pending the 4-phase reconciliation form / dashboard verdict rendering (Build Sequence steps 10-12)');
+console.log('  ⚠ AC-'+blockedACs.join(', AC-')+': BLOCKED pending dashboard verdict-text rendering (AC-15/18) and historical repair mode (AC-21); both deferred, neither blocks forward weekly closeout');
 console.log('  ⚠ AC-76 — process-check only (grep -c \'^test(\' baseline), not a runtime assertion; re-grep at build start is authoritative. 2026-07-03 Phase 2 Step 1 re-grep: grep -c \'^test(\' = 999, executed suite = 1081 passing (prior stale 832 note corrected; executed count is the working regression baseline)');
 })();
 

@@ -4,16 +4,17 @@
 
 Phase 5B complete.
 Budget Module v1 live.
-Wendy live-use target: July 1, 2026.
+5F-1 complete through Phase 4 and proven in a real weekly closeout (Week 26, 2026-07-04).
+Wendy Budget-tab live use in progress (target July 1, 2026).
 
 ## Current Goal
 
-Prepare the system for Wendy using the Budget tab in live household workflow while preserving platform stability, RLS security, and reconciliation accuracy.
+Prepare the system for Wendy using the Budget tab in live household workflow while preserving platform stability, RLS security, and reconciliation accuracy. 5F-1 forward reconciliation is now live and proven; remaining 5F-1 sub-items (dashboard Review Required verdict rendering, historical repair mode) are deferred and do not block forward weekly closeout.
 
 ## Recent Verified State
 
-- Regression tests: 687/0 passing
-- E2E tests: 63/0 passing
+- Static regression tests: 1219/0 passing (as of 5F-1 Phase 4 P4-1)
+- E2E: known pre-existing failures WC-3 and BR-3 only (documented in AGENTS.md; not 5F-1 regressions). `push_to_github.sh --skip-e2e` allowed only while WC-3 and BR-3 are the sole known e2e failures.
 - Dashboard stable
 - GitHub Pages deploys from main
 
@@ -116,6 +117,18 @@ Current-week WD obligation prompts + `p_new_commitments` are live. `saveRecon` s
 ## 5F-1 Phase 3 SHIPPED (2026-07-04)
 
 Generic Catch-All (manual, non-WD reconciliation items) is live. `saveRecon` concatenates `buildPhase3NewCommitments(_reconPhase3Items, _reconBasis, n)` onto the Phase 2 rows into `newCommitmentsAll` and sends it as `p_new_commitments`; `p_patched` and the Phase 0/1/2 paths are unchanged. UI: a "Phase 3: Other reconciliation items" section in `renderReconPhase01` with an Add item control, per-item label/amount inputs, a 5-branch response select (`not_paid_yet`, `paid_initiated`, `bank_pending`, `cleared_reflected`, `paid_other_account`; no `amount_changed` or `wd_mismatch`), a conditional reflection select (`available_balance` + `paid_initiated`/`bank_pending`), and a Remove control, all wired to `_reconPhase3Items` setters (`addPhase3Item`/`setPhase3ItemField`/`removePhase3Item`; item `id` = `manual_<uuid>` generated at add-time, doubling as `expected_item_id`). Gate: `canCompleteReconPhase3` composes into `canPersistReconNow` after Phase 2 (blank section never blocks; a started-but-incomplete item blocks before the RPC; blocked-reason order basis, Phase 1, answered Phase 2, started Phase 3). Rows are `commitment_source=manual_reconciliation`, `commitment_class=other_transfer`, `required_or_discretionary=protected_required`, `affects_deployable_cash=true`, `source_account` defaulted to `truist_checking`, `original_amount_cents`/`due_date`/`resolution_notes` null. No schema/RLS/SQL change (the RPC already accepts `manual_reconciliation`). Deployed build-stamp `f282ab8` (Pages #134). Live-smoke passed: one `manual_reconciliation` row created for a $1.00 "P3 smoke test" planned item, verified field-by-field, then rolled back clean (throwaway; production left clean, `weekly_reconciliations` intact). Static regression 1213/1213. e2e run pre-push showed only the known `WC-3` (and `BR-3`) failures, so `--skip-e2e` was used per the documented condition. Next: Phase 4.
+
+## 5F-1 Phase 4 SHIPPED + real closeout PROVEN (2026-07-04)
+
+Phase 4 (Balance Entry) is complete. The 5-field balance form, pre-fill, save flow, and RPC balance fields already existed; the one spec gap was the unknown-basis warning. P4-1 added: a non-blocking amber warning under the Phase 0 basis radios gated on `_reconBasis==='unknown'` (styled with repo `--amberSoft`/`--amber`, independent of the unbuilt dashboard Review Required verdict, unknown stays a valid saveable basis); and a basis-aware `reconBalanceGuidance(basis)` helper replacing the static posted-only note (distinct posted/available/unknown copy, de-duplicated from the amber wording, safe default when unselected). No runModel/reviewRequired change, no dashboard verdict rendering, no new save gating, no balance-validation change, no schema/RLS/SQL. Deployed at commit `dbcae6a` (functional commit `b1be6c8`), footer build Jul 4 2:34 PM; live visual check confirmed the amber warning shows only under "Not sure" and the guidance copy switches by basis. Static regression 1219/1219.
+
+Real Week 26 closeout completed and read-only verified in production (stored week_num 4 / displayed Week 26):
+- `weekly_reconciliations` row saved correctly, `balance_basis=posted_current_balance`, balances chk 14935.14 / sav 3772.81 / amx 103.64 / tax 1516.59 / lc 13774.76.
+- Three Tiffany Dye rent obligations resolved cleanly: all `status=cleared`, `reflected_model_week=4`, `resolved_model_week=4`, `resolution_type=cleared`.
+- No Phase 3 duplicate for the $435.63 Vio tax transfer. The only 43563-cent row is the legitimate `wd_reconciliation` row `2026mw4_tax_transfer_vio_2026_06_28` (status planned). The scheduled 07/06 transfer was captured in Week Notes (Vio confirmation 202618513554465, flagged not-yet-reflected), not as a new commitment, which is correct.
+- Jul 4 commitment activity is exactly 3 cleared rent rows + 1 planned Vio transfer row. Duplicate `expected_item_id` = 0, smoke/test leftovers = 0. Distribution: wd_reconciliation/cleared = 3, wd_reconciliation/planned = 1.
+
+Conclusion: 5F-1 forward reconciliation is proven in real use and production data is clean. Two 5F-1 sub-items remain deliberately deferred and are not required for forward weekly closeout: dashboard Review Required verdict-text rendering (AC-15/18; the reviewRequired flag itself is computed and tested) and historical repair mode (AC-21; `repair_commitments_for_week` wiring, backfill of past un-tagged weeks only). Blocked-AC tracker trimmed accordingly to AC-15/18/21 (Section 5F1-NOTSTARTED).
 
 ## Post-5F-1 Build Path & Strategic Horizons
 

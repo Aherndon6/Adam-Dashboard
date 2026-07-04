@@ -62,8 +62,10 @@ Access model:
 
 Phase 5B complete.
 Budget Module v1 live.
-Regression tests: 687/0 passing.
-E2E tests: 63/0 passing.
+5F-1 complete through Phase 4. Forward reconciliation write path (Phase 0 basis, Phase 1 prior-commitment patches, Phase 2 current-week WD inserts, Phase 3 manual catch-all, Phase 4 balance entry) is live via the `save_reconciliation_with_commitments` RPC and proven in a real Week 26 closeout (2026-07-04): row saved correctly, three Tiffany Dye rents cleared/reflected at week 4, no Phase 3 duplicate for the $435.63 Vio transfer, production data verified clean.
+Two 5F-1 sub-items remain deferred (NOT required for forward weekly closeout): dashboard Review Required verdict-text rendering (the `reviewRequired` flag is computed and tested; only the on-dashboard verdict string is unbuilt) and historical repair mode (`repair_commitments_for_week` wiring, past-week backfill only).
+Static regression tests: 1219/0 passing.
+E2E: known pre-existing failures WC-3 and BR-3 only (see Known Gaps); not 5F-1 regressions.
 Dashboard stable.
 
 Next milestone:
