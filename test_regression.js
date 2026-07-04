@@ -9642,6 +9642,67 @@ test('P3-6 [no verdict rendering]: the Phase 3 UI introduces no Review Required 
 });
 })();
 
+console.log('\n── Section 5F1-P4-1: Phase 4 unknown-basis amber warning + basis-aware guidance ──');
+(function(){
+function renderP01(basis){
+  var _b=_reconBasis,_cd=commitmentData,_ov=overrideData,_p2=_reconPhase2Answers,_p3=_reconPhase3Items;
+  overrideData={};commitmentData=[];_reconBasis=basis;_reconPhase2Answers={};_reconPhase3Items=[];
+  var out;try{out=renderReconPhase01({num:4});}finally{_reconBasis=_b;commitmentData=_cd;overrideData=_ov;_reconPhase2Answers=_p2;_reconPhase3Items=_p3;}
+  return out;
+}
+
+test('P4-1: amber unknown-basis warning renders only when basis is unknown',()=>{
+  assert(renderP01('unknown').indexOf('recon-basis-warn')>=0,'warning present under unknown');
+  assert(renderP01('posted_current_balance').indexOf('recon-basis-warn')<0,'no warning under posted');
+  assert(renderP01('available_balance').indexOf('recon-basis-warn')<0,'no warning under available');
+  assert(renderP01(null).indexOf('recon-basis-warn')<0,'no warning when basis unselected');
+});
+
+test('P4-1: warning uses the exact neutral wording and no verdict/danger/error/blocked language',()=>{
+  var out=renderP01('unknown');
+  assert(out.indexOf('Balance basis is marked Not sure. The weekly model will save these balances, but pending or uncleared items may be over- or under-counted for this week.')>=0,'exact neutral wording');
+  var wi=out.indexOf('recon-basis-warn');
+  var warn=out.slice(wi,out.indexOf('</div>',wi)+6);
+  assert(!/review required/i.test(warn)&&!/verdict/i.test(warn)&&!/danger/i.test(warn)&&!/\berror\b/i.test(warn)&&!/\bblocked\b/i.test(warn),'no verdict/danger/error/blocked language in the warning');
+});
+
+test('P4-1: unknown basis remains saveable (warning is non-blocking) when other gates are satisfied',()=>{
+  var _b=_reconBasis,_cd=commitmentData,_ov=overrideData,_p2=_reconPhase2Answers,_p3=_reconPhase3Items;
+  try{
+    overrideData={};commitmentData=[];_reconBasis='unknown';_reconPhase2Answers={};_reconPhase3Items=[];
+    assert(canPersistReconNow(4)===true,'unknown basis with all other gates clear must be saveable');
+  }finally{_reconBasis=_b;commitmentData=_cd;overrideData=_ov;_reconPhase2Answers=_p2;_reconPhase3Items=_p3;}
+});
+
+test('P4-1: reconBalanceGuidance returns basis-aware copy for each basis, distinct notes, and a default when unselected',()=>{
+  var posted=reconBalanceGuidance('posted_current_balance');
+  var avail=reconBalanceGuidance('available_balance');
+  var unk=reconBalanceGuidance('unknown');
+  assert(/posted\/cleared balances only/.test(posted),'posted copy');
+  assert(/expected balance after they clear/.test(posted),'posted copy preserves expected-balance-after-clear intent');
+  assert(/available balances shown by the bank/.test(avail),'available copy');
+  assert(/best current balances you can verify for each account/.test(unk),'unknown copy');
+  assert(/Select a balance basis above/.test(reconBalanceGuidance(null)),'default copy when unselected');
+  assert(posted!==avail&&avail!==unk,'notes differ by basis');
+  // De-dup: the unknown guidance must NOT repeat the amber warning's "over- or under-counted" sentence.
+  assert(!/over- or under-counted/.test(unk),'unknown guidance does not duplicate the amber warning wording');
+});
+
+test('P4-1: the Phase 4 balance form still renders all five fields, wired to the basis-aware note',()=>{
+  ['ri_chk','ri_sav','ri_amx','ri_tax','ri_lc'].forEach(function(id){assertIncludes(html,'id="'+id+'"');});
+  ['Truist Checking','Truist Savings','AMEX Savings','Vio Bank - Tax Reserve','Lending Club (EF)'].forEach(function(l){assertIncludes(html,l);});
+  assertIncludes(html,'reconBalanceGuidance(_reconBasis)');
+});
+
+test('P4-1: no Phase 1/2/3 regression, the recon form still renders Phase 0/1/2/3 sections',()=>{
+  var h=renderP01('posted_current_balance');
+  assert(h.indexOf('Balance basis')>=0,'Phase 0 present');
+  assert(h.indexOf('Prior unresolved commitments')>=0,'Phase 1 present');
+  assert(h.indexOf('Current-week protected obligations')>=0,'Phase 2 present');
+  assert(h.indexOf('Other reconciliation items')>=0,'Phase 3 present');
+});
+})();
+
 console.log('\n── Section 5F1-M: Reconciliation Form Phase 0/1 — UI logic + state machine (persistence wired via 5F-1 RPC bridge — see 5F1-RPC-BRIDGE below) ──');
 (function(){
 // IMPORTANT — read before trusting the AC-77..92 test names below at face
