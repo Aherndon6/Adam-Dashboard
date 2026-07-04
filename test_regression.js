@@ -9116,6 +9116,98 @@ test('Phase 2 banner: existing Step 8.5 prompt UI still renders alongside the ba
 });
 })();
 
+console.log('\n── Section 5F1-AC-PHASE2: consolidated Phase 2 acceptance criteria (AC-96/97/101/105/106/107/108/28) ──');
+(function(){
+var EV={eid:'2026mw3_amex_gold_2026_06_27',payee:'AMEX Gold',cc:'credit_card_payment',rod:'protected_required',a:-6368.48,due_date:'2026-06-27'};
+function build1(resp,extra,basis,wk){
+  var ans={};ans[EV.eid]=Object.assign({response:resp},extra||{});
+  return buildPhase2NewCommitments([EV],ans,basis||'posted_current_balance',wk||3);
+}
+// Local runModel harness (mirrors 5F1-K withCashAvailability) for the reviewRequired AC.
+function runWith(commitments,reconOverrides){
+  var oldC=commitmentData.slice(),oldKeys=Object.keys(reconData),oldR={};
+  oldKeys.forEach(function(k){oldR[k]=reconData[k];});
+  commitmentData=(commitments||[]).slice();
+  oldKeys.forEach(function(k){delete reconData[k];});
+  Object.assign(reconData,reconOverrides||{});
+  var weeks;try{weeks=runModel(7000,7694.87);}finally{commitmentData=oldC;Object.keys(reconData).forEach(function(k){delete reconData[k];});Object.assign(reconData,oldR);}
+  return weeks;
+}
+
+test('AC-96: Phase 2 payload table — each branch produces the documented status/resolution_type/reflected/resolved shape',()=>{
+  var np=build1('not_paid_yet')[0];
+  assert(np.status==='planned'&&np.resolution_type===undefined&&np.reflected_model_week===null&&np.resolved_model_week===null,'not_paid_yet');
+  var pi=build1('paid_initiated')[0];
+  assert(pi.status==='initiated'&&pi.resolution_type===undefined&&pi.resolved_model_week===null,'paid_initiated');
+  var bp=build1('bank_pending')[0];
+  assert(bp.status==='bank_pending'&&bp.resolution_type===undefined&&bp.resolved_model_week===null,'bank_pending');
+  var cl=build1('cleared_reflected')[0];
+  assert(cl.status==='cleared'&&cl.resolution_type==='cleared'&&cl.reflected_model_week===3&&cl.resolved_model_week===3,'cleared_reflected');
+  var ac=build1('amount_changed',{actualAmount:'6000'})[0];
+  assert(ac.status==='carried_unresolved'&&ac.resolution_type==='amount_changed'&&ac.amount_cents===600000&&ac.original_amount_cents===636848,'amount_changed: actual in amount_cents, expected in original_amount_cents');
+  var po=build1('paid_other_account')[0];
+  assert(po.status==='voided'&&po.resolution_type==='paid_from_other_account'&&po.resolved_model_week===3&&po.reflected_model_week===null,'paid_other_account');
+  var mm=build1('wd_mismatch',{notes:'x'})[0];
+  assert(mm.status==='voided'&&mm.resolution_type==='voided'&&mm.resolved_model_week===3,'wd_mismatch');
+});
+
+test('AC-97: every Phase 2 response for a protected WD obligation stages exactly one row (no silent skip)',()=>{
+  ['not_paid_yet','paid_initiated','bank_pending','cleared_reflected','paid_other_account'].forEach(function(resp){
+    assert(build1(resp).length===1,resp+' must stage exactly one row');
+  });
+  assert(build1('amount_changed',{actualAmount:'6000'}).length===1,'amount_changed stages one row');
+  var mm=build1('wd_mismatch',{notes:'due next week'});
+  assert(mm.length===1&&mm[0].status==='voided'&&mm[0].resolution_type==='voided'&&mm[0].resolution_notes==='due next week','wd_mismatch stages one auditable voided row with notes, never zero rows');
+});
+
+test('AC-105: bank_pending + available_balance + Yes sets reflected_model_week=week and is NOT reserved',()=>{
+  var r=build1('bank_pending',{reflection:'yes'},'available_balance',3)[0];
+  assert(r.reflected_model_week===3,'reflected=week');
+  assert(isReservedAsOf(r,3)===false,'not reserved (already reflected in the balance being entered)');
+});
+
+test('AC-106: bank_pending + available_balance + No leaves reflected null and stays reserved',()=>{
+  var r=build1('bank_pending',{reflection:'no'},'available_balance',3)[0];
+  assert(r.reflected_model_week===null,'reflected null');
+  assert(isReservedAsOf(r,3)===true,'reserved');
+});
+
+test('AC-107: bank_pending + available_balance + Not sure stays reserved and triggers Review Required',()=>{
+  var r=build1('bank_pending',{reflection:'not_sure'},'available_balance',3)[0];
+  assert(r.status==='bank_pending'&&r.reflected_model_week===null,'bank_pending, reflected null');
+  assert(isReservedAsOf(r,3)===true,'reserved');
+  var commit=Object.assign({},r,{source_account:'truist_checking',id:'ac107'});
+  var weeks=runWith([commit],{3:{chk:20000,sav:1000,amx:0,tax:500,lc:3250,balance_basis:'available_balance',date:'Jun 1'}});
+  var w3=weeks.find(function(x){return x.num===3;});
+  assert(w3&&w3.cashAvailability&&w3.cashAvailability.reservedCommitmentCount===1,'the bank_pending commitment must be reserved at its reconciled origin week');
+  assert(w3.cashAvailability.hasBankPendingReserve===true,'week 3 must flag a bank_pending reserve');
+  assert(w3.cashAvailability.reviewRequired===true,'week 3 reviewRequired must be true with a bank_pending reserve');
+});
+
+test('AC-108: wd_mismatch requires notes client-side and stages a voided/voided row, never a silent skip',()=>{
+  assert(isPhase2AnswerComplete(EV,{response:'wd_mismatch'},'posted_current_balance')===false,'no notes -> incomplete (client blocks save)');
+  assert(isPhase2AnswerComplete(EV,{response:'wd_mismatch',notes:'due next week'},'posted_current_balance')===true,'notes -> complete');
+  var mm=build1('wd_mismatch',{notes:'due next week'})[0];
+  assert(mm.status==='voided'&&mm.resolution_type==='voided'&&mm.resolution_notes==='due next week','stages an auditable voided row with notes (server-side enforced by validate_commitment_state per docs/phase-5f-1-migration.sql)');
+});
+
+test('AC-101: generic RPC error keeps the form open with staged input and does not refresh reconData/commitmentData',()=>{
+  var cb=saveRecon.toString();cb=cb.slice(cb.indexOf('}catch(e)'));
+  assert((cb.match(/reloadReconAndCommitments/g)||[]).length===1,'only the conflict branch reloads; the generic path does not');
+  assert(!/_reconBasis=null|_reconPhase1Answers=\{\}|_reconPhase2Answers=\{\}/.test(cb),'catch must not clear staged answers');
+  assert(!/reconOpen=null/.test(cb),'catch must not close the form');
+});
+
+test('AC-28: conflict error refreshes commitmentData and routes the user to Phase 1',()=>{
+  var cb=saveRecon.toString();cb=cb.slice(cb.indexOf('}catch(e)'));
+  assert(/toLowerCase\(\)\.indexOf\('commitment already exists'\)/.test(cb),'conflict detected case-insensitively');
+  var condIdx=cb.indexOf('commitment already exists');
+  var reloadIdx=cb.indexOf('reloadReconAndCommitments');
+  assert(reloadIdx>condIdx,'conflict branch reloads commitmentData');
+  assert(cb.indexOf('Prior Commitments (Phase 1)')>=0,'routes the user to Phase 1');
+});
+})();
+
 console.log('\n── Section 5F1-M: Reconciliation Form Phase 0/1 — UI logic + state machine (persistence wired via 5F-1 RPC bridge — see 5F1-RPC-BRIDGE below) ──');
 (function(){
 // IMPORTANT — read before trusting the AC-77..92 test names below at face
