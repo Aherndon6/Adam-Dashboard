@@ -9208,6 +9208,87 @@ test('AC-28: conflict error refreshes commitmentData and routes the user to Phas
 });
 })();
 
+console.log('\n── Section 5F1-P3-1: Phase 3 (Generic Catch-All) staged state + lifecycle (state only) ──');
+(function(){
+function stubRender(fn){var _r=renderApp;try{renderApp=function(){};fn();}finally{renderApp=_r;}}
+
+test('P3-1: addPhase3Item appends an empty item with a manual_ id; ids are unique',()=>{
+  stubRender(function(){
+    _reconPhase3Items=[];
+    addPhase3Item();
+    assert(_reconPhase3Items.length===1,'one item added');
+    var it=_reconPhase3Items[0];
+    assert(/^manual_/.test(it.id),'id is manual_-prefixed, got '+it.id);
+    assert(it.label===''&&it.amount===''&&it.response===undefined&&it.reflection===undefined,'item starts empty');
+    addPhase3Item();
+    assert(_reconPhase3Items.length===2&&_reconPhase3Items[0].id!==_reconPhase3Items[1].id,'ids are unique');
+  });
+  _reconPhase3Items=[];
+});
+
+test('P3-1: setPhase3ItemField updates fields; response change nulls a stale reflection, idempotent re-set does not',()=>{
+  stubRender(function(){
+    _reconPhase3Items=[];addPhase3Item();var id=_reconPhase3Items[0].id;
+    setPhase3ItemField(id,'label','Plumber');
+    setPhase3ItemField(id,'amount','200');
+    setPhase3ItemField(id,'response','bank_pending');
+    setPhase3ItemField(id,'reflection','yes');
+    var it=_reconPhase3Items[0];
+    assert(it.label==='Plumber'&&it.amount==='200'&&it.response==='bank_pending'&&it.reflection==='yes','fields stored');
+    setPhase3ItemField(id,'response','bank_pending'); // same response re-set
+    assert(_reconPhase3Items[0].reflection==='yes','idempotent re-set preserves reflection');
+    setPhase3ItemField(id,'response','not_paid_yet'); // real change
+    assert(_reconPhase3Items[0].reflection===undefined,'real response change nulls stale reflection');
+  });
+  _reconPhase3Items=[];
+});
+
+test('P3-1: removePhase3Item removes exactly the targeted item',()=>{
+  stubRender(function(){
+    _reconPhase3Items=[];addPhase3Item();addPhase3Item();
+    var keep=_reconPhase3Items[0].id,drop=_reconPhase3Items[1].id;
+    removePhase3Item(drop);
+    assert(_reconPhase3Items.length===1&&_reconPhase3Items[0].id===keep,'only the targeted item removed');
+  });
+  _reconPhase3Items=[];
+});
+
+test('P3-1: cancelRecon clears staged Phase 3 items',()=>{
+  stubRender(function(){
+    _reconPhase3Items=[{id:'manual_x',label:'a',amount:'1',response:'not_paid_yet',reflection:undefined}];
+    cancelRecon();
+    assert(_reconPhase3Items.length===0,'cancelRecon clears _reconPhase3Items');
+  });
+  reconOpen=null;_reconBasis=null;_reconPhase1Answers={};_reconPhase2Answers={};_reconPhase3Items=[];
+});
+
+test('P3-1: openRecon resets _reconPhase3Items (no cross-week leak)',()=>{
+  var _role=USER_ROLE,_render=renderApp,_st=setTimeout;
+  try{
+    USER_ROLE='owner';renderApp=function(){};setTimeout=function(){};
+    _reconPhase3Items=[{id:'manual_leftover',label:'wk A',amount:'1',response:'not_paid_yet'}];
+    openRecon(4);
+    assert(_reconPhase3Items.length===0,'openRecon clears staged Phase 3 items, got '+JSON.stringify(_reconPhase3Items));
+  }finally{
+    USER_ROLE=_role;renderApp=_render;setTimeout=_st;
+    reconOpen=null;_reconBasis=null;_reconPhase1Answers={};_reconPhase2Answers={};_reconPhase3Items=[];
+  }
+});
+
+test('P3-1: openRecon and cancelRecon reset _reconPhase3Items (source check)',()=>{
+  assert(/_reconPhase3Items=\[\]/.test(openRecon.toString()),'openRecon must reset _reconPhase3Items');
+  assert(/_reconPhase3Items=\[\]/.test(cancelRecon.toString()),'cancelRecon must reset _reconPhase3Items');
+});
+
+test('P3-1: saveRecon clears Phase 3 items only on success, preserves them on failure (retry-safe)',()=>{
+  var parts=saveRecon.toString().split('catch(e)');
+  assert(parts.length>=2,'saveRecon has a main catch(e) block');
+  var successHalf=parts[0],catchHalf=parts.slice(1).join('catch(e)');
+  assert(/_reconPhase3Items=\[\]/.test(successHalf),'success path clears _reconPhase3Items');
+  assert(!/_reconPhase3Items=\[\]/.test(catchHalf),'catch/failure path must NOT reset _reconPhase3Items (preserve for retry)');
+});
+})();
+
 console.log('\n── Section 5F1-M: Reconciliation Form Phase 0/1 — UI logic + state machine (persistence wired via 5F-1 RPC bridge — see 5F1-RPC-BRIDGE below) ──');
 (function(){
 // IMPORTANT — read before trusting the AC-77..92 test names below at face

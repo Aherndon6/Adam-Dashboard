@@ -857,7 +857,7 @@ button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-vis
 // ── Constants (unchanged) ──────────────────────────────────────────────────
 // Simplified architecture — $8,250 total from LC · $6,500 operating floor · no legacy mechanics
 // Real-world moves: keep $2,250 in chk, move $2,750 sav→chk, move $1,000 LC→chk, move $2,250 LC→chk (Option 1 correction)
-const BUILD_TS='2026-07-04T08:50:12'; // updated each push — local time string
+const BUILD_TS='2026-07-04T09:05:54'; // updated each push — local time string
 const START_CHK=18037.73,START_SAV=3772.77,START_AMX=103.64,START_TAX=0,START_LC=13488.88;
 const EF_AMT=13488.88; // LC/EF balance — static this model year (no transfers in or out)
 const BASE_TAX=521.36,RET_SAV_XFR=3772.74;
@@ -927,6 +927,13 @@ var _reconPhase1Answers={}; // { [commitmentId]: {step1, step2, notes} } for the
 // without re-entering. Not read by any payload builder or RPC in this step; Step 3
 // wires staged state and lifecycle only. Shape: { [eid]: {response, actualAmount, notes, reflection} }.
 var _reconPhase2Answers={};
+// Phase 3 (Generic Catch-All) staged manual items, for the currently-open week only.
+// Same lifecycle as _reconPhase2Answers: reset on openRecon()/cancelRecon() and on a
+// successful save, deliberately preserved on a failed save. Not read by any payload
+// builder, gate, or UI in this step; P3-1 wires staged state + lifecycle only. Each item:
+// { id:'manual_<uuid>', label, amount, response, reflection } — id is fixed at add-time
+// and doubles as the eventual cash_commitments.expected_item_id.
+var _reconPhase3Items=[];
 
 // ── Budget Rules (Phase 5) ─────────────────────────────────────────────────
 var budgetRules=[];
@@ -2520,9 +2527,10 @@ function openRecon(n){
   _reconBasis=(reconData[n]&&reconData[n].balance_basis)||null;
   _reconPhase1Answers={};
   _reconPhase2Answers={}; // Phase 2 staged answers reset per open (no cross-week leak)
+  _reconPhase3Items=[];   // Phase 3 manual items reset per open (no cross-week leak)
   renderApp();setTimeout(function(){var el=document.querySelector('.recon-form');if(el)el.scrollIntoView({behavior:'smooth',block:'nearest'});},80);
 }
-function cancelRecon(){reconOpen=null;_reconBasis=null;_reconPhase1Answers={};_reconPhase2Answers={};renderApp();}
+function cancelRecon(){reconOpen=null;_reconBasis=null;_reconPhase1Answers={};_reconPhase2Answers={};_reconPhase3Items=[];renderApp();}
 function confirmReconDelete(n){if(!canWriteFinancials())return;reconDeleteConfirm=n;renderApp();}
 function cancelReconDelete(){reconDeleteConfirm=false;renderApp();}
 // 5F-1 RPC persistence bridge: reload weekly_reconciliations + cash_commitments
@@ -2584,14 +2592,15 @@ async function saveRecon(n){
       try{var errBody=await r.json();errMsg=(errBody&&(errBody.message||errBody.hint||errBody.details))||'';}catch(parseErr){}
       throw new Error(errMsg||('HTTP '+r.status));
     }
-    reconSaving=false;reconOpen=null;_reconBasis=null;_reconPhase1Answers={};_reconPhase2Answers={};
+    reconSaving=false;reconOpen=null;_reconBasis=null;_reconPhase1Answers={};_reconPhase2Answers={};_reconPhase3Items=[];
     await reloadReconAndCommitments(); // server-owned fields — reload, don't fake locally
     renderApp();
   }catch(e){
     // Roll back local reconData so stale/optimistic data is not displayed. The RPC is a
     // single transaction, so on ANY error nothing persisted (no partial write, no
-    // duplicate row). _reconBasis/_reconPhase1Answers/_reconPhase2Answers/reconOpen are
-    // deliberately left alone so the user's staged Phase 0/1/2 answers survive for retry.
+    // duplicate row). _reconBasis/_reconPhase1Answers/_reconPhase2Answers/_reconPhase3Items/
+    // reconOpen are deliberately left alone so the user's staged Phase 0/1/2 answers and
+    // Phase 3 items survive for retry.
     if(prevRecon!==undefined){reconData[n]=prevRecon;}else{delete reconData[n];}
     console.error('saveRecon:',e);
     reconSaving=false;
@@ -3499,6 +3508,27 @@ function setPhase2Notes(eid,el){
 // Explicit clear-back-to-unanswered control for a Phase 2 prompt: removes the staged
 // answer entirely so it no longer counts as answered and cannot block a future save.
 function clearPhase2Answer(eid){delete _reconPhase2Answers[eid];renderApp();}
+// ── Phase 3 (P3-1) staged-item setters (state only: no payload, no gate, no RPC) ──
+// Each manual item's id is fixed at add-time as 'manual_<uuid>' and doubles as the
+// eventual expected_item_id. Field values are stored raw (label/amount strings,
+// response/reflection tokens); the started/complete gating logic is P3-3, not here.
+function addPhase3Item(){
+  _reconPhase3Items.push({id:'manual_'+crypto.randomUUID(),label:'',amount:'',response:undefined,reflection:undefined});
+  renderApp();
+}
+function setPhase3ItemField(id,field,value){
+  var it=_reconPhase3Items.find(function(x){return x.id===id;});
+  if(!it)return;
+  // A real response change invalidates a stale reflection follow-up (mirrors
+  // setPhase2Response's idempotency: re-selecting the same response keeps reflection).
+  if(field==='response'&&it.response!==undefined&&it.response!==value)it.reflection=undefined;
+  it[field]=value;
+  renderApp();
+}
+function removePhase3Item(id){
+  _reconPhase3Items=_reconPhase3Items.filter(function(x){return x.id!==id;});
+  renderApp();
+}
 // Phase 0 basis selected AND every Phase 1 row has an explicit, complete
 // response (per docs/phase-5f-1-spec.md Phase 1 "Save disabled until every
 // row shown in Phase 1 has an explicit response"). As of the 5F-1 RPC
