@@ -9289,6 +9289,81 @@ test('P3-1: saveRecon clears Phase 3 items only on success, preserves them on fa
 });
 })();
 
+console.log('\n── Section 5F1-P3-2: Phase 3 generic catch-all payload builder (buildPhase3NewCommitments) ──');
+(function(){
+function item(o){return Object.assign({id:'manual_abc',label:'Plumber',amount:'200',response:'not_paid_yet',reflection:undefined},o||{});}
+function build(items,basis,wk){return buildPhase3NewCommitments(items,basis||'posted_current_balance',wk||4);}
+
+test('P3-2: 5-branch payload shapes are exact, with the fixed manual-item common fields',()=>{
+  var np=build([item({response:'not_paid_yet'})])[0];
+  assert(np.status==='planned'&&np.resolution_type===undefined&&np.reflected_model_week===null&&np.resolved_model_week===null,'not_paid_yet');
+  assert(np.expected_item_id==='manual_abc'&&np.commitment_source==='manual_reconciliation'&&np.commitment_class==='other_transfer','identity/source/class');
+  assert(np.required_or_discretionary==='protected_required'&&np.affects_deployable_cash===true,'rod/adc');
+  assert(np.model_year===PLAN_YEAR&&np.origin_model_week===4&&np.payee==='Plumber'&&np.amount_cents===20000,'model_year/week/payee/amount');
+  assert(np.original_amount_cents===null&&np.due_date===null&&np.resolution_notes===null,'nulls');
+  assert(!('source_account'in np),'source_account omitted');
+  var pi=build([item({response:'paid_initiated'})])[0];
+  assert(pi.status==='initiated'&&pi.resolution_type===undefined&&pi.resolved_model_week===null&&pi.reflected_model_week===null,'paid_initiated');
+  var bp=build([item({response:'bank_pending'})])[0];
+  assert(bp.status==='bank_pending'&&bp.resolution_type===undefined&&bp.resolved_model_week===null&&bp.reflected_model_week===null,'bank_pending');
+  var cl=build([item({response:'cleared_reflected'})])[0];
+  assert(cl.status==='cleared'&&cl.resolution_type==='cleared'&&cl.reflected_model_week===4&&cl.resolved_model_week===4,'cleared_reflected terminal, reflected=resolved=week');
+  var po=build([item({response:'paid_other_account'})])[0];
+  assert(po.status==='voided'&&po.resolution_type==='paid_from_other_account'&&po.resolved_model_week===4&&po.reflected_model_week===null,'paid_other_account terminal voided, resolved=week');
+});
+
+test('P3-2: paid_initiated + available_balance + not_sure becomes bank_pending, reflected null, no resolution_type',()=>{
+  var r=build([item({response:'paid_initiated',reflection:'not_sure'})],'available_balance',4)[0];
+  assert(r.status==='bank_pending'&&r.reflected_model_week===null&&r.resolution_type===undefined,'not_sure -> bank_pending');
+});
+
+test('P3-2: bank_pending No and Not sure produce equivalent active reserve shape (reflected null)',()=>{
+  var no=build([item({response:'bank_pending',reflection:'no'})],'available_balance',4)[0];
+  var ns=build([item({response:'bank_pending',reflection:'not_sure'})],'available_balance',4)[0];
+  assert(no.reflected_model_week===null&&ns.reflected_model_week===null&&no.status==='bank_pending'&&ns.status==='bank_pending','both bank_pending, reflected null');
+  assert(JSON.stringify(no)===JSON.stringify(ns),'No and Not sure payloads equivalent');
+});
+
+test('P3-2: reflection yes reflects the week only under available_balance; posted basis ignores reflection',()=>{
+  assert(build([item({response:'paid_initiated',reflection:'yes'})],'available_balance',4)[0].reflected_model_week===4,'paid_initiated yes');
+  assert(build([item({response:'bank_pending',reflection:'yes'})],'available_balance',4)[0].reflected_model_week===4,'bank_pending yes');
+  assert(build([item({response:'bank_pending',reflection:'yes'})],'posted_current_balance',4)[0].reflected_model_week===null,'posted basis ignores reflection');
+});
+
+test('P3-2: incomplete items produce no row (blank/whitespace label, blank/zero/malformed amount, missing/invalid response)',()=>{
+  assert(build([item({label:''})]).length===0,'blank label');
+  assert(build([item({label:'   '})]).length===0,'whitespace label');
+  assert(build([item({amount:''})]).length===0,'blank amount');
+  assert(build([item({amount:'0'})]).length===0,'zero amount');
+  assert(build([item({amount:'abc'})]).length===0,'malformed amount');
+  assert(build([item({amount:'1,85,0.50'})]).length===0,'malformed comma amount');
+  assert(build([item({response:undefined})]).length===0,'no response');
+  assert(build([item({response:'amount_changed'})]).length===0,'out-of-set response');
+});
+
+test('P3-2: expected_item_id must be the item id and start with manual_',()=>{
+  assert(build([item({id:'notmanual_123'})]).length===0,'non-manual_ id -> no row');
+  assert(build([item({id:'manual_xyz'})])[0].expected_item_id==='manual_xyz','expected_item_id === item.id');
+});
+
+test('P3-2: comma/currency amounts use the strict parser (e.g. "$1,850.50" -> 185050)',()=>{
+  assert(build([item({amount:'$1,850.50'})])[0].amount_cents===185050,'strict money parse');
+});
+
+test('P3-2: one row per complete item; incomplete items in the same list are skipped',()=>{
+  var rows=build([item({id:'manual_a',response:'not_paid_yet'}),item({id:'manual_b',label:'',response:'bank_pending'}),item({id:'manual_c',response:'cleared_reflected'})],'posted_current_balance',4);
+  assert(rows.length===2,'2 complete of 3, got '+rows.length);
+  assert(rows.map(function(x){return x.expected_item_id;}).join(',')==='manual_a,manual_c','only the complete items');
+});
+
+test('P3-2: Phase 2 builder is neither called by nor altered by the Phase 3 builder',()=>{
+  assert(!/buildPhase2NewCommitments/.test(buildPhase3NewCommitments.toString()),'Phase 3 builder must not call the Phase 2 builder');
+  var EV={eid:'2026mw4_rent_tiffany_dye_2026_07_01',payee:'Rent (Tiffany Dye)',cc:'rent',rod:'protected_required',a:-2000,due_date:'2026-07-01'};
+  var a={};a[EV.eid]={response:'not_paid_yet'};
+  assert(buildPhase2NewCommitments([EV],a,'posted_current_balance',4)[0].commitment_source==='wd_reconciliation','Phase 2 builder still produces wd_reconciliation');
+});
+})();
+
 console.log('\n── Section 5F1-M: Reconciliation Form Phase 0/1 — UI logic + state machine (persistence wired via 5F-1 RPC bridge — see 5F1-RPC-BRIDGE below) ──');
 (function(){
 // IMPORTANT — read before trusting the AC-77..92 test names below at face

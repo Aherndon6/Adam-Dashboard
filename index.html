@@ -857,7 +857,7 @@ button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-vis
 // ── Constants (unchanged) ──────────────────────────────────────────────────
 // Simplified architecture — $8,250 total from LC · $6,500 operating floor · no legacy mechanics
 // Real-world moves: keep $2,250 in chk, move $2,750 sav→chk, move $1,000 LC→chk, move $2,250 LC→chk (Option 1 correction)
-const BUILD_TS='2026-07-04T09:05:54'; // updated each push — local time string
+const BUILD_TS='2026-07-04T09:15:34'; // updated each push — local time string
 const START_CHK=18037.73,START_SAV=3772.77,START_AMX=103.64,START_TAX=0,START_LC=13488.88;
 const EF_AMT=13488.88; // LC/EF balance — static this model year (no transfers in or out)
 const BASE_TAX=521.36,RET_SAV_XFR=3772.74;
@@ -2010,6 +2010,63 @@ function buildPhase2NewCommitments(candidates,answers,basis,weekNum){
         row.reflected_model_week=null;row.resolved_model_week=weekNum;
         row.resolution_notes=(a.notes||'');break;
       default:return; // unknown response, defensive skip
+    }
+    out.push(row);
+  });
+  return out;
+}
+
+// ── Phase 5F-1 Phase 3 (P3-2): generic catch-all payload builder ─────────────────
+// Pure and separate from buildPhase2NewCommitments (Phase 2 builder untouched). Builds
+// one p_new_commitments row per COMPLETE manual item; fully-empty or incomplete items are
+// skipped here (blocking is P3-3). A manual item is complete enough to build when its id
+// is a 'manual_' string, its trimmed label is non-empty, its amount parses > 0
+// (_dollarsToCents), and its response is one of the five Phase 3 branches. Fixed shape:
+// commitment_source='manual_reconciliation', commitment_class='other_transfer',
+// required_or_discretionary='protected_required', affects_deployable_cash=true,
+// source_account omitted (RPC default truist_checking), original_amount_cents/due_date/
+// resolution_notes null. Reflection (available_balance only, paid_initiated/bank_pending)
+// mirrors Phase 2: Yes -> reflected=week; No -> null; Not sure -> null and force
+// bank_pending for paid_initiated (bank_pending already is bank_pending).
+var PHASE3_RESPONSES=['not_paid_yet','paid_initiated','bank_pending','cleared_reflected','paid_other_account'];
+function buildPhase3NewCommitments(items,basis,weekNum){
+  var out=[];
+  (items||[]).forEach(function(it){
+    if(!it||typeof it.id!=='string'||it.id.indexOf('manual_')!==0)return;
+    var label=(it.label||'').trim();
+    if(!label)return;
+    var cents=_dollarsToCents(it.amount);
+    if(!(cents>0))return;
+    if(PHASE3_RESPONSES.indexOf(it.response)<0)return;
+    var row={
+      expected_item_id:it.id,
+      model_year:PLAN_YEAR,
+      origin_model_week:weekNum,
+      payee:label,
+      commitment_class:'other_transfer',
+      required_or_discretionary:'protected_required',
+      affects_deployable_cash:true,
+      commitment_source:'manual_reconciliation',
+      amount_cents:cents,
+      original_amount_cents:null,
+      due_date:null,
+      resolution_notes:null
+    };
+    var reflectsYes=(basis==='available_balance'&&it.reflection==='yes');
+    var notSure=(basis==='available_balance'&&it.reflection==='not_sure');
+    switch(it.response){
+      case'not_paid_yet':
+        row.status='planned';row.reflected_model_week=null;row.resolved_model_week=null;break;
+      case'paid_initiated':
+        row.status='initiated';row.reflected_model_week=reflectsYes?weekNum:null;row.resolved_model_week=null;
+        if(notSure)row.status='bank_pending';
+        break;
+      case'bank_pending':
+        row.status='bank_pending';row.reflected_model_week=reflectsYes?weekNum:null;row.resolved_model_week=null;break;
+      case'cleared_reflected':
+        row.status='cleared';row.resolution_type='cleared';row.reflected_model_week=weekNum;row.resolved_model_week=weekNum;break;
+      case'paid_other_account':
+        row.status='voided';row.resolution_type='paid_from_other_account';row.reflected_model_week=null;row.resolved_model_week=weekNum;break;
     }
     out.push(row);
   });
