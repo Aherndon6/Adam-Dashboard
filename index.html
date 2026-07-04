@@ -857,7 +857,7 @@ button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-vis
 // ── Constants (unchanged) ──────────────────────────────────────────────────
 // Simplified architecture — $8,250 total from LC · $6,500 operating floor · no legacy mechanics
 // Real-world moves: keep $2,250 in chk, move $2,750 sav→chk, move $1,000 LC→chk, move $2,250 LC→chk (Option 1 correction)
-const BUILD_TS='2026-07-04T09:29:15'; // updated each push — local time string
+const BUILD_TS='2026-07-04T09:36:42'; // updated each push — local time string
 const START_CHK=18037.73,START_SAV=3772.77,START_AMX=103.64,START_TAX=0,START_LC=13488.88;
 const EF_AMT=13488.88; // LC/EF balance — static this model year (no transfers in or out)
 const BASE_TAX=521.36,RET_SAV_XFR=3772.74;
@@ -2664,6 +2664,10 @@ async function saveRecon(n){
   // Phase 2 (Step 8): staged new commitments, computed before any local mutation from the
   // same override-aware candidates the gate used. Empty _reconPhase2Answers yields [].
   var newCommitments=buildPhase2NewCommitments(getPhase2WDCandidates(reconEffectiveWD(),n,commitmentData),_reconPhase2Answers,_reconBasis,n);
+  // Phase 3 (P3-5): manual catch-all rows, also computed before mutation. Empty
+  // _reconPhase3Items yields []. Concatenated with the Phase 2 rows into one p_new_commitments
+  // array (the P3-3 gate blocks a started-but-incomplete item before we reach here).
+  var newCommitmentsAll=newCommitments.concat(buildPhase3NewCommitments(_reconPhase3Items,_reconBasis,n));
   reconData[n]={...data,balance_basis:_reconBasis,date:now.toLocaleDateString('en-US',{month:'short',day:'numeric'})};
   reconSaving=true;renderApp();
   try{
@@ -2674,7 +2678,7 @@ async function saveRecon(n){
       p_chk:data.chk,p_sav:data.sav,p_amx:data.amx,p_tax:data.tax,p_lc:data.lc,
       p_balance_basis:_reconBasis,
       p_recorded_at:now.toISOString(),
-      p_new_commitments:newCommitments,
+      p_new_commitments:newCommitmentsAll,
       p_patched:patched
     })});
     if(!r.ok){

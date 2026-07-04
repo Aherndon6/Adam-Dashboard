@@ -9493,9 +9493,58 @@ test('P3-4: inline guidance for a started-incomplete item is neutral (no dashboa
   assert(!/review required/i.test(html)&&!/verdict/i.test(html),'no verdict / Review Required language');
 });
 
-test('P3-4: the existing Phase 2 section still renders alongside Phase 3, and saveRecon has no Phase 3 payload wiring yet',()=>{
+test('P3-4: the existing Phase 2 section still renders alongside Phase 3',()=>{
   assert(render('posted_current_balance',[]).indexOf('Phase 2: Current-week protected obligations')>=0,'Phase 2 section header still present');
-  assert(!/buildPhase3NewCommitments/.test(saveRecon.toString()),'saveRecon must not yet reference buildPhase3NewCommitments');
+});
+})();
+
+console.log('\n── Section 5F1-P3-5: Phase 3 saveRecon payload wiring ──');
+(function(){
+var save=saveRecon.toString();
+var catchBody=save.slice(save.indexOf('}catch(e)'));
+var tryBody=save.slice(save.indexOf('try{'),save.indexOf('}catch(e)'));
+
+test('P3-5: saveRecon computes Phase 3 rows via buildPhase3NewCommitments before mutation and concatenates them into p_new_commitments',()=>{
+  assertIncludes(save,'var newCommitmentsAll=newCommitments.concat(buildPhase3NewCommitments(_reconPhase3Items,_reconBasis,n))');
+  assertIncludes(save,'p_new_commitments:newCommitmentsAll');
+  var allIdx=save.indexOf('var newCommitmentsAll=');
+  var mutateIdx=save.indexOf('reconData[n]={...data');
+  assert(allIdx>=0&&mutateIdx>allIdx,'Phase 3 rows must be computed before the reconData[n] mutation');
+});
+
+test('P3-5: p_patched is unchanged (still buildPhase1PatchArray output)',()=>{
+  assertIncludes(save,'p_patched:patched');
+  assertIncludes(save,'var patched=buildPhase1PatchArray(commitmentData,_reconPhase1Answers,_reconBasis,n)');
+});
+
+test('P3-5: the concatenation actually combines Phase 2 wd_reconciliation and Phase 3 manual_reconciliation rows',()=>{
+  var cands=getPhase2WDCandidates(WD,4,[]);
+  var a={};cands.forEach(function(ev){a[ev.eid]={response:'not_paid_yet'};});
+  var wd=buildPhase2NewCommitments(cands,a,'posted_current_balance',4);
+  var manual=buildPhase3NewCommitments([{id:'manual_p35',label:'Plumber',amount:'200',response:'not_paid_yet'}],'posted_current_balance',4);
+  var all=wd.concat(manual);
+  assert(wd.length>0&&manual.length===1,'both sets non-empty');
+  assert(all.length===wd.length+1,'concat contains both, got '+all.length);
+  assert(all.some(function(r){return r.commitment_source==='wd_reconciliation';})&&all.some(function(r){return r.commitment_source==='manual_reconciliation';}),'both commitment_sources present');
+});
+
+test('P3-5: empty Phase 3 section adds no rows (preserves prior behavior — only Phase 2 rows sent)',()=>{
+  var manual=buildPhase3NewCommitments([],'posted_current_balance',4);
+  assert(Array.isArray(manual)&&manual.length===0,'empty _reconPhase3Items -> []');
+});
+
+test('P3-5: successful save clears _reconPhase3Items; the catch preserves them',()=>{
+  assert(/_reconPhase3Items=\[\]/.test(tryBody),'success path clears _reconPhase3Items');
+  assert(!/_reconPhase3Items=\[\]/.test(catchBody),'catch/failure path must NOT reset _reconPhase3Items (preserve for retry)');
+});
+
+test('P3-5: conflict/error routing unchanged — conflict reloads + routes to Phase 1; generic error does not refresh',()=>{
+  assert((catchBody.match(/reloadReconAndCommitments/g)||[]).length===1,'exactly one reload in the catch (conflict branch only)');
+  assert(/toLowerCase\(\)\.indexOf\('commitment already exists'\)/.test(catchBody),'conflict detected case-insensitively');
+  assertIncludes(catchBody,'Prior Commitments (Phase 1)');
+  var returnIdx=catchBody.indexOf('return;');
+  var genericErrIdx=catchBody.indexOf('errEl.textContent=e.message');
+  assert(genericErrIdx>returnIdx,'generic error handling follows the conflict return (generic path never reloads/refreshes)');
 });
 })();
 
@@ -9774,7 +9823,7 @@ test('saveRecon() RPC payload: p_week_num, p_model_year uses PLAN_YEAR (not hard
   assertIncludes(saveBody,'p_lc:data.lc');
   assertIncludes(saveBody,'p_balance_basis:_reconBasis');
   assertIncludes(saveBody,'p_recorded_at:now.toISOString()');
-  assertIncludes(saveBody,'p_new_commitments:newCommitments');
+  assertIncludes(saveBody,'p_new_commitments:newCommitmentsAll');
   assert(!/p_new_commitments:\[\]/.test(saveBody),'p_new_commitments must no longer be a hardcoded [] (it is now the Phase 2 builder output)');
   assert(!/p_new_commitments:\s*null/.test(saveBody),'p_new_commitments must reference the builder output (an array), never null; the RPC validates jsonb_typeof for array specifically');
   assertIncludes(saveBody,'p_patched:patched');
@@ -9814,7 +9863,7 @@ test('reloadReconAndCommitments() fetches weekly_reconciliations and cash_commit
 
 // ── Step 8: p_new_commitments write path + conflict/error routing ──
 test('Step 8: saveRecon() sends p_new_commitments from buildPhase2NewCommitments(...), computed before mutation, not a hardcoded []',()=>{
-  assertIncludes(saveBody,'p_new_commitments:newCommitments');
+  assertIncludes(saveBody,'p_new_commitments:newCommitmentsAll');
   assert(!/p_new_commitments:\[\]/.test(saveBody),'p_new_commitments must no longer be a hardcoded []');
   assertIncludes(saveBody,'var newCommitments=buildPhase2NewCommitments(getPhase2WDCandidates(reconEffectiveWD(),n,commitmentData),_reconPhase2Answers,_reconBasis,n)');
   var ncIdx=saveBody.indexOf('var newCommitments=buildPhase2NewCommitments');
