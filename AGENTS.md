@@ -33,7 +33,8 @@ Single-file app:
 
 Backend:
 - Supabase project ID: `usayoldrawwmjsmretin`
-- key tables include `weekly_reconciliations`, `weekly_tasks`, `model_week_overrides`, `goals`, `budget_transactions`, `budget_line_rules`, `wishlist_items`
+- key tables include `weekly_reconciliations`, `weekly_tasks`, `model_week_overrides`, `goals`, `budget_transactions`, `budget_line_rules`, `wishlist_items`, `cash_commitments`
+- `cash_commitments` (5F-1) is RLS SELECT-only for `authenticated`; all writes go through the SECURITY DEFINER `save_reconciliation_with_commitments` RPC, which the reconciliation form drives through three client-side paths: Phase 1 prior-commitment patches (`p_patched`), Phase 2 current-week WD protected inserts, and Phase 3 manual catch-all inserts (`commitment_source=manual_reconciliation`, `expected_item_id` = `manual_<uuid>`). Do not INSERT/UPDATE `cash_commitments` directly.
 
 Hosting:
 - GitHub Pages
