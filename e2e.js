@@ -2073,6 +2073,45 @@ async function clickNav(page, id) {
     await context.close();
   });
 
+  await test('RG-9 (Phase 5F-1.5 A5): Register account selector renders options alphabetically while preserving the default account', async () => {
+    const { page, context } = await openApp(browser);
+    const result = await page.evaluate(() => {
+      FEATURE_FLAGS.showTransactionLedger = true;
+      // Deliberately non-alphabetical cache order. activeAccounts[0] = Truist Checking,
+      // so the default account must remain Truist Checking even though the display sorts
+      // AMEX Gold and Disney Visa ahead of it.
+      _accountsCache = [
+        {key:'truist_checking', label:'Truist Checking', account_type:'checking',    lifecycle_status:'active'},
+        {key:'amex_gold',       label:'AMEX Gold',        account_type:'credit_card', lifecycle_status:'active'},
+        {key:'disney_visa',     label:'Disney Visa',      account_type:'credit_card', lifecycle_status:'active'}
+      ];
+      _registriesLoadStatus = 'loaded';
+      _txLedgerLoadStatus = 'loaded';
+      _txLedgerCache = [];
+      _txLedgerAccountKey = null; // force the default-account derivation to run
+      setSection('transactions');
+      setTxSubNav('register');
+      renderApp();
+      var el = document.getElementById('transactions-content');
+      var h = el ? el.innerHTML : '';
+      var iAmex = h.indexOf('>AMEX Gold<');
+      var iDisney = h.indexOf('>Disney Visa<');
+      var iTruist = h.indexOf('>Truist Checking<');
+      var restored = _txLedgerAccountKey;
+      // Restore
+      _accountsCache = null;
+      _registriesLoadStatus = 'not_loaded';
+      _txLedgerLoadStatus = 'not_loaded';
+      _txLedgerAccountKey = null;
+      return { iAmex, iDisney, iTruist, defaultKey: restored, hasTruistSelected: h.indexOf('value="truist_checking" selected') !== -1 };
+    });
+    assert(result.iAmex > -1 && result.iDisney > -1 && result.iTruist > -1, 'all three active accounts must render as options');
+    assert(result.iAmex < result.iDisney && result.iDisney < result.iTruist, 'options must be alphabetical (AMEX Gold, Disney Visa, Truist Checking)');
+    assert(result.defaultKey === 'truist_checking', 'default account must remain Truist Checking (original activeAccounts[0]), not the alphabetically-first option');
+    assert(result.hasTruistSelected, 'the preserved default (Truist Checking) must be the selected option');
+    await context.close();
+  });
+
   await test('RG-5: starting_balance null shows explicit warning, not silent $0.00', async () => {
     const { page, context } = await openApp(browser);
     const result = await page.evaluate((mockAccounts) => {

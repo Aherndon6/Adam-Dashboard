@@ -10313,6 +10313,61 @@ test('5F15-A2-09: renderBudget income section wires received/remaining through s
   assert(fnBlock.indexOf('_iRem>0?\'var(--amber)\':\'var(--green)\'')>-1 || fnBlock.indexOf('_iRem>0?"var(--amber)":"var(--green)"')>-1, 'income Remaining uses income coloring (amber when still expected, green when met/exceeded)');
 });
 
+// A5 (Wendy item): account dropdowns should be alphabetical. Payment-account
+// dropdowns (transaction form, budget filter, budget reconciliation) go through
+// _getPaymentAccountOptions with 'Cash / Other' pinned last; the Register ledger
+// selector displays a sorted copy while preserving its default-account derivation.
+(function(){
+var _ff=FEATURE_FLAGS.useSupabaseRegistries, _rls=_registriesLoadStatus, _ac=_accountsCache;
+function _a5restore(){FEATURE_FLAGS.useSupabaseRegistries=_ff;_registriesLoadStatus=_rls;_accountsCache=_ac;}
+
+test('5F15-A5-01: _getPaymentAccountOptions Supabase path is alphabetical with Cash / Other pinned last', ()=>{
+  try{
+    FEATURE_FLAGS.useSupabaseRegistries=true; _registriesLoadStatus='loaded';
+    _accountsCache=[
+      {key:'truist',label:'Truist Checking',lifecycle_status:'active',account_type:'checking'},
+      {key:'amexg', label:'AMEX Gold',      lifecycle_status:'active',account_type:'credit_card'},
+      {key:'disney',label:'Disney Visa',    lifecycle_status:'active',account_type:'credit_card'},
+      {key:'costco',label:'Costco Visa',    lifecycle_status:'hidden',account_type:'credit_card'} // hidden -> excluded
+    ];
+    var opts=_getPaymentAccountOptions();
+    assert(JSON.stringify(opts)===JSON.stringify(['AMEX Gold','Disney Visa','Truist Checking','Cash / Other']),'expected alphabetical + Cash/Other last, got '+JSON.stringify(opts));
+  }finally{_a5restore();}
+});
+test('5F15-A5-02: _getPaymentAccountOptions fallback path is alphabetical with Cash / Other pinned last', ()=>{
+  try{
+    FEATURE_FLAGS.useSupabaseRegistries=false; _registriesLoadStatus='loaded'; _accountsCache=null;
+    var opts=_getPaymentAccountOptions();
+    assert(opts[opts.length-1]==='Cash / Other','Cash / Other must be pinned last');
+    var body=opts.slice(0,-1);
+    assert(body.indexOf('Cash / Other')===-1,'Cash / Other must not appear in the sorted body');
+    for(var i=1;i<body.length;i++){assert(String(body[i-1]).toLowerCase()<=String(body[i]).toLowerCase(),'fallback labels must be alphabetical: '+JSON.stringify(body));}
+  }finally{_a5restore();}
+});
+test('5F15-A5-03: a label sorting after "Cash" still precedes the pinned Cash / Other', ()=>{
+  try{
+    FEATURE_FLAGS.useSupabaseRegistries=true; _registriesLoadStatus='loaded';
+    _accountsCache=[
+      {key:'z',label:'Zelle',lifecycle_status:'active',account_type:'checking'},
+      {key:'a',label:'Ally', lifecycle_status:'active',account_type:'checking'}
+    ];
+    var opts=_getPaymentAccountOptions();
+    assert(JSON.stringify(opts)===JSON.stringify(['Ally','Zelle','Cash / Other']),'Zelle must precede the pinned Cash / Other, got '+JSON.stringify(opts));
+  }finally{_a5restore();}
+});
+test('5F15-A5-04: _sortAccountLabels is case-insensitive and non-mutating', ()=>{
+  var input=['truist','AMEX','ally'];
+  var out=_sortAccountLabels(input);
+  assert(JSON.stringify(out)===JSON.stringify(['ally','AMEX','truist']),'case-insensitive order expected, got '+JSON.stringify(out));
+  assert(JSON.stringify(input)===JSON.stringify(['truist','AMEX','ally']),'input array must not be mutated');
+});
+test('5F15-A5-05: Register ledger selector sorts a display copy but preserves the default-account derivation', ()=>{
+  assertIncludes(html,'_txLedgerAccountKey=activeAccounts[0].key','default account must still derive from the original activeAccounts order (unchanged)');
+  assertIncludes(html,'_sortedAccounts=activeAccounts.slice().sort','selector must build a sorted display copy');
+  assertIncludes(html,'_sortedAccounts.forEach','options must be rendered from the sorted copy, not the unsorted activeAccounts');
+});
+})();
+
 // ─────────────────────────────────────────────────────────────────────────
 console.log('\n╔══════════════════════════════════════════════════════════════╗');
 console.log('║                       RESULTS                               ║');

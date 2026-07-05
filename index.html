@@ -857,7 +857,7 @@ button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-vis
 // ── Constants (unchanged) ──────────────────────────────────────────────────
 // Simplified architecture — $8,250 total from LC · $6,500 operating floor · no legacy mechanics
 // Real-world moves: keep $2,250 in chk, move $2,750 sav→chk, move $1,000 LC→chk, move $2,250 LC→chk (Option 1 correction)
-const BUILD_TS='2026-07-05T17:30:48'; // updated each push — local time string
+const BUILD_TS='2026-07-05T18:12:53'; // updated each push — local time string
 const START_CHK=18037.73,START_SAV=3772.77,START_AMX=103.64,START_TAX=0,START_LC=13488.88;
 const EF_AMT=13488.88; // LC/EF balance — static this model year (no transfers in or out)
 const BASE_TAX=521.36,RET_SAV_XFR=3772.74;
@@ -5897,7 +5897,12 @@ function _renderTxRegister(){
   var sel='<div style="padding:12px 16px;border-bottom:1px solid var(--line);display:flex;align-items:center;gap:10px;flex-wrap:wrap">'
     +'<label style="font-size:12px;font-weight:600;color:var(--muted);white-space:nowrap">Account</label>'
     +'<select onchange="setTxLedgerAccount(this.value)" style="font-family:inherit;font-size:13px;padding:4px 8px;border:1px solid var(--line);border-radius:6px;background:var(--surface);color:var(--text)">';
-  activeAccounts.forEach(function(a){
+  // Phase 5F-1.5 A5: display the options alphabetically. The default account is
+  // still derived from the original activeAccounts order above (activeAccounts[0]),
+  // and the option is marked selected by key, so sorting is display-only and does
+  // not change which account loads by default.
+  var _sortedAccounts=activeAccounts.slice().sort(function(a,b){return String(a.label).localeCompare(String(b.label),undefined,{sensitivity:'base'});});
+  _sortedAccounts.forEach(function(a){
     sel+='<option value="'+_esc(a.key)+'"'+(a.key===_txLedgerAccountKey?' selected':'')+'>'
       +_esc(a.label)+'</option>';
   });
@@ -7507,14 +7512,20 @@ function _getActiveCategoryRegistry(){
 // Supabase: active credit_card + checking accounts only, plus Cash / Other.
 // Hidden accounts (e.g. Costco Visa) excluded until lifecycle_status becomes 'active'.
 // JS fallback: BUDGET_PAYMENT_ACCOUNTS.
+// Phase 5F-1.5 A5: case-insensitive alphabetical sort of account labels. Callers
+// append 'Cash / Other' after this, so the catch-all always stays pinned last.
+function _sortAccountLabels(labels){
+  return (labels||[]).slice().sort(function(a,b){return String(a).localeCompare(String(b),undefined,{sensitivity:'base'});});
+}
 function _getPaymentAccountOptions(){
   if(FEATURE_FLAGS.useSupabaseRegistries&&_registriesLoadStatus==='loaded'&&_accountsCache){
-    return _accountsCache
+    var labels=_accountsCache
       .filter(function(a){return a.lifecycle_status==='active'&&(a.account_type==='credit_card'||a.account_type==='checking');})
-      .map(function(a){return a.label;})
-      .concat(['Cash / Other']);
+      .map(function(a){return a.label;});
+    return _sortAccountLabels(labels).concat(['Cash / Other']);
   }
-  return BUDGET_PAYMENT_ACCOUNTS;
+  // JS fallback: alphabetize the fixed list too, keeping 'Cash / Other' pinned last.
+  return _sortAccountLabels(BUDGET_PAYMENT_ACCOUNTS.filter(function(l){return l!=='Cash / Other';})).concat(['Cash / Other']);
 }
 
 // Rebuilds _budgetCatByKey lookup from the current active registry.
