@@ -2471,6 +2471,64 @@ async function clickNav(page, id) {
     await context.close();
   });
 
+  await test('A6-1 (Phase 5F-1.5): Register columns are user-sortable; Balance stays chronological and the caption tracks Date-ascending', async () => {
+    const { page, context } = await openApp(browser);
+    const txns = [
+      { id: 'a6-1', account_key: 'truist_checking', transaction_date: '2026-06-01',
+        payee: 'Kroger', memo: '', amount: -100.00, category_key: null,
+        cleared: true, source: 'manual', created_at: '2026-06-01T10:00:00Z' },
+      { id: 'a6-2', account_key: 'truist_checking', transaction_date: '2026-06-05',
+        payee: 'Fandango', memo: '', amount: -50.00, category_key: null,
+        cleared: false, source: 'manual', created_at: '2026-06-05T10:00:00Z' },
+      { id: 'a6-3', account_key: 'truist_checking', transaction_date: '2026-06-10',
+        payee: 'Paycheck', memo: '', amount: 2000.00, category_key: null,
+        cleared: true, source: 'manual', created_at: '2026-06-10T10:00:00Z' }
+    ];
+    const r = await page.evaluate(([mockAccounts, mockTxns]) => {
+      FEATURE_FLAGS.showTransactionLedger = true;
+      _accountsCache = mockAccounts;
+      _categoriesCache = [];
+      _registriesLoadStatus = 'loaded';
+      _txLedgerLoadStatus = 'loaded';
+      _txLedgerCache = mockTxns;
+      _txLedgerAccountKey = 'truist_checking';
+      _txLedgerSortCol = 'cleared'; _txLedgerSortDir = 'asc'; // default
+      setSection('transactions');
+      setTxSubNav('register');
+      function snap() {
+        renderApp();
+        var h = document.getElementById('transactions-content')?.innerHTML || '';
+        return {
+          fandango: h.indexOf('Fandango'), kroger: h.indexOf('Kroger'), paycheck: h.indexOf('Paycheck'),
+          hasFandangoBal: h.indexOf('$-150.00') !== -1,
+          hasCaption: h.indexOf('Balance is shown as of each transaction date') !== -1
+        };
+      }
+      var def = snap();                         // cleared/asc (default)
+      setTxLedgerSort('cleared'); var clrDesc = snap(); // -> cleared/desc (cleared first)
+      setTxLedgerSort('cleared'); var clrAsc = snap();  // -> cleared/asc (uncleared first)
+      setTxLedgerSort('date');    var dateAsc = snap(); // -> date/asc (chronological)
+      // Restore default
+      _txLedgerSortCol = 'cleared'; _txLedgerSortDir = 'asc';
+      _txLedgerCache = null; _txLedgerLoadStatus = 'not_loaded';
+      return { def, clrDesc, clrAsc, dateAsc };
+    }, [TX_MOCK_ACCOUNTS, txns]);
+    // Default: uncleared (Fandango) first, caption shown (not Date-asc)
+    assert(r.def.fandango < r.def.kroger, 'default view must show uncleared (Fandango) above cleared rows');
+    assert(r.def.hasCaption, 'default (cleared/asc) view is not Date-ascending, so the Balance caption must show');
+    // Clr desc: cleared rows first (Kroger and Paycheck before Fandango)
+    assert(r.clrDesc.kroger < r.clrDesc.fandango && r.clrDesc.paycheck < r.clrDesc.fandango, 'clicking Clr once must put cleared rows first');
+    // Clr asc again: uncleared first restored
+    assert(r.clrAsc.fandango < r.clrAsc.kroger, 'clicking Clr again must restore uncleared-first');
+    // Date asc: chronological order, caption hidden
+    assert(r.dateAsc.kroger < r.dateAsc.fandango && r.dateAsc.fandango < r.dateAsc.paycheck, 'Date sort must restore chronological order');
+    assert(!r.dateAsc.hasCaption, 'Date-ascending view must hide the Balance caption');
+    // Balance invariance: Fandango always shows its chronological $-150.00
+    assert(r.def.hasFandangoBal && r.clrDesc.hasFandangoBal && r.clrAsc.hasFandangoBal && r.dateAsc.hasFandangoBal,
+      "Fandango's chronological balance $-150.00 must be identical across every sort");
+    await context.close();
+  });
+
   await test('RG-11: cleared transaction shows checked checkbox in Clr column (updated in 5E-2)', async () => {
     const { page, context } = await openApp(browser);
     const result = await page.evaluate(([mockAccounts, mockTxns]) => {

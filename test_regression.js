@@ -7729,16 +7729,22 @@ test('5E10-08: Register payee input is marked required in the UI (label + placeh
   assertIncludes(registerFnSrc,"inp('payee','Required'",'Payee input placeholder must read Required, not Optional');
 });
 
-test('5E10-09: Register rows are grouped uncleared-first using a two-pass balance-then-sort approach',()=>{
+test('5E10-09: Register default view is grouped uncleared-first via the two-pass balance-then-sort approach (A6: sorting is now user-controlled through _sortTxRows)',()=>{
   assertIncludes(registerFnSrc,'rowsWithBalance','Register must compute a chronological balance-attached array before any display sort');
-  assertIncludes(registerFnSrc,'displayRows','Register must build a separate display-ordered copy for rendering');
-  assertIncludes(registerFnSrc,'.slice().sort(function(a,b){','Register must sort a non-mutating copy (slice), matching the existing _renderTxAccounts convention');
-  assertIncludes(registerFnSrc,'(a.tx.cleared?1:0)-(b.tx.cleared?1:0)','Sort comparator must place uncleared (false) rows before cleared (true) rows');
+  assertIncludes(registerFnSrc,'displayRows=_sortTxRows(rowsWithBalance','Register must produce the display order via the pure _sortTxRows helper over the chronological array');
+  // Default sort state reproduces the historical uncleared-first grouping.
+  assertIncludes(html,"_txLedgerSortCol='cleared'","default Register sort column must be 'cleared' (uncleared-first)");
+  assertIncludes(html,"_txLedgerSortDir='asc'","default Register sort direction must be 'asc'");
+  // The uncleared-first comparator now lives in the pure _sortTxRows helper.
+  var sIdx=html.indexOf('function _sortTxRows(');
+  assert(sIdx>-1,'_sortTxRows helper must exist');
+  var sBlock=html.slice(sIdx,sIdx+1600);
+  assertIncludes(sBlock,'(a.tx.cleared?1:0)-(b.tx.cleared?1:0)','uncleared-first comparator (asc => uncleared before cleared) must live in _sortTxRows');
 });
 
 test('5E10-10: running balance is precomputed in original chronological order and never recomputed after the display sort',()=>{
-  var mapIdx=registerFnSrc.indexOf('rowsWithBalance=rows.map(function(tx){');
-  var sortIdx=registerFnSrc.indexOf('displayRows=rowsWithBalance');
+  var mapIdx=registerFnSrc.indexOf('rowsWithBalance=rows.map(function(tx,idx){');
+  var sortIdx=registerFnSrc.indexOf('displayRows=_sortTxRows(rowsWithBalance');
   var forEachIdx=registerFnSrc.indexOf('displayRows.forEach(function(entry){');
   assert(mapIdx>-1&&sortIdx>-1&&forEachIdx>-1,'Could not locate the balance-then-sort-then-render sequence');
   assert(mapIdx<sortIdx&&sortIdx<forEachIdx,'Balance must be computed (map), then sorted (displayRows), then rendered (forEach), in that order');
@@ -10397,6 +10403,82 @@ test('5F15-A8-03: banner conditions and content are preserved verbatim', ()=>{
   assertIncludes(fnBlock,'Week 1 actions Move $2,750 Truist Savings→Checking','Week 1 banner content preserved');
   assertIncludes(fnBlock,'Alaska fully funded + $3,772.74 savings seed moves to AMEX','Big-week banner content preserved');
   assertIncludes(fnBlock,'waterfall continues: RCCL → DCL → IRA funding','Alaska-funded banner content preserved');
+});
+})();
+
+// A6 (Wendy item): user-controlled Register column sorting over the chronological
+// ledger. _sortTxRows reorders a copy of rowsWithBalance without recomputing bal.
+(function(){
+function mkRows(){
+  // chronological order = chronIdx 0..3
+  return [
+    {tx:{payee:'Kroger',  amount:-100, cleared:true },  bal:-100,  chronIdx:0, catDisplay:'Groceries'},
+    {tx:{payee:'fandango',amount:-50,  cleared:false},  bal:-150,  chronIdx:1, catDisplay:'Entertainment'},
+    {tx:{payee:'Zebra',   amount:2000, cleared:true },  bal:1850,  chronIdx:2, catDisplay:'Income'},
+    {tx:{payee:'apple',   amount:-50,  cleared:false},  bal:1800,  chronIdx:3, catDisplay:'Auto'}
+  ];
+}
+function ord(res){return res.map(function(e){return e.chronIdx;});}
+function js(a){return JSON.stringify(a);}
+
+test('5F15-A6-01: date asc is chronological; date desc is reverse chronological',()=>{
+  assert(js(ord(_sortTxRows(mkRows(),'date','asc')))===js([0,1,2,3]),'date asc must be chronological');
+  assert(js(ord(_sortTxRows(mkRows(),'date','desc')))===js([3,2,1,0]),'date desc must be reverse chronological');
+});
+test('5F15-A6-02: payee sorts alphabetically, case-insensitive',()=>{
+  // apple, fandango, Kroger, Zebra -> chronIdx 3,1,0,2
+  assert(js(ord(_sortTxRows(mkRows(),'payee','asc')))===js([3,1,0,2]),'payee asc case-insensitive');
+  assert(js(ord(_sortTxRows(mkRows(),'payee','desc')))===js([2,0,1,3]),'payee desc case-insensitive');
+});
+test('5F15-A6-03: category sorts by resolved catDisplay label',()=>{
+  // Auto, Entertainment, Groceries, Income -> chronIdx 3,1,0,2
+  assert(js(ord(_sortTxRows(mkRows(),'category','asc')))===js([3,1,0,2]),'category asc by catDisplay');
+});
+test('5F15-A6-04: cleared asc = uncleared first; cleared desc = cleared first (chronological within each group)',()=>{
+  // uncleared: 1,3 ; cleared: 0,2
+  assert(js(ord(_sortTxRows(mkRows(),'cleared','asc')))===js([1,3,0,2]),'cleared asc = uncleared first');
+  assert(js(ord(_sortTxRows(mkRows(),'cleared','desc')))===js([0,2,1,3]),'cleared desc = cleared first');
+});
+test('5F15-A6-05: outflow sorts numerically with blank (inflow) rows last in BOTH directions',()=>{
+  // outflows: r1=50(idx1), r3=50(idx3), r0=100(idx0); blank inflow r2(idx2)
+  assert(js(ord(_sortTxRows(mkRows(),'outflow','asc')))===js([1,3,0,2]),'outflow asc: 50,50,100 then blank last');
+  assert(js(ord(_sortTxRows(mkRows(),'outflow','desc')))===js([0,1,3,2]),'outflow desc: 100,50,50 then blank last');
+});
+test('5F15-A6-06: inflow sorts numerically with blank (outflow) rows last in BOTH directions',()=>{
+  // only r2 has an inflow(2000); r0,r1,r3 are blank -> blanks last, chronological among blanks
+  assert(js(ord(_sortTxRows(mkRows(),'inflow','asc')))===js([2,0,1,3]),'inflow asc: value first, blanks last');
+  assert(js(ord(_sortTxRows(mkRows(),'inflow','desc')))===js([2,0,1,3]),'inflow desc: value first, blanks last');
+});
+test('5F15-A6-07: equal values fall back to chronIdx (deterministic, not Array.sort-stability-dependent)',()=>{
+  // r1 and r3 both outflow 50; must keep chronIdx order 1 before 3 in both directions
+  var asc=ord(_sortTxRows(mkRows(),'outflow','asc'));
+  assert(asc.indexOf(1)<asc.indexOf(3),'equal outflow 50 rows keep chronIdx order 1 before 3 (asc)');
+  var desc=ord(_sortTxRows(mkRows(),'outflow','desc'));
+  assert(desc.indexOf(1)<desc.indexOf(3),'equal outflow 50 rows keep chronIdx order 1 before 3 (desc)');
+});
+test('5F15-A6-08: bal is never recomputed by sorting and the input array is not mutated',()=>{
+  var rows=mkRows();
+  var expected={0:-100,1:-150,2:1850,3:1800};
+  var res=_sortTxRows(rows,'payee','desc');
+  res.forEach(function(e){assertApprox(e.bal,expected[e.chronIdx],'bal for chronIdx '+e.chronIdx+' must be unchanged by sorting');});
+  assert(js(ord(rows))===js([0,1,2,3]),'input rowsWithBalance array must not be mutated');
+});
+test('5F15-A6-09: sortable headers are clickable with data-sort-col; Memo/Balance/actions are not sort controls',()=>{
+  var fnIdx=html.indexOf('function _renderTxRegister');
+  var fnBlock=html.slice(fnIdx,html.indexOf('function renderTransactions()'));
+  ['date','payee','category','outflow','inflow','cleared'].forEach(function(c){
+    assertIncludes(fnBlock,'thSort(\''+({date:'Date',payee:'Payee',category:'Category',outflow:'Outflow',inflow:'Inflow',cleared:'Clr'})[c]+'\',\''+c+'\'','header for '+c+' must be a sortable thSort control');
+  });
+  assertIncludes(fnBlock,"data-sort-col=","sortable headers must carry a data-sort-col attribute for tests/stability");
+  assertIncludes(fnBlock,"th('Memo')","Memo header must be a plain (non-sortable) th");
+  assertIncludes(fnBlock,"th('Balance','right')","Balance header must be a plain (non-sortable) th");
+  assert(fnBlock.indexOf("setTxLedgerSort('balance')")===-1,'Balance must never be wired to setTxLedgerSort');
+});
+test('5F15-A6-10: balance caption shows only when the view is not Date-ascending',()=>{
+  var fnIdx=html.indexOf('function _renderTxRegister');
+  var fnBlock=html.slice(fnIdx,html.indexOf('function renderTransactions()'));
+  assertIncludes(fnBlock,"_txLedgerSortCol==='date'&&_txLedgerSortDir==='asc'","caption must be gated on the Date-ascending view");
+  assertIncludes(fnBlock,'Balance is shown as of each transaction date, not recalculated in sorted order.','caption copy must be present');
 });
 })();
 

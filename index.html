@@ -858,7 +858,7 @@ button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-vis
 // ── Constants (unchanged) ──────────────────────────────────────────────────
 // Simplified architecture — $8,250 total from LC · $6,500 operating floor · no legacy mechanics
 // Real-world moves: keep $2,250 in chk, move $2,750 sav→chk, move $1,000 LC→chk, move $2,250 LC→chk (Option 1 correction)
-const BUILD_TS='2026-07-05T18:31:11'; // updated each push — local time string
+const BUILD_TS='2026-07-05T19:30:43'; // updated each push — local time string
 const START_CHK=18037.73,START_SAV=3772.77,START_AMX=103.64,START_TAX=0,START_LC=13488.88;
 const EF_AMT=13488.88; // LC/EF balance — static this model year (no transfers in or out)
 const BASE_TAX=521.36,RET_SAV_XFR=3772.74;
@@ -5369,6 +5369,10 @@ var _txCatShowAll=false;     // categories lifecycle toggle
 var _txLedgerAccountKey='';          // account key currently loaded in register
 var _txLedgerCache=null;             // fetched transactions array or null
 var _txLedgerLoadStatus='not_loaded';// 'not_loaded' | 'loading' | 'loaded' | 'failed'
+// Phase 5F-1.5 A6: Register display-sort state. Default cleared/asc reproduces the
+// existing uncleared-first grouping exactly. Not persisted; in-memory per session.
+var _txLedgerSortCol='cleared';      // 'date'|'payee'|'category'|'cleared'|'outflow'|'inflow'
+var _txLedgerSortDir='asc';          // 'asc'|'desc'
 
 // ── Phase 5E-2: Write state ────────────────────────────────────────────────
 var _txFormMode=null;          // null | 'add' | 'edit'
@@ -5383,6 +5387,43 @@ var _txClearedSavingId=null;   // UUID of the row whose cleared toggle is in fli
 var _txClearedError={};        // {[uuid]: errorString} per-row cleared toggle errors
 
 function setTxSubNav(tab){_txSubNav=tab;renderApp();}
+
+// Phase 5F-1.5 A6: set/toggle the Register display sort. Clicking the active column
+// toggles direction; switching column resets to ascending (Date ascending restores
+// the true chronological ledger sequence). Display only; never touches data or balance.
+function setTxLedgerSort(col){
+  if(_txLedgerSortCol===col){_txLedgerSortDir=(_txLedgerSortDir==='asc'?'desc':'asc');}
+  else{_txLedgerSortCol=col;_txLedgerSortDir='asc';}
+  renderApp();
+}
+
+// Phase 5F-1.5 A6: pure display-sort over the chronological rowsWithBalance array
+// (each entry {tx,bal,chronIdx,catDisplay}). Returns a new sorted array; `bal` is
+// never recomputed, so Balance stays the as-of-transaction-date running balance.
+// Every comparator falls back to chronIdx, so ordering is deterministic and does not
+// rely on Array.sort stability. Blank Outflow/Inflow cells sort last in BOTH directions.
+function _sortTxRows(rowsWithBalance, col, dir){
+  var mult=(dir==='desc')?-1:1;
+  function amtOf(e){return parseFloat(e.tx.amount)||0;}
+  return (rowsWithBalance||[]).slice().sort(function(a,b){
+    if(col==='outflow'||col==='inflow'){
+      var av=(col==='outflow')?(amtOf(a)<0?Math.abs(amtOf(a)):null):(amtOf(a)>0?amtOf(a):null);
+      var bv=(col==='outflow')?(amtOf(b)<0?Math.abs(amtOf(b)):null):(amtOf(b)>0?amtOf(b):null);
+      var aBlank=(av===null),bBlank=(bv===null);
+      if(aBlank&&bBlank)return a.chronIdx-b.chronIdx;
+      if(aBlank)return 1;   // blanks always last, regardless of direction
+      if(bBlank)return -1;
+      return (av-bv)!==0?(av-bv)*mult:(a.chronIdx-b.chronIdx);
+    }
+    var d=0;
+    if(col==='date')d=a.chronIdx-b.chronIdx; // chronIdx encodes date.asc,created_at.asc,id.asc
+    else if(col==='payee')d=String(a.tx.payee||'').localeCompare(String(b.tx.payee||''),undefined,{sensitivity:'base'});
+    else if(col==='category')d=String(a.catDisplay||'').localeCompare(String(b.catDisplay||''),undefined,{sensitivity:'base'});
+    else if(col==='cleared')d=(a.tx.cleared?1:0)-(b.tx.cleared?1:0); // asc => uncleared first
+    else d=a.chronIdx-b.chronIdx;
+    return d!==0?d*mult:(a.chronIdx-b.chronIdx); // deterministic chronological tiebreak
+  });
+}
 
 // Switch account in register — resets cache and triggers fresh fetch
 function setTxLedgerAccount(key){
@@ -6036,18 +6077,28 @@ function _renderTxRegister(){
     var runBal=rawBal!==null?rawBal:0;
     var balWarning=rawBal===null;
 
+    var _thBase='padding:8px 12px;font-weight:600;color:var(--muted);font-size:11px;'
+      +'text-transform:uppercase;letter-spacing:.05em;white-space:nowrap';
     var th=function(label,align){
-      return '<th style="padding:8px 12px;font-weight:600;color:var(--muted);font-size:11px;'
-        +'text-transform:uppercase;letter-spacing:.05em;white-space:nowrap'
-        +(align?';text-align:'+align:'')+'">'
-        +label+'</th>';
+      return '<th style="'+_thBase+(align?';text-align:'+align:'')+'">'+label+'</th>';
     };
+    // A6: sortable header, clickable, with a direction indicator on the active column.
+    var _sortInd=function(col){return _txLedgerSortCol===col?(_txLedgerSortDir==='asc'?' ▲':' ▼'):'';};
+    var thSort=function(label,col,align){
+      return '<th data-sort-col="'+col+'" onclick="setTxLedgerSort(\''+col+'\')" '
+        +'title="Sort by '+label+'" style="'+_thBase+';cursor:pointer;user-select:none'
+        +(align?';text-align:'+align:'')+'">'+label+_sortInd(col)+'</th>';
+    };
+    // A6: Balance is a chronological running total; when the view is sorted by anything
+    // other than Date ascending, note that Balance is as-of-date, not a sorted-order total.
+    var _balCaption=(_txLedgerSortCol==='date'&&_txLedgerSortDir==='asc')?''
+      :'<div class="tx-bal-caption" style="font-size:11px;color:var(--muted);font-style:italic;padding:4px 12px">Balance is shown as of each transaction date, not recalculated in sorted order.</div>';
     // Extra columns: edit and delete actions
-    var tbl='<table style="width:100%;border-collapse:collapse;font-size:13px">'
+    var tbl=_balCaption+'<table style="width:100%;border-collapse:collapse;font-size:13px">'
       +'<thead><tr style="background:var(--surface2);text-align:left">'
-      +th('Date')+th('Payee')+th('Memo')+th('Category')
-      +th('Outflow','right')+th('Inflow','right')
-      +th('Clr','center')+th('Balance','right')
+      +thSort('Date','date')+thSort('Payee','payee')+th('Memo')+thSort('Category','category')
+      +thSort('Outflow','outflow','right')+thSort('Inflow','inflow','right')
+      +thSort('Clr','cleared','center')+th('Balance','right')
       +'<th style="padding:8px 12px;width:60px"></th>'
       +'</tr></thead><tbody>';
 
@@ -6072,23 +6123,23 @@ function _renderTxRegister(){
       // 2) build a display-only copy sorted uncleared-first — Array.prototype.sort is stable
       //    (guaranteed since ES2019), so chronological order is preserved within each group.
       // The render loop below uses the precomputed balance, never recomputes it post-sort.
-      var rowsWithBalance=rows.map(function(tx){
+      var rowsWithBalance=rows.map(function(tx,idx){
         var amt=parseFloat(tx.amount)||0;
         runBal+=amt;
-        return {tx:tx,bal:runBal};
+        return {tx:tx,bal:runBal,chronIdx:idx,catDisplay:tx.category_key?_getRegisterCategoryLabel(tx.category_key,_txDateToMonthIso(tx.transaction_date)):''};
       });
-      var displayRows=rowsWithBalance.slice().sort(function(a,b){
-        return(a.tx.cleared?1:0)-(b.tx.cleared?1:0);
-      });
+      // A6: user-controlled display sort. Balance stays the precomputed chronological
+      // value on each entry; _sortTxRows only reorders, never recomputes bal.
+      var displayRows=_sortTxRows(rowsWithBalance,_txLedgerSortCol,_txLedgerSortDir);
       displayRows.forEach(function(entry){
         var tx=entry.tx;
         var amt=parseFloat(tx.amount)||0;
         var outflow=amt<0?'$'+Math.abs(amt).toFixed(2):'';
         var inflow=amt>0?'$'+amt.toFixed(2):'';
-        // Phase 5E-8: resolve via _getRegisterCategoryLabel using the transaction's OWN date/month
-        // (not raw categories.label) so row display picks up month-aware BLR overrides while still
-        // correctly labeling categories outside the fixed Budget registry (Business, Trips, Taxes, etc.).
-        var catDisplay=tx.category_key?_getRegisterCategoryLabel(tx.category_key,_txDateToMonthIso(tx.transaction_date)):'';
+        // Phase 5E-8: category label resolved via _getRegisterCategoryLabel using the transaction's
+        // OWN date/month; A6 precomputes it on the chronological pass (entry.catDisplay) so Category
+        // sorting and row display share one resolution.
+        var catDisplay=entry.catDisplay;
         var isManual=tx.source==='manual';
         var isBeingEdited=_txEditId===tx.id;
         var isDeleteConfirm=_txDeleteConfirmId===tx.id;
