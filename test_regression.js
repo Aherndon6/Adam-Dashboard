@@ -10146,6 +10146,31 @@ console.log('  ⚠ AC-'+blockedACs.join(', AC-')+': BLOCKED pending dashboard ve
 console.log('  ⚠ AC-76 — process-check only (grep -c \'^test(\' baseline), not a runtime assertion; re-grep at build start is authoritative. 2026-07-03 Phase 2 Step 1 re-grep: grep -c \'^test(\' = 999, executed suite = 1081 passing (prior stale 832 note corrected; executed count is the working regression baseline)');
 })();
 
+// ═══════════════════════════════════════════════════════════════════════════
+// Phase 5F-1.5 Gate A — Wendy Feedback / July Usability Pass
+// ═══════════════════════════════════════════════════════════════════════════
+console.log('\n━━━ Phase 5F-1.5 Gate A (Wendy feedback) ━━━');
+
+// A3 (Wendy item 6): Goals → Funding Plan "now" marker was pinned at Cal Wk 23.
+// Root cause: nowIdx used currentW-23, but currentW is the MODEL week (1–31),
+// not a calendar week — for any model week < 24 the clamp floored the index to 0
+// (= Cal Wk 23). Every sibling computation in _renderGoalsFunding maps model→calendar
+// as calWk = 22 + w.num, so the correct timeline index is currentW-1.
+test('5F15-A3-01: Funding Timeline now-marker indexes by model week (currentW-1) in both spots; stale currentW-23 math is gone', ()=>{
+  var fnIdx = html.indexOf('function _renderGoalsFunding');
+  assert(fnIdx > -1, '_renderGoalsFunding must be defined');
+  var fnBlock = html.slice(fnIdx, fnIdx + 12000);
+  var good = fnBlock.split('currentW-1)').length - 1;
+  assert(good >= 2, 'expected both now-marker spots (nowIdx2, nowIdx3) to use currentW-1, found ' + good);
+  assert(fnBlock.indexOf('currentW-23') === -1, 'stale currentW-23 calendar-week math must not remain in _renderGoalsFunding');
+});
+test('5F15-A3-02: Funding Timeline keeps the model→calendar mapping the marker now joins (calWk = 22 + model week, axis starts Cal Wk 23)', ()=>{
+  var fnIdx = html.indexOf('function _renderGoalsFunding');
+  var fnBlock = html.slice(fnIdx, fnIdx + 12000);
+  assertIncludes(fnBlock, 'calWk:22+w.num', 'sweep map must keep calWk = 22 + model week');
+  assertIncludes(fnBlock, 'Cal Wk 23', 'timeline header/axis must still anchor at Cal Wk 23');
+});
+
 // ─────────────────────────────────────────────────────────────────────────
 console.log('\n╔══════════════════════════════════════════════════════════════╗');
 console.log('║                       RESULTS                               ║');
