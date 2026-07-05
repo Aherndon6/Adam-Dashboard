@@ -1637,6 +1637,65 @@ async function clickNav(page, id) {
     await context.close();
   });
 
+  await test('BUD-8 (Phase 5F-1.5 A2): Budget income rows show received actuals and Remaining = budget - received; hidden income never leaks into Total Income', async () => {
+    const { page, context } = await openApp(browser);
+    const result = await page.evaluate(() => {
+      _categoriesCache = [
+        {key:'income',label:'Income',parent_key:null,is_leaf:false,lifecycle_status:'active',behavior_class:null,budget_treatment:null},
+        {key:'income.net_salary',label:'Net Salary',parent_key:'income',is_leaf:true,lifecycle_status:'active',behavior_class:'income',budget_treatment:'display_only'},
+        // Archived income leaf: must render nowhere and must not leak into Total Income actual.
+        {key:'income.old_bonus',label:'Old Bonus',parent_key:'income',is_leaf:true,lifecycle_status:'archived',behavior_class:'income',budget_treatment:'display_only'}
+      ];
+      _registriesLoadStatus = 'loaded';
+      _budgetTransactions = [];
+      _budgetTransLoadStatus = 'loaded';
+      // Net Salary budgeted (via BLR) at $5,000; received $4,000 with a -$100 correction = $3,900 net,
+      // so Remaining = $1,100. Old Bonus (archived) has a $2,000 inflow that must be excluded from the
+      // Total Income actual (a leak would show $5,900 instead of $3,900). BLR match fields are
+      // is_active/start_month/end_month, and _getBudgetAmount requires _budgetLineRulesLoadStatus=loaded.
+      _budgetLineRulesCache = [
+        {category_key:'income.net_salary', line_label:'Net Salary', amount:5000, is_active:true, start_month:'2026-07-01', end_month:null}
+      ];
+      _budgetLineRulesLoadStatus = 'loaded';
+      _budgetRegisterSpendCache = [
+        {category_key:'income.net_salary', amount:4000.00, transaction_date:'2026-07-01'},
+        {category_key:'income.net_salary', amount:-100.00, transaction_date:'2026-07-03'}, // correction, nets down
+        {category_key:'income.old_bonus',  amount:2000.00, transaction_date:'2026-07-02'}  // archived, must not leak
+      ];
+      _budgetRegisterSpendLoadStatus = 'loaded';
+      _budgetSelectedMonth = '2026-07-01';
+      setSection('budget');
+      renderApp();
+      var el = document.getElementById('budget-content');
+      var innerText = el ? el.innerText : '';
+      // Restore
+      _budgetTransactions = [];
+      _budgetTransLoadStatus = 'not_loaded';
+      _budgetRegisterSpendCache = [];
+      _budgetRegisterSpendLoadStatus = 'not_loaded';
+      _budgetLineRulesCache = null;
+      _budgetLineRulesLoadStatus = 'not_loaded';
+      _budgetSelectedMonth = '';
+      return { innerText };
+    });
+    var nsRow = (result.innerText.match(/Net Salary[^\n]*/) || [''])[0];
+    var tiRow = (result.innerText.match(/Total Income[^\n]*/) || [''])[0];
+    // 1. Net Salary row shows received actual $3,900.
+    assert(nsRow.includes('Net Salary'), 'Budget grid must show the Net Salary income row');
+    assert(nsRow.includes('3,900'), 'Net Salary received actual must be $3,900 ($4,000 minus the $100 correction), got row: ' + nsRow);
+    // 2. Net Salary row shows Remaining $1,100 (budget $5,000 - received $3,900).
+    assert(nsRow.includes('1,100'), 'Net Salary Remaining must be $1,100 (budget 5,000 - received 3,900), got row: ' + nsRow);
+    // 3. Total Income row exists.
+    assert(tiRow.includes('Total Income'), 'Total Income row must exist');
+    // 4. Total Income Actual reflects $3,900, not $5,900 (archived $2,000 must not leak).
+    assert(tiRow.includes('3,900'), 'Total Income actual must be $3,900 (displayed rows only), got row: ' + tiRow);
+    assert(!tiRow.includes('5,900'), 'Total Income actual must NOT be $5,900 (archived Old Bonus $2,000 leaked in), got row: ' + tiRow);
+    // 5. Archived Old Bonus does not render and its $2,000 does not leak anywhere in the grid.
+    assert(!result.innerText.includes('Old Bonus'), 'Archived income row must not render');
+    assert(!result.innerText.includes('2,000') && !result.innerText.includes('2000.00'), 'Archived Old Bonus $2,000 inflow must not leak into the Budget grid');
+    await context.close();
+  });
+
   // ── Section TX: Transactions Module (Phase 5D-2) ─────────────────────
   // All tests use injected mock data — no Supabase connection required.
   // Flag defaults false; each test that needs the section enables it in JS.

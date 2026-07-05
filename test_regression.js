@@ -5106,7 +5106,7 @@ test('5B-24: Budget printout total row uses "Total Planned Budget" label (update
   try{htmlSrc=require('fs').readFileSync(require('path').join(__dirname,'index.html'),'utf8');}catch(e){}
   assert(htmlSrc.length>0,'Could not read index.html');
   var budgetFnIdx=htmlSrc.indexOf('function renderBudget()');
-  var budgetFnSrc=htmlSrc.slice(budgetFnIdx,budgetFnIdx+18000);
+  var budgetFnSrc=htmlSrc.slice(budgetFnIdx,budgetFnIdx+20000);
   assert(budgetFnSrc.includes('Total Planned Budget'),'total row must say Total Planned Budget');
   assert(!budgetFnSrc.includes('excl. goal sweep'),'goal sweep exclusion note must be removed');
   assert(budgetFnSrc.includes('Extra Pay Going to Spreadsheet'),'misc.goal_sweep must still render');
@@ -10230,6 +10230,87 @@ test('5F15-A1-07: renderBudget renders a net-credit Spent cell as a signed credi
   assertIncludes(fnBlock, 'fSpent(pSpent)', 'parent Spent cell must render via fSpent');
   assertIncludes(fnBlock, 's<0?fSpent(s)', 'child Spent cell must render a negative net via fSpent');
   assertIncludes(fnBlock, 'fSpent(totalExpSpent)', 'total Spent cell must render via fSpent');
+});
+
+// A2 (Wendy item): Budget income rows should show actual/received income.
+// _isCountableBudgetIncome counts active income leaves only (income,
+// commission_income, reimbursable_income); _computeRegisterIncome sums received
+// (inflows positive, corrections net down). Displayed Total Income actual must
+// sum displayed rows only, never hidden/archived income transactions.
+var A2_CATS = {
+  'income.net_salary':  {key:'income.net_salary',  is_leaf:true, lifecycle_status:'active', behavior_class:'income',              budget_treatment:'display_only'},
+  'income.commissions': {key:'income.commissions', is_leaf:true, lifecycle_status:'active', behavior_class:'commission_income',   budget_treatment:'display_only'},
+  'business.jabian_deposits_2026': {key:'business.jabian_deposits_2026', is_leaf:true, lifecycle_status:'active', behavior_class:'reimbursable_income', budget_treatment:'display_only'},
+  'entertainment.week_1': {key:'entertainment.week_1', is_leaf:true, lifecycle_status:'active', behavior_class:'expense',              budget_treatment:'tracked'},
+  'business.jabian_expenses_2026': {key:'business.jabian_expenses_2026', is_leaf:true, lifecycle_status:'active', behavior_class:'reimbursable_expense', budget_treatment:'excluded'},
+  'transfers.greenlight': {key:'transfers.greenlight', is_leaf:true, lifecycle_status:'active', behavior_class:'transfer',             budget_treatment:'excluded'},
+  'savings.efund':        {key:'savings.efund',        is_leaf:true, lifecycle_status:'active', behavior_class:'savings_allocation',   budget_treatment:'planned_allocation'},
+  'income.old_bonus':     {key:'income.old_bonus',     is_leaf:true, lifecycle_status:'archived', behavior_class:'income',            budget_treatment:'display_only'},
+  'income':               {key:'income',               is_leaf:false, lifecycle_status:'active', behavior_class:null,                 budget_treatment:null}
+};
+test('5F15-A2-01: _isCountableBudgetIncome counts active income/commission_income/reimbursable_income leaves', ()=>{
+  assert(_isCountableBudgetIncome(A2_CATS['income.net_salary'])===true, 'income leaf counts');
+  assert(_isCountableBudgetIncome(A2_CATS['income.commissions'])===true, 'commission_income leaf counts');
+  assert(_isCountableBudgetIncome(A2_CATS['business.jabian_deposits_2026'])===true, 'reimbursable_income leaf counts');
+});
+test('5F15-A2-02: _isCountableBudgetIncome fails closed for non-income, inactive, non-leaf, and null', ()=>{
+  assert(_isCountableBudgetIncome(A2_CATS['entertainment.week_1'])===false, 'expense excluded');
+  assert(_isCountableBudgetIncome(A2_CATS['business.jabian_expenses_2026'])===false, 'reimbursable_expense excluded');
+  assert(_isCountableBudgetIncome(A2_CATS['transfers.greenlight'])===false, 'transfer excluded');
+  assert(_isCountableBudgetIncome(A2_CATS['savings.efund'])===false, 'savings_allocation excluded');
+  assert(_isCountableBudgetIncome(A2_CATS['income.old_bonus'])===false, 'archived income excluded');
+  assert(_isCountableBudgetIncome(A2_CATS['income'])===false, 'non-leaf parent excluded');
+  assert(_isCountableBudgetIncome(null)===false, 'null fails closed');
+});
+test('5F15-A2-03: _computeRegisterIncome sums a single inflow', ()=>{
+  var out = _computeRegisterIncome([{category_key:'income.net_salary', amount:4000.00}], A2_CATS);
+  assertApprox(out['income.net_salary'], 4000.00, 'single inflow received = 4000');
+});
+test('5F15-A2-04: _computeRegisterIncome sums multiple inflows', ()=>{
+  var out = _computeRegisterIncome([
+    {category_key:'income.net_salary', amount:4000.00},
+    {category_key:'income.net_salary', amount:1000.00}
+  ], A2_CATS);
+  assertApprox(out['income.net_salary'], 5000.00, 'two inflows sum to 5000');
+});
+test('5F15-A2-05: a negative correction/clawback nets received down (not floored), reconciling to Remaining', ()=>{
+  var out = _computeRegisterIncome([
+    {category_key:'income.net_salary', amount:4000.00},
+    {category_key:'income.net_salary', amount:-100.00}
+  ], A2_CATS);
+  assertApprox(out['income.net_salary'], 3900.00, 'received nets to 3900 (Budget 5000 -> Remaining 1100)');
+});
+test('5F15-A2-06: non-income categories are ignored for income (expense, transfer, savings)', ()=>{
+  var out = _computeRegisterIncome([
+    {category_key:'entertainment.week_1', amount:-40.00},
+    {category_key:'transfers.greenlight', amount:25.00},
+    {category_key:'savings.efund', amount:500.00}
+  ], A2_CATS);
+  assert(Object.keys(out).length===0, 'no income contribution from non-income categories');
+});
+test('5F15-A2-07: hidden/archived income is excluded from the received map, so it cannot leak into Total Income actual', ()=>{
+  var out = _computeRegisterIncome([{category_key:'income.old_bonus', amount:3000.00}], A2_CATS);
+  assert(out['income.old_bonus']===undefined, 'archived income category must not appear in the received map');
+});
+test('5F15-A2-08: null/missing category and non-finite amount are skipped, fail-closed', ()=>{
+  var out = _computeRegisterIncome([
+    {amount:100.00},                                    // no category_key
+    {category_key:'not_in_catmap', amount:100.00},      // absent from catByKey
+    {category_key:'income.net_salary', amount:'not-a-number'} // NaN amount
+  ], A2_CATS);
+  assert(Object.keys(out).length===0, 'no contribution from null-category, unknown-category, or NaN-amount rows');
+});
+test('5F15-A2-09: renderBudget income section wires received/remaining through signed formatters and accumulates displayed rows only', ()=>{
+  assertIncludes(html, 'function _computeRegisterIncome(', '_computeRegisterIncome helper must exist');
+  assertIncludes(html, 'function _isCountableBudgetIncome(', '_isCountableBudgetIncome predicate must exist');
+  var fnIdx = html.indexOf('function renderBudget()');
+  var fnBlock = html.slice(fnIdx, fnIdx + 20000);
+  assertIncludes(fnBlock, '_computeRegisterIncome(_budgetRegisterSpendCache', 'income section must read received from the Register cache');
+  assertIncludes(fnBlock, 'incomeActualTotal+=rec', 'Total Income actual must accumulate inside the displayed active income leaf loop');
+  assertIncludes(fnBlock, 'fsigned(rec)', 'income row Actual/Received must render signed (never sign-stripped)');
+  assertIncludes(fnBlock, 'bud-rec', 'income row Remaining must be budget minus received');
+  assertIncludes(fnBlock, 'fsigned(incomeActualTotal)', 'Total Income actual must render signed');
+  assert(fnBlock.indexOf('_iRem>0?\'var(--amber)\':\'var(--green)\'')>-1 || fnBlock.indexOf('_iRem>0?"var(--amber)":"var(--green)"')>-1, 'income Remaining uses income coloring (amber when still expected, green when met/exceeded)');
 });
 
 // ─────────────────────────────────────────────────────────────────────────

@@ -857,7 +857,7 @@ button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-vis
 // ── Constants (unchanged) ──────────────────────────────────────────────────
 // Simplified architecture — $8,250 total from LC · $6,500 operating floor · no legacy mechanics
 // Real-world moves: keep $2,250 in chk, move $2,750 sav→chk, move $1,000 LC→chk, move $2,250 LC→chk (Option 1 correction)
-const BUILD_TS='2026-07-05T16:47:26'; // updated each push — local time string
+const BUILD_TS='2026-07-05T17:30:48'; // updated each push — local time string
 const START_CHK=18037.73,START_SAV=3772.77,START_AMX=103.64,START_TAX=0,START_LC=13488.88;
 const EF_AMT=13488.88; // LC/EF balance — static this model year (no transfers in or out)
 const BASE_TAX=521.36,RET_SAV_XFR=3772.74;
@@ -6486,9 +6486,16 @@ function renderBudget(){
   // Render INCOME section
   html+='<tr><td colspan="4" style="padding:6px 8px 2px;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);border-top:1px solid var(--border)">Income</td></tr>';
   var incomeTotal=0;
+  // Phase 5F-1.5 A2: received income by category from the same Register month cache.
+  // incomeActualTotal accumulates inside this displayed-active-income-leaf loop only,
+  // so hidden/archived income transactions can never leak into the Total Income actual.
+  var _regIncome=_computeRegisterIncome(_budgetRegisterSpendCache,_catByKeyForSpend);
+  var incomeActualTotal=0;
   _getActiveCategoryRegistry().filter(function(c){return c.isIncome&&c.leaf;}).forEach(function(c){
     var bud=_getBudgetAmount(c.key,monthIso);
     incomeTotal+=bud;
+    var rec=_regIncome[c.key]||0;
+    incomeActualTotal+=rec;
     html+='<tr style="border-bottom:1px solid var(--border)">';
     var _blrIncomeActions=canWriteFinancials()
       ?'<span style="float:right;margin-left:6px">'
@@ -6496,16 +6503,18 @@ function renderBudget(){
         +'</span>'
       :'';
     html+='<td style="padding:5px 8px 5px 20px;color:var(--muted)">'+_blrIncomeActions+c.label+'</td>';
-    html+='<td style="text-align:right;padding:5px 8px;color:var(--muted)">—</td>';
+    html+='<td style="text-align:right;padding:5px 8px;color:var(--muted)" title="Received this month">'+fsigned(rec)+'</td>';
     html+='<td style="text-align:right;padding:5px 8px;color:var(--blue)">'+f(bud)+'</td>';
-    html+='<td style="text-align:right;padding:5px 8px;color:var(--muted)">—</td>';
+    var _iRem=bud-rec;
+    html+='<td style="text-align:right;padding:5px 8px;color:'+(_iRem>0?'var(--amber)':'var(--green)')+'">'+fsigned(_iRem)+'</td>';
     html+='</tr>';
   });
   html+='<tr style="border-bottom:2px solid var(--border);background:var(--bg)">';
   html+='<td style="padding:5px 8px;font-weight:700">Total Income</td>';
-  html+='<td style="text-align:right;padding:5px 8px">—</td>';
+  html+='<td style="text-align:right;padding:5px 8px;font-weight:700" title="Received this month">'+fsigned(incomeActualTotal)+'</td>';
   html+='<td style="text-align:right;padding:5px 8px;font-weight:700;color:var(--blue)">'+f(incomeTotal)+'</td>';
-  html+='<td style="text-align:right;padding:5px 8px">—</td>';
+  var _iTotRem=incomeTotal-incomeActualTotal;
+  html+='<td style="text-align:right;padding:5px 8px;font-weight:700;color:'+(_iTotRem>0?'var(--amber)':'var(--green)')+'">'+fsigned(_iTotRem)+'</td>';
   html+='</tr>';
 
   // Render EXPENSE sections
@@ -7450,6 +7459,36 @@ function _computeRegisterSpend(rows, catByKey){
     if(!t.category_key)return;
     if(!_isCountableBudgetSpend((catByKey||{})[t.category_key]))return;
     out[t.category_key]=(out[t.category_key]||0)+(-amt);
+  });
+  return out;
+}
+
+// Phase 5F-1.5 A2: is this category a countable Budget income row? Active income
+// leaf only (income, commission_income, reimbursable_income). Deliberately does
+// NOT filter on budget_treatment, since income legitimately uses display_only.
+// Excludes expense/reimbursable_expense/transfer/savings_allocation, inactive or
+// archived, non-leaf/parent, and null categories.
+function _isCountableBudgetIncome(cat){
+  if(!cat)return false;
+  if(!cat.is_leaf)return false;
+  if(cat.lifecycle_status!=='active')return false;
+  var bc=cat.behavior_class;
+  return bc==='income'||bc==='commission_income'||bc==='reimbursable_income';
+}
+
+// Phase 5F-1.5 A2: received income by category from Register (public.transactions),
+// read from the same month cache as spend. Income inflows are positive, so
+// received = sum(amount); a negative correction/clawback nets it down (not floored),
+// and a net-negative received is preserved. Only countable income categories
+// contribute; non-finite-amount, null-category, and non-income rows are ignored.
+function _computeRegisterIncome(rows, catByKey){
+  var out={};
+  (rows||[]).forEach(function(t){
+    var amt=parseFloat(t.amount);
+    if(!isFinite(amt))return;
+    if(!t.category_key)return;
+    if(!_isCountableBudgetIncome((catByKey||{})[t.category_key]))return;
+    out[t.category_key]=(out[t.category_key]||0)+amt;
   });
   return out;
 }
