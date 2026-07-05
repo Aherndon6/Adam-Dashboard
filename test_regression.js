@@ -7601,23 +7601,21 @@ test('5E9-13: _budgetLoadRegisterSpend exists and queries public.transactions wi
   assertIncludes(fnBlock,"new Date(y,m+1,0)",'_budgetLoadRegisterSpend must use the same local-date last-day-of-month math as _budgetLoadTransactions (avoids UTC-shift bug)');
 });
 
-test('5E9-14: renderBudget spentByKey folds in Register spend — outflow-only, category-filtered, absolute value',()=>{
+test('5E9-14: renderBudget spentByKey folds in Register spend via _computeRegisterSpend, category-filtered signed net (A1 supersedes outflow-only/Math.abs)',()=>{
   var fnIdx=html.indexOf('function renderBudget()');
   assert(fnIdx>-1,'renderBudget must be defined');
   var fnBlock=html.slice(fnIdx,fnIdx+10000);
   assertIncludes(fnBlock,'_budgetRegisterSpendCache','renderBudget must reference _budgetRegisterSpendCache in its spentByKey computation');
-  assertIncludes(fnBlock,'if(!(amt<0))return;','Register merge must only count outflow (negative amount) rows');
-  assertIncludes(fnBlock,'_isCountableBudgetSpend(_catByKeyForSpend[t.category_key])','Register merge must gate each row through _isCountableBudgetSpend');
-  assertIncludes(fnBlock,'Math.abs(amt)','Register merge must convert Register\'s signed outflow to a positive spend amount, matching budget_transactions\' convention');
+  assertIncludes(fnBlock,'_computeRegisterSpend(_budgetRegisterSpendCache','Register merge must fold spend through the _computeRegisterSpend helper');
+  assert(fnBlock.indexOf('if(!(amt<0))return;')===-1,'A1: the outflow-only guard must be gone so credits net in');
+  assert(fnBlock.indexOf('Math.abs(amt)')===-1,'A1: the Math.abs outflow-to-positive conversion must be gone in favor of the true signed net');
 });
 
 test('5E9-15: Register merge does not require cleared=true (matches existing budget_transactions behavior, which has no cleared check either)',()=>{
-  var fnIdx=html.indexOf('function renderBudget()');
-  var spentIdx=html.indexOf('Compute spent by category_key',fnIdx);
-  var mergeIdx=html.indexOf('_budgetRegisterSpendCache||[]).forEach',fnIdx);
-  assert(spentIdx>-1&&mergeIdx>-1,'Could not locate spentByKey computation block');
-  var mergeBlock=html.slice(mergeIdx,mergeIdx+700);
-  assert(mergeBlock.indexOf('.cleared')===-1,'Register spend merge must not filter on t.cleared — uncleared Register transactions must still count toward Budget spent');
+  var fnIdx=html.indexOf('function _computeRegisterSpend');
+  assert(fnIdx>-1,'_computeRegisterSpend must be defined');
+  var fnBlock=html.slice(fnIdx,fnIdx+700);
+  assert(fnBlock.indexOf('.cleared')===-1,'Register spend netting must not filter on t.cleared; uncleared Register transactions must still count toward Budget spent');
 });
 
 test('5E9-16: Register merge is account-agnostic (no account_key filtering — AMEX Gold and every other account count the same)',()=>{
@@ -10169,6 +10167,69 @@ test('5F15-A3-02: Funding Timeline keeps the model→calendar mapping the marker
   var fnBlock = html.slice(fnIdx, fnIdx + 12000);
   assertIncludes(fnBlock, 'calWk:22+w.num', 'sweep map must keep calWk = 22 + model week');
   assertIncludes(fnBlock, 'Cal Wk 23', 'timeline header/axis must still anchor at Cal Wk 23');
+});
+
+// A1 (Wendy item): Budget credits/refunds should net into category actuals.
+// _computeRegisterSpend returns the true signed net per countable category:
+// outflows (amount<0) add positive spend, credits (amount>0) subtract, and the
+// net is NOT floored (a category with more credits than outflows stays negative).
+var A1_CATS = {
+  'entertainment.week_1': {key:'entertainment.week_1', is_leaf:true, lifecycle_status:'active', behavior_class:'expense', budget_treatment:'tracked'},
+  'wewe_lunches':         {key:'wewe_lunches',         is_leaf:true, lifecycle_status:'active', behavior_class:'expense', budget_treatment:'tracked'},
+  'business.jabian_expenses_2026': {key:'business.jabian_expenses_2026', is_leaf:true, lifecycle_status:'active', behavior_class:'reimbursable_expense', budget_treatment:'excluded'},
+  'transfers.greenlight': {key:'transfers.greenlight', is_leaf:true, lifecycle_status:'active', behavior_class:'transfer', budget_treatment:'excluded'},
+  'income.net_salary':    {key:'income.net_salary',    is_leaf:true, lifecycle_status:'active', behavior_class:'income', budget_treatment:'display_only'}
+};
+test('5F15-A1-01: single outflow nets positive spend', ()=>{
+  var out = _computeRegisterSpend([{category_key:'wewe_lunches', amount:-40.00}], A1_CATS);
+  assertApprox(out['wewe_lunches'], 40.00, 'a -$40 outflow contributes +$40 spend');
+});
+test('5F15-A1-02: single credit/refund nets negative spend', ()=>{
+  var out = _computeRegisterSpend([{category_key:'wewe_lunches', amount:50.00}], A1_CATS);
+  assertApprox(out['wewe_lunches'], -50.00, 'a +$50 credit contributes -$50 (reduces spend)');
+});
+test('5F15-A1-03: mixed spend and credit on one category nets correctly (85.66 spend - 15 credit = 70.66)', ()=>{
+  var out = _computeRegisterSpend([
+    {category_key:'entertainment.week_1', amount:-40.00},
+    {category_key:'entertainment.week_1', amount:-32.68},
+    {category_key:'entertainment.week_1', amount:-12.98},
+    {category_key:'entertainment.week_1', amount:15.00}
+  ], A1_CATS);
+  assertApprox(out['entertainment.week_1'], 70.66, 'mixed outflows + credit net to 70.66');
+});
+test('5F15-A1-04: non-countable categories (excluded, transfer, income) are ignored for both signs', ()=>{
+  var out = _computeRegisterSpend([
+    {category_key:'business.jabian_expenses_2026', amount:-7.17},
+    {category_key:'business.jabian_expenses_2026', amount:20.00},
+    {category_key:'transfers.greenlight', amount:-25.00},
+    {category_key:'income.net_salary', amount:2000.00}
+  ], A1_CATS);
+  assert(out['business.jabian_expenses_2026']===undefined, 'excluded treatment must not contribute');
+  assert(out['transfers.greenlight']===undefined, 'transfer must not contribute');
+  assert(out['income.net_salary']===undefined, 'income must not contribute');
+});
+test('5F15-A1-05: null/missing category and non-finite amount are skipped, fail-closed', ()=>{
+  var out = _computeRegisterSpend([
+    {amount:-10.00},                                   // no category_key
+    {category_key:'not_in_catmap', amount:-10.00},     // category absent from catByKey
+    {category_key:'wewe_lunches', amount:'not-a-number'} // NaN amount
+  ], A1_CATS);
+  assert(Object.keys(out).length===0, 'no contribution from null-category, unknown-category, or NaN-amount rows');
+});
+test('5F15-A1-06: a category whose credits exceed outflows is preserved as a true negative (not floored to 0)', ()=>{
+  var out = _computeRegisterSpend([
+    {category_key:'wewe_lunches', amount:-40.00},
+    {category_key:'wewe_lunches', amount:50.00}
+  ], A1_CATS);
+  assertApprox(out['wewe_lunches'], -10.00, 'net -$10 must be preserved, not floored to 0');
+});
+test('5F15-A1-07: renderBudget renders a net-credit Spent cell as a signed credit (fSpent), so visible actual reconciles to Remaining', ()=>{
+  assertIncludes(html, 'function fSpent(', 'fSpent signed-credit formatter must exist');
+  var fnIdx = html.indexOf('function renderBudget()');
+  var fnBlock = html.slice(fnIdx, fnIdx + 20000);
+  assertIncludes(fnBlock, 'fSpent(pSpent)', 'parent Spent cell must render via fSpent');
+  assertIncludes(fnBlock, 's<0?fSpent(s)', 'child Spent cell must render a negative net via fSpent');
+  assertIncludes(fnBlock, 'fSpent(totalExpSpent)', 'total Spent cell must render via fSpent');
 });
 
 // ─────────────────────────────────────────────────────────────────────────

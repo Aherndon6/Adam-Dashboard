@@ -857,7 +857,7 @@ button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-vis
 // ── Constants (unchanged) ──────────────────────────────────────────────────
 // Simplified architecture — $8,250 total from LC · $6,500 operating floor · no legacy mechanics
 // Real-world moves: keep $2,250 in chk, move $2,750 sav→chk, move $1,000 LC→chk, move $2,250 LC→chk (Option 1 correction)
-const BUILD_TS='2026-07-05T16:01:42'; // updated each push — local time string
+const BUILD_TS='2026-07-05T16:47:26'; // updated each push — local time string
 const START_CHK=18037.73,START_SAV=3772.77,START_AMX=103.64,START_TAX=0,START_LC=13488.88;
 const EF_AMT=13488.88; // LC/EF balance — static this model year (no transfers in or out)
 const BASE_TAX=521.36,RET_SAV_XFR=3772.74;
@@ -2582,6 +2582,11 @@ function runModel(akGoal,rtGoal,flags){
 function r(n){return Math.round(n*100)/100}  // global — also declared inside runModel for local perf
 function f(n){return '$'+Math.abs(n).toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2})}
 function fsigned(n){return(n<0?'−':'')+f(Math.abs(n));}
+// Phase 5F-1.5 A1: render a Spent/Actual value that may be a net credit.
+// Zero or positive renders as plain money; a negative net (refunds/credits
+// exceed outflows) renders as a signed, green "credit/offset" so the visible
+// actual reconciles to Remaining (Remaining = Budget - Net Actual).
+function fSpent(n){return n<0?'<span style="color:var(--green)" title="Net credit / offset">'+fsigned(n)+'</span>':f(n);}
 function fc(n){return n.toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2})}
 function getCurrentWeek(){const s=new Date(2026,5,7);const t=new Date();t.setHours(0,0,0,0);s.setHours(0,0,0,0);const d=Math.floor((t-s)/864e5);if(d<0)return 1;return Math.min(Math.floor(d/7)+1,31);}
 const currentW=getCurrentWeek();
@@ -6464,20 +6469,19 @@ function renderBudget(){
     if(!t.category_key)return;
     spentByKey[t.category_key]=(spentByKey[t.category_key]||0)+parseFloat(t.amount);
   });
-  // Phase 5E-9: fold in Register-entered spend (public.transactions) alongside
-  // budget_transactions. Outflow only (amount<0, Register's signed convention);
-  // category must pass _isCountableBudgetSpend (active leaf, spend-like behavior_class,
-  // budget-tracked treatment) — see that function for the full exclusion list
-  // (transfers, income, savings_allocation, excluded/display_only/planned_allocation).
+  // Phase 5E-9 / 5F-1.5 A1: fold in Register-entered spend (public.transactions)
+  // alongside budget_transactions as net signed spend: outflows (amount<0, Register's
+  // signed convention) add, credits/refunds (amount>0) subtract. Category must pass
+  // _isCountableBudgetSpend (active leaf, spend-like behavior_class, budget-tracked
+  // treatment); see that function for the full exclusion list (transfers, income,
+  // savings_allocation, excluded/display_only/planned_allocation).
   var _catByKeyForSpend={};
   (_categoriesCache||[]).forEach(function(c){_catByKeyForSpend[c.key]=c;});
-  (_budgetRegisterSpendCache||[]).forEach(function(t){
-    var amt=parseFloat(t.amount);
-    if(!(amt<0))return;
-    if(!t.category_key)return;
-    if(!_isCountableBudgetSpend(_catByKeyForSpend[t.category_key]))return;
-    spentByKey[t.category_key]=(spentByKey[t.category_key]||0)+Math.abs(amt);
-  });
+  // Phase 5F-1.5 A1: fold in the true signed net (outflows add, credits/refunds
+  // subtract) so credits net against actuals. Net can be negative; the renderer
+  // shows a negative actual as a credit/offset and Remaining = Budget - Net Actual.
+  var _regNet=_computeRegisterSpend(_budgetRegisterSpendCache,_catByKeyForSpend);
+  Object.keys(_regNet).forEach(function(k){spentByKey[k]=(spentByKey[k]||0)+_regNet[k];});
 
   // Render INCOME section
   html+='<tr><td colspan="4" style="padding:6px 8px 2px;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);border-top:1px solid var(--border)">Income</td></tr>';
@@ -6551,7 +6555,7 @@ function renderBudget(){
     if(!isStandalone){
       html+='<tr style="background:var(--bg);border-top:1px solid var(--border)">';
       html+='<td style="padding:6px 8px 3px;font-weight:700;font-size:12px;color:var(--ink)">'+parent.label+'</td>';
-      html+='<td style="text-align:right;padding:6px 8px 3px;font-weight:700">'+f(pSpent)+'</td>';
+      html+='<td style="text-align:right;padding:6px 8px 3px;font-weight:700">'+fSpent(pSpent)+'</td>';
       html+='<td style="text-align:right;padding:6px 8px 3px;font-weight:700;color:var(--blue)">'+f(pBudget)+'</td>';
       var pRem=pBudget-pSpent;
       html+='<td style="text-align:right;padding:6px 8px 3px;font-weight:700;color:'+(pRem<0?'#ef4444':'var(--green)')+'">'+f(pRem)+'</td>';
@@ -6577,7 +6581,7 @@ function renderBudget(){
       var _rowLabel=_getCategoryDisplayLabel(c.key,monthIso);
       html+='<td style="padding:5px 8px 5px '+indent+(isGoalSweep?';font-style:italic':'')+'">'
         +_blrExpActions+_rowLabel+(isGoalSweep?' <span style="font-size:10px;color:var(--muted)">(flexible sweep line)</span>':'')+'</td>';
-      html+='<td style="text-align:right;padding:5px 8px">'+(s>0?f(s):'—')+'</td>';
+      html+='<td style="text-align:right;padding:5px 8px">'+(s>0?f(s):(s<0?fSpent(s):'—'))+'</td>';
       html+='<td style="text-align:right;padding:5px 8px;color:var(--blue)">'+(b>0?f(b):'—')+'</td>';
       html+='<td style="text-align:right;padding:5px 8px;color:'+(rem<0?'#ef4444':(rem===b&&s===0)?'var(--muted)':'var(--green)')+'">'+f(rem)+'</td>';
       html+='</tr>';
@@ -6589,7 +6593,7 @@ function renderBudget(){
   var totalRem=totalExpBudget-totalExpSpent;
   html+='<tr style="border-top:2px solid var(--border);background:var(--bg)">';
   html+='<td style="padding:6px 8px;font-weight:700">Total Planned Budget</td>';
-  html+='<td style="text-align:right;padding:6px 8px;font-weight:700">'+f(totalExpSpent)+'</td>';
+  html+='<td style="text-align:right;padding:6px 8px;font-weight:700">'+fSpent(totalExpSpent)+'</td>';
   html+='<td style="text-align:right;padding:6px 8px;font-weight:700;color:var(--blue)">'+f(totalExpBudget)+'</td>';
   html+='<td style="text-align:right;padding:6px 8px;font-weight:700;color:'+(totalRem<0?'#ef4444':'var(--green)')+'">'+f(totalRem)+'</td>';
   html+='</tr>';
@@ -7429,6 +7433,25 @@ function _isCountableBudgetSpend(cat){
   if(!bt)return false;
   if(bt==='excluded'||bt==='display_only'||bt==='planned_allocation')return false;
   return true;
+}
+
+// Phase 5F-1.5 A1: net Register spend by category. Outflows (Register's signed
+// convention, amount<0) add positive spend; credits/refunds (amount>0) subtract.
+// Returns the true signed net per countable category (can be negative when
+// credits exceed outflows, not floored). Only categories passing
+// _isCountableBudgetSpend contribute; income, transfer, excluded, null-category,
+// and non-finite-amount rows are ignored. catByKey maps category_key to the raw
+// _categoriesCache row (the shape _isCountableBudgetSpend expects).
+function _computeRegisterSpend(rows, catByKey){
+  var out={};
+  (rows||[]).forEach(function(t){
+    var amt=parseFloat(t.amount);
+    if(!isFinite(amt))return;
+    if(!t.category_key)return;
+    if(!_isCountableBudgetSpend((catByKey||{})[t.category_key]))return;
+    out[t.category_key]=(out[t.category_key]||0)+(-amt);
+  });
+  return out;
 }
 
 // Returns the active category registry.

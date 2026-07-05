@@ -1539,7 +1539,7 @@ async function clickNav(page, id) {
     await context.close();
   });
 
-  await test('BUD-6 (Phase 5E-9): Register-entered transactions roll up into Budget spent — additive with budget_transactions, excludes non-countable categories', async () => {
+  await test('BUD-6 (Phase 5E-9 / 5F-1.5 A1): Register-entered transactions roll up into Budget spent: additive, excludes non-countable, and credits net into actuals', async () => {
     // Reproduces Adam's live bug report: July had correctly-categorized Register
     // transactions but Budget spent showed $0.00, because Budget's spentByKey only
     // read budget_transactions, never Register's transactions table. This test
@@ -1563,13 +1563,14 @@ async function clickNav(page, id) {
       _budgetTransactions = [];
       _budgetTransLoadStatus = 'loaded';
       // Adam's real July 2 example: Fandango $40.00 + Barn $32.68 + mend coffee $12.98 = $85.66,
-      // all tagged entertainment.week_1. Plus a same-category inflow (must not count) and a
-      // Jabian Expenses / Greenlight outflow (must not count despite being real outflow spend).
+      // all tagged entertainment.week_1. Plus a same-category $15.00 credit/refund that (A1)
+      // NETS DOWN the actual to $70.66, and a Jabian Expenses / Greenlight outflow (must not
+      // count despite being real outflow spend).
       _budgetRegisterSpendCache = [
         {category_key:'entertainment.week_1', amount:-40.00, transaction_date:'2026-07-01'},
         {category_key:'entertainment.week_1', amount:-32.68, transaction_date:'2026-07-01'},
         {category_key:'entertainment.week_1', amount:-12.98, transaction_date:'2026-07-01'},
-        {category_key:'entertainment.week_1', amount:15.00,  transaction_date:'2026-07-05'}, // inflow, must not count
+        {category_key:'entertainment.week_1', amount:15.00,  transaction_date:'2026-07-05'}, // credit, nets down (A1)
         {category_key:'business.jabian_expenses_2026', amount:-7.17, transaction_date:'2026-07-01'}, // excluded treatment
         {category_key:'transfers.greenlight', amount:-25.00, transaction_date:'2026-07-01'} // transfer, must not count
       ];
@@ -1589,9 +1590,10 @@ async function clickNav(page, id) {
       return { innerHtml, innerText };
     });
     assert(result.innerText.includes('Entertainment Week 1'), 'Budget grid must show the Entertainment Week 1 row');
-    assert(result.innerText.includes('85.66'), 'Entertainment Week 1 spent must be $85.66 (Fandango + Barn + mend coffee), got text: ' + result.innerText.match(/Entertainment Week 1[^\n]*/));
+    assert(result.innerText.includes('70.66'), 'A1: Entertainment Week 1 spent must net to $70.66 ($85.66 outflows minus the $15.00 credit), got text: ' + result.innerText.match(/Entertainment Week 1[^\n]*/));
+    assert(!/entertainment week 1[^\n]*85\.66/i.test(result.innerText), 'A1: the $15.00 credit must not be dropped (85.66 would mean the credit was ignored instead of netted)');
+    assert(!/entertainment week 1[^\n]*100\.66/i.test(result.innerText), 'the $15.00 credit must never be ADDED as spend (100.66 would mean it leaked in with the wrong sign)');
     assert(!result.innerText.includes('7.17'), 'Jabian Expenses 2026 ($7.17, budget_treatment=excluded) must not appear as counted spend anywhere in Budget');
-    assert(!/entertainment week 1[^\n]*100\.66/i.test(result.innerText), 'Entertainment Week 1 must not include the $15.00 inflow (would show 100.66 instead of 85.66 if inflow leaked in)');
     await context.close();
   });
 
