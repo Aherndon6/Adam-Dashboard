@@ -59,11 +59,11 @@ const fullVm = (() => {
     reconciledWeeks:[],editedWeeks:[],futureWeeks:[],pastWeeks:[] };
 })();
 
-function simulateEngine(amt,type,flags,fundedOverrides){
+function simulateEngine(amt,type,flags,fundedOverrides,weeksOverride){
   const oF=Object.assign({},goalFlags),oA=Object.assign({},goalFundedAmounts),oT=engineType,oAmt=engineAmt;
   Object.assign(goalFlags,flags||{});Object.assign(goalFundedAmounts,fundedOverrides||{});
   engineType=type;engineAmt=String(amt);engineResult=null;
-  runEngine({weeks:WEEKS});
+  runEngine({weeks:weeksOverride||WEEKS});
   const r=engineResult?engineResult.slice():null;
   Object.assign(goalFlags,oF);for(const k of Object.keys(goalFundedAmounts))delete goalFundedAmounts[k];
   Object.assign(goalFundedAmounts,oA);engineType=oT;engineAmt=oAmt;
@@ -177,9 +177,36 @@ test('Variable: sums match for $1k,$5k,$10k,$50k',()=>{ [1000,5000,10000,50000].
 // ─────────────────────────────────────────────────────────────────────────
 console.log('\n── Section 6: Decision Engine — regular surplus ──');
 test('Regular: no tax step',()=>assert(!simulateEngine(5000,'regular',{ira_cpa_cleared:false}).find(x=>x.type==='tax')));
-test('Regular: first goal is Alaska',()=>{ const s=simulateEngine(1000,'regular',{ira_cpa_cleared:false}); const f=s.find(x=>x.type==='goal'); assert(f&&f.label.includes('Alaska'),'first='+( f?f.label:'none')); });
+// 5F-1.5 test maintenance (2026-07-05): these two tests previously ran against the LIVE
+// model state (WEEKS at getCurrentWeek()), so they broke the day Alaska/RCCL/DCL became
+// fully funded (model week 5 / Cal Wk 27) — the engine correctly skips funded goals, and
+// the tests were asserting a stale calendar state, not a code defect. They now run against
+// ZERO_FUNDED_WEEKS (goalSaved wiped → getGoalFunded falls back to goalFundedAmounts, 0 for
+// all waterfall goals), which pins the original waterfall-intent assertions date-independently.
+const ZERO_FUNDED_WEEKS=WEEKS.map(w=>Object.assign({},w,{goalSaved:{}}));
+test('Regular: first goal is Alaska (zero-funded state, date-independent)',()=>{ const s=simulateEngine(1000,'regular',{ira_cpa_cleared:false},null,ZERO_FUNDED_WEEKS); const f=s.find(x=>x.type==='goal'); assert(f&&f.label.includes('Alaska'),'first='+( f?f.label:'none')); });
 // Phase 4: engine routes directly alaska → rccl → dcl → adam_ira (no retirement pool)
-test('Regular: engine order is alaska → rccl → dcl → adam_ira',()=>{ const s=simulateEngine(50000,'regular',{ira_cpa_cleared:true}); const g=s.filter(x=>x.type==='goal'); const ak=g.findIndex(x=>x.label&&x.label.includes('Alaska')),rccl=g.findIndex(x=>x.label&&x.label.includes('RCCL')),ira=g.findIndex(x=>x.label&&x.label.includes('Adam IRA')); assert(ak>=0&&rccl>=0&&ira>=0,'Goal steps not found: ak='+ak+' rccl='+rccl+' ira='+ira); assert(ak<rccl&&rccl<ira,'Order wrong: ak='+ak+' rccl='+rccl+' ira='+ira); });
+test('Regular: engine order is alaska → rccl → dcl → adam_ira (zero-funded state, date-independent)',()=>{ const s=simulateEngine(50000,'regular',{ira_cpa_cleared:true},null,ZERO_FUNDED_WEEKS); const g=s.filter(x=>x.type==='goal'); const ak=g.findIndex(x=>x.label&&x.label.includes('Alaska')),rccl=g.findIndex(x=>x.label&&x.label.includes('RCCL')),ira=g.findIndex(x=>x.label&&x.label.includes('Adam IRA')); assert(ak>=0&&rccl>=0&&ira>=0,'Goal steps not found: ak='+ak+' rccl='+rccl+' ira='+ira); assert(ak<rccl&&rccl<ira,'Order wrong: ak='+ak+' rccl='+rccl+' ira='+ira); });
+// Live-state coverage the old tests provided incidentally, restated so it stays true on any
+// date: the engine must never allocate to a goal already funded at the current week, and the
+// goal steps it does emit must follow REGULAR_WATERFALL relative order.
+test('Regular: live-state engine skips funded goals and preserves waterfall order',()=>{
+  const s=simulateEngine(50000,'regular',{ira_cpa_cleared:true});
+  const g=s.filter(x=>x.type==='goal');
+  assert(g.length>0,'engine should emit at least one goal step for $50k');
+  const stepIds=g.map(step=>{
+    const gd=GOALS_REGISTRY.find(x=>step.label.indexOf(x.name+' → ')===0||step.label.indexOf(x.name)===0);
+    return gd?gd.id:null;
+  });
+  assert(stepIds.every(id=>id!==null),'every goal step label must map back to a registry goal: '+JSON.stringify(g.map(x=>x.label)));
+  stepIds.forEach(id=>{
+    const gd=GOALS_REGISTRY.find(x=>x.id===id);
+    const funded=getGoalFunded(id,{weeks:WEEKS});
+    assert(gd.target-funded>0.005,'engine allocated to already-funded goal: '+id+' (funded '+funded+' of '+gd.target+')');
+  });
+  const wfIdx=stepIds.map(id=>REGULAR_WATERFALL.indexOf(id)).filter(i=>i>=0);
+  for(let i=1;i<wfIdx.length;i++)assert(wfIdx[i]>wfIdx[i-1],'goal steps out of waterfall order: '+stepIds.join(' → '));
+});
 test('Regular: IRA steps appear when CPA cleared',()=>{ const s=simulateEngine(50000,'regular',{ira_cpa_cleared:true}); assert(s.filter(x=>x.type==='goal').some(x=>x.label&&x.label.includes('IRA')),'IRA goal step missing when cleared'); });
 test('Regular: sums match for $500,$3k,$8k,$25k',()=>{ [500,3000,8000,25000].forEach(amt=>{ const s=simulateEngine(amt,'regular',{ira_cpa_cleared:true}); assertApprox(s.reduce((t,x)=>t+x.amt,0),amt,'$'+amt); }); });
 test('Regular: no surplus with $500',()=>assert(!simulateEngine(500,'regular',{ira_cpa_cleared:false}).find(x=>x.type==='surplus')));
