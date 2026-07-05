@@ -186,6 +186,7 @@ body{background:var(--bg);color:var(--ink);font-family:Inter,ui-sans-serif,syste
 .add-week-btn-new:hover{border-color:var(--blue);color:var(--blue);background:var(--blueSoft)}
 .week-detail{display:grid;gap:13px}
 .wk-header-card{overflow:hidden}
+.wk-header-banner{margin-top:12px}
 .wk-header-top{display:flex;justify-content:space-between;align-items:flex-start;gap:14px}
 .wk-header-top h2{font-size:20px;font-weight:700;margin:0}
 .wk-header-top p{font-size:12px;color:var(--muted);margin:4px 0 0;font-style:italic}
@@ -857,7 +858,7 @@ button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-vis
 // ── Constants (unchanged) ──────────────────────────────────────────────────
 // Simplified architecture — $8,250 total from LC · $6,500 operating floor · no legacy mechanics
 // Real-world moves: keep $2,250 in chk, move $2,750 sav→chk, move $1,000 LC→chk, move $2,250 LC→chk (Option 1 correction)
-const BUILD_TS='2026-07-05T18:12:53'; // updated each push — local time string
+const BUILD_TS='2026-07-05T18:31:11'; // updated each push — local time string
 const START_CHK=18037.73,START_SAV=3772.77,START_AMX=103.64,START_TAX=0,START_LC=13488.88;
 const EF_AMT=13488.88; // LC/EF balance — static this model year (no transfers in or out)
 const BASE_TAX=521.36,RET_SAV_XFR=3772.74;
@@ -3871,6 +3872,12 @@ function renderWeekDetail(w,weeks){
   var alertStrip='';
   if(w.calNote){alertStrip='<div class="week-alert-strip">⚠️ '+w.calNote+'</div>';}
   else if(w.chk<2500){alertStrip='<div class="week-alert-strip">⚠️ Watch — checking at '+f(w.chk)+'. Below $2,500 buffer. Review discretionary spending.</div>';}
+  // A8: milestone/guidance banner, computed here and rendered under the Wk header row
+  // (was previously appended at the bottom of the week). Content and conditions unchanged.
+  var weekBanner='';
+  if(w.num===1){weekBanner='<div class="banner banner-green">✅ Week 1 actions Move $2,750 Truist Savings→Checking \xb7 Move $1,000 LC→Checking \xb7 Cancel $2,250 Checking→LC plan \xb7 $6,000 injection complete \xb7 Starting balances reflect these moves</div>';}
+  else if(akFunded&&w.num===weeks.find(function(x){return x.akRem<=0.01;})?.num){weekBanner='<div class="banner banner-amber">⭐ Big week — Alaska fully funded + $3,772.74 savings seed moves to AMEX</div>';}
+  else if(akFunded&&!rtFunded){weekBanner='<div class="banner banner-blue">✅ Alaska funded — waterfall continues: RCCL → DCL → IRA funding</div>';}
   html+='<div class="panel wk-header-card">'+
     alertStrip+
     '<div class="wk-inner-pad">'+
@@ -3886,6 +3893,7 @@ function renderWeekDetail(w,weeks){
           (w.reconciled?'Update actuals':'Reconcile')+'</button>':'')+
       '</div>'+
     '</div>'+
+    (weekBanner?'<div class="wk-header-banner">'+weekBanner+'</div>':'')+
     '<div class="wk-badge-row">'+
       (hasOverride?'<span class="badge badge-edited">Edited</span>':'')+
       (w.reconciled?'<span class="badge badge-recon">Reconciled \xb7 '+w.actualBals.date+'</span>':'')+
@@ -4186,10 +4194,6 @@ function renderWeekDetail(w,weeks){
       '</div></div>';
   }
   html+='</div>';
-  // Banner
-  if(w.num===1){html+='<div class="banner banner-green">✅ Week 1 actions Move $2,750 Truist Savings→Checking \xb7 Move $1,000 LC→Checking \xb7 Cancel $2,250 Checking→LC plan \xb7 $6,000 injection complete \xb7 Starting balances reflect these moves</div>';}
-  else if(akFunded&&w.num===weeks.find(function(x){return x.akRem<=0.01;})?.num){html+='<div class="banner banner-amber">⭐ Big week — Alaska fully funded + $3,772.74 savings seed moves to AMEX</div>';}
-  else if(akFunded&&!rtFunded){html+='<div class="banner banner-blue">✅ Alaska funded — waterfall continues: RCCL → DCL → IRA funding</div>';}
   return html;
 }
 

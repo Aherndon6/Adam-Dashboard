@@ -10368,6 +10368,38 @@ test('5F15-A5-05: Register ledger selector sorts a display copy but preserves th
 });
 })();
 
+// A8 (Wendy item): move the weekly milestone/guidance banner from the bottom of the
+// week to the top of the week header card, directly under the Wk NN header row.
+// Content and conditions unchanged; this is placement only.
+(function(){
+var fnIdx=html.indexOf('function renderWeekDetail(');
+var fnBlock=fnIdx>-1?html.slice(fnIdx,html.indexOf('function renderWeekly')):'';
+test('5F15-A8-01: milestone banner is computed into weekBanner and rendered in the header, moved off the bottom', ()=>{
+  assert(fnIdx>-1&&fnBlock.length>0,'renderWeekDetail must be defined');
+  assertIncludes(fnBlock,'var weekBanner=','banner must be computed into a weekBanner variable');
+  assert(fnBlock.indexOf('weekBanner=\'<div class="banner banner-green"')>-1,'Week 1 green banner assigned to weekBanner');
+  assert(fnBlock.indexOf('weekBanner=\'<div class="banner banner-amber"')>-1,'Big-week amber banner assigned to weekBanner');
+  assert(fnBlock.indexOf('weekBanner=\'<div class="banner banner-blue"')>-1,'Alaska-funded blue banner assigned to weekBanner');
+  var wrapIdx=fnBlock.indexOf('wk-header-banner');
+  var badgeIdx=fnBlock.indexOf('wk-badge-row');
+  assert(wrapIdx>-1,'banner must render inside a wk-header-banner wrapper');
+  assert(wrapIdx<badgeIdx,'header banner must render before the badge row (header placement, not bottom)');
+});
+test('5F15-A8-02: old bottom placement is gone (banners no longer appended to html at the end)', ()=>{
+  assert(fnBlock.indexOf('html+=\'<div class="banner banner-green"')===-1,'old bottom html+= green banner must be gone');
+  assert(fnBlock.indexOf('html+=\'<div class="banner banner-amber"')===-1,'old bottom html+= amber banner must be gone');
+  assert(fnBlock.indexOf('html+=\'<div class="banner banner-blue"')===-1,'old bottom html+= blue banner must be gone');
+});
+test('5F15-A8-03: banner conditions and content are preserved verbatim', ()=>{
+  assertIncludes(fnBlock,'if(w.num===1)','Week 1 condition preserved');
+  assertIncludes(fnBlock,'akFunded&&w.num===weeks.find(function(x){return x.akRem<=0.01;})?.num','Big-week condition preserved');
+  assertIncludes(fnBlock,'akFunded&&!rtFunded','Alaska-funded condition preserved');
+  assertIncludes(fnBlock,'Week 1 actions Move $2,750 Truist Savings→Checking','Week 1 banner content preserved');
+  assertIncludes(fnBlock,'Alaska fully funded + $3,772.74 savings seed moves to AMEX','Big-week banner content preserved');
+  assertIncludes(fnBlock,'waterfall continues: RCCL → DCL → IRA funding','Alaska-funded banner content preserved');
+});
+})();
+
 // ─────────────────────────────────────────────────────────────────────────
 console.log('\n╔══════════════════════════════════════════════════════════════╗');
 console.log('║                       RESULTS                               ║');

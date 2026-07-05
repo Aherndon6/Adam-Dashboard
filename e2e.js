@@ -828,6 +828,30 @@ async function clickNav(page, id) {
     await context.close();
   });
 
+  await test('A8-1 (Phase 5F-1.5): weekly milestone banner renders in the week header card, not at the bottom', async () => {
+    const { page, context } = await openApp(browser);
+    await page.evaluate(() => { renderApp(); });
+    await clickNav(page, 'weekly');
+    await page.waitForTimeout(200);
+    const result = await page.evaluate(() => {
+      activeW = 1; // Week 1 always shows the green "Week 1 actions" banner
+      renderApp();
+      var el = document.getElementById('week-detail-content');
+      var h = el ? el.innerHTML : '';
+      return {
+        hasBanner: h.indexOf('Week 1 actions') !== -1,
+        bannerIdx: h.indexOf('wk-header-banner'),
+        headerTopIdx: h.indexOf('wk-header-top'),
+        twoColIdx: h.indexOf('two-col')
+      };
+    });
+    assert(result.hasBanner, 'Week 1 milestone banner must render');
+    assert(result.bannerIdx > -1, 'banner must be wrapped in wk-header-banner');
+    assert(result.headerTopIdx > -1 && result.bannerIdx > result.headerTopIdx, 'banner must render inside the header card, after the wk-header-top row');
+    assert(result.twoColIdx > -1 && result.bannerIdx < result.twoColIdx, 'banner must render in the header, before the cash-flow (two-col) section, not at the bottom');
+    await context.close();
+  });
+
   await test('BR-2: Budget Rule is bypassed (logged to ruleAudit) when week is overridden', async () => {
     const { page, context } = await openApp(browser);
     const bypassed = await page.evaluate(() => {
