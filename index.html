@@ -859,7 +859,7 @@ button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-vis
 // ── Constants (unchanged) ──────────────────────────────────────────────────
 // Simplified architecture — $8,250 total from LC · $6,500 operating floor · no legacy mechanics
 // Real-world moves: keep $2,250 in chk, move $2,750 sav→chk, move $1,000 LC→chk, move $2,250 LC→chk (Option 1 correction)
-const BUILD_TS='2026-07-05T22:13:14'; // updated each push — local time string
+const BUILD_TS='2026-07-06T00:18:51'; // updated each push — local time string
 const START_CHK=18037.73,START_SAV=3772.77,START_AMX=103.64,START_TAX=0,START_LC=13488.88;
 const EF_AMT=13488.88; // LC/EF balance — static this model year (no transfers in or out)
 const BASE_TAX=521.36,RET_SAV_XFR=3772.74;
@@ -5371,10 +5371,12 @@ var _txCatShowAll=false;     // categories lifecycle toggle
 var _txLedgerAccountKey='';          // account key currently loaded in register
 var _txLedgerCache=null;             // fetched transactions array or null
 var _txLedgerLoadStatus='not_loaded';// 'not_loaded' | 'loading' | 'loaded' | 'failed'
-// Phase 5F-1.5 A6: Register display-sort state. Default cleared/asc reproduces the
-// existing uncleared-first grouping exactly. Not persisted; in-memory per session.
-var _txLedgerSortCol='cleared';      // 'date'|'payee'|'category'|'cleared'|'outflow'|'inflow'
-var _txLedgerSortDir='asc';          // 'asc'|'desc'
+// Phase 5F-1.5 A6 / ledger hotfix: Register display-sort state. Default date/desc is a
+// Quicken-style newest-first ledger, where each row's Balance reads as the account balance
+// immediately after that transaction posted. Uncleared-first is still available by clicking
+// the Clr column. Not persisted; in-memory per session.
+var _txLedgerSortCol='date';         // 'date'|'payee'|'category'|'cleared'|'outflow'|'inflow'
+var _txLedgerSortDir='desc';         // 'asc'|'desc'
 // Phase 5F-1.5 A9a: Register filter state. In-memory only; no persistence, no server query.
 var _txFilterSearch='';              // substring over payee, memo, resolved category label
 var _txFilterType='all';             // 'all'|'outflow'|'inflow'
@@ -5404,6 +5406,21 @@ function setTxLedgerSort(col){
   if(_txLedgerSortCol===col){_txLedgerSortDir=(_txLedgerSortDir==='asc'?'desc':'asc');}
   else{_txLedgerSortCol=col;_txLedgerSortDir='asc';}
   renderApp();
+}
+
+// Phase 5F-1.5 ledger hotfix: pass-1 ledger-row builder. Walks rows in the order given
+// (the Register fetches transaction_date.asc, created_at.asc, id.asc), accumulating from
+// startBal so each entry's bal is the full-ledger balance immediately after that transaction.
+// It also attaches the resolved category label (catDisplay), so it is a row-building helper,
+// not pure balance math. Runs before any filter/sort; bal is never recomputed downstream.
+// Behavior-preserving extraction of the former inline map so the ledger math is unit-testable.
+function _computeLedgerBalances(rows, startBal){
+  var run=(typeof startBal==='number'&&isFinite(startBal))?startBal:0;
+  return (rows||[]).map(function(tx,idx){
+    var amt=parseFloat(tx.amount)||0;
+    run+=amt;
+    return {tx:tx,bal:run,chronIdx:idx,catDisplay:tx.category_key?_getRegisterCategoryLabel(tx.category_key,_txDateToMonthIso(tx.transaction_date)):''};
+  });
 }
 
 // Phase 5F-1.5 A6: pure display-sort over the chronological rowsWithBalance array
@@ -6337,12 +6354,8 @@ function _renderTxRegister(){
     // recomputed after filter/sort, so filtered/sorted views still show each row's full-ledger
     // as-of-transaction-date balance.
     var rows=_txLedgerCache||[];
-    var _startBal=runBal; // initial balance for the starting-balance row (runBal is mutated below)
-    var rowsWithBalance=rows.map(function(tx,idx){
-      var amt=parseFloat(tx.amount)||0;
-      runBal+=amt;
-      return {tx:tx,bal:runBal,chronIdx:idx,catDisplay:tx.category_key?_getRegisterCategoryLabel(tx.category_key,_txDateToMonthIso(tx.transaction_date)):''};
-    });
+    var _startBal=runBal; // opening ledger anchor (accounts.starting_balance, or 0 when unset)
+    var rowsWithBalance=_computeLedgerBalances(rows,_startBal);
     var filteredRows=_filterTxRows(rowsWithBalance,_getTxFilterState());
     var displayRows=_sortTxRows(filteredRows,_txLedgerSortCol,_txLedgerSortDir);
     var _filtersOn=_txFiltersActive();
@@ -6378,9 +6391,12 @@ function _renderTxRegister(){
 
     // A6/A9 caption: the filtered-subset note is the stronger warning and wins over sort-off-date.
     var _capStyle='font-size:11px;color:var(--muted);font-style:italic;padding:4px 12px';
+    // Date asc AND date desc are both valid ledger orders (Balance reads as a running
+    // sequence), so the sort caption is shown only for NON-date sorts. The filter caption
+    // is the stronger warning and wins whenever a filter is active.
     var _balCaption=_filtersOn
       ?'<div class="tx-bal-caption" style="'+_capStyle+'">Balance reflects the full ledger as of each transaction date, not the filtered subset.</div>'
-      :((_txLedgerSortCol==='date'&&_txLedgerSortDir==='asc')?''
+      :((_txLedgerSortCol==='date')?''
         :'<div class="tx-bal-caption" style="'+_capStyle+'">Balance is shown as of each transaction date, not recalculated in sorted order.</div>');
 
     // A9b: display-only selected-account context label (reads existing selAcct; no state change).
@@ -6394,14 +6410,18 @@ function _renderTxRegister(){
       +'<th style="padding:8px 12px;width:60px"></th>'
       +'</tr></thead><tbody>';
 
-    // Starting balance row (uses the initial balance; always shown as ledger context, even under filters)
+    // Starting balance row (opening ledger anchor; always shown as ledger context, even under
+    // filters). In a newest-first (date desc) view it belongs at the BOTTOM, the oldest end;
+    // otherwise it anchors the top.
     var startCell=balWarning
       ?'<span style="font-style:italic;color:var(--amber)">Starting balance not set — running balance starts from $0.00</span>'
       :'<span style="font-style:italic;color:var(--muted)">Starting balance</span>';
-    tbl+='<tr style="background:var(--surface2)">'
+    var _startRowHtml='<tr style="background:var(--surface2)">'
       +'<td colspan="8" style="padding:8px 12px">'+startCell+'</td>'
       +'<td style="padding:8px 12px;text-align:right;font-weight:600" colspan="1">$'
       +_startBal.toFixed(2)+'</td></tr>';
+    var _startAtBottom=(_txLedgerSortCol==='date'&&_txLedgerSortDir==='desc');
+    if(!_startAtBottom)tbl+=_startRowHtml;
 
     if(!rows.length){
       tbl+='<tr><td colspan="9" style="padding:24px 12px;text-align:center;'
@@ -6495,6 +6515,7 @@ function _renderTxRegister(){
         }
       });
     }
+    if(_startAtBottom)tbl+=_startRowHtml;
     tbl+='</tbody></table>';
     body=tbl;
   }

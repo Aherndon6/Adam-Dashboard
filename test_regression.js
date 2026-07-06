@@ -7214,8 +7214,11 @@ test('5E7-N11: USER_ROLE comment uses household_admin not editor',()=>{
   });
 
   test('5E8-R8: Register transaction list row resolves category display via _getRegisterCategoryLabel(tx.category_key, month-of-tx-date)',()=>{
-    assertIncludes(registerBlock,'_getRegisterCategoryLabel(tx.category_key,_txDateToMonthIso(tx.transaction_date))',
-      'Register row category display must use _getRegisterCategoryLabel with the transaction\'s own date, not raw categories.label');
+    // Ledger hotfix: this resolution moved into the pass-1 _computeLedgerBalances helper
+    // (as catDisplay); the row renders the precomputed entry.catDisplay.
+    assertIncludes(html,'_getRegisterCategoryLabel(tx.category_key,_txDateToMonthIso(tx.transaction_date))',
+      'Register category display must use _getRegisterCategoryLabel with the transaction\'s own date, not raw categories.label');
+    assertIncludes(registerBlock,'entry.catDisplay','Register row must render the precomputed catDisplay from the ledger pass');
   });
 
   test('5E8-R9: Register row display no longer looks up raw catObj.label from unnormalized _categoriesCache',()=>{
@@ -7729,14 +7732,15 @@ test('5E10-08: Register payee input is marked required in the UI (label + placeh
   assertIncludes(registerFnSrc,"inp('payee','Required'",'Payee input placeholder must read Required, not Optional');
 });
 
-test('5E10-09: Register default view is grouped uncleared-first via the two-pass balance-then-sort approach (A6: sorting is now user-controlled through _sortTxRows)',()=>{
+test('5E10-09: Register pipeline is chronological-ledger -> filter -> sort; default is Quicken date/desc; uncleared-first remains available via the Clr sort',()=>{
   assertIncludes(registerFnSrc,'rowsWithBalance','Register must compute a chronological balance-attached array before any display sort');
   assertIncludes(registerFnSrc,'filteredRows=_filterTxRows(rowsWithBalance','Register must filter the chronological array before sorting (A9a)');
   assertIncludes(registerFnSrc,'displayRows=_sortTxRows(filteredRows','Register must produce the display order via _sortTxRows over the filtered chronological array');
-  // Default sort state reproduces the historical uncleared-first grouping.
-  assertIncludes(html,"_txLedgerSortCol='cleared'","default Register sort column must be 'cleared' (uncleared-first)");
-  assertIncludes(html,"_txLedgerSortDir='asc'","default Register sort direction must be 'asc'");
-  // The uncleared-first comparator now lives in the pure _sortTxRows helper.
+  // Ledger hotfix: default is Quicken newest-first (date/desc). Uncleared-first is no longer
+  // the default but remains available via the Clr column (comparator still in _sortTxRows).
+  assertIncludes(html,"_txLedgerSortCol='date'","default Register sort column must be 'date' (Quicken-style ledger)");
+  assertIncludes(html,"_txLedgerSortDir='desc'","default Register sort direction must be 'desc' (newest-first)");
+  // The uncleared-first comparator still lives in the pure _sortTxRows helper (Clr sort).
   var sIdx=html.indexOf('function _sortTxRows(');
   assert(sIdx>-1,'_sortTxRows helper must exist');
   var sBlock=html.slice(sIdx,sIdx+1600);
@@ -7744,16 +7748,20 @@ test('5E10-09: Register default view is grouped uncleared-first via the two-pass
 });
 
 test('5E10-10: running balance is precomputed in original chronological order and never recomputed after the display sort',()=>{
-  var mapIdx=registerFnSrc.indexOf('rowsWithBalance=rows.map(function(tx,idx){');
+  // Ledger pass extracted into the _computeLedgerBalances row-builder (behavior-preserving). Renderer
+  // order: compute (helper) -> filter -> sort -> render; entry.bal is never recomputed.
+  var mapIdx=registerFnSrc.indexOf('rowsWithBalance=_computeLedgerBalances(rows');
+  var filterIdx=registerFnSrc.indexOf('filteredRows=_filterTxRows(rowsWithBalance');
   var sortIdx=registerFnSrc.indexOf('displayRows=_sortTxRows(filteredRows');
   var forEachIdx=registerFnSrc.indexOf('displayRows.forEach(function(entry){');
-  assert(mapIdx>-1&&sortIdx>-1&&forEachIdx>-1,'Could not locate the balance-then-sort-then-render sequence');
-  assert(mapIdx<sortIdx&&sortIdx<forEachIdx,'Balance must be computed (map), then sorted (displayRows), then rendered (forEach), in that order');
-  var mapBlock=registerFnSrc.slice(mapIdx,sortIdx);
-  assertIncludes(mapBlock,'runBal+=amt','Balance accumulation must happen during the chronological map pass');
-  var renderBlock=registerFnSrc.slice(forEachIdx,registerFnSrc.indexOf('No transactions for this account')>-1?registerFnSrc.length:registerFnSrc.length);
-  assert(!/displayRows\.forEach\(function\(entry\)\{[\s\S]{0,3000}?runBal\+=amt/.test(registerFnSrc),
-    'runBal must not be re-accumulated inside the display/render pass — only the precomputed entry.bal may be used there');
+  assert(mapIdx>-1&&filterIdx>-1&&sortIdx>-1&&forEachIdx>-1,'Could not locate the compute->filter->sort->render sequence');
+  assert(mapIdx<filterIdx&&filterIdx<sortIdx&&sortIdx<forEachIdx,'Balance computed, then filtered, then sorted, then rendered, in that order');
+  // The accumulation lives in the pure helper, not in the renderer or the render pass.
+  var lIdx=html.indexOf('function _computeLedgerBalances');
+  var lBlock=html.slice(lIdx,lIdx+700);
+  assertIncludes(lBlock,'run+=amt','_computeLedgerBalances accumulates the running balance in chronological order');
+  assert(!/displayRows\.forEach\(function\(entry\)\{[\s\S]{0,3000}?(run|runBal)\+=amt/.test(registerFnSrc),
+    'balance must not be re-accumulated inside the display/render pass; only the precomputed entry.bal is used');
   assertIncludes(registerFnSrc,"entry.bal.toFixed(2)",'Balance column must render the precomputed entry.bal, not a live accumulator');
 });
 
@@ -10475,11 +10483,86 @@ test('5F15-A6-09: sortable headers are clickable with data-sort-col; Memo/Balanc
   assertIncludes(fnBlock,"th('Balance','right')","Balance header must be a plain (non-sortable) th");
   assert(fnBlock.indexOf("setTxLedgerSort('balance')")===-1,'Balance must never be wired to setTxLedgerSort');
 });
-test('5F15-A6-10: balance caption shows only when the view is not Date-ascending',()=>{
+test('5F15-A6-10: balance caption shows only for non-date sorts (date asc AND date desc are both valid ledger orders)',()=>{
   var fnIdx=html.indexOf('function _renderTxRegister');
   var fnBlock=html.slice(fnIdx,html.indexOf('function renderTransactions()'));
-  assertIncludes(fnBlock,"_txLedgerSortCol==='date'&&_txLedgerSortDir==='asc'","caption must be gated on the Date-ascending view");
-  assertIncludes(fnBlock,'Balance is shown as of each transaction date, not recalculated in sorted order.','caption copy must be present');
+  assertIncludes(fnBlock,"(_txLedgerSortCol==='date')?''","caption is hidden for any date sort (asc or desc), shown for non-date sorts");
+  assert(fnBlock.indexOf("_txLedgerSortCol==='date'&&_txLedgerSortDir==='asc'")===-1,'caption must no longer be gated on date-ascending only');
+  assertIncludes(fnBlock,'Balance is shown as of each transaction date, not recalculated in sorted order.','non-date caption copy present');
+});
+})();
+
+// Ledger hotfix: Quicken-style default (date/desc) + the _computeLedgerBalances row-builder.
+console.log('\n── Section 5F15-LEDGER: Quicken-style Register running balance ──');
+(function(){
+function ord(res){return res.map(function(e){return e.chronIdx;});}
+function js(a){return JSON.stringify(a);}
+test('5F15-LEDGER-01: default Register sort is date descending (Quicken newest-first)',()=>{
+  assertIncludes(html,"var _txLedgerSortCol='date';",'default sort column is date');
+  assertIncludes(html,"var _txLedgerSortDir='desc';",'default sort direction is descending (newest-first)');
+});
+test('5F15-LEDGER-02: Quicken credit-card example: prior -4054.84 + charge -30.17 = -4085.01 after',()=>{
+  var res=_computeLedgerBalances([{amount:-30.17}],-4054.84);
+  assertApprox(res[0].bal,-4085.01,'balance immediately after the -30.17 charge must be -4085.01');
+});
+test('5F15-LEDGER-03: AMEX-style fixture computes chronological running balances from starting_balance',()=>{
+  var res=_computeLedgerBalances([
+    {amount:-7.17,   transaction_date:'2026-06-30', payee:'Foxtail'},
+    {amount:-750.00, transaction_date:'2026-07-01', payee:'Diablos'},
+    {amount:-30.17,  transaction_date:'2026-07-02', payee:'Kroger Gas'}
+  ], -8248.07);
+  assertApprox(res[0].bal,-8255.24,'after Foxtail');
+  assertApprox(res[1].bal,-9005.24,'after Diablos');
+  assertApprox(res[2].bal,-9035.41,'after Kroger Gas');
+  assert(js(ord(res))===js([0,1,2]),'chronological order preserved with chronIdx 0,1,2');
+});
+test('5F15-LEDGER-04: null/blank starting balance is treated as 0; non-finite amounts as 0',()=>{
+  var a=_computeLedgerBalances([{amount:-40}], null); assertApprox(a[0].bal,-40,'null start = 0');
+  var b=_computeLedgerBalances([{amount:-40}], undefined); assertApprox(b[0].bal,-40,'undefined start = 0');
+  var c=_computeLedgerBalances([{amount:'not-a-number'},{amount:-10}], 100);
+  assertApprox(c[0].bal,100,'NaN amount contributes 0'); assertApprox(c[1].bal,90,'then -10');
+});
+test('5F15-LEDGER-05: filtering preserves each row full-ledger balance (no filtered-subset recompute)',()=>{
+  var rows=_computeLedgerBalances([
+    {amount:-100,transaction_date:'2026-07-01',payee:'Kroger',memo:'',cleared:true},
+    {amount:-50, transaction_date:'2026-07-02',payee:'Shell', memo:'',cleared:false},
+    {amount:2000,transaction_date:'2026-07-03',payee:'Payroll',memo:'',cleared:true}
+  ], 0);
+  // full-ledger balances: -100, -150, 1850
+  var f=_filterTxRows(rows,{search:'shell'});
+  assert(f.length===1,'only Shell matches');
+  assertApprox(f[0].bal,-150,'Shell keeps its full-ledger balance -150, not a subset -50');
+});
+test('5F15-LEDGER-06: sorting never recomputes bal; a non-date sort keeps balance values, date desc reverses order',()=>{
+  var rows=_computeLedgerBalances([
+    {amount:-100,transaction_date:'2026-07-01',payee:'Kroger',cleared:true},
+    {amount:-50, transaction_date:'2026-07-02',payee:'apple', cleared:false},
+    {amount:2000,transaction_date:'2026-07-03',payee:'Zeta',  cleared:true}
+  ], 0);
+  var expected={0:-100,1:-150,2:1850};
+  // date desc = newest first
+  assert(js(ord(_sortTxRows(rows,'date','desc')))===js([2,1,0]),'date desc is newest-first');
+  // non-date sort (payee) keeps each row bal
+  _sortTxRows(rows,'payee','asc').forEach(function(e){assertApprox(e.bal,expected[e.chronIdx],'bal preserved through payee sort');});
+});
+test('5F15-LEDGER-07: Clr sort remains available and the starting-balance row moves to the bottom for date desc',()=>{
+  var fnIdx=html.indexOf('function _renderTxRegister');
+  var fnBlock=html.slice(fnIdx,html.indexOf('function renderTransactions()'));
+  assertIncludes(fnBlock,"thSort('Clr','cleared','center')",'Clr column remains a sortable control (uncleared-first still one click away)');
+  assertIncludes(fnBlock,"var _startAtBottom=(_txLedgerSortCol==='date'&&_txLedgerSortDir==='desc')",'starting-balance row placement is gated on the newest-first view');
+  assertIncludes(fnBlock,'if(!_startAtBottom)tbl+=_startRowHtml','starting-balance row anchors the top for asc/non-date views');
+  assertIncludes(fnBlock,'if(_startAtBottom)tbl+=_startRowHtml','starting-balance row moves to the bottom (oldest end) for date desc');
+});
+test('5F15-LEDGER-08: filter caption wins over the date sort (filter-active is the outer ternary), so a filtered date/desc view still warns full-ledger',()=>{
+  var fnIdx=html.indexOf('function _renderTxRegister');
+  var fnBlock=html.slice(fnIdx,html.indexOf('function renderTransactions()'));
+  var capIdx=fnBlock.indexOf('var _balCaption=');
+  var capBlock=fnBlock.slice(capIdx,capIdx+520);
+  assertIncludes(capBlock,'_balCaption=_filtersOn','filter-active is the OUTER ternary condition, so it wins under any sort including date/desc');
+  var filterCapPos=capBlock.indexOf('Balance reflects the full ledger as of each transaction date, not the filtered subset.');
+  var dateBranchPos=capBlock.indexOf("(_txLedgerSortCol==='date')?''");
+  assert(filterCapPos>-1&&dateBranchPos>-1,'both the filter caption and the date-hide branch must exist');
+  assert(filterCapPos<dateBranchPos,'the filter caption must precede (outrank) the date-sort hide branch');
 });
 })();
 

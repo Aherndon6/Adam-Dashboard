@@ -2448,6 +2448,9 @@ async function clickNav(page, id) {
       _txLedgerLoadStatus = 'loaded';
       _txLedgerCache = mockTxns;
       _txLedgerAccountKey = 'truist_checking';
+      // Ledger hotfix: default is now date/desc. This test exercises the uncleared-first
+      // grouping, which is now reached via the Clr sort, so set it explicitly.
+      _txLedgerSortCol = 'cleared'; _txLedgerSortDir = 'asc';
       renderApp();
       setSection('transactions');
       setTxSubNav('register');
@@ -2471,7 +2474,48 @@ async function clickNav(page, id) {
     await context.close();
   });
 
-  await test('A6-1 (Phase 5F-1.5): Register columns are user-sortable; Balance stays chronological and the caption tracks Date-ascending', async () => {
+  await test('LEDGER-1 (Phase 5F-1.5): Register defaults to Quicken newest-first; balances are historical-after-transaction; Clr sort still works', async () => {
+    const { page, context } = await openApp(browser);
+    const txns = [
+      { id:'lg1', account_key:'amex_gold', transaction_date:'2026-06-30', payee:'Foxtail',    memo:'', amount:-7.17,   category_key:null, cleared:true,  source:'manual', created_at:'2026-06-30T10:00:00Z' },
+      { id:'lg2', account_key:'amex_gold', transaction_date:'2026-07-01', payee:'Diablos',    memo:'', amount:-750.00, category_key:null, cleared:false, source:'manual', created_at:'2026-07-01T10:00:00Z' },
+      { id:'lg3', account_key:'amex_gold', transaction_date:'2026-07-02', payee:'Kroger Gas', memo:'', amount:-30.17,  category_key:null, cleared:true,  source:'manual', created_at:'2026-07-02T10:00:00Z' }
+    ];
+    const acct = [{ key:'amex_gold', label:'AMEX Gold', account_type:'credit_card', lifecycle_status:'active', starting_balance:-8248.07 }];
+    const def = await page.evaluate(([mockAcct, mockTxns]) => {
+      FEATURE_FLAGS.showTransactionLedger = true;
+      _accountsCache = mockAcct; _categoriesCache = [];
+      _registriesLoadStatus = 'loaded'; _txLedgerLoadStatus = 'loaded';
+      _txLedgerCache = mockTxns; _txLedgerAccountKey = 'amex_gold';
+      // Do NOT set the sort: exercise the app default (date/desc).
+      _txFilterSearch = ''; _txFilterType = 'all'; _txFilterStatus = 'all'; _txFilterDateFrom = ''; _txFilterDateTo = '';
+      setSection('transactions'); setTxSubNav('register'); renderApp();
+      var h = document.getElementById('transactions-content').innerHTML;
+      return {
+        defaultIsDateDesc: _txLedgerSortCol === 'date' && _txLedgerSortDir === 'desc',
+        iKroger: h.indexOf('Kroger Gas'), iDiablos: h.indexOf('Diablos'), iFoxtail: h.indexOf('Foxtail'), iStart: h.indexOf('Starting balance'),
+        krogerBal: h.indexOf('$-9035.41') !== -1, diablosBal: h.indexOf('$-9005.24') !== -1, foxtailBal: h.indexOf('$-8255.24') !== -1, startBal: h.indexOf('$-8248.07') !== -1
+      };
+    }, [acct, txns]);
+    assert(def.defaultIsDateDesc, 'app default Register sort is date descending');
+    assert(def.iKroger > -1 && def.iDiablos > -1 && def.iFoxtail > -1, 'all three rows render');
+    assert(def.iKroger < def.iDiablos && def.iDiablos < def.iFoxtail, 'default view is newest-first (Kroger 7/2, Diablos 7/1, Foxtail 6/30)');
+    assert(def.krogerBal && def.diablosBal && def.foxtailBal, 'each row shows its historical balance after that transaction (-9035.41 / -9005.24 / -8255.24)');
+    assert(def.startBal && def.iStart > def.iFoxtail, 'starting balance -8248.07 shows at the bottom (oldest end) in newest-first view');
+    // Clr sort still works: click the Clr header, uncleared (Diablos) moves to the top
+    await page.click('[data-sort-col="cleared"]');
+    await page.waitForTimeout(60);
+    const clr = await page.evaluate(() => {
+      var h = document.getElementById('transactions-content').innerHTML;
+      return { iDiablos: h.indexOf('Diablos'), iKroger: h.indexOf('Kroger Gas'), iFoxtail: h.indexOf('Foxtail'), balsIntact: h.indexOf('$-9005.24') !== -1 };
+    });
+    assert(clr.iDiablos > -1 && clr.iDiablos < clr.iKroger && clr.iDiablos < clr.iFoxtail, 'clicking Clr sorts the uncleared row (Diablos) to the top');
+    assert(clr.balsIntact, 'balances remain intact after Clr sort (bal is never recomputed)');
+    await page.evaluate(() => { _txLedgerSortCol = 'date'; _txLedgerSortDir = 'desc'; _txLedgerCache = null; _txLedgerLoadStatus = 'not_loaded'; });
+    await context.close();
+  });
+
+  await test('A6-1 (Phase 5F-1.5): Register columns are user-sortable; Balance stays chronological and the caption hides for date sorts', async () => {
     const { page, context } = await openApp(browser);
     const txns = [
       { id: 'a6-1', account_key: 'truist_checking', transaction_date: '2026-06-01',
@@ -2492,7 +2536,7 @@ async function clickNav(page, id) {
       _txLedgerLoadStatus = 'loaded';
       _txLedgerCache = mockTxns;
       _txLedgerAccountKey = 'truist_checking';
-      _txLedgerSortCol = 'cleared'; _txLedgerSortDir = 'asc'; // default
+      _txLedgerSortCol = 'cleared'; _txLedgerSortDir = 'asc'; // this test exercises the Clr sort explicitly (cleared/asc is no longer the app default)
       setSection('transactions');
       setTxSubNav('register');
       function snap() {
@@ -2504,18 +2548,18 @@ async function clickNav(page, id) {
           hasCaption: h.indexOf('Balance is shown as of each transaction date') !== -1
         };
       }
-      var def = snap();                         // cleared/asc (default)
+      var def = snap();                         // cleared/asc (uncleared-first; set explicitly, not the app default)
       setTxLedgerSort('cleared'); var clrDesc = snap(); // -> cleared/desc (cleared first)
       setTxLedgerSort('cleared'); var clrAsc = snap();  // -> cleared/asc (uncleared first)
       setTxLedgerSort('date');    var dateAsc = snap(); // -> date/asc (chronological)
-      // Restore default
-      _txLedgerSortCol = 'cleared'; _txLedgerSortDir = 'asc';
+      // Restore the real app default (date/desc)
+      _txLedgerSortCol = 'date'; _txLedgerSortDir = 'desc';
       _txLedgerCache = null; _txLedgerLoadStatus = 'not_loaded';
       return { def, clrDesc, clrAsc, dateAsc };
     }, [TX_MOCK_ACCOUNTS, txns]);
     // Default: uncleared (Fandango) first, caption shown (not Date-asc)
     assert(r.def.fandango < r.def.kroger, 'default view must show uncleared (Fandango) above cleared rows');
-    assert(r.def.hasCaption, 'default (cleared/asc) view is not Date-ascending, so the Balance caption must show');
+    assert(r.def.hasCaption, 'the cleared/asc view is a non-date sort, so the Balance caption must show');
     // Clr desc: cleared rows first (Kroger and Paycheck before Fandango)
     assert(r.clrDesc.kroger < r.clrDesc.fandango && r.clrDesc.paycheck < r.clrDesc.fandango, 'clicking Clr once must put cleared rows first');
     // Clr asc again: uncleared first restored
