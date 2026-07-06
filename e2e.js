@@ -2746,6 +2746,66 @@ async function clickNav(page, id) {
     await context.close();
   });
 
+  await test('A7b-1 (Phase 5F-1.5): clicking a Budget expense Spent cell opens the Category Report for that category/month (fetch stubbed)', async () => {
+    const { page, context } = await openApp(browser);
+    const setup = await page.evaluate(() => {
+      _categoriesCache = [
+        { key:'entertainment', label:'Entertainment', parent_key:null, is_leaf:false, lifecycle_status:'active', behavior_class:null, budget_treatment:null },
+        { key:'entertainment.week_1', label:'Entertainment Week 1', parent_key:'entertainment', is_leaf:true, lifecycle_status:'active', behavior_class:'expense', budget_treatment:'tracked' }
+      ];
+      _accountsCache = [{ key:'amex_gold', label:'AMEX Gold', lifecycle_status:'active' }];
+      _registriesLoadStatus = 'loaded';
+      _budgetTransactions = []; _budgetTransLoadStatus = 'loaded';
+      _budgetLineRulesCache = null; _budgetLineRulesLoadStatus = 'not_loaded';
+      _budgetRegisterSpendCache = [{ category_key:'entertainment.week_1', amount:-40.00, transaction_date:'2026-07-01' }];
+      _budgetRegisterSpendLoadStatus = 'loaded';
+      _budgetSelectedMonth = '2026-07-01';
+      _catReportModal = null;
+      window.getAuthHeaders = function(){ return Promise.resolve({}); };
+      window.fetch = function(url){
+        if (String(url).indexOf('/budget_transactions') !== -1) {
+          return Promise.resolve({ ok:true, headers:{ get:function(k){ return k === 'content-range' ? '0-0/0' : null; } }, json:function(){ return Promise.resolve([]); } });
+        }
+        return Promise.resolve({ ok:true, headers:{ get:function(){ return null; } }, json:function(){ return Promise.resolve([
+          { id:'e1', transaction_date:'2026-07-01', account_key:'amex_gold', payee:'Mend Coffee', memo:'', category_key:'entertainment.week_1', amount:-12.98, cleared:true }
+        ]); } });
+      };
+      setSection('budget'); renderApp();
+      var bc = document.getElementById('budget-content');
+      var h = bc ? bc.innerHTML : '';
+      return {
+        rowRendered: h.indexOf('Entertainment Week 1') !== -1,
+        spentDrill: h.indexOf('data-cat-report-target="spent" data-cat-key="entertainment.week_1"') !== -1,
+        labelDrill: h.indexOf('data-cat-report-target="label" data-cat-key="entertainment.week_1"') !== -1
+      };
+    });
+    assert(setup.rowRendered, 'Budget grid renders the entertainment.week_1 expense row');
+    assert(setup.spentDrill, 'Spent cell carries the drill-through data attributes');
+    assert(setup.labelDrill, 'label span carries the drill-through data attributes');
+    async function modalSnap() {
+      return await page.evaluate(() => {
+        var h = document.getElementById('cat-report-modal-slot').innerHTML;
+        return { opened: h.indexOf('Entertainment Week 1') !== -1, forJuly: h.indexOf('July 2026') !== -1, row: h.indexOf('Mend Coffee') !== -1, amount: h.indexOf('$12.98') !== -1 };
+      });
+    }
+    // Click the real Spent-cell drill target
+    await page.click('[data-cat-report-target="spent"][data-cat-key="entertainment.week_1"]');
+    await page.waitForTimeout(80);
+    const spent = await modalSnap();
+    assert(spent.opened && spent.forJuly, 'clicking the Spent cell opens the Category Report for that category and the selected month');
+    assert(spent.row && spent.amount, 'the report modal renders the stubbed transaction and amount');
+    // Close, then click the real label drill target
+    await page.evaluate(() => { _closeCategoryReport(); });
+    const closed = await page.evaluate(() => (document.getElementById('cat-report-modal-slot').innerHTML) === '');
+    assert(closed, 'modal closes cleanly before the second interaction');
+    await page.click('[data-cat-report-target="label"][data-cat-key="entertainment.week_1"]');
+    await page.waitForTimeout(80);
+    const label = await modalSnap();
+    assert(label.opened && label.forJuly, 'clicking the category label also opens the Category Report for that category and month');
+    assert(label.row && label.amount, 'the report modal renders the stubbed transaction from the label path too');
+    await context.close();
+  });
+
   await test('RG-11: cleared transaction shows checked checkbox in Clr column (updated in 5E-2)', async () => {
     const { page, context } = await openApp(browser);
     const result = await page.evaluate(([mockAccounts, mockTxns]) => {

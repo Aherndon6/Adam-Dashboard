@@ -10834,6 +10834,64 @@ test('5F15-A7a-26: View Report button has a stable id for real-UI interaction',(
 });
 })();
 
+// A7b (Wendy item): wire Budget EXPENSE LEAF rows (label + Spent cell) to the A7a modal.
+console.log('\n── Section 5F15-A7b: Budget expense-row drill-through to Category Report ──');
+(function(){
+var bIdx=html.indexOf('function renderBudget()');
+var budgetSrc=html.slice(bIdx,bIdx+22000);
+test('5F15-A7b-01: expense leaf label span and Spent cell are drill-through targets using data attributes',()=>{
+  assertIncludes(budgetSrc,'data-cat-report-target="label"','label drill hook present');
+  assertIncludes(budgetSrc,'data-cat-report-target="spent"','Spent-cell drill hook present');
+  assertIncludes(budgetSrc,'window.openCategoryReport(this.getAttribute(','handler reads category/month from element data attributes (not interpolated keys)');
+  assertIncludes(budgetSrc,'data-cat-key="','category key travels via a data attribute');
+  assertIncludes(budgetSrc,'data-month-iso="','month travels via a data attribute');
+  assertIncludes(budgetSrc,'esc(c.key)','category key is esc-escaped into the attribute');
+  assertIncludes(budgetSrc,'esc(monthIso)','month is esc-escaped into the attribute');
+  assertIncludes(budgetSrc,'View transactions for this category.','title copy present');
+});
+test('5F15-A7b-02: the drill span wraps only the escaped _rowLabel (from _getCategoryDisplayLabel), leaving _blrExpActions outside',()=>{
+  assertIncludes(budgetSrc,'_getCategoryDisplayLabel(c.key,monthIso)','_rowLabel still uses the existing Budget label helper (unchanged)');
+  assertIncludes(budgetSrc,'var _rowLabelEsc=esc(_rowLabel)','the label is escaped before rendering (line_label can be user-entered)');
+  assertIncludes(budgetSrc,'_blrExpActions+_drillLabel','Archive/Edit actions are emitted before/outside the drill span');
+  assertIncludes(budgetSrc,'>\'+_rowLabelEsc+\'</span>','the drill span wraps exactly the escaped label');
+});
+test('5F15-A7b-03: misc.goal_sweep is left plain (no drill wiring on label or Spent cell)',()=>{
+  assertIncludes(budgetSrc,'var _drillLabel=isGoalSweep?_rowLabelEsc:','goal sweep label stays plain (escaped)');
+  assertIncludes(budgetSrc,'?\'<td style="text-align:right;padding:5px 8px">\'+_spentInner+\'</td>\'','goal sweep Spent cell stays a plain td');
+  assertIncludes(budgetSrc,'flexible sweep line','goal sweep marker preserved');
+});
+test('5F15-A7b-04: Archive/Edit handlers remain present and unchanged',()=>{
+  assertIncludes(budgetSrc,'window._blrOpenArchive(','Archive handler preserved');
+  assertIncludes(budgetSrc,'window._blrOpenEdit(','Edit handler preserved');
+});
+test('5F15-A7b-05: the parent/group header row is NOT a drill target',()=>{
+  var pIdx=budgetSrc.indexOf('fSpent(pSpent)');
+  assert(pIdx>-1,'parent group Spent cell must exist');
+  var pCell=budgetSrc.slice(pIdx-250,pIdx+120);
+  assert(pCell.indexOf('data-cat-report-target')===-1&&pCell.indexOf('openCategoryReport')===-1,'parent group Spent cell has no drill-through');
+});
+test('5F15-A7b-06: the income section is NOT a drill target',()=>{
+  var incIdx=budgetSrc.indexOf('var _regIncome=_computeRegisterIncome');
+  var incBlock=budgetSrc.slice(incIdx,budgetSrc.indexOf('var totalExpSpent=0'));
+  assert(incIdx>-1&&incBlock.length>0,'income section located');
+  assert(incBlock.indexOf('openCategoryReport')===-1&&incBlock.indexOf('data-cat-report-target')===-1,'income rows have no drill-through');
+});
+test('5F15-A7b-07: A7a engine functions are unchanged (drill-through is wiring-only)',()=>{
+  // A7a helpers still exist and contain no Budget-row wiring
+  assertIncludes(html,'async function _loadCategoryReport','_loadCategoryReport intact');
+  assertIncludes(html,'function _computeCategoryReportSummary','_computeCategoryReportSummary intact');
+  assertIncludes(html,'function _catReportRenderModal','_catReportRenderModal intact');
+  var loadSrc2=html.slice(html.indexOf('async function _loadCategoryReport'),html.indexOf('function _catReportRenderModal'));
+  assert(loadSrc2.indexOf('data-cat-report-target')===-1,'A7a fetch must not gain Budget-row wiring');
+});
+test('5F15-A7b-08: Budget calculation lines remain intact',()=>{
+  assertIncludes(budgetSrc,'var s=spentByKey[c.key]||0;','spentByKey lookup intact');
+  assertIncludes(budgetSrc,'var b=_getBudgetAmount(c.key,monthIso);','budget lookup intact');
+  assertIncludes(budgetSrc,'var rem=b-s;','remaining calc intact');
+  assertIncludes(budgetSrc,'totalExpSpent+=s;totalExpBudget+=b;','expense totals accumulation intact');
+});
+})();
+
 // ─────────────────────────────────────────────────────────────────────────
 console.log('\n╔══════════════════════════════════════════════════════════════╗');
 console.log('║                       RESULTS                               ║');
