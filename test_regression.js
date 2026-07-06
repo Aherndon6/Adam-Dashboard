@@ -7731,7 +7731,8 @@ test('5E10-08: Register payee input is marked required in the UI (label + placeh
 
 test('5E10-09: Register default view is grouped uncleared-first via the two-pass balance-then-sort approach (A6: sorting is now user-controlled through _sortTxRows)',()=>{
   assertIncludes(registerFnSrc,'rowsWithBalance','Register must compute a chronological balance-attached array before any display sort');
-  assertIncludes(registerFnSrc,'displayRows=_sortTxRows(rowsWithBalance','Register must produce the display order via the pure _sortTxRows helper over the chronological array');
+  assertIncludes(registerFnSrc,'filteredRows=_filterTxRows(rowsWithBalance','Register must filter the chronological array before sorting (A9a)');
+  assertIncludes(registerFnSrc,'displayRows=_sortTxRows(filteredRows','Register must produce the display order via _sortTxRows over the filtered chronological array');
   // Default sort state reproduces the historical uncleared-first grouping.
   assertIncludes(html,"_txLedgerSortCol='cleared'","default Register sort column must be 'cleared' (uncleared-first)");
   assertIncludes(html,"_txLedgerSortDir='asc'","default Register sort direction must be 'asc'");
@@ -7744,7 +7745,7 @@ test('5E10-09: Register default view is grouped uncleared-first via the two-pass
 
 test('5E10-10: running balance is precomputed in original chronological order and never recomputed after the display sort',()=>{
   var mapIdx=registerFnSrc.indexOf('rowsWithBalance=rows.map(function(tx,idx){');
-  var sortIdx=registerFnSrc.indexOf('displayRows=_sortTxRows(rowsWithBalance');
+  var sortIdx=registerFnSrc.indexOf('displayRows=_sortTxRows(filteredRows');
   var forEachIdx=registerFnSrc.indexOf('displayRows.forEach(function(entry){');
   assert(mapIdx>-1&&sortIdx>-1&&forEachIdx>-1,'Could not locate the balance-then-sort-then-render sequence');
   assert(mapIdx<sortIdx&&sortIdx<forEachIdx,'Balance must be computed (map), then sorted (displayRows), then rendered (forEach), in that order');
@@ -10479,6 +10480,107 @@ test('5F15-A6-10: balance caption shows only when the view is not Date-ascending
   var fnBlock=html.slice(fnIdx,html.indexOf('function renderTransactions()'));
   assertIncludes(fnBlock,"_txLedgerSortCol==='date'&&_txLedgerSortDir==='asc'","caption must be gated on the Date-ascending view");
   assertIncludes(fnBlock,'Balance is shown as of each transaction date, not recalculated in sorted order.','caption copy must be present');
+});
+})();
+
+// A9a (Wendy item): Register search + Type/Status filtering over the full chronological
+// ledger. _filterTxRows returns a matching subset without recomputing bal. Filter first,
+// then _sortTxRows. Balance stays full-ledger/as-of-date; a filter-active caption warns.
+(function(){
+function mkRows(){
+  return [
+    {tx:{payee:'Kroger',  memo:'weekly groceries', amount:-100, cleared:true },  bal:-100,  chronIdx:0, catDisplay:'Groceries'},
+    {tx:{payee:'Fandango',memo:'movie night',      amount:-50,  cleared:false},  bal:-150,  chronIdx:1, catDisplay:'Entertainment'},
+    {tx:{payee:'Employer',memo:'',                 amount:2000, cleared:true },  bal:1850,  chronIdx:2, catDisplay:'Net Salary'},
+    {tx:{payee:'Shell',   memo:'gas',              amount:-40,  cleared:false},  bal:1810,  chronIdx:3, catDisplay:'Auto'}
+  ];
+}
+function ord(res){return res.map(function(e){return e.chronIdx;});}
+function js(a){return JSON.stringify(a);}
+
+test('5F15-A9a-01: search matches payee (case-insensitive)',()=>{
+  assert(js(ord(_filterTxRows(mkRows(),{search:'KROGER'})))===js([0]),'payee search is case-insensitive');
+});
+test('5F15-A9a-02: search matches memo',()=>{
+  assert(js(ord(_filterTxRows(mkRows(),{search:'movie'})))===js([1]),'memo search matches');
+});
+test('5F15-A9a-03: search matches resolved category label (catDisplay)',()=>{
+  assert(js(ord(_filterTxRows(mkRows(),{search:'salary'})))===js([2]),'catDisplay search matches');
+});
+test('5F15-A9a-04: empty search matches all rows',()=>{
+  assert(js(ord(_filterTxRows(mkRows(),{search:''})))===js([0,1,2,3]),'empty search matches all');
+});
+test('5F15-A9a-05: type outflow/inflow/all; zero-amount matches only all',()=>{
+  assert(js(ord(_filterTxRows(mkRows(),{type:'outflow'})))===js([0,1,3]),'outflow keeps amount<0');
+  assert(js(ord(_filterTxRows(mkRows(),{type:'inflow'})))===js([2]),'inflow keeps amount>0');
+  assert(js(ord(_filterTxRows(mkRows(),{type:'all'})))===js([0,1,2,3]),'all keeps everything');
+  var withZero=mkRows().concat([{tx:{payee:'Adj',memo:'',amount:0,cleared:true},bal:1810,chronIdx:4,catDisplay:'Misc'}]);
+  assert(js(ord(_filterTxRows(withZero,{type:'outflow'})))===js([0,1,3]),'zero-amount excluded from outflow');
+  assert(js(ord(_filterTxRows(withZero,{type:'inflow'})))===js([2]),'zero-amount excluded from inflow');
+  assert(js(ord(_filterTxRows(withZero,{type:'all'})))===js([0,1,2,3,4]),'zero-amount included in all');
+});
+test('5F15-A9a-06: status cleared/uncleared/all',()=>{
+  assert(js(ord(_filterTxRows(mkRows(),{status:'cleared'})))===js([0,2]),'cleared keeps cleared===true');
+  assert(js(ord(_filterTxRows(mkRows(),{status:'uncleared'})))===js([1,3]),'uncleared keeps !cleared');
+  assert(js(ord(_filterTxRows(mkRows(),{status:'all'})))===js([0,1,2,3]),'all keeps everything');
+});
+test('5F15-A9a-07: combined filters use AND',()=>{
+  // uncleared AND outflow AND search "s" (Shell has memo "gas"/payee Shell; Fandango has no 's' in payee "Fandango"? it does: faNdango has no s... "Fandango" no 's'. memo "movie night" no 's'. catDisplay Entertainment no 's'? "Entertainment" no 's'. So Fandango excluded by search 's'. Shell: payee Shell has 's'.)
+  assert(js(ord(_filterTxRows(mkRows(),{status:'uncleared',type:'outflow',search:'s'})))===js([3]),'AND of uncleared+outflow+search must yield only Shell');
+});
+test('5F15-A9a-08: no match returns [] and does not mutate the input',()=>{
+  var rows=mkRows();
+  assert(js(ord(_filterTxRows(rows,{search:'zzz-nope'})))===js([]),'no match returns empty array');
+  assert(js(ord(rows))===js([0,1,2,3]),'input array must not be mutated');
+});
+test('5F15-A9a-09: bal is unchanged on matched rows; filter then _sortTxRows preserves balances',()=>{
+  var expected={0:-100,1:-150,2:1850,3:1810};
+  var filtered=_filterTxRows(mkRows(),{type:'outflow'}); // [0,1,3]
+  filtered.forEach(function(e){assertApprox(e.bal,expected[e.chronIdx],'bal for chronIdx '+e.chronIdx+' unchanged by filter');});
+  var sorted=_sortTxRows(filtered,'payee','asc'); // Fandango(1),Kroger(0),Shell(3)
+  assert(js(ord(sorted))===js([1,0,3]),'filter then sort composes');
+  sorted.forEach(function(e){assertApprox(e.bal,expected[e.chronIdx],'bal preserved through filter+sort');});
+});
+test('5F15-A9a-10: _txFiltersActive reflects any non-default filter; clearTxFilters resets all',()=>{
+  var s=_txFilterSearch,t=_txFilterType,st=_txFilterStatus;
+  try{
+    _txFilterSearch='';_txFilterType='all';_txFilterStatus='all';
+    assert(_txFiltersActive()===false,'no filters active by default');
+    _txFilterSearch='kroger';assert(_txFiltersActive()===true,'search makes filters active');
+    _txFilterSearch='';_txFilterType='inflow';assert(_txFiltersActive()===true,'type makes filters active');
+    _txFilterType='all';_txFilterStatus='cleared';assert(_txFiltersActive()===true,'status makes filters active');
+    _getTxFilterState(); // smoke
+    clearTxFilters();
+    assert(_txFilterSearch===''&&_txFilterType==='all'&&_txFilterStatus==='all','clearTxFilters resets search/type/status');
+  }finally{_txFilterSearch=s;_txFilterType=t;_txFilterStatus=st;}
+});
+test('5F15-A9a-11: filter row renders search input + Search button + Enter handler, Type/Status selects, Clear, and a count, all with stable ids',()=>{
+  var fnIdx=html.indexOf('function _renderTxRegister');
+  var fnBlock=html.slice(fnIdx,html.indexOf('function renderTransactions()'));
+  assertIncludes(fnBlock,'id="tx-filter-search"','search input must have a stable id');
+  assertIncludes(fnBlock,'id="tx-filter-search-btn"','Search apply button must have a stable id');
+  assertIncludes(fnBlock,"if(event.key===\\'Enter\\')setTxFilter(\\'search\\',this.value)",'pressing Enter must apply the search');
+  assertIncludes(fnBlock,"document.getElementById(\\'tx-filter-search\\').value",'Search button must apply the input value');
+  assertIncludes(fnBlock,'id="tx-filter-type"','type select must have a stable id');
+  assertIncludes(fnBlock,"setTxFilter(\\'type\\',this.value)",'type select wired to setTxFilter');
+  assertIncludes(fnBlock,'id="tx-filter-status"','status select must have a stable id');
+  assertIncludes(fnBlock,"setTxFilter(\\'status\\',this.value)",'status select wired to setTxFilter');
+  assertIncludes(fnBlock,'id="tx-clear-filters"','Clear filters button must have a stable id');
+  assertIncludes(fnBlock,'clearTxFilters()','Clear filters control present');
+  assertIncludes(fnBlock,'Showing ','count text present');
+});
+test('5F15-A9a-12: filtered-empty state is distinct from the account-empty state',()=>{
+  var fnIdx=html.indexOf('function _renderTxRegister');
+  var fnBlock=html.slice(fnIdx,html.indexOf('function renderTransactions()'));
+  assertIncludes(fnBlock,'No transactions for this account.','account-empty state preserved');
+  assertIncludes(fnBlock,'No transactions match the current filters.','distinct filtered-empty state present');
+});
+test('5F15-A9a-13: caption has a filter-active branch (stronger) and a sort-off-date branch',()=>{
+  var fnIdx=html.indexOf('function _renderTxRegister');
+  var fnBlock=html.slice(fnIdx,html.indexOf('function renderTransactions()'));
+  assertIncludes(fnBlock,'Balance reflects the full ledger as of each transaction date, not the filtered subset.','filter-active caption present');
+  assertIncludes(fnBlock,'Balance is shown as of each transaction date, not recalculated in sorted order.','sort-off-date caption present');
+  assertIncludes(fnBlock,'_filtersOn','caption branch is gated on the filters-active flag');
 });
 })();
 

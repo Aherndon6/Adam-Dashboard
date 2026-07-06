@@ -2529,6 +2529,70 @@ async function clickNav(page, id) {
     await context.close();
   });
 
+  await test('A9-1 (Phase 5F-1.5 A9a): Register filters work through the actual UI controls; Balance stays full-ledger', async () => {
+    const { page, context } = await openApp(browser);
+    const txns = [
+      { id: 'a9-1', account_key: 'truist_checking', transaction_date: '2026-06-01', payee: 'Kroger',   memo: '', amount: -100.00, category_key: null, cleared: true,  source: 'manual', created_at: '2026-06-01T10:00:00Z' },
+      { id: 'a9-2', account_key: 'truist_checking', transaction_date: '2026-06-05', payee: 'Fandango', memo: '', amount: -50.00,  category_key: null, cleared: false, source: 'manual', created_at: '2026-06-05T10:00:00Z' },
+      { id: 'a9-3', account_key: 'truist_checking', transaction_date: '2026-06-10', payee: 'Employer', memo: '', amount: 2000.00, category_key: null, cleared: true,  source: 'manual', created_at: '2026-06-10T10:00:00Z' },
+      { id: 'a9-4', account_key: 'truist_checking', transaction_date: '2026-06-12', payee: 'Shell',    memo: '', amount: -40.00,  category_key: null, cleared: false, source: 'manual', created_at: '2026-06-12T10:00:00Z' }
+    ];
+    await page.evaluate(([mockAccounts, mockTxns]) => {
+      FEATURE_FLAGS.showTransactionLedger = true;
+      _accountsCache = mockAccounts; _categoriesCache = [];
+      _registriesLoadStatus = 'loaded'; _txLedgerLoadStatus = 'loaded';
+      _txLedgerCache = mockTxns; _txLedgerAccountKey = 'truist_checking';
+      _txLedgerSortCol = 'cleared'; _txLedgerSortDir = 'asc';
+      _txFilterSearch = ''; _txFilterType = 'all'; _txFilterStatus = 'all';
+      setSection('transactions'); setTxSubNav('register'); renderApp();
+    }, [TX_MOCK_ACCOUNTS, txns]);
+    async function snap() {
+      return await page.evaluate(() => {
+        var h = document.getElementById('transactions-content')?.innerHTML || '';
+        return {
+          kroger: h.indexOf('Kroger') !== -1, fandango: h.indexOf('Fandango') !== -1,
+          employer: h.indexOf('Employer') !== -1, shell: h.indexOf('Shell') !== -1,
+          count4of4: h.indexOf('Showing 4 of 4') !== -1,
+          shellFullBal: h.indexOf('$1810.00') !== -1, shellSubsetBal: h.indexOf('$-40.00') !== -1,
+          filteredEmpty: h.indexOf('No transactions match the current filters') !== -1,
+          filterCaption: h.indexOf('Balance reflects the full ledger') !== -1
+        };
+      });
+    }
+    // Default view
+    const def = await snap();
+    assert(def.kroger && def.fandango && def.employer && def.shell, 'default filters must show all four rows');
+    assert(def.count4of4, 'count text must read Showing 4 of 4');
+    // Status = Uncleared via the actual select control
+    await page.selectOption('#tx-filter-status', 'uncleared');
+    const statusUncleared = await snap();
+    assert(statusUncleared.fandango && statusUncleared.shell && !statusUncleared.kroger && !statusUncleared.employer, 'selecting Status=Uncleared must show only uncleared rows');
+    // Reset Status, then Type = Inflow via the actual select control
+    await page.selectOption('#tx-filter-status', 'all');
+    await page.selectOption('#tx-filter-type', 'inflow');
+    const typeInflow = await snap();
+    assert(typeInflow.employer && !typeInflow.kroger && !typeInflow.fandango && !typeInflow.shell, 'selecting Type=Inflow must show only the inflow row');
+    // Reset Type, then search "Shell" via the input + Search button
+    await page.selectOption('#tx-filter-type', 'all');
+    await page.fill('#tx-filter-search', 'Shell');
+    await page.click('#tx-filter-search-btn');
+    const searchShell = await snap();
+    assert(searchShell.shell && !searchShell.kroger && !searchShell.fandango && !searchShell.employer, 'clicking Search must narrow to the matching payee');
+    assert(searchShell.shellFullBal && !searchShell.shellSubsetBal, "filtered row must keep its full-ledger balance $1810.00, not a subset-recomputed $-40.00");
+    assert(searchShell.filterCaption, 'a filter-active view must show the full-ledger caption');
+    // No-match search applied via Enter key
+    await page.fill('#tx-filter-search', 'zzznope');
+    await page.press('#tx-filter-search', 'Enter');
+    const noMatch = await snap();
+    assert(noMatch.filteredEmpty, 'a no-match search (applied via Enter) must show the filtered empty state');
+    // Clear via the actual Clear filters button
+    await page.click('#tx-clear-filters');
+    const cleared = await snap();
+    assert(cleared.kroger && cleared.fandango && cleared.employer && cleared.shell && cleared.count4of4, 'clicking Clear filters must restore all rows');
+    await page.evaluate(() => { _txFilterSearch=''; _txFilterType='all'; _txFilterStatus='all'; _txLedgerCache=null; _txLedgerLoadStatus='not_loaded'; });
+    await context.close();
+  });
+
   await test('RG-11: cleared transaction shows checked checkbox in Clr column (updated in 5E-2)', async () => {
     const { page, context } = await openApp(browser);
     const result = await page.evaluate(([mockAccounts, mockTxns]) => {

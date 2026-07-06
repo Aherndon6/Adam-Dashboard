@@ -858,7 +858,7 @@ button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-vis
 // ── Constants (unchanged) ──────────────────────────────────────────────────
 // Simplified architecture — $8,250 total from LC · $6,500 operating floor · no legacy mechanics
 // Real-world moves: keep $2,250 in chk, move $2,750 sav→chk, move $1,000 LC→chk, move $2,250 LC→chk (Option 1 correction)
-const BUILD_TS='2026-07-05T19:30:43'; // updated each push — local time string
+const BUILD_TS='2026-07-05T20:15:49'; // updated each push — local time string
 const START_CHK=18037.73,START_SAV=3772.77,START_AMX=103.64,START_TAX=0,START_LC=13488.88;
 const EF_AMT=13488.88; // LC/EF balance — static this model year (no transfers in or out)
 const BASE_TAX=521.36,RET_SAV_XFR=3772.74;
@@ -5373,6 +5373,10 @@ var _txLedgerLoadStatus='not_loaded';// 'not_loaded' | 'loading' | 'loaded' | 'f
 // existing uncleared-first grouping exactly. Not persisted; in-memory per session.
 var _txLedgerSortCol='cleared';      // 'date'|'payee'|'category'|'cleared'|'outflow'|'inflow'
 var _txLedgerSortDir='asc';          // 'asc'|'desc'
+// Phase 5F-1.5 A9a: Register filter state. In-memory only; no persistence, no server query.
+var _txFilterSearch='';              // substring over payee, memo, resolved category label
+var _txFilterType='all';             // 'all'|'outflow'|'inflow'
+var _txFilterStatus='all';           // 'all'|'cleared'|'uncleared'
 
 // ── Phase 5E-2: Write state ────────────────────────────────────────────────
 var _txFormMode=null;          // null | 'add' | 'edit'
@@ -5422,6 +5426,42 @@ function _sortTxRows(rowsWithBalance, col, dir){
     else if(col==='cleared')d=(a.tx.cleared?1:0)-(b.tx.cleared?1:0); // asc => uncleared first
     else d=a.chronIdx-b.chronIdx;
     return d!==0?d*mult:(a.chronIdx-b.chronIdx); // deterministic chronological tiebreak
+  });
+}
+
+// Phase 5F-1.5 A9a: Register filter state accessors/mutators. Setters only update
+// in-memory state and re-render; they never fetch, reload, or mutate transactions.
+function _getTxFilterState(){return {search:_txFilterSearch,type:_txFilterType,status:_txFilterStatus};}
+function _txFiltersActive(){return !!String(_txFilterSearch||'').trim()||_txFilterType!=='all'||_txFilterStatus!=='all';}
+function setTxFilter(field,value){
+  if(field==='search')_txFilterSearch=value;
+  else if(field==='type')_txFilterType=value;
+  else if(field==='status')_txFilterStatus=value;
+  renderApp();
+}
+function clearTxFilters(){_txFilterSearch='';_txFilterType='all';_txFilterStatus='all';renderApp();}
+
+// Phase 5F-1.5 A9a: pure filter over the chronological rowsWithBalance array. Returns a
+// matching subset with each entry's bal untouched (Balance stays full-ledger/as-of-date).
+// Search is a case-insensitive substring over payee, memo, and resolved catDisplay; Type
+// filters by amount sign (zero-amount rows match only 'all'); Status by cleared flag.
+// Filters combine with AND.
+function _filterTxRows(rowsWithBalance, f){
+  f=f||{};
+  var q=String(f.search||'').trim().toLowerCase();
+  var type=f.type||'all', status=f.status||'all';
+  return (rowsWithBalance||[]).filter(function(e){
+    var tx=e.tx;
+    if(q){
+      var hay=(String(tx.payee||'')+' '+String(tx.memo||'')+' '+String(e.catDisplay||'')).toLowerCase();
+      if(hay.indexOf(q)===-1)return false;
+    }
+    var amt=parseFloat(tx.amount)||0;
+    if(type==='outflow'&&!(amt<0))return false;
+    if(type==='inflow'&&!(amt>0))return false;
+    if(status==='cleared'&&tx.cleared!==true)return false;
+    if(status==='uncleared'&&tx.cleared===true)return false;
+    return true;
   });
 }
 
@@ -6089,12 +6129,53 @@ function _renderTxRegister(){
         +'title="Sort by '+label+'" style="'+_thBase+';cursor:pointer;user-select:none'
         +(align?';text-align:'+align:'')+'">'+label+_sortInd(col)+'</th>';
     };
-    // A6: Balance is a chronological running total; when the view is sorted by anything
-    // other than Date ascending, note that Balance is as-of-date, not a sorted-order total.
-    var _balCaption=(_txLedgerSortCol==='date'&&_txLedgerSortDir==='asc')?''
-      :'<div class="tx-bal-caption" style="font-size:11px;color:var(--muted);font-style:italic;padding:4px 12px">Balance is shown as of each transaction date, not recalculated in sorted order.</div>';
+    // A6/A9 pipeline: compute the full chronological ledger balance first (pass 1), then
+    // filter, then sort. Balance (bal) is attached during the chronological pass and NEVER
+    // recomputed after filter/sort, so filtered/sorted views still show each row's full-ledger
+    // as-of-transaction-date balance.
+    var rows=_txLedgerCache||[];
+    var _startBal=runBal; // initial balance for the starting-balance row (runBal is mutated below)
+    var rowsWithBalance=rows.map(function(tx,idx){
+      var amt=parseFloat(tx.amount)||0;
+      runBal+=amt;
+      return {tx:tx,bal:runBal,chronIdx:idx,catDisplay:tx.category_key?_getRegisterCategoryLabel(tx.category_key,_txDateToMonthIso(tx.transaction_date)):''};
+    });
+    var filteredRows=_filterTxRows(rowsWithBalance,_getTxFilterState());
+    var displayRows=_sortTxRows(filteredRows,_txLedgerSortCol,_txLedgerSortDir);
+    var _filtersOn=_txFiltersActive();
+
+    // A9a: filter row (search + type + status + Clear), with a Showing X of Y count.
+    var _selV=function(cur,v){return cur===v?' selected':'';};
+    var filterRow='<div style="padding:10px 16px;border-bottom:1px solid var(--line);display:flex;align-items:center;gap:8px;flex-wrap:wrap">'
+      +'<input id="tx-filter-search" type="text" value="'+_esc(_txFilterSearch)+'" '
+      +'onkeydown="if(event.key===\'Enter\')setTxFilter(\'search\',this.value)" placeholder="Search payee, memo, category" '
+      +'style="font-family:inherit;font-size:13px;padding:5px 9px;border:1px solid var(--line);border-radius:6px;background:var(--surface);color:var(--text);flex:1;min-width:160px">'
+      +'<button id="tx-filter-search-btn" onclick="setTxFilter(\'search\',document.getElementById(\'tx-filter-search\').value)" '
+      +'style="font-family:inherit;font-size:12px;font-weight:600;padding:5px 12px;cursor:pointer;border:1px solid var(--blue);border-radius:6px;background:var(--blue);color:#fff">Search</button>'
+      +'<select id="tx-filter-type" onchange="setTxFilter(\'type\',this.value)" style="font-family:inherit;font-size:13px;padding:5px 8px;border:1px solid var(--line);border-radius:6px;background:var(--surface);color:var(--text)">'
+      +'<option value="all"'+_selV(_txFilterType,'all')+'>Any Type</option>'
+      +'<option value="outflow"'+_selV(_txFilterType,'outflow')+'>Outflow</option>'
+      +'<option value="inflow"'+_selV(_txFilterType,'inflow')+'>Inflow</option>'
+      +'</select>'
+      +'<select id="tx-filter-status" onchange="setTxFilter(\'status\',this.value)" style="font-family:inherit;font-size:13px;padding:5px 8px;border:1px solid var(--line);border-radius:6px;background:var(--surface);color:var(--text)">'
+      +'<option value="all"'+_selV(_txFilterStatus,'all')+'>Any Status</option>'
+      +'<option value="cleared"'+_selV(_txFilterStatus,'cleared')+'>Cleared</option>'
+      +'<option value="uncleared"'+_selV(_txFilterStatus,'uncleared')+'>Uncleared</option>'
+      +'</select>'
+      +(_filtersOn?'<button id="tx-clear-filters" onclick="clearTxFilters()" style="font-family:inherit;font-size:12px;font-weight:600;padding:5px 10px;cursor:pointer;border:1px solid var(--line);border-radius:6px;background:var(--surface);color:var(--muted)">Clear filters</button>':'')
+      +'<span style="flex:1"></span>'
+      +'<span style="font-size:11px;color:var(--muted)">Showing '+filteredRows.length+' of '+rows.length+' transactions</span>'
+      +'</div>';
+
+    // A6/A9 caption: the filtered-subset note is the stronger warning and wins over sort-off-date.
+    var _capStyle='font-size:11px;color:var(--muted);font-style:italic;padding:4px 12px';
+    var _balCaption=_filtersOn
+      ?'<div class="tx-bal-caption" style="'+_capStyle+'">Balance reflects the full ledger as of each transaction date, not the filtered subset.</div>'
+      :((_txLedgerSortCol==='date'&&_txLedgerSortDir==='asc')?''
+        :'<div class="tx-bal-caption" style="'+_capStyle+'">Balance is shown as of each transaction date, not recalculated in sorted order.</div>');
+
     // Extra columns: edit and delete actions
-    var tbl=_balCaption+'<table style="width:100%;border-collapse:collapse;font-size:13px">'
+    var tbl=filterRow+_balCaption+'<table style="width:100%;border-collapse:collapse;font-size:13px">'
       +'<thead><tr style="background:var(--surface2);text-align:left">'
       +thSort('Date','date')+thSort('Payee','payee')+th('Memo')+thSort('Category','category')
       +thSort('Outflow','outflow','right')+thSort('Inflow','inflow','right')
@@ -6102,35 +6183,24 @@ function _renderTxRegister(){
       +'<th style="padding:8px 12px;width:60px"></th>'
       +'</tr></thead><tbody>';
 
-    // Starting balance row
+    // Starting balance row (uses the initial balance; always shown as ledger context, even under filters)
     var startCell=balWarning
       ?'<span style="font-style:italic;color:var(--amber)">Starting balance not set — running balance starts from $0.00</span>'
       :'<span style="font-style:italic;color:var(--muted)">Starting balance</span>';
     tbl+='<tr style="background:var(--surface2)">'
       +'<td colspan="8" style="padding:8px 12px">'+startCell+'</td>'
       +'<td style="padding:8px 12px;text-align:right;font-weight:600" colspan="1">$'
-      +runBal.toFixed(2)+'</td></tr>';
+      +_startBal.toFixed(2)+'</td></tr>';
 
-    var rows=_txLedgerCache||[];
     if(!rows.length){
       tbl+='<tr><td colspan="9" style="padding:24px 12px;text-align:center;'
         +'color:var(--muted);font-style:italic">No transactions for this account.</td></tr>';
+    }else if(!displayRows.length){
+      tbl+='<tr><td colspan="9" style="padding:24px 12px;text-align:center;color:var(--muted);font-style:italic">'
+        +'No transactions match the current filters. '
+        +'<button onclick="clearTxFilters()" style="font-family:inherit;font-size:12px;font-weight:600;padding:3px 9px;margin-left:6px;cursor:pointer;border:1px solid var(--line);border-radius:6px;background:var(--surface);color:var(--blue)">Clear filters</button>'
+        +'</td></tr>';
     }else{
-      // Phase 5E-10 (Wendy feedback #4): uncleared rows display above cleared rows. The running
-      // Balance column must still reflect real chronological order, so this is two passes:
-      // 1) walk `rows` in its original server order (transaction_date.asc,created_at.asc,id.asc)
-      //    and attach each transaction's correct running balance at that point in time.
-      // 2) build a display-only copy sorted uncleared-first — Array.prototype.sort is stable
-      //    (guaranteed since ES2019), so chronological order is preserved within each group.
-      // The render loop below uses the precomputed balance, never recomputes it post-sort.
-      var rowsWithBalance=rows.map(function(tx,idx){
-        var amt=parseFloat(tx.amount)||0;
-        runBal+=amt;
-        return {tx:tx,bal:runBal,chronIdx:idx,catDisplay:tx.category_key?_getRegisterCategoryLabel(tx.category_key,_txDateToMonthIso(tx.transaction_date)):''};
-      });
-      // A6: user-controlled display sort. Balance stays the precomputed chronological
-      // value on each entry; _sortTxRows only reorders, never recomputes bal.
-      var displayRows=_sortTxRows(rowsWithBalance,_txLedgerSortCol,_txLedgerSortDir);
       displayRows.forEach(function(entry){
         var tx=entry.tx;
         var amt=parseFloat(tx.amount)||0;
