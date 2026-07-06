@@ -5,6 +5,7 @@
 Phase 5B complete.
 Budget Module v1 live.
 5F-1 complete through Phase 4 and proven in a real weekly closeout (Week 26, 2026-07-04).
+5F-1.5 Gate A (Wendy July usability) UI shipped and live (2026-07-05/06), including the Register Quicken-style ledger hotfix (Date desc default, historical Balance, Clr status-only). A4 (AMEX Gold starting-balance correction) is parked pending Wendy/accounting confirmation.
 Wendy Budget-tab live use in progress (target July 1, 2026).
 
 ## Current Goal
@@ -13,8 +14,8 @@ Prepare the system for Wendy using the Budget tab in live household workflow whi
 
 ## Recent Verified State
 
-- Static regression tests: 1219/0 passing (as of 5F-1 Phase 4 P4-1)
-- E2E: known pre-existing failures WC-3 and BR-3 only (documented in AGENTS.md; not 5F-1 regressions). `push_to_github.sh --skip-e2e` allowed only while WC-3 and BR-3 are the sole known e2e failures.
+- Static regression tests: 1322/0 passing (as of 5F-1.5 Gate A + Register ledger hotfix)
+- E2E: 130/0 passing on this branch. The earlier WC-3/BR-3 "known e2e failure" language is stale for this branch; do not re-cite it without re-verifying.
 - Dashboard stable
 - GitHub Pages deploys from main
 
@@ -129,6 +130,26 @@ Real Week 26 closeout completed and read-only verified in production (stored wee
 - Jul 4 commitment activity is exactly 3 cleared rent rows + 1 planned Vio transfer row. Duplicate `expected_item_id` = 0, smoke/test leftovers = 0. Distribution: wd_reconciliation/cleared = 3, wd_reconciliation/planned = 1.
 
 Conclusion: 5F-1 forward reconciliation is proven in real use and production data is clean. Two 5F-1 sub-items remain deliberately deferred and are not required for forward weekly closeout: dashboard Review Required verdict-text rendering (AC-15/18; the reviewRequired flag itself is computed and tested) and historical repair mode (AC-21; `repair_commitments_for_week` wiring, backfill of past un-tagged weeks only). Blocked-AC tracker trimmed accordingly to AC-15/18/21 (Section 5F1-NOTSTARTED).
+
+## 5F-1.5 Gate A UI SHIPPED + Register Quicken ledger hotfix LIVE (2026-07-05/06)
+
+Wendy July usability pass, display/read-only scope except the pre-existing Clr checkbox behavior, which was preserved unchanged. No new Register write path, schema/RLS/RPC, or Budget-calculation changes. Live on the custom domain (footer Jul 6 2026 1:11 AM after a forced Pages redeploy). Static 1322/0, e2e 130/0.
+
+Seven UI gates (pushed as the stack A5, A8, A6, A9a, A9b, A7a, A7b; deploy #141):
+- e99e24b A5: account dropdowns alphabetized (payment pickers + Register selector), Cash/Other pinned last, default account preserved.
+- fb7a0d2 A8: weekly milestone/guidance banner moved from the bottom of the week into the header card.
+- 7419b31 A6: Register columns user-sortable; Balance non-sortable; chronological running-balance invariant (two-pass: compute -> filter -> sort, bal never recomputed).
+- 17e9d19 A9a: Register search (payee/memo/resolved category) + Type/Status filters + Clear + filtered empty state + full-ledger caption.
+- e22af6e A9b: Register inclusive Date From/To filters (lexical YYYY-MM-DD) + selected-account context label.
+- 833a0e9 A7a: read-only Category Report modal + picker reaching excluded/income categories (incl. Jabian Expenses/Deposits); legacy budget_transactions count-only notice; 1000-row truncation warning; stale-fetch guard; no Balance column.
+- 2040245 A7b: Budget expense leaf rows (label + Spent cell) drill through to the A7a report; goal_sweep/parent/income excluded; row label escaped.
+
+Register ledger hotfix (two follow-on commits, both live):
+- 6736d42: default Register sort is Date descending (Quicken newest-first); each row's Balance is the historical/as-of-transaction-date running balance from accounts.starting_balance; starting-balance row moves to the bottom in newest-first view; extracted the _computeLedgerBalances row-builder for testability; caption hides for any date sort.
+- f12596f (redeploy forced by empty commit 77ecc0f): Clr is a status-only column, non-sortable header (no sort arrow), the row checkbox stays editable via _toggleTxCleared; uncleared review is the Status = Uncleared filter (which preserves date/desc order and full-ledger balances). The _sortTxRows cleared comparator remains as dormant/defensive code, not user-facing. This matches Quicken: the register is ledger-first and can no longer be reordered into a status-grouped table.
+
+### A4 PARKED (AMEX Gold starting-balance correction)
+Paused pending Wendy/accounting confirmation. The hardened data-fix SQL (docs/2026-07-05-amex-gold-starting-balance.sql) is drafted and kept untracked; it was NOT executed and is excluded from the pushed stack. Its 2026-07-01 baseline preflight guard correctly blocked the patch after finding an AMEX Gold transaction before the baseline: 2026-06-30 Foxtail -$7.17. Open question for Wendy: is the confirmed 8248.50 starting balance as-of before or after that 6/30 charge. Resume only after that is answered; then run the preflight and the guarded DO-block patch. accounts.starting_balance is Register-ledger-display-only (does not affect Budget spend, cashflow, or reconciliation).
 
 ## Post-5F-1 Build Path & Strategic Horizons
 
