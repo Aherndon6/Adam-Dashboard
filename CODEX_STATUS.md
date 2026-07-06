@@ -5,7 +5,7 @@
 Phase 5B complete.
 Budget Module v1 live.
 5F-1 complete through Phase 4 and proven in a real weekly closeout (Week 26, 2026-07-04).
-5F-1.5 Gate A (Wendy July usability) UI shipped and live (2026-07-05/06), including the Register Quicken-style ledger hotfix (Date desc default, historical Balance, Clr status-only). A4 (AMEX Gold starting-balance correction) is DONE (executed and verified 2026-07-06).
+5F-1.5 Gate A (Wendy July usability) UI shipped and live (2026-07-05/06), including the Register Quicken-style ledger hotfix (historical Balance) and the Register CL/reconciliation default view (commit 8d48b04, Wendy-confirmed and live-smoked on dashboard.herndons.us). A4 (AMEX Gold starting-balance correction) is DONE (executed and verified 2026-07-06).
 Wendy Budget-tab live use in progress (target July 1, 2026).
 
 ## Current Goal
@@ -14,7 +14,7 @@ Prepare the system for Wendy using the Budget tab in live household workflow whi
 
 ## Recent Verified State
 
-- Static regression tests: 1322/0 passing (as of 5F-1.5 Gate A + Register ledger hotfix)
+- Static regression tests: 1332/0 passing (as of 5F-1.5 Gate A + Register ledger hotfix + Register CL reconciliation default)
 - E2E: 130/0 passing on this branch. The earlier WC-3/BR-3 "known e2e failure" language is stale for this branch; do not re-cite it without re-verifying.
 - Dashboard stable
 - GitHub Pages deploys from main
@@ -146,10 +146,13 @@ Seven UI gates (pushed as the stack A5, A8, A6, A9a, A9b, A7a, A7b; deploy #141)
 
 Register ledger hotfix (two follow-on commits, both live):
 - 6736d42: default Register sort is Date descending (Quicken newest-first); each row's Balance is the historical/as-of-transaction-date running balance from accounts.starting_balance; starting-balance row moves to the bottom in newest-first view; extracted the _computeLedgerBalances row-builder for testability; caption hides for any date sort.
-- f12596f (redeploy forced by empty commit 77ecc0f): Clr is a status-only column, non-sortable header (no sort arrow), the row checkbox stays editable via _toggleTxCleared; uncleared review is the Status = Uncleared filter (which preserves date/desc order and full-ledger balances). The _sortTxRows cleared comparator remains as dormant/defensive code, not user-facing. This matches Quicken: the register is ledger-first and can no longer be reordered into a status-grouped table.
+- f12596f (redeploy forced by empty commit 77ecc0f): Clr is a status-only column, non-sortable header (no sort arrow), the row checkbox stays editable via _toggleTxCleared; uncleared review is the Status = Uncleared filter (which preserves date/desc order and full-ledger balances). The _sortTxRows cleared comparator remains as dormant/defensive code, not user-facing. This matches Quicken: the register is ledger-first and can no longer be reordered into a status-grouped table. [SUPERSEDED by 8d48b04 below.]
+
+Register CL/reconciliation default (2026-07-06, live-smoked on dashboard.herndons.us):
+- 8d48b04: the Register now DEFAULTS to the Quicken CL/reconciliation view (`_txLedgerSortCol='reconcile'`), superseding the f12596f Clr-status-only default per Wendy's confirmation. Uncleared rows on top, cleared below, newest-first (chronIdx desc: transaction_date asc, created_at asc, id asc) within each group; cleared===true only (null/undefined counts as uncleared); starting-balance row at the bottom; full-ledger historical balances never recomputed after sort/filter. The Clr header activates reconcile (idempotent) and shows an active indicator; the old generic cleared comparator was removed from _sortTxRows. Date entry is uniform desc-first then toggles asc; Payee/Category/Outflow/Inflow remain sortable; Balance is non-sortable; the Clr checkbox (_toggleTxCleared) is unchanged. Display/read-only scope: no Register write path, schema/RLS/RPC, or Budget-calculation changes. Static 1332/0; affected e2e (LEDGER-1/2, A6-1, A9-1/2, RG-12) verified in a real browser; live-confirmed by Wendy's daily-reconcile workflow.
 
 ### A4 DONE (AMEX Gold starting-balance correction)
-Executed 2026-07-06; verified in DB (postflight) and in the live Register. `accounts.starting_balance` for AMEX Gold corrected from -8248.07 to -8248.50 via `docs/2026-07-06-amex-gold-starting-balance-A4.sql`, run as one execution (single guarded transaction with COMMIT included). Corrected accounting anchor: -8248.50 is the cleared balance as of end of 2026-06-29, before the 2026-06-30 Foxtail -$7.17; Foxtail remains the first ledger row (order transaction_date asc, created_at asc, id asc) with a running balance of -$8,255.67. Only accounts.starting_balance changed: no transactions inserted/updated/deleted, Foxtail date/amount/updated_at unchanged, AMEX Gold tx_count = 51 unchanged, last_created_at/last_updated_at unchanged, no Budget/Register/schema/RLS/RPC changes. Postflight confirmed value_ok=true and ledger_at_foxtail_ok=true. The 2026-07-05 draft (`docs/2026-07-05-amex-gold-starting-balance.sql`) is superseded (positive-value guards plus a 2026-07-01 baseline guard that blocked the legitimate 6/30 Foxtail row). Unrelated: the 5F-1.5 Register default-sort question remains separate and pending Wendy's response. accounts.starting_balance is Register-ledger-display-only (does not affect Budget spend, cashflow, or reconciliation).
+Executed 2026-07-06; verified in DB (postflight) and in the live Register. `accounts.starting_balance` for AMEX Gold corrected from -8248.07 to -8248.50 via `docs/2026-07-06-amex-gold-starting-balance-A4.sql`, run as one execution (single guarded transaction with COMMIT included). Corrected accounting anchor: -8248.50 is the cleared balance as of end of 2026-06-29, before the 2026-06-30 Foxtail -$7.17; Foxtail remains the first ledger row (order transaction_date asc, created_at asc, id asc) with a running balance of -$8,255.67. Only accounts.starting_balance changed: no transactions inserted/updated/deleted, Foxtail date/amount/updated_at unchanged, AMEX Gold tx_count = 51 unchanged, last_created_at/last_updated_at unchanged, no Budget/Register/schema/RLS/RPC changes. Postflight confirmed value_ok=true and ledger_at_foxtail_ok=true. The 2026-07-05 draft (`docs/2026-07-05-amex-gold-starting-balance.sql`) is superseded (positive-value guards plus a 2026-07-01 baseline guard that blocked the legitimate 6/30 Foxtail row). Unrelated: the 5F-1.5 Register default-sort question is now RESOLVED — Wendy confirmed the Quicken CL/reconciliation view, shipped live in commit 8d48b04 (see the Register CL/reconciliation default entry above). accounts.starting_balance is Register-ledger-display-only (does not affect Budget spend, cashflow, or reconciliation).
 
 ## Post-5F-1 Build Path & Strategic Horizons
 
