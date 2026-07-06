@@ -2648,6 +2648,104 @@ async function clickNav(page, id) {
     await context.close();
   });
 
+  await test('A7a-1 (Phase 5F-1.5): Category Report modal renders totals, escapes user values, omits Balance, shows legacy/truncation notices', async () => {
+    const { page, context } = await openApp(browser);
+    const r = await page.evaluate(() => {
+      _accountsCache = [{ key:'truist_checking', label:'Truist Checking', lifecycle_status:'active' }];
+      _categoriesCache = [{ key:'auto.gas', label:'Gas', is_leaf:true, lifecycle_status:'active' }];
+      _budgetLineRulesLoadStatus = 'not_loaded';
+      _catReportModal = {
+        mode:'report', categoryKey:'auto.gas', monthIso:'2026-07-01', loadStatus:'loaded',
+        error:'', legacyCount:2, truncated:false,
+        rows:[
+          { id:'r1', transaction_date:'2026-07-02', account_key:'truist_checking', payee:'<b>Shell</b>', memo:'gas & go', category_key:'auto.gas', amount:-40.00, cleared:true },
+          { id:'r2', transaction_date:'2026-07-05', account_key:'truist_checking', payee:'RESY refund', memo:'', category_key:'auto.gas', amount:15.00, cleared:false }
+        ]
+      };
+      _catReportRenderModal();
+      var h = document.getElementById('cat-report-modal-slot').innerHTML;
+      return {
+        overlay: h.indexOf('sc-modal-overlay') !== -1,
+        netSpend25: h.indexOf('$25.00') !== -1,
+        spending40: h.indexOf('$40.00') !== -1,
+        credits15: h.indexOf('$15.00') !== -1,
+        escapedPayee: h.indexOf('&lt;b&gt;Shell&lt;/b&gt;') !== -1, rawPayee: h.indexOf('<b>Shell</b>') !== -1,
+        escapedMemo: h.indexOf('gas &amp; go') !== -1,
+        noBalance: h.indexOf('Balance') === -1,
+        legacyNotice: h.indexOf('legacy Budget entries') !== -1
+      };
+    });
+    assert(r.overlay, 'modal overlay renders');
+    assert(r.netSpend25, 'Net Spend $25.00 (spending 40 minus credits 15)');
+    assert(r.spending40 && r.credits15, 'Spending $40.00 and Credits $15.00 shown');
+    assert(r.escapedPayee && !r.rawPayee, 'HTML payee is escaped, not injected');
+    assert(r.escapedMemo, 'memo ampersand is escaped');
+    assert(r.noBalance, 'report modal must not include a Balance column');
+    assert(r.legacyNotice, 'legacy notice shows when legacyCount>0');
+    // Truncation state
+    const trunc = await page.evaluate(() => {
+      _catReportModal.truncated = true; _catReportModal.legacyCount = 0;
+      _catReportRenderModal();
+      var h = document.getElementById('cat-report-modal-slot').innerHTML;
+      return { warn: h.indexOf('Report may be incomplete') !== -1, partial: h.indexOf('(partial)') !== -1, noLegacy: h.indexOf('legacy Budget entries') === -1 };
+    });
+    assert(trunc.warn && trunc.partial, 'truncation warning + (partial) marker when truncated');
+    assert(trunc.noLegacy, 'legacy notice absent when legacyCount is 0');
+    // Close clears slot + state
+    const closed = await page.evaluate(() => {
+      _closeCategoryReport();
+      var slot = document.getElementById('cat-report-modal-slot');
+      return { slotEmpty: (slot ? slot.innerHTML : '') === '', stateNull: _catReportModal === null };
+    });
+    assert(closed.slotEmpty && closed.stateNull, 'close clears the slot DOM and nulls state');
+    await context.close();
+  });
+
+  await test('A7a-2 (Phase 5F-1.5): Category Report picker opens a report via the real View Report button for a Jabian category absent from the Budget grid (fetch stubbed)', async () => {
+    const { page, context } = await openApp(browser);
+    // Setup + stub network, open the picker, and choose the Jabian category + month in the DOM.
+    const pickerHadJabian = await page.evaluate(() => {
+      _categoriesCache = [
+        { key:'business.jabian_expenses_2026', label:'Jabian Expenses 2026', is_leaf:true, lifecycle_status:'active', behavior_class:'reimbursable_expense', budget_treatment:'excluded' },
+        { key:'auto.gas', label:'Gas', is_leaf:true, lifecycle_status:'active', behavior_class:'expense', budget_treatment:'tracked' }
+      ];
+      _accountsCache = [{ key:'amex_gold', label:'AMEX Gold', lifecycle_status:'active' }];
+      _budgetLineRulesLoadStatus = 'not_loaded';
+      _budgetSelectedMonth = '2026-07-01';
+      _catReportModal = null;
+      window.getAuthHeaders = function(){ return Promise.resolve({}); };
+      window.fetch = function(url){
+        if (String(url).indexOf('/budget_transactions') !== -1) {
+          return Promise.resolve({ ok:true, headers:{ get:function(k){ return k === 'content-range' ? '0-0/0' : null; } }, json:function(){ return Promise.resolve([]); } });
+        }
+        return Promise.resolve({ ok:true, headers:{ get:function(){ return null; } }, json:function(){ return Promise.resolve([
+          { id:'j1', transaction_date:'2026-07-03', account_key:'amex_gold', payee:'United Air', memo:'JAB client', category_key:'business.jabian_expenses_2026', amount:-500.00, cleared:true }
+        ]); } });
+      };
+      openCategoryReportPicker();
+      var had = document.getElementById('cat-report-category').innerHTML.indexOf('Jabian Expenses 2026') !== -1;
+      document.getElementById('cat-report-category').value = 'business.jabian_expenses_2026';
+      document.getElementById('cat-report-month').value = '2026-07-01';
+      return had;
+    });
+    // Click the actual View Report button (real UI path, not a direct openCategoryReport call).
+    await page.click('#cat-report-view-btn');
+    await page.waitForTimeout(80);
+    const r = await page.evaluate(() => {
+      var h = document.getElementById('cat-report-modal-slot').innerHTML;
+      return {
+        opened: h.indexOf('Jabian Expenses 2026') !== -1,
+        row: h.indexOf('United Air') !== -1,
+        spending500: h.indexOf('$500.00') !== -1
+      };
+    });
+    assert(pickerHadJabian, 'picker lists the excluded Jabian Expenses category (absent from the Budget grid)');
+    assert(r.opened, 'clicking View Report opens the report modal for the Jabian category');
+    assert(r.row, 'the stubbed Jabian transaction row renders');
+    assert(r.spending500, 'summary reflects the $500 spend');
+    await context.close();
+  });
+
   await test('RG-11: cleared transaction shows checked checkbox in Clr column (updated in 5E-2)', async () => {
     const { page, context } = await openApp(browser);
     const result = await page.evaluate(([mockAccounts, mockTxns]) => {

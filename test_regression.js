@@ -7604,7 +7604,7 @@ test('5E9-13: _budgetLoadRegisterSpend exists and queries public.transactions wi
 test('5E9-14: renderBudget spentByKey folds in Register spend via _computeRegisterSpend, category-filtered signed net (A1 supersedes outflow-only/Math.abs)',()=>{
   var fnIdx=html.indexOf('function renderBudget()');
   assert(fnIdx>-1,'renderBudget must be defined');
-  var fnBlock=html.slice(fnIdx,fnIdx+10000);
+  var fnBlock=html.slice(fnIdx,fnIdx+11000);
   assertIncludes(fnBlock,'_budgetRegisterSpendCache','renderBudget must reference _budgetRegisterSpendCache in its spentByKey computation');
   assertIncludes(fnBlock,'_computeRegisterSpend(_budgetRegisterSpendCache','Register merge must fold spend through the _computeRegisterSpend helper');
   assert(fnBlock.indexOf('if(!(amt<0))return;')===-1,'A1: the outflow-only guard must be gone so credits net in');
@@ -10660,6 +10660,177 @@ test('5F15-A9b-11: date controls and account context label render with stable id
   assertIncludes(fnBlock,'type="date"','date inputs use native date controls');
   assertIncludes(fnBlock,'Selected account:','account context label present');
   assertIncludes(fnBlock,'selAcct?','account context label is gated on selAcct (renders nothing when null)');
+});
+})();
+
+// A7a (Wendy item): read-only Category Report modal + picker over public.transactions.
+console.log('\n── Section 5F15-A7a: Category Report (read-only modal + picker) ──');
+(function(){
+var loadSrc=html.slice(html.indexOf('async function _loadCategoryReport'),html.indexOf('function _catReportRenderModal'));
+var renderSrc=html.slice(html.indexOf('function _catReportRenderModal'),html.indexOf('function _catReportRenderModal')+6500);
+var closeSrc=html.slice(html.indexOf('function _closeCategoryReport'),html.indexOf('function _closeCategoryReport')+320);
+var a7Block=html.slice(html.indexOf('function _monthStartEndIso'),html.indexOf('function _catReportRenderModal')+6500);
+var budgetSrc=html.slice(html.indexOf('function renderBudget()'),html.indexOf('function renderBudget()')+12000);
+
+// ── Summary ──
+test('5F15-A7a-01: summary debits-only',()=>{
+  var s=_computeCategoryReportSummary([{amount:-100},{amount:-40}]);
+  assertApprox(s.spending,140,'spending');assertApprox(s.credits,0,'credits');assertApprox(s.netSpend,140,'netSpend');assert(s.count===2,'count');
+});
+test('5F15-A7a-02: summary credits-only yields negative netSpend',()=>{
+  var s=_computeCategoryReportSummary([{amount:50},{amount:25}]);
+  assertApprox(s.spending,0,'spending');assertApprox(s.credits,75,'credits');assertApprox(s.netSpend,-75,'netSpend');assert(s.count===2,'count');
+});
+test('5F15-A7a-03: summary mixed: spending - credits = netSpend',()=>{
+  var s=_computeCategoryReportSummary([{amount:-100},{amount:-40},{amount:50}]);
+  assertApprox(s.spending,140,'spending');assertApprox(s.credits,50,'credits');assertApprox(s.netSpend,90,'netSpend');assert(s.count===3,'count');
+});
+test('5F15-A7a-04: summary empty is all-zero',()=>{
+  var s=_computeCategoryReportSummary([]);
+  assert(s.spending===0&&s.credits===0&&s.netSpend===0&&s.count===0,'all zero for empty');
+});
+test('5F15-A7a-05: zero amount counts only in count; NaN treated as 0 but counted',()=>{
+  var s=_computeCategoryReportSummary([{amount:0},{amount:'not-a-number'},{amount:-10}]);
+  assertApprox(s.spending,10,'spending only from -10');assertApprox(s.credits,0,'no credits');assert(s.count===3,'count includes zero and NaN rows');
+});
+// ── Month bounds ──
+test('5F15-A7a-06: _monthStartEndIso February 2026 = 2026-02-01..2026-02-28',()=>{
+  var r=_monthStartEndIso('2026-02-01');
+  assert(r&&r.startIso==='2026-02-01'&&r.endIso==='2026-02-28','Feb bounds, got '+JSON.stringify(r));
+});
+test('5F15-A7a-07: _monthStartEndIso December rollover = 2026-12-01..2026-12-31',()=>{
+  var r=_monthStartEndIso('2026-12-01');
+  assert(r&&r.startIso==='2026-12-01'&&r.endIso==='2026-12-31','Dec bounds, got '+JSON.stringify(r));
+});
+test('5F15-A7a-08: _monthStartEndIso requires a valid first-of-month and otherwise fails closed (null)',()=>{
+  assert(_monthStartEndIso('2026-02-02')===null,'non-first-of-month rejected');
+  assert(_monthStartEndIso('2026-02-31')===null,'impossible day rejected (not -01)');
+  assert(_monthStartEndIso('2026-00-01')===null,'month 00 rejected');
+  assert(_monthStartEndIso('2026-13-01')===null,'month 13 rejected');
+  assert(_monthStartEndIso('garbage')===null,'garbage');
+  assert(_monthStartEndIso('')===null,'blank');
+  assert(_monthStartEndIso(undefined)===null,'undefined');
+  assert(_monthStartEndIso('2026-2-01')===null,'non-zero-padded month rejected');
+});
+test('5F15-A7a-09: openCategoryReport defaults a blank month via _budgetGetMonthIso',()=>{
+  assertIncludes(html,'var mi=monthIso||_budgetGetMonthIso();','openCategoryReport must fall back to _budgetGetMonthIso when month is blank');
+});
+// ── Fetch/query ──
+test('5F15-A7a-10: report fetch queries public.transactions with the required params',()=>{
+  assertIncludes(loadSrc,'category_key=eq.','query filters by exact category_key');
+  assertIncludes(loadSrc,'transaction_date=gte.','query has month lower bound');
+  assertIncludes(loadSrc,'transaction_date=lte.','query has month upper bound');
+  assertIncludes(loadSrc,'LIMIT=1000','explicit 1000-row limit constant');
+  assertIncludes(loadSrc,'&limit=','limit applied in the query');
+  assertIncludes(loadSrc,'select=id,transaction_date,account_key,payee,memo,category_key,amount,cleared','stable select field list incl. id');
+  assertIncludes(loadSrc,'order=transaction_date.asc,created_at.asc,id.asc','deterministic order');
+  assertIncludes(loadSrc,'encodeURIComponent','category/date values are URI-encoded');
+});
+test('5F15-A7a-11: report load calls _catReportRenderModal (not renderApp) and never writes',()=>{
+  assertIncludes(loadSrc,'_catReportRenderModal(','fetch completion re-renders the modal');
+  assert(loadSrc.indexOf('renderApp(')===-1,'must not call renderApp on fetch completion');
+  ['POST','PATCH','DELETE','PUT'].forEach(function(m){assert(loadSrc.indexOf("method:'"+m+"'")===-1&&loadSrc.indexOf('method: "'+m+'"')===-1,'no write method '+m);});
+});
+test('5F15-A7a-12: truncation is detected as rows.length >= limit',()=>{
+  assertIncludes(loadSrc,'data.length>=LIMIT','truncated flag set when the row count hits the limit');
+});
+test('5F15-A7a-13: legacy budget_transactions is a count-only probe, never merged',()=>{
+  assertIncludes(loadSrc,'budget_transactions','legacy probe hits budget_transactions');
+  assertIncludes(loadSrc,'count=exact','legacy probe is count-only');
+  assert(loadSrc.indexOf('_budgetTransactions=')===-1,'must not mutate the budget_transactions cache');
+});
+test('5F15-A7a-14: stale-fetch response is discarded when the modal moved on',()=>{
+  assertIncludes(loadSrc,"mode==='report'",'guard checks report mode');
+  assertIncludes(loadSrc,'_catReportModal.categoryKey===categoryKey','guard checks category');
+  assertIncludes(loadSrc,'_catReportModal.monthIso===monthIso','guard checks month');
+  assertIncludes(loadSrc,'if(!current())return','stale responses are discarded');
+});
+test('5F15-A7a-15: report error copy is static (no exception message interpolated into the DOM)',()=>{
+  assert(loadSrc.indexOf('e.message')===-1,'raw exception message must not be surfaced');
+  assertIncludes(loadSrc,"error='Could not load transactions for this report.'",'static error copy');
+});
+// ── Picker source (pure helper) ──
+test('5F15-A7a-16: picker reaches excluded + income leaves, excludes inactive/non-leaf, sorted by label',()=>{
+  var prev=_categoriesCache;
+  try{
+    _categoriesCache=[
+      {key:'business.jabian_expenses_2026',label:'Jabian Expenses 2026',is_leaf:true,lifecycle_status:'active',behavior_class:'reimbursable_expense',budget_treatment:'excluded'},
+      {key:'business.jabian_deposits_2026',label:'Jabian Deposits 2026',is_leaf:true,lifecycle_status:'active',behavior_class:'reimbursable_income',budget_treatment:'display_only'},
+      {key:'auto.gas',label:'Gas',is_leaf:true,lifecycle_status:'active',behavior_class:'expense',budget_treatment:'tracked'},
+      {key:'old.thing',label:'Old Thing',is_leaf:true,lifecycle_status:'archived',behavior_class:'expense',budget_treatment:'tracked'},
+      {key:'parent',label:'Parent',is_leaf:false,lifecycle_status:'active',behavior_class:null,budget_treatment:null}
+    ];
+    var opts=_catReportPickerCategories('2026-07-01');
+    var keys=opts.map(function(o){return o.key;});
+    assert(keys.indexOf('business.jabian_expenses_2026')>=0,'excluded Jabian expenses must be reachable');
+    assert(keys.indexOf('business.jabian_deposits_2026')>=0,'reimbursable_income Jabian deposits must be reachable');
+    assert(keys.indexOf('auto.gas')>=0,'normal expense reachable');
+    assert(keys.indexOf('old.thing')<0,'archived excluded');
+    assert(keys.indexOf('parent')<0,'non-leaf excluded');
+    var labels=opts.map(function(o){return String(o.label).toLowerCase();});
+    for(var i=1;i<labels.length;i++)assert(labels[i-1]<=labels[i],'options sorted by resolved label');
+  }finally{_categoriesCache=prev;}
+});
+test('5F15-A7a-17: picker source is _categoriesCache, not BUDGET_CATEGORY_REGISTRY',()=>{
+  var pcSrc=html.slice(html.indexOf('function _catReportPickerCategories'),html.indexOf('function _catReportPickerCategories')+400);
+  assertIncludes(pcSrc,'_categoriesCache','picker filters _categoriesCache');
+  assert(pcSrc.indexOf('BUDGET_CATEGORY_REGISTRY')===-1,'picker must not source BUDGET_CATEGORY_REGISTRY');
+  assert(pcSrc.indexOf('budget_treatment')===-1,'picker must not filter by budget_treatment');
+});
+// ── Modal safety / UI ──
+test('5F15-A7a-18: modal uses its own dedicated slot, not blr-modal-slot',()=>{
+  assertIncludes(html,'id="cat-report-modal-slot"','dedicated slot element exists');
+  assertIncludes(renderSrc,"getElementById('cat-report-modal-slot')",'renderer targets the dedicated slot');
+  assert(renderSrc.indexOf('blr-modal-slot')===-1,'must not reuse blr-modal-slot');
+});
+test('5F15-A7a-19: report modal + picker have no canWriteFinancials gate, and the Budget button is ungated',()=>{
+  assert(a7Block.indexOf('canWriteFinancials')===-1,'A7a modal/picker/fetch must not gate on canWriteFinancials');
+  var hdr=budgetSrc.slice(budgetSrc.indexOf('margin-left:auto'),budgetSrc.indexOf('margin-left:auto')+900);
+  assertIncludes(hdr,'openCategoryReportPicker()','Category Report button opens the picker');
+  assert(hdr.indexOf('openCategoryReportPicker()')<hdr.indexOf('canWriteFinancials()'),'Category Report button is emitted before the canWriteFinancials-gated controls (ungated)');
+});
+test('5F15-A7a-20: report table has the 7 columns and NO Balance column, wrapped for horizontal scroll',()=>{
+  assertIncludes(renderSrc,'overflow-x:auto','table wrapped for horizontal scroll');
+  ['Date','Account','Payee','Memo','Category','Amount'].forEach(function(c){assertIncludes(renderSrc,c+'</th>','column '+c+' present');});
+  assert(renderSrc.indexOf('Balance')===-1,'report modal must NOT include a Balance column');
+});
+test('5F15-A7a-21: summary strip labels present',()=>{
+  ['Net Spend','Spending','Credits / Reimbursements','Count'].forEach(function(l){assertIncludes(renderSrc,l,'summary label '+l+' present');});
+});
+test('5F15-A7a-22: modal has loading, failed, empty, and legacy/truncation states',()=>{
+  assertIncludes(renderSrc,'Loading transactions','loading state');
+  assertIncludes(renderSrc,'esc(m.error','failed state uses escaped static error');
+  assertIncludes(renderSrc,'No transactions for this category this month.','empty state');
+  assertIncludes(renderSrc,'m.legacyCount>0','legacy notice gated on legacyCount');
+  assertIncludes(renderSrc,'legacy Budget entries','legacy notice copy');
+  assertIncludes(renderSrc,'m.truncated','truncation warning gated on truncated flag');
+  assertIncludes(renderSrc,'Report may be incomplete','truncation warning copy');
+});
+test('5F15-A7a-23: all user/external display values are escaped with esc(); none interpolated into onclick',()=>{
+  assertIncludes(renderSrc,'esc(t.payee','payee escaped');
+  assertIncludes(renderSrc,'esc(t.memo','memo escaped');
+  assertIncludes(renderSrc,'esc(acctLabel','account label escaped');
+  assertIncludes(renderSrc,'esc(_getRegisterCategoryLabel(t.category_key','row category label escaped');
+  assert(!/onclick="[^"]*t\.(payee|memo)/.test(renderSrc),'payee/memo must never be interpolated inside an onclick handler');
+});
+test('5F15-A7a-24: close clears both the modal state and the slot',()=>{
+  assertIncludes(closeSrc,'_catReportModal=null','close nulls the state');
+  assertIncludes(closeSrc,"getElementById('cat-report-modal-slot')",'close targets the slot');
+  assertIncludes(closeSrc,"innerHTML=''",'close clears the slot DOM');
+});
+test('5F15-A7a-25: empty picker renders a safe empty state with no active View Report control',()=>{
+  assertIncludes(renderSrc,'if(!leaves.length){','picker guards the empty-category case');
+  assertIncludes(renderSrc,'No active categories available for reporting.','safe empty-state copy present');
+  // the View Report button lives only in the else (non-empty) branch, after the empty guard
+  var emptyIdx=renderSrc.indexOf('No active categories available for reporting.');
+  var viewIdx=renderSrc.indexOf('id="cat-report-view-btn"');
+  assert(emptyIdx>-1&&viewIdx>-1&&viewIdx>emptyIdx,'View Report button is only emitted in the non-empty branch');
+});
+test('5F15-A7a-26: View Report button has a stable id for real-UI interaction',()=>{
+  assertIncludes(renderSrc,'id="cat-report-view-btn"','View Report button carries a stable id');
+  assertIncludes(renderSrc,'window.openCategoryReport(document.getElementById(','View Report reads DOM values rather than interpolating a category key');
+  assertIncludes(renderSrc,"cat-report-category\\').value",'View Report reads the category select value from the DOM');
+  assertIncludes(renderSrc,"cat-report-month\\').value",'View Report reads the month select value from the DOM');
 });
 })();
 

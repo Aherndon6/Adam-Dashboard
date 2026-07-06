@@ -845,6 +845,7 @@ button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-vis
 </div>
 <div id="scenario-modal-slot"></div>
 <div id="blr-modal-slot"></div>
+<div id="cat-report-modal-slot"></div>
 <div class="mob-bottom-nav" id="mob-bottom-nav">
   <button class="mob-nav-btn active" id="mob-nav-overview" onclick="setSection('overview')"><span class="icon">◉</span><span>Overview</span></button>
   <button class="mob-nav-btn" id="mob-nav-weekly" onclick="setSection('weekly')"><span class="icon">◈</span><span>Weekly</span></button>
@@ -858,7 +859,7 @@ button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-vis
 // ── Constants (unchanged) ──────────────────────────────────────────────────
 // Simplified architecture — $8,250 total from LC · $6,500 operating floor · no legacy mechanics
 // Real-world moves: keep $2,250 in chk, move $2,750 sav→chk, move $1,000 LC→chk, move $2,250 LC→chk (Option 1 correction)
-const BUILD_TS='2026-07-05T20:37:52'; // updated each push — local time string
+const BUILD_TS='2026-07-05T21:33:18'; // updated each push — local time string
 const START_CHK=18037.73,START_SAV=3772.77,START_AMX=103.64,START_TAX=0,START_LC=13488.88;
 const EF_AMT=13488.88; // LC/EF balance — static this model year (no transfers in or out)
 const BASE_TAX=521.36,RET_SAV_XFR=3772.74;
@@ -1287,6 +1288,7 @@ var whatIfResult=null;
 var _budgetLineRulesCache=null;           // null=not loaded; []=empty; [...]= rules array
 var _budgetLineRulesLoadStatus='not_loaded'; // 'not_loaded'|'loaded'|'failed'
 var _blrModal=null; // Phase 5E-5: Budget Line Rule Admin modal state; null=closed
+var _catReportModal=null; // Phase 5F-1.5 A7a: Category Report modal state; null=closed
 var _budgetTransactions=[];               // loaded for selected month
 var _budgetTransLoadStatus='not_loaded';  // 'not_loaded'|'loaded'|'failed'
 // Phase 5E-9: Register-entered transactions (public.transactions) for the selected month,
@@ -5478,6 +5480,194 @@ function _filterTxRows(rowsWithBalance, f){
   });
 }
 
+// ── Phase 5F-1.5 A7a: Category Report (read-only, one category, one month) ──────
+// Local-date month bounds for an ISO first-of-month string. Fails closed (null) on
+// malformed input so callers never build a query with blank/undefined dates.
+function _monthStartEndIso(monthIso){
+  // Month selector input: require a valid first-of-month ISO (YYYY-MM-01). Fails closed.
+  if(typeof monthIso!=='string'||!/^\d{4}-(0[1-9]|1[0-2])-01$/.test(monthIso))return null;
+  var parts=monthIso.split('-');
+  var y=parseInt(parts[0],10), m=parseInt(parts[1],10);
+  var endD=new Date(y,m,0); // day 0 of the next month = last day of month m (local)
+  var endIso=endD.getFullYear()+'-'+String(endD.getMonth()+1).padStart(2,'0')+'-'+String(endD.getDate()).padStart(2,'0');
+  return {startIso:y+'-'+String(m).padStart(2,'0')+'-01',endIso:endIso};
+}
+
+// Pure summary over report rows (Register signed convention: debits negative, credits
+// positive). netSpend = spending - credits, reconciling to the Budget grid's Spent (A1).
+function _computeCategoryReportSummary(rows){
+  var spending=0,credits=0,count=0;
+  (rows||[]).forEach(function(t){
+    count++;
+    var a=parseFloat(t.amount); if(!isFinite(a))a=0;
+    if(a<0)spending+=Math.abs(a);
+    else if(a>0)credits+=a;
+  });
+  return {spending:spending,credits:credits,netSpend:spending-credits,count:count};
+}
+
+// Picker category source: ALL active leaf categories from _categoriesCache (not
+// filtered by budget_treatment), so excluded categories (e.g. business.jabian_expenses_2026)
+// and income leaves (business.jabian_deposits_2026) are reachable. Sorted by resolved label.
+// Deliberately NOT BUDGET_CATEGORY_REGISTRY (that misses Jabian and other live categories).
+function _catReportPickerCategories(monthIso){
+  return (_categoriesCache||[]).filter(function(c){return c.lifecycle_status==='active'&&c.is_leaf===true;})
+    .map(function(c){return {key:c.key,label:_getRegisterCategoryLabel(c.key,monthIso)};})
+    .sort(function(a,b){return String(a.label).localeCompare(String(b.label),undefined,{sensitivity:'base'});});
+}
+
+function openCategoryReportPicker(){
+  _catReportModal={mode:'picker',categoryKey:'',monthIso:_budgetGetMonthIso()};
+  _catReportRenderModal();
+}
+function openCategoryReport(categoryKey, monthIso){
+  var mi=monthIso||_budgetGetMonthIso();
+  _catReportModal={mode:'report',categoryKey:categoryKey,monthIso:mi,loadStatus:'loading',rows:[],error:'',legacyCount:0,truncated:false};
+  _catReportRenderModal();
+  _loadCategoryReport(categoryKey,mi);
+}
+function _closeCategoryReport(){
+  _catReportModal=null;
+  var slot=document.getElementById('cat-report-modal-slot');
+  if(slot)slot.innerHTML='';
+}
+
+// Read-only fetch of public.transactions for one category + month. No writes, no RPC,
+// no cache mutation. Also runs a count-only budget_transactions probe for the legacy
+// notice. A stale-response guard discards results if the modal has moved on.
+async function _loadCategoryReport(categoryKey, monthIso){
+  var LIMIT=1000;
+  function current(){return !!(_catReportModal&&_catReportModal.mode==='report'&&_catReportModal.categoryKey===categoryKey&&_catReportModal.monthIso===monthIso);}
+  var range=_monthStartEndIso(monthIso);
+  if(!range||!categoryKey){
+    if(current()){_catReportModal.loadStatus='failed';_catReportModal.error='Could not build the report for this category and month.';_catReportRenderModal();}
+    return;
+  }
+  try{
+    var h=await getAuthHeaders();
+    var qDates='&transaction_date=gte.'+encodeURIComponent(range.startIso)+'&transaction_date=lte.'+encodeURIComponent(range.endIso);
+    var url=SUPA_URL+'/rest/v1/transactions?category_key=eq.'+encodeURIComponent(categoryKey)+qDates
+      +'&select=id,transaction_date,account_key,payee,memo,category_key,amount,cleared'
+      +'&order=transaction_date.asc,created_at.asc,id.asc&limit='+LIMIT;
+    var res=await fetch(url,{headers:h});
+    var data=res.ok?await res.json():null;
+    // Legacy budget_transactions count-only probe (does not merge into the report).
+    var legacyCount=0;
+    try{
+      var lh=Object.assign({},h,{'Prefer':'count=exact','Range':'0-0','Range-Unit':'items'});
+      var lres=await fetch(SUPA_URL+'/rest/v1/budget_transactions?category_key=eq.'+encodeURIComponent(categoryKey)+qDates+'&select=id',{headers:lh});
+      var cr=lres.headers.get('content-range');
+      if(cr&&cr.indexOf('/')>=0){legacyCount=parseInt(cr.split('/')[1],10)||0;}
+    }catch(e2){legacyCount=0;}
+    if(!current())return; // discard stale response
+    if(res.ok&&data){
+      _catReportModal.rows=data;
+      _catReportModal.truncated=(data.length>=LIMIT);
+      _catReportModal.legacyCount=legacyCount;
+      _catReportModal.loadStatus='loaded';
+    }else{
+      _catReportModal.loadStatus='failed';
+      _catReportModal.error='Could not load transactions for this report.';
+    }
+  }catch(e){
+    if(!current())return;
+    _catReportModal.loadStatus='failed';
+    _catReportModal.error='Could not load transactions for this report.';
+  }
+  if(current())_catReportRenderModal();
+}
+
+function _catReportRenderModal(){
+  var slot=document.getElementById('cat-report-modal-slot');
+  if(!slot)return;
+  if(!_catReportModal){slot.innerHTML='';return;}
+  var m=_catReportModal;
+  var closeBtn='<button onclick="window._closeCategoryReport()" style="font-family:inherit;font-size:12px;font-weight:600;padding:6px 14px;cursor:pointer;border:1px solid var(--line);border-radius:6px;background:var(--surface);color:var(--muted)">Close</button>';
+  var html='<div class="sc-modal-overlay" onclick="if(event.target===this)window._closeCategoryReport()">';
+  html+='<div class="sc-modal" style="width:760px;max-width:96vw;max-height:90vh;overflow-y:auto">';
+  if(m.mode==='picker'){
+    html+='<h3 style="margin:0 0 12px;font-size:15px;font-weight:700;color:var(--ink)">Category Report</h3>';
+    if(!_categoriesCache){
+      html+='<div style="padding:12px;color:var(--muted)">Categories are still loading. Close this and try again in a moment.</div>';
+      html+='<div style="margin-top:14px;display:flex;justify-content:flex-end">'+closeBtn+'</div>';
+    }else{
+      var leaves=_catReportPickerCategories(m.monthIso);
+      if(!leaves.length){
+        html+='<div style="padding:12px;color:var(--muted)">No active categories available for reporting.</div>';
+        html+='<div style="margin-top:14px;display:flex;justify-content:flex-end">'+closeBtn+'</div>';
+      }else{
+        var catOpts=leaves.map(function(o){return '<option value="'+esc(o.key)+'">'+esc(o.label)+'</option>';}).join('');
+        var monthOpts=_budgetAvailableMonths().map(function(mo){return '<option value="'+esc(mo.iso)+'"'+(mo.iso===m.monthIso?' selected':'')+'>'+esc(mo.label)+'</option>';}).join('');
+        html+='<div style="display:flex;flex-direction:column;gap:10px">';
+        html+='<label style="font-size:12px;font-weight:600;color:var(--muted)">Category</label>';
+        html+='<select id="cat-report-category" class="modal-input">'+catOpts+'</select>';
+        html+='<label style="font-size:12px;font-weight:600;color:var(--muted)">Month</label>';
+        html+='<select id="cat-report-month" class="modal-input">'+monthOpts+'</select>';
+        html+='</div>';
+        html+='<div style="margin-top:16px;display:flex;justify-content:flex-end;gap:8px">';
+        html+='<button id="cat-report-view-btn" onclick="window.openCategoryReport(document.getElementById(\'cat-report-category\').value,document.getElementById(\'cat-report-month\').value)" style="font-family:inherit;font-size:12px;font-weight:600;padding:6px 14px;cursor:pointer;border:1px solid var(--blue);border-radius:6px;background:var(--blue);color:#fff">View Report</button>';
+        html+=closeBtn+'</div>';
+      }
+    }
+    html+='</div></div>';
+    slot.innerHTML=html;
+    return;
+  }
+  // report mode
+  html+='<div style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px;margin-bottom:12px">';
+  html+='<h3 style="margin:0;font-size:15px;font-weight:700;color:var(--ink)">'+esc(_getRegisterCategoryLabel(m.categoryKey,m.monthIso))+' \xb7 '+esc(_budgetMonthLabel(m.monthIso))+'</h3>';
+  html+=closeBtn+'</div>';
+  if(m.loadStatus==='loading'){
+    html+='<div style="padding:18px;color:var(--muted)">Loading transactions…</div>';
+  }else if(m.loadStatus==='failed'){
+    html+='<div style="padding:18px;color:var(--red)">'+esc(m.error||'Could not load transactions for this report.')+'</div>';
+  }else{
+    var sum=_computeCategoryReportSummary(m.rows);
+    if(m.truncated){
+      html+='<div style="margin-bottom:10px;padding:7px 11px;background:var(--amberSoft);border:1px solid #fde68a;border-radius:6px;font-size:12px;color:var(--amber)">Report may be incomplete: showing first 1,000 transactions. Totals below are not authoritative.</div>';
+    }
+    if(m.legacyCount>0){
+      html+='<div style="margin-bottom:10px;padding:7px 11px;background:var(--amberSoft);border:1px solid #fde68a;border-radius:6px;font-size:12px;color:var(--amber)">'+m.legacyCount+' legacy Budget entries for this month are not included in this Register transaction report.</div>';
+    }
+    var _sumCard=function(label,valHtml){return '<div style="flex:1;min-width:120px;padding:8px 10px;background:var(--surface2);border:1px solid var(--line);border-radius:7px"><div style="font-size:10px;text-transform:uppercase;letter-spacing:.05em;color:var(--muted)">'+label+'</div><div style="font-size:15px;font-weight:700;color:var(--ink)">'+valHtml+'</div></div>';};
+    html+='<div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px">'
+      +_sumCard('Net Spend'+(m.truncated?' (partial)':''),fSpent(sum.netSpend))
+      +_sumCard('Spending',f(sum.spending))
+      +_sumCard('Credits / Reimbursements',f(sum.credits))
+      +_sumCard('Count',String(sum.count))
+      +'</div>';
+    if(!m.rows.length){
+      html+='<div style="padding:18px;color:var(--muted);font-style:italic">No transactions for this category this month.</div>';
+    }else{
+      var thS='padding:7px 9px;font-size:10px;text-transform:uppercase;letter-spacing:.05em;color:var(--muted);font-weight:600;white-space:nowrap;text-align:left';
+      html+='<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:12px">'
+        +'<thead><tr style="background:var(--surface2)">'
+        +'<th style="'+thS+'">Date</th><th style="'+thS+'">Account</th><th style="'+thS+'">Payee</th>'
+        +'<th style="'+thS+'">Memo</th><th style="'+thS+'">Category</th><th style="'+thS+';text-align:center">Clr</th>'
+        +'<th style="'+thS+';text-align:right">Amount</th>'
+        +'</tr></thead><tbody>';
+      m.rows.forEach(function(t){
+        var a=parseFloat(t.amount); if(!isFinite(a))a=0;
+        var acct=(_accountsCache||[]).find(function(x){return x.key===t.account_key;});
+        var acctLabel=acct?acct.label:(t.account_key||'');
+        var tdS='padding:6px 9px;border-top:1px solid var(--line)';
+        html+='<tr>'
+          +'<td style="'+tdS+'">'+esc(t.transaction_date||'')+'</td>'
+          +'<td style="'+tdS+'">'+esc(acctLabel)+'</td>'
+          +'<td style="'+tdS+'">'+esc(t.payee||'')+'</td>'
+          +'<td style="'+tdS+'">'+esc(t.memo||'')+'</td>'
+          +'<td style="'+tdS+'">'+esc(_getRegisterCategoryLabel(t.category_key,m.monthIso))+'</td>'
+          +'<td style="'+tdS+';text-align:center">'+(t.cleared?'✓':'')+'</td>'
+          +'<td style="'+tdS+';text-align:right;color:'+(a>0?'var(--green)':'var(--ink)')+'">'+fsigned(a)+'</td>'
+          +'</tr>';
+      });
+      html+='</tbody></table></div>';
+    }
+  }
+  html+='</div></div>';
+  slot.innerHTML=html;
+}
+
 // Switch account in register — resets cache and triggers fresh fetch
 function setTxLedgerAccount(key){
   if(!key||key===_txLedgerAccountKey)return;
@@ -6533,6 +6723,8 @@ function renderBudget(){
     html+='<span style="font-size:11px;color:#ef4444;font-weight:600">⚠ No budget rules found — run phase-5b-seed.sql in Supabase</span>';
   }
   html+='<div style="margin-left:auto;display:flex;gap:8px;align-items:center">';
+  // A7a: read-only Category Report entry point. NOT gated on canWriteFinancials (Wendy-facing).
+  html+='<button onclick="window.openCategoryReportPicker()" style="padding:6px 12px;background:var(--surface2);color:var(--ink);border:1px solid var(--border);border-radius:6px;font-size:12px;font-weight:600;cursor:pointer">Category Report</button>';
   if(canWriteFinancials()){
     html+='<button onclick="window._blrOpenAdd(\''+monthIso+'\')" style="padding:6px 12px;background:var(--surface2);color:var(--ink);border:1px solid var(--border);border-radius:6px;font-size:12px;font-weight:600;cursor:pointer">Manage Lines</button>';
   }
