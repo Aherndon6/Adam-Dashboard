@@ -2419,16 +2419,11 @@ async function clickNav(page, id) {
     await context.close();
   });
 
-  await test('RG-12 (Phase 5E-10): uncleared rows display above cleared rows, with chronologically-correct running balances preserved (Wendy feedback #4)', async () => {
+  await test('RG-12 (Phase 5F-1.5, ex-5E-10): uncleared review uses the Status filter, preserving date order and full-ledger balances', async () => {
     const { page, context } = await openApp(browser);
-    // Chronological order: Kroger (cleared) -> Fandango (uncleared) -> Paycheck (cleared).
-    // Running balance (starting_balance: null -> starts at $0.00):
-    //   Kroger:   -100.00  -> balance -100.00
-    //   Fandango: -50.00   -> balance -150.00
-    //   Paycheck: +2000.00 -> balance 1850.00
-    // Expected DISPLAY order: Fandango (only uncleared row) first, then Kroger, then Paycheck
-    // (cleared group keeps its original chronological order) — each showing its balance from
-    // the chronological pass above, not a value recomputed from the new display position.
+    // Clr is status-only now; uncleared review is the Status = Uncleared filter, which keeps
+    // date order and shows each row's full-ledger balance (Fandango -150.00, not a subset -50.00).
+    // Chronological (start 0): Kroger -100 -> -100 ; Fandango -50 -> -150 ; Paycheck +2000 -> 1850.
     const sortTxns = [
       { id: 'rg12-1', account_key: 'truist_checking', transaction_date: '2026-06-01',
         payee: 'Kroger', memo: '', amount: -100.00, category_key: null,
@@ -2440,41 +2435,34 @@ async function clickNav(page, id) {
         payee: 'Paycheck', memo: '', amount: 2000.00, category_key: null,
         cleared: true, source: 'manual', created_at: '2026-06-10T10:00:00Z' }
     ];
-    const result = await page.evaluate(([mockAccounts, mockTxns]) => {
+    await page.evaluate(([mockAccounts, mockTxns]) => {
       FEATURE_FLAGS.showTransactionLedger = true;
-      _accountsCache = mockAccounts;
-      _categoriesCache = [];
-      _registriesLoadStatus = 'loaded';
-      _txLedgerLoadStatus = 'loaded';
-      _txLedgerCache = mockTxns;
-      _txLedgerAccountKey = 'truist_checking';
-      // Ledger hotfix: default is now date/desc. This test exercises the uncleared-first
-      // grouping, which is now reached via the Clr sort, so set it explicitly.
-      _txLedgerSortCol = 'cleared'; _txLedgerSortDir = 'asc';
-      renderApp();
-      setSection('transactions');
-      setTxSubNav('register');
-      var html = document.getElementById('transactions-content')?.innerHTML || '';
-      return {
-        html,
-        fandangoIdx: html.indexOf('Fandango'),
-        krogerIdx: html.indexOf('Kroger'),
-        paycheckIdx: html.indexOf('Paycheck')
-      };
+      _accountsCache = mockAccounts; _categoriesCache = [];
+      _registriesLoadStatus = 'loaded'; _txLedgerLoadStatus = 'loaded';
+      _txLedgerCache = mockTxns; _txLedgerAccountKey = 'truist_checking';
+      _txLedgerSortCol = 'date'; _txLedgerSortDir = 'desc'; // app default
+      _txFilterSearch = ''; _txFilterType = 'all'; _txFilterStatus = 'all'; _txFilterDateFrom = ''; _txFilterDateTo = '';
+      setSection('transactions'); setTxSubNav('register'); renderApp();
     }, [TX_MOCK_ACCOUNTS, sortTxns]);
-    assert(result.fandangoIdx > -1 && result.krogerIdx > -1 && result.paycheckIdx > -1,
-      'All three rows must render');
-    assert(result.fandangoIdx < result.krogerIdx,
-      'Uncleared row (Fandango) must display above cleared rows (Kroger)');
-    assert(result.krogerIdx < result.paycheckIdx,
-      'Within the cleared group, original chronological order must be preserved (Kroger before Paycheck)');
-    assert(result.html.includes('$-150.00'), 'Fandango (uncleared) must show its correct chronological balance of $-150.00, not a value recomputed from its new display position');
-    assert(result.html.includes('$-100.00'), 'Kroger must show its correct chronological balance of $-100.00');
-    assert(result.html.includes('$1850.00'), 'Paycheck must show its correct chronological balance of $1850.00');
+    // Apply Status = Uncleared via the real select control
+    await page.selectOption('#tx-filter-status', 'uncleared');
+    await page.waitForTimeout(60);
+    const result = await page.evaluate(() => {
+      var h = document.getElementById('transactions-content').innerHTML;
+      return {
+        hasFandango: h.indexOf('Fandango') !== -1, hasKroger: h.indexOf('Kroger') !== -1, hasPaycheck: h.indexOf('Paycheck') !== -1,
+        fandangoFullBal: h.indexOf('$-150.00') !== -1, fandangoSubsetBal: h.indexOf('$-50.00') !== -1,
+        filterCaption: h.indexOf('Balance reflects the full ledger') !== -1
+      };
+    });
+    assert(result.hasFandango && !result.hasKroger && !result.hasPaycheck, 'Status = Uncleared shows only the uncleared row (Fandango)');
+    assert(result.fandangoFullBal && !result.fandangoSubsetBal, 'the uncleared row keeps its full-ledger balance -150.00, not a subset -50.00');
+    assert(result.filterCaption, 'a filtered view shows the full-ledger caption');
+    await page.evaluate(() => { _txFilterStatus = 'all'; _txLedgerCache = null; _txLedgerLoadStatus = 'not_loaded'; });
     await context.close();
   });
 
-  await test('LEDGER-1 (Phase 5F-1.5): Register defaults to Quicken newest-first; balances are historical-after-transaction; Clr sort still works', async () => {
+  await test('LEDGER-1 (Phase 5F-1.5): Register defaults to Quicken newest-first; balances are historical-after-transaction; Clr is status-only, uncleared review via Status filter', async () => {
     const { page, context } = await openApp(browser);
     const txns = [
       { id:'lg1', account_key:'amex_gold', transaction_date:'2026-06-30', payee:'Foxtail',    memo:'', amount:-7.17,   category_key:null, cleared:true,  source:'manual', created_at:'2026-06-30T10:00:00Z' },
@@ -2502,16 +2490,23 @@ async function clickNav(page, id) {
     assert(def.iKroger < def.iDiablos && def.iDiablos < def.iFoxtail, 'default view is newest-first (Kroger 7/2, Diablos 7/1, Foxtail 6/30)');
     assert(def.krogerBal && def.diablosBal && def.foxtailBal, 'each row shows its historical balance after that transaction (-9035.41 / -9005.24 / -8255.24)');
     assert(def.startBal && def.iStart > def.iFoxtail, 'starting balance -8248.07 shows at the bottom (oldest end) in newest-first view');
-    // Clr sort still works: click the Clr header, uncleared (Diablos) moves to the top
-    await page.click('[data-sort-col="cleared"]');
-    await page.waitForTimeout(60);
-    const clr = await page.evaluate(() => {
+    // Clr is status-only: the header is not a sort control and does not reorder the register.
+    const clrHeader = await page.evaluate(() => {
       var h = document.getElementById('transactions-content').innerHTML;
-      return { iDiablos: h.indexOf('Diablos'), iKroger: h.indexOf('Kroger Gas'), iFoxtail: h.indexOf('Foxtail'), balsIntact: h.indexOf('$-9005.24') !== -1 };
+      return { clrNotSortable: h.indexOf('data-sort-col="cleared"') === -1, hasCheckbox: h.indexOf('_toggleTxCleared') !== -1 };
     });
-    assert(clr.iDiablos > -1 && clr.iDiablos < clr.iKroger && clr.iDiablos < clr.iFoxtail, 'clicking Clr sorts the uncleared row (Diablos) to the top');
-    assert(clr.balsIntact, 'balances remain intact after Clr sort (bal is never recomputed)');
-    await page.evaluate(() => { _txLedgerSortCol = 'date'; _txLedgerSortDir = 'desc'; _txLedgerCache = null; _txLedgerLoadStatus = 'not_loaded'; });
+    assert(clrHeader.clrNotSortable, 'Clr header is not a sort control (no data-sort-col=cleared)');
+    assert(clrHeader.hasCheckbox, 'Clr cell keeps the editable checkbox wired to _toggleTxCleared');
+    // Uncleared review via the Status filter keeps date order + full-ledger balances.
+    await page.selectOption('#tx-filter-status', 'uncleared');
+    await page.waitForTimeout(60);
+    const unc = await page.evaluate(() => {
+      var h = document.getElementById('transactions-content').innerHTML;
+      return { onlyDiablos: h.indexOf('Diablos') !== -1 && h.indexOf('Foxtail') === -1 && h.indexOf('Kroger Gas') === -1, diablosFullBal: h.indexOf('$-9005.24') !== -1 };
+    });
+    assert(unc.onlyDiablos, 'Status = Uncleared shows only the uncleared row (Diablos) in the ledger');
+    assert(unc.diablosFullBal, 'the uncleared row keeps its full-ledger balance -9005.24, not a subset value');
+    await page.evaluate(() => { _txFilterStatus = 'all'; _txLedgerSortCol = 'date'; _txLedgerSortDir = 'desc'; _txLedgerCache = null; _txLedgerLoadStatus = 'not_loaded'; });
     await context.close();
   });
 
@@ -2536,7 +2531,8 @@ async function clickNav(page, id) {
       _txLedgerLoadStatus = 'loaded';
       _txLedgerCache = mockTxns;
       _txLedgerAccountKey = 'truist_checking';
-      _txLedgerSortCol = 'cleared'; _txLedgerSortDir = 'asc'; // this test exercises the Clr sort explicitly (cleared/asc is no longer the app default)
+      // Use the app default (date/desc); do not set the sort here.
+      _txFilterSearch = ''; _txFilterType = 'all'; _txFilterStatus = 'all'; _txFilterDateFrom = ''; _txFilterDateTo = '';
       setSection('transactions');
       setTxSubNav('register');
       function snap() {
@@ -2548,27 +2544,25 @@ async function clickNav(page, id) {
           hasCaption: h.indexOf('Balance is shown as of each transaction date') !== -1
         };
       }
-      var def = snap();                         // cleared/asc (uncleared-first; set explicitly, not the app default)
-      setTxLedgerSort('cleared'); var clrDesc = snap(); // -> cleared/desc (cleared first)
-      setTxLedgerSort('cleared'); var clrAsc = snap();  // -> cleared/asc (uncleared first)
-      setTxLedgerSort('date');    var dateAsc = snap(); // -> date/asc (chronological)
+      var def = snap();                               // app default date/desc (newest-first)
+      setTxLedgerSort('payee'); var payeeSort = snap(); // non-date sort (payee asc)
+      setTxLedgerSort('date');  var dateSort = snap();  // date/asc
       // Restore the real app default (date/desc)
       _txLedgerSortCol = 'date'; _txLedgerSortDir = 'desc';
       _txLedgerCache = null; _txLedgerLoadStatus = 'not_loaded';
-      return { def, clrDesc, clrAsc, dateAsc };
+      return { def, payeeSort, dateSort };
     }, [TX_MOCK_ACCOUNTS, txns]);
-    // Default: uncleared (Fandango) first, caption shown (not Date-asc)
-    assert(r.def.fandango < r.def.kroger, 'default view must show uncleared (Fandango) above cleared rows');
-    assert(r.def.hasCaption, 'the cleared/asc view is a non-date sort, so the Balance caption must show');
-    // Clr desc: cleared rows first (Kroger and Paycheck before Fandango)
-    assert(r.clrDesc.kroger < r.clrDesc.fandango && r.clrDesc.paycheck < r.clrDesc.fandango, 'clicking Clr once must put cleared rows first');
-    // Clr asc again: uncleared first restored
-    assert(r.clrAsc.fandango < r.clrAsc.kroger, 'clicking Clr again must restore uncleared-first');
-    // Date asc: chronological order, caption hidden
-    assert(r.dateAsc.kroger < r.dateAsc.fandango && r.dateAsc.fandango < r.dateAsc.paycheck, 'Date sort must restore chronological order');
-    assert(!r.dateAsc.hasCaption, 'Date-ascending view must hide the Balance caption');
-    // Balance invariance: Fandango always shows its chronological $-150.00
-    assert(r.def.hasFandangoBal && r.clrDesc.hasFandangoBal && r.clrAsc.hasFandangoBal && r.dateAsc.hasFandangoBal,
+    // Default date/desc: newest-first (Paycheck 6/10, Fandango 6/5, Kroger 6/1); caption hidden
+    assert(r.def.paycheck < r.def.fandango && r.def.fandango < r.def.kroger, 'default view is newest-first (date desc)');
+    assert(!r.def.hasCaption, 'the date sort default hides the Balance caption');
+    // Payee sort (a remaining sortable column): alphabetical, caption shown, balances preserved
+    assert(r.payeeSort.fandango < r.payeeSort.kroger && r.payeeSort.kroger < r.payeeSort.paycheck, 'clicking Payee sorts alphabetically');
+    assert(r.payeeSort.hasCaption, 'a non-date sort shows the Balance caption');
+    // Back to Date: caption hidden again, chronological (asc) order
+    assert(r.dateSort.kroger < r.dateSort.fandango && r.dateSort.fandango < r.dateSort.paycheck, 'Date sort restores chronological order');
+    assert(!r.dateSort.hasCaption, 'a date sort hides the Balance caption');
+    // Balance invariance: Fandango always shows its chronological $-150.00 across sorts
+    assert(r.def.hasFandangoBal && r.payeeSort.hasFandangoBal && r.dateSort.hasFandangoBal,
       "Fandango's chronological balance $-150.00 must be identical across every sort");
     await context.close();
   });
@@ -2586,7 +2580,7 @@ async function clickNav(page, id) {
       _accountsCache = mockAccounts; _categoriesCache = [];
       _registriesLoadStatus = 'loaded'; _txLedgerLoadStatus = 'loaded';
       _txLedgerCache = mockTxns; _txLedgerAccountKey = 'truist_checking';
-      _txLedgerSortCol = 'cleared'; _txLedgerSortDir = 'asc';
+      _txLedgerSortCol = 'date'; _txLedgerSortDir = 'desc'; // app default (Quicken ledger); filters are exercised under it
       _txFilterSearch = ''; _txFilterType = 'all'; _txFilterStatus = 'all';
       setSection('transactions'); setTxSubNav('register'); renderApp();
     }, [TX_MOCK_ACCOUNTS, txns]);
@@ -2611,6 +2605,13 @@ async function clickNav(page, id) {
     await page.selectOption('#tx-filter-status', 'uncleared');
     const statusUncleared = await snap();
     assert(statusUncleared.fandango && statusUncleared.shell && !statusUncleared.kroger && !statusUncleared.employer, 'selecting Status=Uncleared must show only uncleared rows');
+    // Under the date/desc default, the visible uncleared rows stay newest-first (Shell 6/12 before Fandango 6/5)
+    const unclearedOrder = await page.evaluate(() => {
+      var h = document.getElementById('transactions-content').innerHTML;
+      return { iShell: h.indexOf('Shell'), iFandango: h.indexOf('Fandango') };
+    });
+    assert(unclearedOrder.iShell > -1 && unclearedOrder.iFandango > -1 && unclearedOrder.iShell < unclearedOrder.iFandango,
+      'Status=Uncleared preserves the date/desc ledger order (Shell 2026-06-12 before Fandango 2026-06-05)');
     // Reset Status, then Type = Inflow via the actual select control
     await page.selectOption('#tx-filter-status', 'all');
     await page.selectOption('#tx-filter-type', 'inflow');
@@ -2650,7 +2651,7 @@ async function clickNav(page, id) {
       _accountsCache = mockAccounts; _categoriesCache = [];
       _registriesLoadStatus = 'loaded'; _txLedgerLoadStatus = 'loaded';
       _txLedgerCache = mockTxns; _txLedgerAccountKey = 'truist_checking';
-      _txLedgerSortCol = 'cleared'; _txLedgerSortDir = 'asc';
+      _txLedgerSortCol = 'date'; _txLedgerSortDir = 'desc'; // app default (Quicken ledger); filters are exercised under it
       _txFilterSearch = ''; _txFilterType = 'all'; _txFilterStatus = 'all';
       _txFilterDateFrom = ''; _txFilterDateTo = '';
       setSection('transactions'); setTxSubNav('register'); renderApp();

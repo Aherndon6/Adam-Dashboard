@@ -7732,19 +7732,19 @@ test('5E10-08: Register payee input is marked required in the UI (label + placeh
   assertIncludes(registerFnSrc,"inp('payee','Required'",'Payee input placeholder must read Required, not Optional');
 });
 
-test('5E10-09: Register pipeline is chronological-ledger -> filter -> sort; default is Quicken date/desc; uncleared-first remains available via the Clr sort',()=>{
+test('5E10-09: Register pipeline is chronological-ledger -> filter -> sort; default is Quicken date/desc; uncleared review is via the Status filter (Clr is status-only)',()=>{
   assertIncludes(registerFnSrc,'rowsWithBalance','Register must compute a chronological balance-attached array before any display sort');
   assertIncludes(registerFnSrc,'filteredRows=_filterTxRows(rowsWithBalance','Register must filter the chronological array before sorting (A9a)');
   assertIncludes(registerFnSrc,'displayRows=_sortTxRows(filteredRows','Register must produce the display order via _sortTxRows over the filtered chronological array');
-  // Ledger hotfix: default is Quicken newest-first (date/desc). Uncleared-first is no longer
-  // the default but remains available via the Clr column (comparator still in _sortTxRows).
+  // Ledger hotfix: default is Quicken newest-first (date/desc). Clr is status-only (not a header
+  // sort); uncleared review is the Status filter. The cleared comparator below is dormant/defensive
+  // only (no header exposes it), left in place so programmatic state cannot crash the sort.
   assertIncludes(html,"_txLedgerSortCol='date'","default Register sort column must be 'date' (Quicken-style ledger)");
   assertIncludes(html,"_txLedgerSortDir='desc'","default Register sort direction must be 'desc' (newest-first)");
-  // The uncleared-first comparator still lives in the pure _sortTxRows helper (Clr sort).
   var sIdx=html.indexOf('function _sortTxRows(');
   assert(sIdx>-1,'_sortTxRows helper must exist');
   var sBlock=html.slice(sIdx,sIdx+1600);
-  assertIncludes(sBlock,'(a.tx.cleared?1:0)-(b.tx.cleared?1:0)','uncleared-first comparator (asc => uncleared before cleared) must live in _sortTxRows');
+  assertIncludes(sBlock,'(a.tx.cleared?1:0)-(b.tx.cleared?1:0)','dormant/defensive cleared comparator remains in _sortTxRows (not user-facing)');
 });
 
 test('5E10-10: running balance is precomputed in original chronological order and never recomputed after the display sort',()=>{
@@ -10472,13 +10472,19 @@ test('5F15-A6-08: bal is never recomputed by sorting and the input array is not 
   res.forEach(function(e){assertApprox(e.bal,expected[e.chronIdx],'bal for chronIdx '+e.chronIdx+' must be unchanged by sorting');});
   assert(js(ord(rows))===js([0,1,2,3]),'input rowsWithBalance array must not be mutated');
 });
-test('5F15-A6-09: sortable headers are clickable with data-sort-col; Memo/Balance/actions are not sort controls',()=>{
+test('5F15-A6-09: sortable headers are exactly Date/Payee/Category/Outflow/Inflow; Clr/Memo/Balance/actions are not sort controls',()=>{
   var fnIdx=html.indexOf('function _renderTxRegister');
   var fnBlock=html.slice(fnIdx,html.indexOf('function renderTransactions()'));
-  ['date','payee','category','outflow','inflow','cleared'].forEach(function(c){
-    assertIncludes(fnBlock,'thSort(\''+({date:'Date',payee:'Payee',category:'Category',outflow:'Outflow',inflow:'Inflow',cleared:'Clr'})[c]+'\',\''+c+'\'','header for '+c+' must be a sortable thSort control');
+  ['date','payee','category','outflow','inflow'].forEach(function(c){
+    assertIncludes(fnBlock,'thSort(\''+({date:'Date',payee:'Payee',category:'Category',outflow:'Outflow',inflow:'Inflow'})[c]+'\',\''+c+'\'','header for '+c+' must be a sortable thSort control');
   });
   assertIncludes(fnBlock,"data-sort-col=","sortable headers must carry a data-sort-col attribute for tests/stability");
+  // Clr is a status-only column (Quicken): non-sortable header, no data-sort-col, no header sort path.
+  assert(fnBlock.indexOf("thSort('Clr'")===-1,'Clr header must NOT be a sortable thSort control');
+  assert(fnBlock.indexOf('data-sort-col="cleared"')===-1,'Clr header must not carry data-sort-col="cleared"');
+  assert(fnBlock.indexOf("setTxLedgerSort('cleared')")===-1,'no user-facing Clr header path may call setTxLedgerSort(cleared)');
+  assertIncludes(fnBlock,'Cleared status; edit via the checkbox, filter with Status','Clr header title explains status-only + Status filter');
+  assertIncludes(fnBlock,'_toggleTxCleared','Clr cell keeps the editable cleared checkbox wired to _toggleTxCleared');
   assertIncludes(fnBlock,"th('Memo')","Memo header must be a plain (non-sortable) th");
   assertIncludes(fnBlock,"th('Balance','right')","Balance header must be a plain (non-sortable) th");
   assert(fnBlock.indexOf("setTxLedgerSort('balance')")===-1,'Balance must never be wired to setTxLedgerSort');
@@ -10545,10 +10551,14 @@ test('5F15-LEDGER-06: sorting never recomputes bal; a non-date sort keeps balanc
   // non-date sort (payee) keeps each row bal
   _sortTxRows(rows,'payee','asc').forEach(function(e){assertApprox(e.bal,expected[e.chronIdx],'bal preserved through payee sort');});
 });
-test('5F15-LEDGER-07: Clr sort remains available and the starting-balance row moves to the bottom for date desc',()=>{
+test('5F15-LEDGER-07: Clr is status-only (not header-sortable); the cleared comparator remains dormant; starting-balance row moves to the bottom for date desc',()=>{
   var fnIdx=html.indexOf('function _renderTxRegister');
   var fnBlock=html.slice(fnIdx,html.indexOf('function renderTransactions()'));
-  assertIncludes(fnBlock,"thSort('Clr','cleared','center')",'Clr column remains a sortable control (uncleared-first still one click away)');
+  assert(fnBlock.indexOf("thSort('Clr'")===-1,'Clr must not be a header sort control (status-only, Quicken)');
+  assertIncludes(fnBlock,'_toggleTxCleared','Clr cell keeps its editable checkbox');
+  // The cleared comparator stays in _sortTxRows as dormant defensive code (no header exposes it).
+  var sIdx=html.indexOf('function _sortTxRows(');
+  assertIncludes(html.slice(sIdx,sIdx+1600),'(a.tx.cleared?1:0)-(b.tx.cleared?1:0)','dormant cleared comparator remains for defensive/programmatic use');
   assertIncludes(fnBlock,"var _startAtBottom=(_txLedgerSortCol==='date'&&_txLedgerSortDir==='desc')",'starting-balance row placement is gated on the newest-first view');
   assertIncludes(fnBlock,'if(!_startAtBottom)tbl+=_startRowHtml','starting-balance row anchors the top for asc/non-date views');
   assertIncludes(fnBlock,'if(_startAtBottom)tbl+=_startRowHtml','starting-balance row moves to the bottom (oldest end) for date desc');
