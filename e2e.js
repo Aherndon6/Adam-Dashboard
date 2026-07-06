@@ -2593,6 +2593,61 @@ async function clickNav(page, id) {
     await context.close();
   });
 
+  await test('A9-2 (Phase 5F-1.5 A9b): Register inclusive Date From/To filters via the actual controls; account label shows; Clear resets dates', async () => {
+    const { page, context } = await openApp(browser);
+    const txns = [
+      { id: 'a9b-1', account_key: 'truist_checking', transaction_date: '2026-06-01', payee: 'Kroger',   memo: '', amount: -100.00, category_key: null, cleared: true,  source: 'manual', created_at: '2026-06-01T10:00:00Z' },
+      { id: 'a9b-2', account_key: 'truist_checking', transaction_date: '2026-06-05', payee: 'Fandango', memo: '', amount: -50.00,  category_key: null, cleared: false, source: 'manual', created_at: '2026-06-05T10:00:00Z' },
+      { id: 'a9b-3', account_key: 'truist_checking', transaction_date: '2026-06-10', payee: 'Employer', memo: '', amount: 2000.00, category_key: null, cleared: true,  source: 'manual', created_at: '2026-06-10T10:00:00Z' },
+      { id: 'a9b-4', account_key: 'truist_checking', transaction_date: '2026-06-12', payee: 'Shell',    memo: '', amount: -40.00,  category_key: null, cleared: false, source: 'manual', created_at: '2026-06-12T10:00:00Z' }
+    ];
+    await page.evaluate(([mockAccounts, mockTxns]) => {
+      FEATURE_FLAGS.showTransactionLedger = true;
+      _accountsCache = mockAccounts; _categoriesCache = [];
+      _registriesLoadStatus = 'loaded'; _txLedgerLoadStatus = 'loaded';
+      _txLedgerCache = mockTxns; _txLedgerAccountKey = 'truist_checking';
+      _txLedgerSortCol = 'cleared'; _txLedgerSortDir = 'asc';
+      _txFilterSearch = ''; _txFilterType = 'all'; _txFilterStatus = 'all';
+      _txFilterDateFrom = ''; _txFilterDateTo = '';
+      setSection('transactions'); setTxSubNav('register'); renderApp();
+    }, [TX_MOCK_ACCOUNTS, txns]);
+    async function snap() {
+      return await page.evaluate(() => {
+        var h = document.getElementById('transactions-content')?.innerHTML || '';
+        return {
+          kroger: h.indexOf('Kroger') !== -1, fandango: h.indexOf('Fandango') !== -1,
+          employer: h.indexOf('Employer') !== -1, shell: h.indexOf('Shell') !== -1,
+          employerFullBal: h.indexOf('$1850.00') !== -1, employerSubsetBal: h.indexOf('$1950.00') !== -1,
+          filteredEmpty: h.indexOf('No transactions match the current filters') !== -1,
+          acctLabel: h.indexOf('Selected account:') !== -1, acctName: h.indexOf('Truist Checking') !== -1,
+          dateFromVal: document.getElementById('tx-filter-date-from') ? document.getElementById('tx-filter-date-from').value : 'MISSING',
+          dateToVal: document.getElementById('tx-filter-date-to') ? document.getElementById('tx-filter-date-to').value : 'MISSING'
+        };
+      });
+    }
+    // Default: account context label shows the selected account name
+    const def = await snap();
+    assert(def.acctLabel && def.acctName, 'selected-account context label must show the account name');
+    // Inclusive range 06-05..06-10 via the real date inputs (fill + explicit change dispatch)
+    await page.fill('#tx-filter-date-from', '2026-06-05'); await page.dispatchEvent('#tx-filter-date-from', 'change');
+    await page.fill('#tx-filter-date-to', '2026-06-10');   await page.dispatchEvent('#tx-filter-date-to', 'change');
+    const ranged = await snap();
+    assert(ranged.fandango && ranged.employer && !ranged.kroger && !ranged.shell, 'inclusive range 06-05..06-10 must show only Fandango (06-05) and Employer (06-10)');
+    assert(ranged.employerFullBal && !ranged.employerSubsetBal, 'a date-filtered row must keep its full-ledger balance $1850.00, not a subset-recomputed $1950.00');
+    // From > To must yield the filtered empty state (no auto-swap)
+    await page.fill('#tx-filter-date-from', '2026-06-12'); await page.dispatchEvent('#tx-filter-date-from', 'change');
+    await page.fill('#tx-filter-date-to', '2026-06-01');   await page.dispatchEvent('#tx-filter-date-to', 'change');
+    const inverted = await snap();
+    assert(inverted.filteredEmpty, 'From > To must show the filtered empty state (no rows, no auto-swap)');
+    // Clear filters via the actual button; date inputs must visibly clear
+    await page.click('#tx-clear-filters');
+    const cleared = await snap();
+    assert(cleared.kroger && cleared.fandango && cleared.employer && cleared.shell, 'Clear filters must restore all rows');
+    assert(cleared.dateFromVal === '' && cleared.dateToVal === '', 'date inputs must visibly clear after Clear filters');
+    await page.evaluate(() => { _txFilterDateFrom=''; _txFilterDateTo=''; _txFilterSearch=''; _txFilterType='all'; _txFilterStatus='all'; _txLedgerCache=null; _txLedgerLoadStatus='not_loaded'; });
+    await context.close();
+  });
+
   await test('RG-11: cleared transaction shows checked checkbox in Clr column (updated in 5E-2)', async () => {
     const { page, context } = await openApp(browser);
     const result = await page.evaluate(([mockAccounts, mockTxns]) => {

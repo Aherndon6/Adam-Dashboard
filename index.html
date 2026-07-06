@@ -858,7 +858,7 @@ button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-vis
 // ── Constants (unchanged) ──────────────────────────────────────────────────
 // Simplified architecture — $8,250 total from LC · $6,500 operating floor · no legacy mechanics
 // Real-world moves: keep $2,250 in chk, move $2,750 sav→chk, move $1,000 LC→chk, move $2,250 LC→chk (Option 1 correction)
-const BUILD_TS='2026-07-05T20:15:49'; // updated each push — local time string
+const BUILD_TS='2026-07-05T20:37:52'; // updated each push — local time string
 const START_CHK=18037.73,START_SAV=3772.77,START_AMX=103.64,START_TAX=0,START_LC=13488.88;
 const EF_AMT=13488.88; // LC/EF balance — static this model year (no transfers in or out)
 const BASE_TAX=521.36,RET_SAV_XFR=3772.74;
@@ -5377,6 +5377,9 @@ var _txLedgerSortDir='asc';          // 'asc'|'desc'
 var _txFilterSearch='';              // substring over payee, memo, resolved category label
 var _txFilterType='all';             // 'all'|'outflow'|'inflow'
 var _txFilterStatus='all';           // 'all'|'cleared'|'uncleared'
+// Phase 5F-1.5 A9b: inclusive date range (YYYY-MM-DD or blank=open-ended). Lexical compare only.
+var _txFilterDateFrom='';
+var _txFilterDateTo='';
 
 // ── Phase 5E-2: Write state ────────────────────────────────────────────────
 var _txFormMode=null;          // null | 'add' | 'edit'
@@ -5431,15 +5434,17 @@ function _sortTxRows(rowsWithBalance, col, dir){
 
 // Phase 5F-1.5 A9a: Register filter state accessors/mutators. Setters only update
 // in-memory state and re-render; they never fetch, reload, or mutate transactions.
-function _getTxFilterState(){return {search:_txFilterSearch,type:_txFilterType,status:_txFilterStatus};}
-function _txFiltersActive(){return !!String(_txFilterSearch||'').trim()||_txFilterType!=='all'||_txFilterStatus!=='all';}
+function _getTxFilterState(){return {search:_txFilterSearch,type:_txFilterType,status:_txFilterStatus,dateFrom:_txFilterDateFrom,dateTo:_txFilterDateTo};}
+function _txFiltersActive(){return !!String(_txFilterSearch||'').trim()||_txFilterType!=='all'||_txFilterStatus!=='all'||!!String(_txFilterDateFrom||'')||!!String(_txFilterDateTo||'');}
 function setTxFilter(field,value){
   if(field==='search')_txFilterSearch=value;
   else if(field==='type')_txFilterType=value;
   else if(field==='status')_txFilterStatus=value;
+  else if(field==='dateFrom')_txFilterDateFrom=value;
+  else if(field==='dateTo')_txFilterDateTo=value;
   renderApp();
 }
-function clearTxFilters(){_txFilterSearch='';_txFilterType='all';_txFilterStatus='all';renderApp();}
+function clearTxFilters(){_txFilterSearch='';_txFilterType='all';_txFilterStatus='all';_txFilterDateFrom='';_txFilterDateTo='';renderApp();}
 
 // Phase 5F-1.5 A9a: pure filter over the chronological rowsWithBalance array. Returns a
 // matching subset with each entry's bal untouched (Balance stays full-ledger/as-of-date).
@@ -5450,6 +5455,8 @@ function _filterTxRows(rowsWithBalance, f){
   f=f||{};
   var q=String(f.search||'').trim().toLowerCase();
   var type=f.type||'all', status=f.status||'all';
+  var from=String(f.dateFrom||''), to=String(f.dateTo||'');
+  var hasDateFilter=!!from||!!to; // A9b: inclusive YYYY-MM-DD lexical range
   return (rowsWithBalance||[]).filter(function(e){
     var tx=e.tx;
     if(q){
@@ -5461,6 +5468,12 @@ function _filterTxRows(rowsWithBalance, f){
     if(type==='inflow'&&!(amt>0))return false;
     if(status==='cleared'&&tx.cleared!==true)return false;
     if(status==='uncleared'&&tx.cleared===true)return false;
+    if(hasDateFilter){
+      var d=String(tx.transaction_date||'');
+      if(!/^\d{4}-\d{2}-\d{2}$/.test(d))return false; // blank/invalid date excluded when filtering by date
+      if(from&&d<from)return false;                   // inclusive lower bound
+      if(to&&d>to)return false;                        // inclusive upper bound (from>to yields no rows)
+    }
     return true;
   });
 }
@@ -6162,6 +6175,12 @@ function _renderTxRegister(){
       +'<option value="cleared"'+_selV(_txFilterStatus,'cleared')+'>Cleared</option>'
       +'<option value="uncleared"'+_selV(_txFilterStatus,'uncleared')+'>Uncleared</option>'
       +'</select>'
+      +'<label style="font-size:11px;color:var(--muted);white-space:nowrap">From</label>'
+      +'<input id="tx-filter-date-from" type="date" value="'+_esc(_txFilterDateFrom)+'" onchange="setTxFilter(\'dateFrom\',this.value)" '
+      +'style="font-family:inherit;font-size:13px;padding:4px 6px;border:1px solid var(--line);border-radius:6px;background:var(--surface);color:var(--text)">'
+      +'<label style="font-size:11px;color:var(--muted);white-space:nowrap">To</label>'
+      +'<input id="tx-filter-date-to" type="date" value="'+_esc(_txFilterDateTo)+'" onchange="setTxFilter(\'dateTo\',this.value)" '
+      +'style="font-family:inherit;font-size:13px;padding:4px 6px;border:1px solid var(--line);border-radius:6px;background:var(--surface);color:var(--text)">'
       +(_filtersOn?'<button id="tx-clear-filters" onclick="clearTxFilters()" style="font-family:inherit;font-size:12px;font-weight:600;padding:5px 10px;cursor:pointer;border:1px solid var(--line);border-radius:6px;background:var(--surface);color:var(--muted)">Clear filters</button>':'')
       +'<span style="flex:1"></span>'
       +'<span style="font-size:11px;color:var(--muted)">Showing '+filteredRows.length+' of '+rows.length+' transactions</span>'
@@ -6174,8 +6193,10 @@ function _renderTxRegister(){
       :((_txLedgerSortCol==='date'&&_txLedgerSortDir==='asc')?''
         :'<div class="tx-bal-caption" style="'+_capStyle+'">Balance is shown as of each transaction date, not recalculated in sorted order.</div>');
 
+    // A9b: display-only selected-account context label (reads existing selAcct; no state change).
+    var _acctLabel=selAcct?'<div style="padding:8px 16px 0;font-size:12px;color:var(--muted)">Selected account: <strong style="color:var(--ink)">'+_esc(selAcct.label)+'</strong></div>':'';
     // Extra columns: edit and delete actions
-    var tbl=filterRow+_balCaption+'<table style="width:100%;border-collapse:collapse;font-size:13px">'
+    var tbl=_acctLabel+filterRow+_balCaption+'<table style="width:100%;border-collapse:collapse;font-size:13px">'
       +'<thead><tr style="background:var(--surface2);text-align:left">'
       +thSort('Date','date')+thSort('Payee','payee')+th('Memo')+thSort('Category','category')
       +thSort('Outflow','outflow','right')+thSort('Inflow','inflow','right')

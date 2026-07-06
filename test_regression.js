@@ -10584,6 +10584,85 @@ test('5F15-A9a-13: caption has a filter-active branch (stronger) and a sort-off-
 });
 })();
 
+// A9b (Wendy item): inclusive Date From/To filters (lexical YYYY-MM-DD, no Date parsing)
+// plus a display-only selected-account context label. Builds on the A9a filter engine.
+(function(){
+function mkDatedRows(){
+  return [
+    {tx:{payee:'A',memo:'',amount:-100,cleared:true, transaction_date:'2026-06-01'},bal:-100,chronIdx:0,catDisplay:'Groceries'},
+    {tx:{payee:'B',memo:'',amount:-50, cleared:false,transaction_date:'2026-06-05'},bal:-150,chronIdx:1,catDisplay:'Entertainment'},
+    {tx:{payee:'C',memo:'',amount:2000,cleared:true, transaction_date:'2026-06-10'},bal:1850,chronIdx:2,catDisplay:'Net Salary'},
+    {tx:{payee:'D',memo:'',amount:-40, cleared:false,transaction_date:'2026-06-12'},bal:1810,chronIdx:3,catDisplay:'Auto'}
+  ];
+}
+function ord(res){return res.map(function(e){return e.chronIdx;});}
+function js(a){return JSON.stringify(a);}
+
+test('5F15-A9b-01: from-only is inclusive of the boundary date',()=>{
+  assert(js(ord(_filterTxRows(mkDatedRows(),{dateFrom:'2026-06-05'})))===js([1,2,3]),'from=06-05 keeps 06-05 and later (boundary included)');
+});
+test('5F15-A9b-02: to-only is inclusive of the boundary date',()=>{
+  assert(js(ord(_filterTxRows(mkDatedRows(),{dateTo:'2026-06-10'})))===js([0,1,2]),'to=06-10 keeps 06-10 and earlier (boundary included)');
+});
+test('5F15-A9b-03: both bounds inclusive',()=>{
+  assert(js(ord(_filterTxRows(mkDatedRows(),{dateFrom:'2026-06-05',dateTo:'2026-06-10'})))===js([1,2]),'inclusive range 06-05..06-10');
+});
+test('5F15-A9b-04: blank bounds are open-ended',()=>{
+  assert(js(ord(_filterTxRows(mkDatedRows(),{dateFrom:'',dateTo:''})))===js([0,1,2,3]),'both blank keeps all');
+  assert(js(ord(_filterTxRows(mkDatedRows(),{dateFrom:'2026-06-10'})))===js([2,3]),'blank To is open-ended upward');
+  assert(js(ord(_filterTxRows(mkDatedRows(),{dateTo:'2026-06-05'})))===js([0,1]),'blank From is open-ended downward');
+});
+test('5F15-A9b-05: From > To returns [] (no auto-swap)',()=>{
+  assert(js(ord(_filterTxRows(mkDatedRows(),{dateFrom:'2026-06-12',dateTo:'2026-06-01'})))===js([]),'from>to yields no rows');
+});
+test('5F15-A9b-06: blank/invalid transaction_date is excluded when a date filter is active, kept otherwise',()=>{
+  var withBad=mkDatedRows().concat([{tx:{payee:'E',memo:'',amount:-5,cleared:true,transaction_date:''},bal:1805,chronIdx:4,catDisplay:'Misc'}]);
+  assert(js(ord(_filterTxRows(withBad,{})))===js([0,1,2,3,4]),'blank-date row kept when no date filter active');
+  assert(js(ord(_filterTxRows(withBad,{dateFrom:'2026-06-01'})))===js([0,1,2,3]),'blank/invalid date excluded once a date filter is active');
+  var withBad2=mkDatedRows().concat([{tx:{payee:'F',memo:'',amount:-5,cleared:true,transaction_date:'06/13/2026'},bal:1805,chronIdx:5,catDisplay:'Misc'}]);
+  assert(js(ord(_filterTxRows(withBad2,{dateTo:'2026-12-31'})))===js([0,1,2,3]),'non-ISO date excluded when a date filter is active');
+});
+test('5F15-A9b-07: date filters combine with search/type/status via AND',()=>{
+  // from 06-05 AND outflow -> B(06-05,-50) and D(06-12,-40); C is inflow, excluded
+  assert(js(ord(_filterTxRows(mkDatedRows(),{dateFrom:'2026-06-05',type:'outflow'})))===js([1,3]),'date + type AND');
+});
+test('5F15-A9b-08: bal is unchanged on date-matched rows',()=>{
+  var expected={1:-150,2:1850};
+  _filterTxRows(mkDatedRows(),{dateFrom:'2026-06-05',dateTo:'2026-06-10'}).forEach(function(e){
+    assertApprox(e.bal,expected[e.chronIdx],'bal for chronIdx '+e.chronIdx+' unchanged by date filter');
+  });
+});
+test('5F15-A9b-09: _txFiltersActive is true when only a date bound is set',()=>{
+  var s=_txFilterSearch,t=_txFilterType,st=_txFilterStatus,df=_txFilterDateFrom,dt=_txFilterDateTo;
+  try{
+    _txFilterSearch='';_txFilterType='all';_txFilterStatus='all';_txFilterDateFrom='';_txFilterDateTo='';
+    assert(_txFiltersActive()===false,'no filters active by default');
+    _txFilterDateFrom='2026-06-01';assert(_txFiltersActive()===true,'dateFrom makes filters active');
+    _txFilterDateFrom='';_txFilterDateTo='2026-06-30';assert(_txFiltersActive()===true,'dateTo makes filters active');
+    assert(_getTxFilterState().dateTo==='2026-06-30','_getTxFilterState exposes dateTo');
+  }finally{_txFilterSearch=s;_txFilterType=t;_txFilterStatus=st;_txFilterDateFrom=df;_txFilterDateTo=dt;}
+});
+test('5F15-A9b-10: clearTxFilters resets dateFrom/dateTo along with search/type/status',()=>{
+  var s=_txFilterSearch,t=_txFilterType,st=_txFilterStatus,df=_txFilterDateFrom,dt=_txFilterDateTo;
+  try{
+    _txFilterSearch='x';_txFilterType='inflow';_txFilterStatus='cleared';_txFilterDateFrom='2026-06-01';_txFilterDateTo='2026-06-30';
+    clearTxFilters();
+    assert(_txFilterSearch===''&&_txFilterType==='all'&&_txFilterStatus==='all'&&_txFilterDateFrom===''&&_txFilterDateTo==='','clearTxFilters resets all five filters');
+  }finally{_txFilterSearch=s;_txFilterType=t;_txFilterStatus=st;_txFilterDateFrom=df;_txFilterDateTo=dt;}
+});
+test('5F15-A9b-11: date controls and account context label render with stable ids/source',()=>{
+  var fnIdx=html.indexOf('function _renderTxRegister');
+  var fnBlock=html.slice(fnIdx,html.indexOf('function renderTransactions()'));
+  assertIncludes(fnBlock,'id="tx-filter-date-from"','From date input has a stable id');
+  assertIncludes(fnBlock,"setTxFilter(\\'dateFrom\\',this.value)",'From date input wired to setTxFilter');
+  assertIncludes(fnBlock,'id="tx-filter-date-to"','To date input has a stable id');
+  assertIncludes(fnBlock,"setTxFilter(\\'dateTo\\',this.value)",'To date input wired to setTxFilter');
+  assertIncludes(fnBlock,'type="date"','date inputs use native date controls');
+  assertIncludes(fnBlock,'Selected account:','account context label present');
+  assertIncludes(fnBlock,'selAcct?','account context label is gated on selAcct (renders nothing when null)');
+});
+})();
+
 // ─────────────────────────────────────────────────────────────────────────
 console.log('\n╔══════════════════════════════════════════════════════════════╗');
 console.log('║                       RESULTS                               ║');
