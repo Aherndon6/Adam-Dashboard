@@ -2421,8 +2421,9 @@ async function clickNav(page, id) {
 
   await test('RG-12 (Phase 5F-1.5, ex-5E-10): uncleared review uses the Status filter, preserving date order and full-ledger balances', async () => {
     const { page, context } = await openApp(browser);
-    // Clr is status-only now; uncleared review is the Status = Uncleared filter, which keeps
-    // date order and shows each row's full-ledger balance (Fandango -150.00, not a subset -50.00).
+    // The default view is the reconcile CL view; here we explicitly pin date/desc to isolate the
+    // Status = Uncleared filter, which keeps date order and shows each row's full-ledger balance
+    // (Fandango -150.00, not a subset -50.00).
     // Chronological (start 0): Kroger -100 -> -100 ; Fandango -50 -> -150 ; Paycheck +2000 -> 1850.
     const sortTxns = [
       { id: 'rg12-1', account_key: 'truist_checking', transaction_date: '2026-06-01',
@@ -2440,7 +2441,7 @@ async function clickNav(page, id) {
       _accountsCache = mockAccounts; _categoriesCache = [];
       _registriesLoadStatus = 'loaded'; _txLedgerLoadStatus = 'loaded';
       _txLedgerCache = mockTxns; _txLedgerAccountKey = 'truist_checking';
-      _txLedgerSortCol = 'date'; _txLedgerSortDir = 'desc'; // app default
+      _txLedgerSortCol = 'date'; _txLedgerSortDir = 'desc'; // pinned date/desc (not the app default) to isolate the Status filter
       _txFilterSearch = ''; _txFilterType = 'all'; _txFilterStatus = 'all'; _txFilterDateFrom = ''; _txFilterDateTo = '';
       setSection('transactions'); setTxSubNav('register'); renderApp();
     }, [TX_MOCK_ACCOUNTS, sortTxns]);
@@ -2462,55 +2463,128 @@ async function clickNav(page, id) {
     await context.close();
   });
 
-  await test('LEDGER-1 (Phase 5F-1.5): Register defaults to Quicken newest-first; balances are historical-after-transaction; Clr is status-only, uncleared review via Status filter', async () => {
+  await test('LEDGER-1 (Phase 5F-1.5 A10): Register defaults to the Quicken CL reconciliation view — uncleared on top, cleared below, newest-first within each group, full-ledger balances, starting balance at bottom', async () => {
     const { page, context } = await openApp(browser);
+    // Wendy clean fixture (start 0): two older cleared, two newer uncleared.
+    // chronological balances: Old Cleared A -100, Old Cleared B -150, New Uncleared A -170, New Uncleared B -200.
     const txns = [
-      { id:'lg1', account_key:'amex_gold', transaction_date:'2026-06-30', payee:'Foxtail',    memo:'', amount:-7.17,   category_key:null, cleared:true,  source:'manual', created_at:'2026-06-30T10:00:00Z' },
-      { id:'lg2', account_key:'amex_gold', transaction_date:'2026-07-01', payee:'Diablos',    memo:'', amount:-750.00, category_key:null, cleared:false, source:'manual', created_at:'2026-07-01T10:00:00Z' },
-      { id:'lg3', account_key:'amex_gold', transaction_date:'2026-07-02', payee:'Kroger Gas', memo:'', amount:-30.17,  category_key:null, cleared:true,  source:'manual', created_at:'2026-07-02T10:00:00Z' }
+      { id:'lg-oa', account_key:'truist_checking', transaction_date:'2026-07-01', payee:'Old Cleared A',   memo:'', amount:-100.00, category_key:null, cleared:true,  source:'manual', created_at:'2026-07-01T10:00:00Z' },
+      { id:'lg-ob', account_key:'truist_checking', transaction_date:'2026-07-02', payee:'Old Cleared B',   memo:'', amount:-50.00,  category_key:null, cleared:true,  source:'manual', created_at:'2026-07-02T10:00:00Z' },
+      { id:'lg-ua', account_key:'truist_checking', transaction_date:'2026-07-05', payee:'New Uncleared A', memo:'', amount:-20.00,  category_key:null, cleared:false, source:'manual', created_at:'2026-07-05T10:00:00Z' },
+      { id:'lg-ub', account_key:'truist_checking', transaction_date:'2026-07-06', payee:'New Uncleared B', memo:'', amount:-30.00,  category_key:null, cleared:false, source:'manual', created_at:'2026-07-06T10:00:00Z' }
     ];
-    const acct = [{ key:'amex_gold', label:'AMEX Gold', account_type:'credit_card', lifecycle_status:'active', starting_balance:-8248.07 }];
+    const acct = [{ key:'truist_checking', label:'Truist Checking', account_type:'checking', lifecycle_status:'active', starting_balance:0 }];
     const def = await page.evaluate(([mockAcct, mockTxns]) => {
       FEATURE_FLAGS.showTransactionLedger = true;
       _accountsCache = mockAcct; _categoriesCache = [];
       _registriesLoadStatus = 'loaded'; _txLedgerLoadStatus = 'loaded';
-      _txLedgerCache = mockTxns; _txLedgerAccountKey = 'amex_gold';
-      // Do NOT set the sort: exercise the app default (date/desc).
+      _txLedgerCache = mockTxns; _txLedgerAccountKey = 'truist_checking';
+      // Do NOT set the sort: exercise the app default (reconcile CL view).
       _txFilterSearch = ''; _txFilterType = 'all'; _txFilterStatus = 'all'; _txFilterDateFrom = ''; _txFilterDateTo = '';
       setSection('transactions'); setTxSubNav('register'); renderApp();
       var h = document.getElementById('transactions-content').innerHTML;
       return {
-        defaultIsDateDesc: _txLedgerSortCol === 'date' && _txLedgerSortDir === 'desc',
-        iKroger: h.indexOf('Kroger Gas'), iDiablos: h.indexOf('Diablos'), iFoxtail: h.indexOf('Foxtail'), iStart: h.indexOf('Starting balance'),
-        krogerBal: h.indexOf('$-9035.41') !== -1, diablosBal: h.indexOf('$-9005.24') !== -1, foxtailBal: h.indexOf('$-8255.24') !== -1, startBal: h.indexOf('$-8248.07') !== -1
+        defaultIsReconcile: _txLedgerSortCol === 'reconcile',
+        iUB: h.indexOf('New Uncleared B'), iUA: h.indexOf('New Uncleared A'),
+        iCB: h.indexOf('Old Cleared B'),   iCA: h.indexOf('Old Cleared A'),
+        iStart: h.indexOf('Starting balance'),
+        balUB: h.indexOf('$-200.00') !== -1, balUA: h.indexOf('$-170.00') !== -1,
+        balCB: h.indexOf('$-150.00') !== -1, balCA: h.indexOf('$-100.00') !== -1,
+        startZero: h.indexOf('$0.00') !== -1,
+        reconcileCaption: h.indexOf('Reconciliation view: uncleared transactions are shown above cleared') !== -1,
+        clrActivatesReconcile: h.indexOf('data-sort-col="reconcile"') !== -1,
+        hasCheckbox: h.indexOf('_toggleTxCleared') !== -1
       };
     }, [acct, txns]);
-    assert(def.defaultIsDateDesc, 'app default Register sort is date descending');
-    assert(def.iKroger > -1 && def.iDiablos > -1 && def.iFoxtail > -1, 'all three rows render');
-    assert(def.iKroger < def.iDiablos && def.iDiablos < def.iFoxtail, 'default view is newest-first (Kroger 7/2, Diablos 7/1, Foxtail 6/30)');
-    assert(def.krogerBal && def.diablosBal && def.foxtailBal, 'each row shows its historical balance after that transaction (-9035.41 / -9005.24 / -8255.24)');
-    assert(def.startBal && def.iStart > def.iFoxtail, 'starting balance -8248.07 shows at the bottom (oldest end) in newest-first view');
-    // Clr is status-only: the header is not a sort control and does not reorder the register.
-    const clrHeader = await page.evaluate(() => {
+    assert(def.defaultIsReconcile, 'app default Register sort is the reconcile CL view');
+    assert(def.iUB > -1 && def.iUA > -1 && def.iCB > -1 && def.iCA > -1, 'all four rows render');
+    assert(def.iUB < def.iUA && def.iUA < def.iCB && def.iCB < def.iCA,
+      'order: New Uncleared B, New Uncleared A, Old Cleared B, Old Cleared A (uncleared over cleared, newest-first within each)');
+    assert(def.iStart > def.iCA, 'starting balance sits at the bottom (below the oldest cleared row)');
+    assert(def.balUB && def.balUA && def.balCB && def.balCA && def.startZero,
+      'each row shows its full-ledger historical balance (-200/-170/-150/-100) with starting balance $0.00 at bottom');
+    assert(def.reconcileCaption, 'the reconciliation caption is shown by default');
+    assert(def.clrActivatesReconcile, 'the Clr header is the reconcile CL control (data-sort-col=reconcile)');
+    assert(def.hasCheckbox, 'the Clr cell keeps the editable checkbox wired to _toggleTxCleared');
+    // Reconcile idempotency through the REAL Clr header interaction: clicking Clr while already in
+    // reconcile keeps the same order (uncleared over cleared, newest-first) — no flip, no direction change.
+    const getReconOrder = () => page.evaluate(() => {
       var h = document.getElementById('transactions-content').innerHTML;
-      return { clrNotSortable: h.indexOf('data-sort-col="cleared"') === -1, hasCheckbox: h.indexOf('_toggleTxCleared') !== -1 };
+      return { ub:h.indexOf('New Uncleared B'), ua:h.indexOf('New Uncleared A'), cb:h.indexOf('Old Cleared B'), ca:h.indexOf('Old Cleared A') };
     });
-    assert(clrHeader.clrNotSortable, 'Clr header is not a sort control (no data-sort-col=cleared)');
-    assert(clrHeader.hasCheckbox, 'Clr cell keeps the editable checkbox wired to _toggleTxCleared');
-    // Uncleared review via the Status filter keeps date order + full-ledger balances.
+    await page.click('th[data-sort-col="reconcile"]'); await page.waitForTimeout(30);
+    const clr1 = await getReconOrder();
+    await page.click('th[data-sort-col="reconcile"]'); await page.waitForTimeout(30);
+    const clr2 = await getReconOrder();
+    assert(clr1.ub < clr1.ua && clr1.ua < clr1.cb && clr1.cb < clr1.ca,
+      'after a Clr header click, order stays uncleared-first then cleared, newest-first within each group');
+    assert(JSON.stringify(clr1) === JSON.stringify(clr2),
+      'a second Clr header click is idempotent — identical row order, no group flip or direction change');
+    // Status = Uncleared still works separately (keeps full-ledger balances).
     await page.selectOption('#tx-filter-status', 'uncleared');
     await page.waitForTimeout(60);
     const unc = await page.evaluate(() => {
       var h = document.getElementById('transactions-content').innerHTML;
-      return { onlyDiablos: h.indexOf('Diablos') !== -1 && h.indexOf('Foxtail') === -1 && h.indexOf('Kroger Gas') === -1, diablosFullBal: h.indexOf('$-9005.24') !== -1 };
+      return {
+        onlyUncleared: h.indexOf('New Uncleared A') !== -1 && h.indexOf('New Uncleared B') !== -1 && h.indexOf('Old Cleared A') === -1 && h.indexOf('Old Cleared B') === -1,
+        ubFullBal: h.indexOf('$-200.00') !== -1, uaFullBal: h.indexOf('$-170.00') !== -1
+      };
     });
-    assert(unc.onlyDiablos, 'Status = Uncleared shows only the uncleared row (Diablos) in the ledger');
-    assert(unc.diablosFullBal, 'the uncleared row keeps its full-ledger balance -9005.24, not a subset value');
-    await page.evaluate(() => { _txFilterStatus = 'all'; _txLedgerSortCol = 'date'; _txLedgerSortDir = 'desc'; _txLedgerCache = null; _txLedgerLoadStatus = 'not_loaded'; });
+    assert(unc.onlyUncleared, 'Status = Uncleared shows only the two uncleared rows');
+    assert(unc.ubFullBal && unc.uaFullBal, 'uncleared rows keep their full-ledger balances (-200 / -170)');
+    await page.evaluate(() => { _txFilterStatus = 'all'; _txLedgerSortCol = 'reconcile'; _txLedgerSortDir = 'desc'; _txLedgerCache = null; _txLedgerLoadStatus = 'not_loaded'; });
     await context.close();
   });
 
-  await test('A6-1 (Phase 5F-1.5): Register columns are user-sortable; Balance stays chronological and the caption hides for date sorts', async () => {
+  await test('LEDGER-2 (Phase 5F-1.5 A10): a stale older uncleared row still groups on top; balances stay full-ledger (intentionally non-monotonic); caption does not overpromise; Budget still renders', async () => {
+    const { page, context } = await openApp(browser);
+    // start 0. Chronological: Stale Uncleared 5/01 -500 => -500 ; Cleared One 7/01 -100 => -600 ;
+    // Cleared Two 7/02 -50 => -650 ; Fresh Uncleared 7/06 -30 => -680.
+    const txns = [
+      { id:'l2-su', account_key:'truist_checking', transaction_date:'2026-05-01', payee:'Stale Uncleared', memo:'', amount:-500.00, category_key:null, cleared:false, source:'manual', created_at:'2026-05-01T10:00:00Z' },
+      { id:'l2-c1', account_key:'truist_checking', transaction_date:'2026-07-01', payee:'Cleared One',     memo:'', amount:-100.00, category_key:null, cleared:true,  source:'manual', created_at:'2026-07-01T10:00:00Z' },
+      { id:'l2-c2', account_key:'truist_checking', transaction_date:'2026-07-02', payee:'Cleared Two',     memo:'', amount:-50.00,  category_key:null, cleared:true,  source:'manual', created_at:'2026-07-02T10:00:00Z' },
+      { id:'l2-fu', account_key:'truist_checking', transaction_date:'2026-07-06', payee:'Fresh Uncleared', memo:'', amount:-30.00,  category_key:null, cleared:false, source:'manual', created_at:'2026-07-06T10:00:00Z' }
+    ];
+    const acct = [{ key:'truist_checking', label:'Truist Checking', account_type:'checking', lifecycle_status:'active', starting_balance:0 }];
+    const r = await page.evaluate(([mockAcct, mockTxns]) => {
+      FEATURE_FLAGS.showTransactionLedger = true;
+      _accountsCache = mockAcct; _categoriesCache = [];
+      _registriesLoadStatus = 'loaded'; _txLedgerLoadStatus = 'loaded';
+      _txLedgerCache = mockTxns; _txLedgerAccountKey = 'truist_checking';
+      _txFilterSearch=''; _txFilterType='all'; _txFilterStatus='all'; _txFilterDateFrom=''; _txFilterDateTo='';
+      setSection('transactions'); setTxSubNav('register'); renderApp();
+      var h = document.getElementById('transactions-content').innerHTML;
+      var capStart = h.indexOf('Reconciliation view:');
+      var capText = capStart > -1 ? h.slice(capStart, capStart + 260) : '';
+      return {
+        iFresh: h.indexOf('Fresh Uncleared'), iStale: h.indexOf('Stale Uncleared'),
+        iC2: h.indexOf('Cleared Two'), iC1: h.indexOf('Cleared One'),
+        staleBal: h.indexOf('$-500.00') !== -1, freshBal: h.indexOf('$-680.00') !== -1,
+        c2Bal: h.indexOf('$-650.00') !== -1, c1Bal: h.indexOf('$-600.00') !== -1,
+        overpromiseInCaption: /always/i.test(capText),
+        conditionalCaption: capText.indexOf('In normal daily reconciliation, the newest cleared row is the online-balance checkpoint') !== -1
+      };
+    }, [acct, txns]);
+    assert(r.iFresh > -1 && r.iStale > -1 && r.iC2 > -1 && r.iC1 > -1, 'all four rows render');
+    assert(r.iFresh < r.iStale, 'uncleared group is newest-first (Fresh 7/06 above Stale 5/01)');
+    assert(r.iStale < r.iC2 && r.iStale < r.iC1, 'the stale older uncleared row still groups ABOVE both cleared rows (group dominates date)');
+    assert(r.iC2 < r.iC1, 'cleared group is newest-first (Cleared Two 7/02 above Cleared One 7/01)');
+    assert(r.staleBal && r.freshBal && r.c2Bal && r.c1Bal, 'balances stay full-ledger historical (-500/-680/-650/-600), intentionally non-monotonic down the page');
+    assert(!r.overpromiseInCaption, 'the reconcile caption must not claim the checkpoint "always" equals the online balance');
+    assert(r.conditionalCaption, 'the reconcile caption uses the conditional "in normal daily reconciliation" wording');
+    // Budget still renders (guardrail: no Budget changes).
+    const budgetOk = await page.evaluate(() => {
+      setSection('budget'); renderApp();
+      var b = document.getElementById('budget-content');
+      return !!(b && b.innerHTML && b.innerHTML.length > 0);
+    });
+    assert(budgetOk, 'Budget tab still renders after the Register reconcile change');
+    await page.evaluate(() => { _txLedgerSortCol='reconcile'; _txLedgerSortDir='desc'; _txLedgerCache=null; _txLedgerLoadStatus='not_loaded'; });
+    await context.close();
+  });
+
+  await test('A6-1 (Phase 5F-1.5 A10): Register columns are user-sortable under the reconcile default; Date entry is uniform desc (newest-first) then toggles asc; Balance stays chronological; caption hides for date sorts', async () => {
     const { page, context } = await openApp(browser);
     const txns = [
       { id: 'a6-1', account_key: 'truist_checking', transaction_date: '2026-06-01',
@@ -2531,7 +2605,7 @@ async function clickNav(page, id) {
       _txLedgerLoadStatus = 'loaded';
       _txLedgerCache = mockTxns;
       _txLedgerAccountKey = 'truist_checking';
-      // Use the app default (date/desc); do not set the sort here.
+      // Use the app default (reconcile CL view); do not set the sort here.
       _txFilterSearch = ''; _txFilterType = 'all'; _txFilterStatus = 'all'; _txFilterDateFrom = ''; _txFilterDateTo = '';
       setSection('transactions');
       setTxSubNav('register');
@@ -2541,29 +2615,34 @@ async function clickNav(page, id) {
         return {
           fandango: h.indexOf('Fandango'), kroger: h.indexOf('Kroger'), paycheck: h.indexOf('Paycheck'),
           hasFandangoBal: h.indexOf('$-150.00') !== -1,
-          hasCaption: h.indexOf('Balance is shown as of each transaction date') !== -1
+          hasCaption: h.indexOf('Balance is shown as of each transaction date') !== -1,
+          hasReconcileCaption: h.indexOf('Reconciliation view: uncleared transactions are shown above cleared') !== -1
         };
       }
-      var def = snap();                               // app default date/desc (newest-first)
-      setTxLedgerSort('payee'); var payeeSort = snap(); // non-date sort (payee asc)
-      setTxLedgerSort('date');  var dateSort = snap();  // date/asc
-      // Restore the real app default (date/desc)
-      _txLedgerSortCol = 'date'; _txLedgerSortDir = 'desc';
+      var def = snap();                                  // app default = reconcile CL view
+      setTxLedgerSort('payee'); var payeeSort = snap();  // non-date sort (payee asc)
+      setTxLedgerSort('date');  var dateDesc = snap();   // uniform rule: Date enters desc (newest-first)
+      setTxLedgerSort('date');  var dateAsc  = snap();   // second Date click toggles to asc (chronological)
+      // Restore the real app default (reconcile CL view)
+      _txLedgerSortCol = 'reconcile'; _txLedgerSortDir = 'desc';
       _txLedgerCache = null; _txLedgerLoadStatus = 'not_loaded';
-      return { def, payeeSort, dateSort };
+      return { def, payeeSort, dateDesc, dateAsc };
     }, [TX_MOCK_ACCOUNTS, txns]);
-    // Default date/desc: newest-first (Paycheck 6/10, Fandango 6/5, Kroger 6/1); caption hidden
-    assert(r.def.paycheck < r.def.fandango && r.def.fandango < r.def.kroger, 'default view is newest-first (date desc)');
-    assert(!r.def.hasCaption, 'the date sort default hides the Balance caption');
-    // Payee sort (a remaining sortable column): alphabetical, caption shown, balances preserved
+    // Default = reconcile: uncleared Fandango (6/5) on top, then cleared newest-first (Paycheck 6/10, Kroger 6/1)
+    assert(r.def.fandango < r.def.paycheck && r.def.paycheck < r.def.kroger, 'default reconcile view: uncleared on top, then cleared newest-first');
+    assert(r.def.hasReconcileCaption && !r.def.hasCaption, 'reconcile default shows the reconciliation caption, not the generic non-date warning');
+    // Payee sort (a remaining sortable column): alphabetical, generic caption shown, balances preserved
     assert(r.payeeSort.fandango < r.payeeSort.kroger && r.payeeSort.kroger < r.payeeSort.paycheck, 'clicking Payee sorts alphabetically');
     assert(r.payeeSort.hasCaption, 'a non-date sort shows the Balance caption');
-    // Back to Date: caption hidden again, chronological (asc) order
-    assert(r.dateSort.kroger < r.dateSort.fandango && r.dateSort.fandango < r.dateSort.paycheck, 'Date sort restores chronological order');
-    assert(!r.dateSort.hasCaption, 'a date sort hides the Balance caption');
-    // Balance invariance: Fandango always shows its chronological $-150.00 across sorts
-    assert(r.def.hasFandangoBal && r.payeeSort.hasFandangoBal && r.dateSort.hasFandangoBal,
-      "Fandango's chronological balance $-150.00 must be identical across every sort");
+    // Date entry (uniform rule): first Date click lands on desc / newest-first; caption hidden
+    assert(r.dateDesc.paycheck < r.dateDesc.fandango && r.dateDesc.fandango < r.dateDesc.kroger, 'first Date click enters desc (newest-first: Paycheck 6/10, Fandango 6/5, Kroger 6/1)');
+    assert(!r.dateDesc.hasCaption, 'a date sort hides the Balance caption');
+    // Second Date click toggles to asc (chronological); caption still hidden
+    assert(r.dateAsc.kroger < r.dateAsc.fandango && r.dateAsc.fandango < r.dateAsc.paycheck, 'second Date click toggles to asc (chronological)');
+    assert(!r.dateAsc.hasCaption, 'a date sort hides the Balance caption in both directions');
+    // Balance invariance: Fandango always shows its chronological $-150.00 across every view
+    assert(r.def.hasFandangoBal && r.payeeSort.hasFandangoBal && r.dateDesc.hasFandangoBal && r.dateAsc.hasFandangoBal,
+      "Fandango's chronological balance $-150.00 must be identical across reconcile, payee, and both date sorts");
     await context.close();
   });
 
@@ -2580,7 +2659,7 @@ async function clickNav(page, id) {
       _accountsCache = mockAccounts; _categoriesCache = [];
       _registriesLoadStatus = 'loaded'; _txLedgerLoadStatus = 'loaded';
       _txLedgerCache = mockTxns; _txLedgerAccountKey = 'truist_checking';
-      _txLedgerSortCol = 'date'; _txLedgerSortDir = 'desc'; // app default (Quicken ledger); filters are exercised under it
+      _txLedgerSortCol = 'date'; _txLedgerSortDir = 'desc'; // pinned date/desc (not the app default); filters are exercised under it
       _txFilterSearch = ''; _txFilterType = 'all'; _txFilterStatus = 'all';
       setSection('transactions'); setTxSubNav('register'); renderApp();
     }, [TX_MOCK_ACCOUNTS, txns]);
@@ -2605,7 +2684,7 @@ async function clickNav(page, id) {
     await page.selectOption('#tx-filter-status', 'uncleared');
     const statusUncleared = await snap();
     assert(statusUncleared.fandango && statusUncleared.shell && !statusUncleared.kroger && !statusUncleared.employer, 'selecting Status=Uncleared must show only uncleared rows');
-    // Under the date/desc default, the visible uncleared rows stay newest-first (Shell 6/12 before Fandango 6/5)
+    // Under the pinned date/desc sort, the visible uncleared rows stay newest-first (Shell 6/12 before Fandango 6/5)
     const unclearedOrder = await page.evaluate(() => {
       var h = document.getElementById('transactions-content').innerHTML;
       return { iShell: h.indexOf('Shell'), iFandango: h.indexOf('Fandango') };
@@ -2651,7 +2730,7 @@ async function clickNav(page, id) {
       _accountsCache = mockAccounts; _categoriesCache = [];
       _registriesLoadStatus = 'loaded'; _txLedgerLoadStatus = 'loaded';
       _txLedgerCache = mockTxns; _txLedgerAccountKey = 'truist_checking';
-      _txLedgerSortCol = 'date'; _txLedgerSortDir = 'desc'; // app default (Quicken ledger); filters are exercised under it
+      _txLedgerSortCol = 'date'; _txLedgerSortDir = 'desc'; // pinned date/desc (not the app default); filters are exercised under it
       _txFilterSearch = ''; _txFilterType = 'all'; _txFilterStatus = 'all';
       _txFilterDateFrom = ''; _txFilterDateTo = '';
       setSection('transactions'); setTxSubNav('register'); renderApp();

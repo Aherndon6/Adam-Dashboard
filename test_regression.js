@@ -7732,19 +7732,19 @@ test('5E10-08: Register payee input is marked required in the UI (label + placeh
   assertIncludes(registerFnSrc,"inp('payee','Required'",'Payee input placeholder must read Required, not Optional');
 });
 
-test('5E10-09: Register pipeline is chronological-ledger -> filter -> sort; default is Quicken date/desc; uncleared review is via the Status filter (Clr is status-only)',()=>{
+test('5E10-09: Register pipeline is chronological-ledger -> filter -> sort; default is the Quicken CL reconciliation view; generic cleared sort removed',()=>{
   assertIncludes(registerFnSrc,'rowsWithBalance','Register must compute a chronological balance-attached array before any display sort');
   assertIncludes(registerFnSrc,'filteredRows=_filterTxRows(rowsWithBalance','Register must filter the chronological array before sorting (A9a)');
   assertIncludes(registerFnSrc,'displayRows=_sortTxRows(filteredRows','Register must produce the display order via _sortTxRows over the filtered chronological array');
-  // Ledger hotfix: default is Quicken newest-first (date/desc). Clr is status-only (not a header
-  // sort); uncleared review is the Status filter. The cleared comparator below is dormant/defensive
-  // only (no header exposes it), left in place so programmatic state cannot crash the sort.
-  assertIncludes(html,"_txLedgerSortCol='date'","default Register sort column must be 'date' (Quicken-style ledger)");
-  assertIncludes(html,"_txLedgerSortDir='desc'","default Register sort direction must be 'desc' (newest-first)");
+  // A10: default is the Quicken CL/reconciliation view (uncleared on top, cleared below,
+  // newest-first within each group). The Clr header activates reconcile mode; the old generic
+  // cleared comparator has been removed from _sortTxRows.
+  assertIncludes(html,"var _txLedgerSortCol='reconcile'","default Register sort column must be 'reconcile' (Quicken CL view)");
   var sIdx=html.indexOf('function _sortTxRows(');
   assert(sIdx>-1,'_sortTxRows helper must exist');
-  var sBlock=html.slice(sIdx,sIdx+1600);
-  assertIncludes(sBlock,'(a.tx.cleared?1:0)-(b.tx.cleared?1:0)','dormant/defensive cleared comparator remains in _sortTxRows (not user-facing)');
+  var sBlock=html.slice(sIdx,sIdx+2000);
+  assertIncludes(sBlock,"col==='reconcile'","_sortTxRows must implement a dedicated reconcile comparator");
+  assert(sBlock.indexOf('(a.tx.cleared?1:0)-(b.tx.cleared?1:0)')===-1,'the old generic cleared comparator must be removed from _sortTxRows');
 });
 
 test('5E10-10: running balance is precomputed in original chronological order and never recomputed after the display sort',()=>{
@@ -7770,6 +7770,88 @@ test('5E10-11: no schema/RLS changes and no reconciliation logic touched — thi
     '5E-10 fix must not contain schema/RLS/grant statements');
   assert(!/function _renderBudgetRecon/.test(budgetFnSrc),'renderBudget must not have absorbed reconciliation rendering logic');
 });
+})();
+
+// ═══════════════════════════════════════════════════════════════════════════
+// Phase 5F-1.5 A10 — Register default = Quicken CL reconciliation view
+// Uncleared rows on top, cleared below, newest-first (chronIdx desc) within each
+// group. Clr header activates reconcile (idempotent). Date entry is uniform desc.
+// These tests call the real _sortTxRows / setTxLedgerSort (eval'd from index.html).
+// ═══════════════════════════════════════════════════════════════════════════
+console.log('\n── Section 5F-1.5 A10: Register CL reconciliation default ──');
+(function(){
+  function ent(cleared,chronIdx,amount){return {tx:{cleared:cleared,amount:amount},bal:0,chronIdx:chronIdx,catDisplay:''};}
+  // chronIdx encodes date.asc,created_at.asc,id.asc (higher = newer)
+  function fixture(){
+    return [ent(true,0,-100),ent(true,1,-50),ent(false,2,-20),ent(false,3,-30),ent(null,4,-5)];
+  }
+  function chron(res){return res.map(function(e){return e.chronIdx;}).join(',');}
+
+  test('A10-1: reconcile groups uncleared (incl. cleared null) above cleared',()=>{
+    var out=_sortTxRows(fixture(),'reconcile','desc');
+    assert(out.slice(0,3).every(function(e){return e.tx.cleared!==true;}),'uncleared group (incl null) must be on top');
+    assert(out.slice(3).every(function(e){return e.tx.cleared===true;}),'cleared group must be below');
+  });
+  test('A10-2: reconcile is newest-first (chronIdx desc) within each group',()=>{
+    assert(chron(_sortTxRows(fixture(),'reconcile','desc'))==='4,3,2,1,0','order must be uncleared[4,3,2] then cleared[1,0]');
+  });
+  test('A10-3: reconcile treats cleared undefined (missing key) as uncleared',()=>{
+    var rows=[ent(true,0,-100),{tx:{amount:-5},bal:0,chronIdx:1,catDisplay:''}];
+    var out=_sortTxRows(rows,'reconcile','desc');
+    assert(out[0].chronIdx===1&&out[1].chronIdx===0,'the undefined-cleared row groups as uncleared (on top)');
+  });
+  test('A10-4: reconcile order is direction-independent (asc === desc)',()=>{
+    assert(chron(_sortTxRows(fixture(),'reconcile','asc'))===chron(_sortTxRows(fixture(),'reconcile','desc')),'reconcile ignores direction');
+    assert(chron(_sortTxRows(fixture(),'reconcile','asc'))==='4,3,2,1,0','fixed CL order regardless of dir');
+  });
+  test('A10-5: generic cleared sort removed — col "cleared" falls back to chronological, does not group',()=>{
+    assert(chron(_sortTxRows(fixture(),'cleared','asc'))==='0,1,2,3,4','removed comparator: no cleared grouping, chronological fallback');
+  });
+
+  // setTxLedgerSort state transitions (renderApp stubbed to isolate state)
+  function withStub(fn){var o=renderApp;renderApp=function(){};try{return fn();}finally{renderApp=o;}}
+  test('A10-6: Date entry is uniform desc; a second Date click toggles to asc',()=>{
+    withStub(function(){
+      _txLedgerSortCol='reconcile';_txLedgerSortDir='desc';
+      setTxLedgerSort('date');
+      assert(_txLedgerSortCol==='date'&&_txLedgerSortDir==='desc','Date from reconcile must enter desc (newest-first)');
+      setTxLedgerSort('date');
+      assert(_txLedgerSortCol==='date'&&_txLedgerSortDir==='asc','a second Date click toggles to asc');
+    });
+  });
+  test('A10-7: Date entry from a text column also lands on desc (uniform rule)',()=>{
+    withStub(function(){
+      _txLedgerSortCol='payee';_txLedgerSortDir='asc';
+      setTxLedgerSort('date');
+      assert(_txLedgerSortCol==='date'&&_txLedgerSortDir==='desc','Date from Payee must enter desc, not asc');
+    });
+  });
+  test('A10-8: reconcile is idempotent — clicking Clr while in reconcile stays reconcile/desc',()=>{
+    withStub(function(){
+      _txLedgerSortCol='reconcile';_txLedgerSortDir='desc';
+      setTxLedgerSort('reconcile');
+      assert(_txLedgerSortCol==='reconcile'&&_txLedgerSortDir==='desc','first reconcile click stays reconcile');
+      setTxLedgerSort('reconcile');
+      assert(_txLedgerSortCol==='reconcile'&&_txLedgerSortDir==='desc','second reconcile click does not flip direction or mode');
+    });
+    // restore app default for any later tests reading these globals
+    _txLedgerSortCol='reconcile';_txLedgerSortDir='desc';
+  });
+  test('A10-9: Register renders reconcile-activating Clr header, reconcile caption, reconcile-aware start-at-bottom',()=>{
+    var reg=html.slice(html.indexOf('function _renderTxRegister()'),html.indexOf('function renderTransactions()'));
+    assertIncludes(reg,'data-sort-col="reconcile"','Clr header must activate reconcile mode');
+    assertIncludes(reg,"setTxLedgerSort(\\'reconcile\\')",'Clr header onclick must call setTxLedgerSort(reconcile)');
+    assertIncludes(reg,"_txLedgerSortCol==='reconcile'?' ▼'",'Clr header must show an active indicator in reconcile mode');
+    assertIncludes(reg,'Reconciliation view: uncleared transactions are shown above cleared','reconcile caption must exist');
+    assertIncludes(reg,'In normal daily reconciliation, the newest cleared row is the online-balance checkpoint','reconcile caption must use conditional (non-overpromising) checkpoint wording');
+    assertIncludes(reg,"_startAtBottom=(_txLedgerSortCol==='reconcile')",'starting-balance-at-bottom must include reconcile mode');
+  });
+  test('A10-10: reconcile caption takes precedence over the generic non-date warning (which stays for Payee/Category/Outflow/Inflow)',()=>{
+    var reg=html.slice(html.indexOf('function _renderTxRegister()'),html.indexOf('function renderTransactions()'));
+    var capIdx=reg.indexOf("_txLedgerSortCol==='reconcile'");
+    var warnIdx=reg.indexOf('Balance is shown as of each transaction date, not recalculated in sorted order');
+    assert(capIdx>-1&&warnIdx>-1&&capIdx<warnIdx,'reconcile caption branch must precede the generic non-date warning');
+  });
 })();
 
 
@@ -10443,10 +10525,10 @@ test('5F15-A6-03: category sorts by resolved catDisplay label',()=>{
   // Auto, Entertainment, Groceries, Income -> chronIdx 3,1,0,2
   assert(js(ord(_sortTxRows(mkRows(),'category','asc')))===js([3,1,0,2]),'category asc by catDisplay');
 });
-test('5F15-A6-04: cleared asc = uncleared first; cleared desc = cleared first (chronological within each group)',()=>{
-  // uncleared: 1,3 ; cleared: 0,2
-  assert(js(ord(_sortTxRows(mkRows(),'cleared','asc')))===js([1,3,0,2]),'cleared asc = uncleared first');
-  assert(js(ord(_sortTxRows(mkRows(),'cleared','desc')))===js([0,2,1,3]),'cleared desc = cleared first');
+test('5F15-A6-04 (superseded by A10): generic cleared sort removed — an unknown "cleared" col falls back to chronological, not cleared-grouping',()=>{
+  // The old generic cleared comparator is gone; reconcile (A10) is the only cleared-aware order.
+  assert(js(ord(_sortTxRows(mkRows(),'cleared','asc')))===js([0,1,2,3]),'removed cleared comparator: chronological asc, no grouping');
+  assert(js(ord(_sortTxRows(mkRows(),'cleared','desc')))===js([3,2,1,0]),'removed cleared comparator: chronological desc');
 });
 test('5F15-A6-05: outflow sorts numerically with blank (inflow) rows last in BOTH directions',()=>{
   // outflows: r1=50(idx1), r3=50(idx3), r0=100(idx0); blank inflow r2(idx2)
@@ -10472,18 +10554,21 @@ test('5F15-A6-08: bal is never recomputed by sorting and the input array is not 
   res.forEach(function(e){assertApprox(e.bal,expected[e.chronIdx],'bal for chronIdx '+e.chronIdx+' must be unchanged by sorting');});
   assert(js(ord(rows))===js([0,1,2,3]),'input rowsWithBalance array must not be mutated');
 });
-test('5F15-A6-09: sortable headers are exactly Date/Payee/Category/Outflow/Inflow; Clr/Memo/Balance/actions are not sort controls',()=>{
+test('5F15-A6-09: column sort controls are Date/Payee/Category/Outflow/Inflow (thSort) plus Clr (reconcile CL view); Memo/Balance/actions are not sort controls',()=>{
   var fnIdx=html.indexOf('function _renderTxRegister');
   var fnBlock=html.slice(fnIdx,html.indexOf('function renderTransactions()'));
   ['date','payee','category','outflow','inflow'].forEach(function(c){
     assertIncludes(fnBlock,'thSort(\''+({date:'Date',payee:'Payee',category:'Category',outflow:'Outflow',inflow:'Inflow'})[c]+'\',\''+c+'\'','header for '+c+' must be a sortable thSort control');
   });
   assertIncludes(fnBlock,"data-sort-col=","sortable headers must carry a data-sort-col attribute for tests/stability");
-  // Clr is a status-only column (Quicken): non-sortable header, no data-sort-col, no header sort path.
-  assert(fnBlock.indexOf("thSort('Clr'")===-1,'Clr header must NOT be a sortable thSort control');
-  assert(fnBlock.indexOf('data-sort-col="cleared"')===-1,'Clr header must not carry data-sort-col="cleared"');
-  assert(fnBlock.indexOf("setTxLedgerSort('cleared')")===-1,'no user-facing Clr header path may call setTxLedgerSort(cleared)');
-  assertIncludes(fnBlock,'Cleared status; edit via the checkbox, filter with Status','Clr header title explains status-only + Status filter');
+  // A10: Clr is now the reconciliation (CL) view control — it activates 'reconcile' mode, NOT a
+  // generic thSort and NOT the old generic cleared asc/desc sort.
+  assert(fnBlock.indexOf("thSort('Clr'")===-1,'Clr header must NOT be a generic thSort control');
+  assertIncludes(fnBlock,'data-sort-col="reconcile"','Clr header must carry data-sort-col="reconcile"');
+  assertIncludes(fnBlock,"setTxLedgerSort(\\'reconcile\\')",'Clr header must activate reconcile mode');
+  assert(fnBlock.indexOf('data-sort-col="cleared"')===-1,'Clr header must not carry the old generic data-sort-col="cleared"');
+  assert(fnBlock.indexOf("setTxLedgerSort('cleared')")===-1,'no Clr header path may call the removed setTxLedgerSort(cleared)');
+  assertIncludes(fnBlock,'Reconciliation (CL) view','Clr header title must explain the CL reconciliation view');
   assertIncludes(fnBlock,'_toggleTxCleared','Clr cell keeps the editable cleared checkbox wired to _toggleTxCleared');
   assertIncludes(fnBlock,"th('Memo')","Memo header must be a plain (non-sortable) th");
   assertIncludes(fnBlock,"th('Balance','right')","Balance header must be a plain (non-sortable) th");
@@ -10498,14 +10583,14 @@ test('5F15-A6-10: balance caption shows only for non-date sorts (date asc AND da
 });
 })();
 
-// Ledger hotfix: Quicken-style default (date/desc) + the _computeLedgerBalances row-builder.
+// Ledger: Quicken CL reconciliation default + the _computeLedgerBalances row-builder.
 console.log('\n── Section 5F15-LEDGER: Quicken-style Register running balance ──');
 (function(){
 function ord(res){return res.map(function(e){return e.chronIdx;});}
 function js(a){return JSON.stringify(a);}
-test('5F15-LEDGER-01: default Register sort is date descending (Quicken newest-first)',()=>{
-  assertIncludes(html,"var _txLedgerSortCol='date';",'default sort column is date');
-  assertIncludes(html,"var _txLedgerSortDir='desc';",'default sort direction is descending (newest-first)');
+test('5F15-LEDGER-01: default Register sort is the Quicken CL reconciliation view',()=>{
+  assertIncludes(html,"var _txLedgerSortCol='reconcile';",'default sort column is reconcile (CL view)');
+  assertIncludes(html,"var _txLedgerSortDir='desc';",'default sort direction remains desc (ignored by reconcile, used when the user switches to Date)');
 });
 test('5F15-LEDGER-02: Quicken credit-card example: prior -4054.84 + charge -30.17 = -4085.01 after',()=>{
   var res=_computeLedgerBalances([{amount:-30.17}],-4054.84);
@@ -10551,28 +10636,32 @@ test('5F15-LEDGER-06: sorting never recomputes bal; a non-date sort keeps balanc
   // non-date sort (payee) keeps each row bal
   _sortTxRows(rows,'payee','asc').forEach(function(e){assertApprox(e.bal,expected[e.chronIdx],'bal preserved through payee sort');});
 });
-test('5F15-LEDGER-07: Clr is status-only (not header-sortable); the cleared comparator remains dormant; starting-balance row moves to the bottom for date desc',()=>{
+test('5F15-LEDGER-07: Clr activates the reconcile CL view; the generic cleared comparator is removed; starting-balance row moves to the bottom for reconcile and date desc',()=>{
   var fnIdx=html.indexOf('function _renderTxRegister');
   var fnBlock=html.slice(fnIdx,html.indexOf('function renderTransactions()'));
-  assert(fnBlock.indexOf("thSort('Clr'")===-1,'Clr must not be a header sort control (status-only, Quicken)');
+  assert(fnBlock.indexOf("thSort('Clr'")===-1,'Clr must not be a generic thSort control');
+  assertIncludes(fnBlock,"setTxLedgerSort(\\'reconcile\\')",'Clr header activates the reconcile CL view');
   assertIncludes(fnBlock,'_toggleTxCleared','Clr cell keeps its editable checkbox');
-  // The cleared comparator stays in _sortTxRows as dormant defensive code (no header exposes it).
+  // The old generic cleared comparator is gone; a dedicated reconcile comparator replaces it.
   var sIdx=html.indexOf('function _sortTxRows(');
-  assertIncludes(html.slice(sIdx,sIdx+1600),'(a.tx.cleared?1:0)-(b.tx.cleared?1:0)','dormant cleared comparator remains for defensive/programmatic use');
-  assertIncludes(fnBlock,"var _startAtBottom=(_txLedgerSortCol==='date'&&_txLedgerSortDir==='desc')",'starting-balance row placement is gated on the newest-first view');
-  assertIncludes(fnBlock,'if(!_startAtBottom)tbl+=_startRowHtml','starting-balance row anchors the top for asc/non-date views');
-  assertIncludes(fnBlock,'if(_startAtBottom)tbl+=_startRowHtml','starting-balance row moves to the bottom (oldest end) for date desc');
+  var sBlock=html.slice(sIdx,sIdx+2000);
+  assert(sBlock.indexOf('(a.tx.cleared?1:0)-(b.tx.cleared?1:0)')===-1,'the old generic cleared comparator must be removed');
+  assertIncludes(sBlock,"col==='reconcile'",'reconcile comparator must exist in _sortTxRows');
+  assertIncludes(fnBlock,"var _startAtBottom=(_txLedgerSortCol==='reconcile')||(_txLedgerSortCol==='date'&&_txLedgerSortDir==='desc')",'starting-balance-at-bottom must include reconcile and date desc');
+  assertIncludes(fnBlock,'if(!_startAtBottom)tbl+=_startRowHtml','starting-balance row anchors the top for asc/non-bottom views');
+  assertIncludes(fnBlock,'if(_startAtBottom)tbl+=_startRowHtml','starting-balance row moves to the bottom (oldest end) for reconcile and date desc');
 });
 test('5F15-LEDGER-08: filter caption wins over the date sort (filter-active is the outer ternary), so a filtered date/desc view still warns full-ledger',()=>{
   var fnIdx=html.indexOf('function _renderTxRegister');
   var fnBlock=html.slice(fnIdx,html.indexOf('function renderTransactions()'));
   var capIdx=fnBlock.indexOf('var _balCaption=');
-  var capBlock=fnBlock.slice(capIdx,capIdx+520);
-  assertIncludes(capBlock,'_balCaption=_filtersOn','filter-active is the OUTER ternary condition, so it wins under any sort including date/desc');
+  var capBlock=fnBlock.slice(capIdx,capIdx+900);
+  assertIncludes(capBlock,'_balCaption=_filtersOn','filter-active is the OUTER ternary condition, so it wins under any sort including reconcile and date/desc');
   var filterCapPos=capBlock.indexOf('Balance reflects the full ledger as of each transaction date, not the filtered subset.');
+  var reconcilePos=capBlock.indexOf("_txLedgerSortCol==='reconcile'");
   var dateBranchPos=capBlock.indexOf("(_txLedgerSortCol==='date')?''");
-  assert(filterCapPos>-1&&dateBranchPos>-1,'both the filter caption and the date-hide branch must exist');
-  assert(filterCapPos<dateBranchPos,'the filter caption must precede (outrank) the date-sort hide branch');
+  assert(filterCapPos>-1&&reconcilePos>-1&&dateBranchPos>-1,'the filter caption, the reconcile caption branch, and the date-hide branch must all exist');
+  assert(filterCapPos<reconcilePos&&reconcilePos<dateBranchPos,'order of precedence: filter caption, then reconcile branch, then date-hide branch');
 });
 })();
 

@@ -859,7 +859,7 @@ button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-vis
 // ── Constants (unchanged) ──────────────────────────────────────────────────
 // Simplified architecture — $8,250 total from LC · $6,500 operating floor · no legacy mechanics
 // Real-world moves: keep $2,250 in chk, move $2,750 sav→chk, move $1,000 LC→chk, move $2,250 LC→chk (Option 1 correction)
-const BUILD_TS='2026-07-06T14:05:53'; // updated each push — local time string
+const BUILD_TS='2026-07-06T16:58:04'; // updated each push — local time string
 const START_CHK=18037.73,START_SAV=3772.77,START_AMX=103.64,START_TAX=0,START_LC=13488.88;
 const EF_AMT=13488.88; // LC/EF balance — static this model year (no transfers in or out)
 const BASE_TAX=521.36,RET_SAV_XFR=3772.74;
@@ -5371,14 +5371,14 @@ var _txCatShowAll=false;     // categories lifecycle toggle
 var _txLedgerAccountKey='';          // account key currently loaded in register
 var _txLedgerCache=null;             // fetched transactions array or null
 var _txLedgerLoadStatus='not_loaded';// 'not_loaded' | 'loading' | 'loaded' | 'failed'
-// Phase 5F-1.5 A6 / ledger hotfix: Register display-sort state. Default date/desc is a
-// Quicken-style newest-first ledger, where each row's Balance reads as the account balance
-// immediately after that transaction posted (historical / as-of-transaction-date). Clr is a
-// status-only column, edited via the row checkbox; uncleared review is the Status filter, not
-// a sort. Not persisted; in-memory per session. ('cleared' below is a dormant comparator value
-// in _sortTxRows, no header exposes it.)
-var _txLedgerSortCol='date';         // 'date'|'payee'|'category'|'outflow'|'inflow' ('cleared' dormant)
-var _txLedgerSortDir='desc';         // 'asc'|'desc'
+// Phase 5F-1.5 A6 / A10 ledger: Register display-sort state. DEFAULT is the Quicken CL
+// reconciliation view ('reconcile'): uncleared rows on top, cleared rows below, newest-first
+// (chronIdx desc) within each group. Each row's Balance reads as the account balance
+// immediately after that transaction posted (historical / as-of-transaction-date). The Clr
+// header activates reconcile mode; the row checkbox still edits cleared status. Not persisted;
+// in-memory per session.
+var _txLedgerSortCol='reconcile';    // 'reconcile'|'date'|'payee'|'category'|'outflow'|'inflow'
+var _txLedgerSortDir='desc';         // 'asc'|'desc' (ignored by 'reconcile', which has a fixed order)
 // Phase 5F-1.5 A9a: Register filter state. In-memory only; no persistence, no server query.
 var _txFilterSearch='';              // substring over payee, memo, resolved category label
 var _txFilterType='all';             // 'all'|'outflow'|'inflow'
@@ -5401,12 +5401,24 @@ var _txClearedError={};        // {[uuid]: errorString} per-row cleared toggle e
 
 function setTxSubNav(tab){_txSubNav=tab;renderApp();}
 
-// Phase 5F-1.5 A6: set/toggle the Register display sort. Clicking the active column
-// toggles direction; switching column resets to ascending (Date ascending restores
-// the true chronological ledger sequence). Display only; never touches data or balance.
+// Phase 5F-1.5 A6/A10: set/toggle the Register display sort. Display only; never touches
+// data or balance. Rules:
+//  - 'reconcile' (the Clr header / CL view) is idempotent: it always lands in reconcile
+//    mode with a fixed order (uncleared over cleared, newest-first within each group);
+//    clicking Clr again does not flip direction or group order.
+//  - 'date' uses the uniform Quicken rule: entering Date from any other column lands on
+//    desc (newest-first); a second Date click toggles desc<->asc.
+//  - all other columns reset to ascending on entry, and toggle on repeat clicks.
 function setTxLedgerSort(col){
-  if(_txLedgerSortCol===col){_txLedgerSortDir=(_txLedgerSortDir==='asc'?'desc':'asc');}
-  else{_txLedgerSortCol=col;_txLedgerSortDir='asc';}
+  if(col==='reconcile'){
+    _txLedgerSortCol='reconcile';_txLedgerSortDir='desc'; // fixed order; dir is not used by reconcile
+  }else if(col==='date'){
+    if(_txLedgerSortCol==='date'){_txLedgerSortDir=(_txLedgerSortDir==='asc'?'desc':'asc');}
+    else{_txLedgerSortCol='date';_txLedgerSortDir='desc';} // uniform: Date always enters newest-first
+  }else{
+    if(_txLedgerSortCol===col){_txLedgerSortDir=(_txLedgerSortDir==='asc'?'desc':'asc');}
+    else{_txLedgerSortCol=col;_txLedgerSortDir='asc';}
+  }
   renderApp();
 }
 
@@ -5434,6 +5446,14 @@ function _sortTxRows(rowsWithBalance, col, dir){
   var mult=(dir==='desc')?-1:1;
   function amtOf(e){return parseFloat(e.tx.amount)||0;}
   return (rowsWithBalance||[]).slice().sort(function(a,b){
+    if(col==='reconcile'){
+      // Quicken CL reconciliation order (direction-independent): uncleared group first,
+      // cleared group below; newest-first (chronIdx desc) within each group. cleared===true
+      // means cleared; null/undefined counts as uncleared, matching the Status filter.
+      var ac=(a.tx.cleared===true)?1:0, bc=(b.tx.cleared===true)?1:0;
+      if(ac!==bc)return ac-bc;      // 0 (uncleared) sorts before 1 (cleared)
+      return b.chronIdx-a.chronIdx; // chronIdx desc = newest-first within the group
+    }
     if(col==='outflow'||col==='inflow'){
       var av=(col==='outflow')?(amtOf(a)<0?Math.abs(amtOf(a)):null):(amtOf(a)>0?amtOf(a):null);
       var bv=(col==='outflow')?(amtOf(b)<0?Math.abs(amtOf(b)):null):(amtOf(b)>0?amtOf(b):null);
@@ -5447,7 +5467,6 @@ function _sortTxRows(rowsWithBalance, col, dir){
     if(col==='date')d=a.chronIdx-b.chronIdx; // chronIdx encodes date.asc,created_at.asc,id.asc
     else if(col==='payee')d=String(a.tx.payee||'').localeCompare(String(b.tx.payee||''),undefined,{sensitivity:'base'});
     else if(col==='category')d=String(a.catDisplay||'').localeCompare(String(b.catDisplay||''),undefined,{sensitivity:'base'});
-    else if(col==='cleared')d=(a.tx.cleared?1:0)-(b.tx.cleared?1:0); // asc => uncleared first
     else d=a.chronIdx-b.chronIdx;
     return d!==0?d*mult:(a.chronIdx-b.chronIdx); // deterministic chronological tiebreak
   });
@@ -6398,8 +6417,10 @@ function _renderTxRegister(){
     // is the stronger warning and wins whenever a filter is active.
     var _balCaption=_filtersOn
       ?'<div class="tx-bal-caption" style="'+_capStyle+'">Balance reflects the full ledger as of each transaction date, not the filtered subset.</div>'
-      :((_txLedgerSortCol==='date')?''
-        :'<div class="tx-bal-caption" style="'+_capStyle+'">Balance is shown as of each transaction date, not recalculated in sorted order.</div>');
+      :(_txLedgerSortCol==='reconcile'
+        ?'<div class="tx-bal-caption" style="'+_capStyle+'">Reconciliation view: uncleared transactions are shown above cleared transactions; balances remain full-ledger values. In normal daily reconciliation, the newest cleared row is the online-balance checkpoint.</div>'
+        :((_txLedgerSortCol==='date')?''
+          :'<div class="tx-bal-caption" style="'+_capStyle+'">Balance is shown as of each transaction date, not recalculated in sorted order.</div>'));
 
     // A9b: display-only selected-account context label (reads existing selAcct; no state change).
     var _acctLabel=selAcct?'<div style="padding:8px 16px 0;font-size:12px;color:var(--muted)">Selected account: <strong style="color:var(--ink)">'+_esc(selAcct.label)+'</strong></div>':'';
@@ -6408,13 +6429,16 @@ function _renderTxRegister(){
       +'<thead><tr style="background:var(--surface2);text-align:left">'
       +thSort('Date','date')+thSort('Payee','payee')+th('Memo')+thSort('Category','category')
       +thSort('Outflow','outflow','right')+thSort('Inflow','inflow','right')
-      +'<th title="Cleared status; edit via the checkbox, filter with Status" style="'+_thBase+';text-align:center">Clr</th>'+th('Balance','right')
+      +'<th data-sort-col="reconcile" onclick="setTxLedgerSort(\'reconcile\')" '
+      +'title="Reconciliation (CL) view: uncleared on top, cleared below, newest-first within each group; edit cleared status with the checkbox" '
+      +'style="'+_thBase+';cursor:pointer;user-select:none;text-align:center">Clr'
+      +(_txLedgerSortCol==='reconcile'?' ▼':'')+'</th>'+th('Balance','right')
       +'<th style="padding:8px 12px;width:60px"></th>'
       +'</tr></thead><tbody>';
 
     // Starting balance row (opening ledger anchor; always shown as ledger context, even under
-    // filters). In a newest-first (date desc) view it belongs at the BOTTOM, the oldest end;
-    // otherwise it anchors the top.
+    // filters). In a newest-first view (date desc, or the reconcile CL view) it belongs at the
+    // BOTTOM, the oldest end; otherwise it anchors the top.
     var startCell=balWarning
       ?'<span style="font-style:italic;color:var(--amber)">Starting balance not set — running balance starts from $0.00</span>'
       :'<span style="font-style:italic;color:var(--muted)">Starting balance</span>';
@@ -6422,7 +6446,7 @@ function _renderTxRegister(){
       +'<td colspan="8" style="padding:8px 12px">'+startCell+'</td>'
       +'<td style="padding:8px 12px;text-align:right;font-weight:600" colspan="1">$'
       +_startBal.toFixed(2)+'</td></tr>';
-    var _startAtBottom=(_txLedgerSortCol==='date'&&_txLedgerSortDir==='desc');
+    var _startAtBottom=(_txLedgerSortCol==='reconcile')||(_txLedgerSortCol==='date'&&_txLedgerSortDir==='desc');
     if(!_startAtBottom)tbl+=_startRowHtml;
 
     if(!rows.length){
