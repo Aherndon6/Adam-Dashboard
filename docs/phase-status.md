@@ -31,6 +31,7 @@
 - Import Readiness (former 5I)
 - Budget Integration / Actuals (former 5J); A2 income actuals remains a specific gate before 5G-3
 - Old 5G Splits and 5H Transfers are relettered to 5I and 5K above, not dropped.
+- **TX-1 — Transaction Category Integrity + Income Taxonomy + Budget Attribution** (future candidate, not sequenced, NOT UX-0.5). Register data-quality workstream: source-accurate BKCPA Extra Pay income category (`income.bkcpa_extra_pay` / `commission_income` / `display_only`), reimbursement/offset categories, required-category + save validation for manual transactions, uncategorized review/filter + cleanup list, and budget-period attribution/carryover ("covered by June" vs current-month Extra). Coordinates with the 5F-3 month-boundary/carryover backlog item but is distinct (funding-period of a correctly-dated, correctly-categorized charge). No Weekly Model cash-math changes unless explicitly required; no duplicate inflow/tax rule/goal allocation. Full definition + three motivating examples: `docs/tx-1-candidate.md`.
 
 ### Phase 5G: Cash Planning + Allocation (NEXT MAJOR PHASE — 5G-0 COMPLETE; 5G-1+ NOT STARTED)
 
