@@ -859,7 +859,7 @@ button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-vis
 // ── Constants (unchanged) ──────────────────────────────────────────────────
 // Simplified architecture — $8,250 total from LC · $6,500 operating floor · no legacy mechanics
 // Real-world moves: keep $2,250 in chk, move $2,750 sav→chk, move $1,000 LC→chk, move $2,250 LC→chk (Option 1 correction)
-const BUILD_TS='2026-07-07T13:48:15'; // updated each push — local time string
+const BUILD_TS='2026-07-07T14:47:35'; // updated each push — local time string
 const START_CHK=18037.73,START_SAV=3772.77,START_AMX=103.64,START_TAX=0,START_LC=13488.88;
 const EF_AMT=13488.88; // LC/EF balance — static this model year (no transfers in or out)
 const BASE_TAX=521.36,RET_SAV_XFR=3772.74;
@@ -1277,6 +1277,18 @@ var activeSection='overview';
 var goalsSubTab='savings';
 var goalFlags={ira_cpa_cleared:false};
 var goalFundedAmounts={adam_401k:10208,wendy_sep:17859,adam_ira:0,wendy_ira:0,bailey_529:0,bryce_529:0,preston_529:0,wewe_rccl:0,wewe_dcl:0,christmas_cruise:0,bryce_vehicle:0,taxable_etf:0};
+// 5G-1A: goals whose weekly funding is HELD in AMEX Savings (cruise deposits) — not paid to the
+// vendor and not routed to the untracked 'goal' sentinel. Routing is by goalId at the runModel dst
+// site; the display destination is forced to match (see applyGoalsFromData and the dstLbl branch).
+// Deliberately NOT members of _amxHold, so they keep their existing waterfall funding decision and
+// are NOT subjected to the 5-week AMEX lookahead/throttle. NOTE (deferred to 5G-1B): there is no
+// modeled payout when the real cruise payments leave AMEX Savings (RCCL ~Cal Wk 30, DCL ~Cal Wk 41),
+// so modeled AMEX Savings overstates by the held amount after those weeks until a release is added.
+const HOLDING_TO_AMEX_GOALS=['wewe_rccl','wewe_dcl'];
+// Adam bi-weekly paycheck weeks within the 31-week model (matched to WD inflow dates). Module-scoped
+// so both runModel() and renderWeekDetail()'s readiness note can read it (5G-1A hoist — pure
+// relocation out of runModel; no change to paycheck modeling).
+const PAYCHECK_WKS=[3,5,7,9,11,14,16,18,20,22,24,27,29,31];
 var engineAmt='';
 var engineType='regular';
 var engineResult=null;
@@ -1523,8 +1535,8 @@ const HARDCODED_GOALS_FALLBACK=[
   {id:'adam_401k',     name:'Adam 401(k)',      tier:'Retirement',target:24500,   priority:0,  status:'funding', notes:'Auto-funded via payroll',                       auto:true,  stretch:false,complete:false,startsAfter:null,      dueWeek:null,needsFlag:null,            milestone:null,  fromModel:null,src:'Payroll (auto-deduction)',        dest:'Empower 401(k)',              color:null     },
   {id:'wendy_sep',     name:'Wendy SEP',         tier:'Retirement',target:17859,   priority:0,  status:'executed',notes:'Completed — 2025 SE income',                    auto:false, stretch:false,complete:true, startsAfter:null,      dueWeek:null,needsFlag:null,            milestone:null,  fromModel:null,src:'Wendy SE income',                 dest:'Ascensus / BK CPA',          color:null     },
   {id:'alaska',        name:'Alaska Cruise',     tier:'Travel',    target:7000,    priority:1,  status:'funding', notes:'Funded Cal Wk 27 — cruise Sep 2026',            auto:false, stretch:false,complete:false,startsAfter:null,      dueWeek:null,needsFlag:null,            milestone:null,  fromModel:'ak',src:'Truist Checking (weekly surplus)',dest:'Truist Savings',             color:'#0369a1'},
-  {id:'wewe_rccl',     name:'Wewe RCCL',         tier:'Travel',    target:600,     priority:2,  status:'funding', notes:'Due end of July (Cal Wk 30)',                    auto:false, stretch:false,complete:false,startsAfter:'alaska',  dueWeek:8,   needsFlag:null,            milestone:null,  fromModel:null,src:'Truist Checking',                 dest:'RCCL payment',               color:'#be185d'},
-  {id:'wewe_dcl',      name:'Wewe DCL',          tier:'Travel',    target:500,     priority:3,  status:'funding', notes:'Due first week of October (Cal Wk 41)',          auto:false, stretch:false,complete:false,startsAfter:'alaska',  dueWeek:19,  needsFlag:null,            milestone:null,  fromModel:null,src:'Truist Checking',                 dest:'DCL payment',                color:'#9333ea'},
+  {id:'wewe_rccl',     name:'Wewe RCCL',         tier:'Travel',    target:600,     priority:2,  status:'funding', notes:'Due end of July (Cal Wk 30)',                    auto:false, stretch:false,complete:false,startsAfter:'alaska',  dueWeek:8,   needsFlag:null,            milestone:null,  fromModel:null,src:'Truist Checking',                 dest:'AMEX Savings (holding)',     color:'#be185d'},
+  {id:'wewe_dcl',      name:'Wewe DCL',          tier:'Travel',    target:500,     priority:3,  status:'funding', notes:'Due first week of October (Cal Wk 41)',          auto:false, stretch:false,complete:false,startsAfter:'alaska',  dueWeek:19,  needsFlag:null,            milestone:null,  fromModel:null,src:'Truist Checking',                 dest:'AMEX Savings (holding)',     color:'#9333ea'},
   {id:'adam_ira',      name:'Adam IRA',          tier:'Retirement',target:7000,    priority:4,  status:'planned', notes:'Backdoor Roth — pending CPA clearance',         auto:false, stretch:false,complete:false,startsAfter:'wewe_dcl',dueWeek:null,needsFlag:'ira_cpa_cleared',milestone:null,  fromModel:null,src:'Truist Checking (weekly surplus)',dest:'AMEX Savings (IRA Holding)',color:'#6d28d9'},
   {id:'wendy_ira',     name:'Wendy IRA',         tier:'Retirement',target:7000,    priority:5,  status:'planned', notes:'Pending CPA clearance',                         auto:false, stretch:false,complete:false,startsAfter:null,      dueWeek:null,needsFlag:'ira_cpa_cleared',milestone:null,  fromModel:null,src:'Truist Checking (weekly surplus)',dest:'AMEX Savings (IRA Holding)',color:'#7c3aed'},
   {id:'bailey_529',    name:'Bailey 529',         tier:'Education', target:3500,    priority:6,  status:'planned', notes:'Highest priority 529',                          auto:false, stretch:false,complete:false,startsAfter:null,      dueWeek:null,needsFlag:null,            milestone:null,  fromModel:null,src:'Truist Checking (weekly surplus)',dest:'AMEX Savings (529 Holding)',color:'#0e7490'},
@@ -1612,6 +1624,10 @@ function validateLoadedGoals(goals){
 }
 
 function applyGoalsFromData(goals){
+  // 5G-1A: force the display destination for held cruise deposits to match the code-side routing,
+  // independent of the stored goal_registry.dest (which may still read a legacy "RCCL/DCL payment").
+  // Display-only; the actual routing is by goalId at the runModel dst site. No SQL required.
+  goals.forEach(function(g){if(HOLDING_TO_AMEX_GOALS.indexOf(g.id)>=0)g.dest='AMEX Savings (holding)';});
   GOALS_REGISTRY=goals;
   // Waterfall: active, non-auto, non-complete, non-stretch, not paused/archived, sorted by priority
   var wf=goals
@@ -2190,8 +2206,7 @@ function runModel(akGoal,rtGoal,flags){
   GOALS_REGISTRY.forEach(function(g){if(!g.complete)goalSaved[g.id]=0;});
   goalSaved['adam_ira']=Math.round(START_AMX*100)/100; // AMEX Savings already holds this as initial IRA seed
   goalSaved['adam_401k']=goalFundedAmounts['adam_401k']||0;      // YTD payroll contributions
-  // Adam bi-weekly paycheck weeks within 31-week model (matched to WD inflow dates)
-  var PAYCHECK_WKS=[3,5,7,9,11,14,16,18,20,22,24,27,29,31];
+  // PAYCHECK_WKS hoisted to module scope (5G-1A) — same constant, same values, referenced below.
   var PAY_401K=1020.83; // $24,500 / 24 pay periods
   var rtSavSwept=false; // one-time Truist Savings → AMEX when Alaska completes
   // Waterfall arrays minus auto/complete goals (handled outside waterfall loop)
@@ -2431,7 +2446,15 @@ function runModel(akGoal,rtGoal,flags){
       var rem0=r(Math.max(0,gTgt-funded0));
       if(rem0<0.005)continue;
       // IRA/529 goals accumulate in AMEX Savings (holding); cruise/vehicle goals are external
-      var dst=goalId==='alaska'?'sav':(_amxHold.indexOf(goalId)>=0?'amx':'goal');
+      // 5G-1A: RCCL/DCL cruise deposits are HELD in AMEX Savings — route to 'amx' via
+      // HOLDING_TO_AMEX_GOALS, deliberately OUTSIDE the _amxHold branch so they keep their existing
+      // waterfall funding decision (no 5-week AMEX lookahead re-adjudication). mv() debits checking
+      // identically regardless of dst, so the checking delta / Goal Transfers total are unchanged;
+      // only amx gains the held amount. (Payout release when the real cruise bills land is deferred
+      // to 5G-1B — see HOLDING_TO_AMEX_GOALS definition.)
+      var dst=goalId==='alaska'?'sav'
+        :(_amxHold.indexOf(goalId)>=0?'amx'
+        :(HOLDING_TO_AMEX_GOALS.indexOf(goalId)>=0?'amx':'goal'));
       // AMEX goals: check 5-week lookahead before sweeping; partial safe sweep if full is unsafe.
       // Pass sm() as proposed upper bound — never ask for more than current-week transferable surplus.
       if(_amxHold.indexOf(goalId)>=0){
@@ -2457,7 +2480,12 @@ function runModel(akGoal,rtGoal,flags){
         goalSaved[goalId]=r(funded0+m);
         var remAfter=r(Math.max(0,gTgt-goalSaved[goalId]));
         var sfx=remAfter<0.01?' — '+gdef.name+' funded!':(': $'+fc(remAfter)+' remaining');
-        var dstLbl=dst==='sav'?'Truist Savings':dst==='amx'?'AMEX Savings':(gdef.dest||gdef.name);
+        // 5G-1A: RCCL/DCL show "AMEX Savings (holding)" to distinguish held cruise deposits from
+        // regular AMEX Savings routing (IRA/529). Scoped to HOLDING_TO_AMEX_GOALS so IRA/529 labels
+        // are byte-identical to before.
+        var dstLbl=dst==='sav'?'Truist Savings'
+          :dst==='amx'?(HOLDING_TO_AMEX_GOALS.indexOf(goalId)>=0?'AMEX Savings (holding)':'AMEX Savings')
+          :(gdef.dest||gdef.name);
         tr.push({l:gdef.name+' $'+fc(m)+' → '+dstLbl+sfx,r:'done',rsn:'Waterfall allocation'});
         ac.push('Transfer $'+fc(m)+' from Truist Checking to '+dstLbl+' ('+gdef.name+')');
         acKeys.push('goal_'+goalId);tr[tr.length-1]._key='goal_'+goalId;
@@ -4081,6 +4109,9 @@ function renderWeekDetail(w,weeks){
     var _progTxt=(_doneModel+_doneXfr)+'/'+_totalXfr+' done';
     html+='<div class="panel card-pad"><div class="acts">'+
       '<div class="act-hdr">Transfers to execute <span class="act-progress '+(_totalXfr>0?_progCls:'')+'">'+_progTxt+'</span></div>'+
+      // 5G-1A readiness note: on paycheck weeks, transfers are funded by the paycheck and should not
+      // be executed on the week-start date before it posts.
+      (PAYCHECK_WKS.indexOf(w.num)>=0?'<div class="act-readiness-note" style="font-size:12px;color:var(--muted);margin:2px 0 8px;padding:6px 9px;background:var(--surface2);border-radius:6px">Paycheck-funded transfers should be executed after the paycheck clears.</div>':'')+
       // Model-generated transfer actions
       (w.realActs.length?w.realActs.map(function(a,i){
         var done=taskData[w.num+'_'+i]&&taskData[w.num+'_'+i].completed;

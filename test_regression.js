@@ -584,11 +584,81 @@ test('Savings sweep fires in W5 (alaska completion week): sav increases net',()=
   assertApprox(w5.sav-w4.sav,3227.26,'W5 net sav change',0.1);
 });
 
-test('Savings sweep: amx increases by ~3772.74 in W5 (sweep only — retirement starts after DCL)',()=>{
+test('Savings sweep + 5G-1A holding: amx W5 delta = 3772.74 sweep + 678.76 RCCL/DCL holding',()=>{
   const w4=WEEKS.find(x=>x.num===4),w5=WEEKS.find(x=>x.num===5);
-  // Retirement now starts after DCL completes. W5 surplus above floor is ~$79 (below MIN_XFR),
-  // so only the savings sweep (3772.74) moves to AMEX — no waterfall retirement allocation.
-  assertApprox(w5.amx-w4.amx,3772.74,'W5 amx delta',0.5);
+  // The savings sweep (Truist Savings -> AMEX, RET_SAV_XFR 3772.74) fires when Alaska completes in W5.
+  // 5G-1A: Wewe RCCL ($600 full) and Wewe DCL ($78.76 partial in the fresh/unreconciled harness — the
+  // waterfall throttles DCL at the $6,500 floor here; in the reconciled live model both fully fund, see
+  // the 5G1A-recon-fixture test) now route to AMEX Savings as HOLDING transfers instead of the untracked
+  // 'goal' sentinel, so the W5 amx delta gains 678.76 (600 + 78.76) on top of the sweep.
+  // Pre-5G-1A this test expected 3772.74 sweep-only; the +678.76 is the intended reclassification effect.
+  assertApprox(w5.amx-w4.amx,4451.50,'W5 amx delta (sweep 3772.74 + RCCL/DCL holding 678.76)',0.5);
+});
+
+console.log('\n── Section 5G-1A: Weekly Transfer Routing (RCCL/DCL -> AMEX Savings holding) ──');
+
+test('5G1A-1: HOLDING_TO_AMEX_GOALS contains the two cruise deposits, not IRA/529',()=>{
+  assert(HOLDING_TO_AMEX_GOALS.indexOf('wewe_rccl')>=0 && HOLDING_TO_AMEX_GOALS.indexOf('wewe_dcl')>=0,'must contain wewe_rccl and wewe_dcl');
+  assert(HOLDING_TO_AMEX_GOALS.indexOf('adam_ira')<0 && HOLDING_TO_AMEX_GOALS.indexOf('bailey_529')<0,'must NOT contain IRA/529 goals');
+});
+
+test('5G1A-2: RCCL/DCL transfers route to "AMEX Savings (holding)", never "RCCL/DCL payment"',()=>{
+  const allTr=WEEKS.reduce((a,w)=>a.concat(w.tr.map(t=>t.l)),[]);
+  const rccl=allTr.find(l=>/Wewe RCCL \$/.test(l));
+  const dcl=allTr.find(l=>/Wewe DCL \$/.test(l));
+  assert(rccl && /AMEX Savings \(holding\)/.test(rccl),'RCCL transfer must route to AMEX Savings (holding): '+rccl);
+  assert(dcl && /AMEX Savings \(holding\)/.test(dcl),'DCL transfer must route to AMEX Savings (holding): '+dcl);
+  assert(!allTr.some(l=>/RCCL payment|DCL payment/.test(l)),'no transfer line may say "RCCL payment"/"DCL payment"');
+});
+
+test('5G1A-3: IRA/529 unchanged — still plain "AMEX Savings", _amxHold list untouched',()=>{
+  const allTr=WEEKS.reduce((a,w)=>a.concat(w.tr.map(t=>t.l)),[]);
+  const ira=allTr.find(l=>/Adam IRA \$.*AMEX Savings/.test(l));
+  assert(ira,'expected an Adam IRA -> AMEX Savings transfer line');
+  assert(!/\(holding\)/.test(ira),'IRA label must remain plain "AMEX Savings", not "(holding)": '+ira);
+  assert(html.includes("var _amxHold=['adam_ira','wendy_ira','bailey_529','bryce_529','preston_529'];"),'_amxHold membership must be unchanged (no RCCL/DCL added)');
+});
+
+test('5G1A-4: Alaska still routes to Truist Savings',()=>{
+  const allTr=WEEKS.reduce((a,w)=>a.concat(w.tr.map(t=>t.l)),[]);
+  const ak=allTr.find(l=>/Alaska Cruise \$.*Truist Savings/.test(l));
+  assert(ak,'Alaska must still route to Truist Savings: '+(ak||'(none found)'));
+});
+
+test('5G1A-5: routing + label wiring present in source; GOALS_REGISTRY dest forced to holding',()=>{
+  assert(html.includes("HOLDING_TO_AMEX_GOALS.indexOf(goalId)>=0?'amx':'goal'"),'dst ternary must route holding goals to amx before the goal sentinel');
+  assert(html.includes("HOLDING_TO_AMEX_GOALS.indexOf(goalId)>=0?'AMEX Savings (holding)':'AMEX Savings'"),'dstLbl must special-case the holding label');
+  assert(html.includes("if(HOLDING_TO_AMEX_GOALS.indexOf(g.id)>=0)g.dest='AMEX Savings (holding)'"),'load path must force holding dest independent of Supabase');
+  assert(GOALS_REGISTRY.find(g=>g.id==='wewe_rccl').dest==='AMEX Savings (holding)','wewe_rccl dest resolves to holding');
+  assert(GOALS_REGISTRY.find(g=>g.id==='wewe_dcl').dest==='AMEX Savings (holding)','wewe_dcl dest resolves to holding');
+});
+
+test('5G1A-6: readiness note present, exact string, gated to paycheck weeks; PAYCHECK_WKS hoisted',()=>{
+  assert(html.includes('Paycheck-funded transfers should be executed after the paycheck clears.'),'exact readiness string must be present');
+  assert(html.includes('act-readiness-note'),'readiness note element must exist');
+  assert(html.includes('PAYCHECK_WKS.indexOf(w.num)>=0'),'readiness note must be gated on PAYCHECK_WKS');
+  assert(html.includes('const PAYCHECK_WKS=[3,5,7,9,11,14,16,18,20,22,24,27,29,31];'),'PAYCHECK_WKS must be module-scoped (hoisted)');
+  assert(!html.includes('var PAYCHECK_WKS=[3,5,7,9,11,14,16,18,20,22,24,27,29,31];'),'PAYCHECK_WKS must NOT be redefined as a runModel-local var');
+});
+
+test('5G1A-recon-fixture: Week 27 (reconciled) AMEX Savings gains exactly $1,100; checking unchanged',()=>{
+  // Prove requirement #4 deterministically: seed the real Week 26 (model wk 4) closeout so Week 27 has
+  // ample surplus (both RCCL $600 and DCL $500 fully fund in W5), then compare holding routing vs a
+  // baseline where HOLDING_TO_AMEX_GOALS is empty (RCCL/DCL revert to the 'goal' sentinel).
+  const savedRecon=reconData[4];
+  const savedHold=HOLDING_TO_AMEX_GOALS.slice();
+  reconData[4]={chk:14935.14,sav:3772.81,amx:103.64,tax:1516.59,lc:13774.76,balance_basis:'posted_current_balance',date:'Jul 4'};
+  try{
+    const wHold=runModel(goalAk,goalRt).find(w=>w.num===5);
+    HOLDING_TO_AMEX_GOALS.length=0; // baseline: RCCL/DCL back to 'goal' (no amx credit)
+    const wBase=runModel(goalAk,goalRt).find(w=>w.num===5);
+    assertApprox(wHold.amx-wBase.amx,1100,'Week 27 amx gains exactly RCCL $600 + DCL $500',0.5);
+    assertApprox(wHold.chk-wBase.chk,0,'Week 27 checking (and Goal Transfers total) unchanged by reclassification',0.5);
+    assert((wHold.goalSaved.wewe_rccl||0)>=600 && (wHold.goalSaved.wewe_dcl||0)>=500,'both cruise deposits fully funded in reconciled Week 27');
+  }finally{
+    HOLDING_TO_AMEX_GOALS.length=0;savedHold.forEach(x=>HOLDING_TO_AMEX_GOALS.push(x));
+    if(savedRecon===undefined)delete reconData[4];else reconData[4]=savedRecon;
+  }
 });
 
 test('Savings sweep fires only once: sav is unchanged from W5 to W6',()=>{

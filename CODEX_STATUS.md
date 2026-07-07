@@ -95,7 +95,7 @@ Promoted from the 5G-0 finding (`docs/5g-0-finding-weekly-model-transfer-issues.
 
 **Readiness note:** Paycheck-funded transfers should be executed after the paycheck clears. Adam's operational intent (2026-07-07): wait for the 7/7 paycheck to clear in checking before executing any Week 27 transfers.
 
-**Open design question (decide in 5G-1A, do not assume):** routing RCCL/DCL to `amx` parks $1,100 in AMEX Savings indefinitely — the model has no payout event when the real cruise payments land (RCCL ~end July / Cal Wk 30, DCL ~October / Cal Wk 41). Without a modeled release, AMEX Savings will overstate by $1,100 once those payments actually leave. Decide whether 5G-1A also models the holding→payout lifecycle or accepts a known standing offset until the payment weeks.
+**Holding→payout lifecycle — DEFERRED to 5G-1B (decided 2026-07-07):** routing RCCL/DCL to `amx` parks $1,100 in AMEX Savings with no modeled payout when the real cruise payments land (RCCL ~end July / Cal Wk 30, DCL ~October / Cal Wk 41). 5G-1A deliberately does NOT model the release — so once those payments actually leave, modeled AMEX Savings will overstate by the held amount until a release event is added. This is a known, accepted standing offset for 5G-1A; modeling the holding→payout lifecycle is deferred to 5G-1B. A code comment at the `HOLDING_TO_AMEX_GOALS` definition records the same deferral.
 
 **Desired scope:**
 1. Route Week 27 `wewe_rccl` ($600) and `wewe_dcl` ($500) to AMEX Savings as holding transfers, not the `'goal'` sentinel. Today the routing ternary at `index.html:2434` sends every non-Alaska, non-`_amxHold` goal to `dst='goal'` (leaves checking, no destination account tracked — `index.html:2262`); RCCL/DCL currently fall here.
