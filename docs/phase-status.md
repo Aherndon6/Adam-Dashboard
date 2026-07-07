@@ -90,6 +90,8 @@ The 2026-07-07 UI/flow review (`docs/reviews/ui-flow-review-triage-2026-07-07.md
 - BUD-2: Budget empty state and the "actuals reconcile through Register" story
 - SYS-3: row-action (Archive/Edit) treatment so red is reserved for real money alerts
 
+Mockup spec (treatment authority for BUD-1/BUD-2/SYS-3 and the 5G mock frames): `docs/specs/wendy-5g-budget-mockup-spec-2026-07-07.md` (v1.2, final). BUD-1/BUD-2/SYS-3 route to a UX-0 slice after 5G-0, not into 5G-0; see CODEX_STATUS.md for the resolved sequencing and confirmed amber/Set-Aside decisions.
+
 **5H candidates** (capture speed / entry assistance — 5H's charter; do not build early):
 
 - REG-5: payee suggestions while typing

@@ -44,19 +44,32 @@ Active spec path: TBD (create a 5G-1 spec under docs/ before implementation; rec
 
 Known gates and pre-reqs live in `docs/phase-status.md` (Phase 5G gates) and `AGENTS.md` (Do Not Touch, schema/migration conventions). Key blockers: Wendy feedback on Available for Goals; A2 income actuals before 5G-3; Diablos/GLP WD fix + WC-3 disposition + baseline weekly-model recapture before 5G-4a; zero-outflow identity automated test before 5G-4b; calculation-core extraction (5G-2.5) before 5G-3 / 5G-4a. Alaska freeze window: July 24 through August 10 (no 5G merges).
 
-### UI/Flow Review v2 (2026-07-07) — planning note
+### UI/Flow Review v2 (2026-07-07) — planning note [FINAL 2026-07-07, all decisions confirmed]
 
-UI/Flow Review v2 completed 2026-07-07 (`docs/reviews/ui-flow-review-triage-2026-07-07.md`; triage input only, not implementation authority — Wendy-confirmed workflow overrides). Do not treat all 24 findings as immediate work. See `docs/phase-status.md` → "UI & Flow Review Inputs" for the full breakdown.
+UI/Flow Review v2 completed 2026-07-07 (`docs/reviews/ui-flow-review-triage-2026-07-07.md`; triage input only, not implementation authority; Wendy-confirmed workflow overrides). Do not treat all 24 findings as immediate work. See `docs/phase-status.md` "UI & Flow Review Inputs" for the full breakdown.
 
-- Capped pre-5G UX cleanup candidate: FLOW-2, FLOW-1, WK-1, REG-1, SYS-2, optional rider REG-2.
-- 5G-0 may fold in SYS-1, SYS-4, WK-6 (in-charter label/docs cleanup).
-- Wendy 5G Budget mockup inputs: BUD-1, BUD-2, SYS-3. 5H candidates (hold): REG-5, REG-4, FLOW-4.
-- Nav: no regroup now; 5G launches as one "Cash Planning" item under Planning next to Goals; FLOW-2 is the minimal nav fix.
+**Sequencing decision: RESOLVED 2026-07-07 (option a executed).** The Wendy 5G Budget mockup spec is final and fully confirmed: `docs/specs/wendy-5g-budget-mockup-spec-2026-07-07.md` (v1.2). It is the treatment authority for BUD-1, BUD-2, SYS-3, and the 5G mock frames.
 
-**Decision needed before 5G-1:** Adam should choose the sequencing —
-a) Wendy Budget mockup first, or
-b) 5G-0 first, or
-c) pre-5G UX cleanup bundle first.
+**5G-0 scope: LOCKED.** Label/docs cleanup only: "Available for Goals" rename, SYS-1 (Statement check retitle, strip phase strings), SYS-4 (exact strings only), WK-6 (pluralization). No Budget row treatment work in 5G-0.
+
+**UX-0 slice: DEFINED.** BUD-1, BUD-2, SYS-3. Display-only, no schema/RLS/logic. Lands immediately after 5G-0, before 5G-1, or inside the pre-5G bundle if that ships first. Treatment authority is the mockup spec. BUD-1/BUD-2/SYS-3 route to UX-0, not 5G-0.
+
+**Pre-5G UX cleanup bundle: unchanged** (FLOW-2, FLOW-1, WK-1, REG-1, SYS-2; rider REG-2 per the triage cap rule).
+
+**Recommended pre-freeze order:** (a) decide whether to run the capped pre-5G bundle, then (b) 5G-0, then (c) UX-0, then (d) 5G-1 behind existing gates (5G-1 still gated on staging Supabase + baseline export; Alaska freeze July 24 through August 10 unchanged).
+
+**Confirmed decisions (full log in the spec, Section 9):**
+
+- Near-limit amber, final: lines >= $100 amber when Spent >= 90% of Budget AND Remaining <= $100; lines under $100 have no amber state (neutral until over, then red). Red = over budget on actuals only, rendered as red value plus "Over by $X" badge, no row tint. No pacing logic. Intended behavior: the $34 Google line stays neutral at $33.60 spent and only changes state if it goes over.
+- Income Remaining: muted "expected," never red, no late-income signal.
+- Confirms: amber-dark for Archive and Register delete; red fully retired from controls.
+- Set Aside writes, final: Adam records events in v1 by soft household convention; Wendy views. No isOwnerUser gate, no new owner-only role logic for Cash Planning writes; 5E-7 role matrix untouched. Help copy notes Adam handles set-aside entries for now. Revisit only if usage shows a need.
+- Upcoming Spend horizon: 6 weeks.
+- Two-entry pattern for transfer-funded set-asides accepted for v1 and disclosed to Wendy plainly (spec Section 1).
+- Cash Planning nav item visible to Wendy at 5G-1, bills only, purpose line explicit; allocation placeholder line in position until 5G-2.
+- 5G-2 allocation frame added to the mock set, annotated "Arrives after the first Cash Planning release."
+
+**Next action:** build the four static mock frames (5G-0, 5G-1 set, 5G-2 allocation, 5G-3 before/after) from the spec for the Wendy walkthrough.
 
 ## 5E-8 CLOSED: Register Category Sync (2026-07-02)
 
