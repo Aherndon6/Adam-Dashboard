@@ -8,7 +8,7 @@ Budget Module v1 live.
 5F-1.5 Gate A (Wendy July usability) UI shipped and live (2026-07-05/06), including the Register Quicken-style ledger hotfix (historical Balance) and the Register CL/reconciliation default view (commit 8d48b04, Wendy-confirmed and live-smoked on dashboard.herndons.us). A4 (AMEX Gold starting-balance correction) is DONE (executed and verified 2026-07-06).
 Wendy Budget-tab live use in progress (target July 1, 2026).
 
-Next major phase: 5G Cash Planning + Allocation (locked). 5G-0 (label/docs cleanup) is CLOSED — see "## 5G-0 CLOSED". 5G-1A (Weekly Transfer Routing + Readiness) is SHIPPED (commit `c8613bc`) — see "## 5G-1A SHIPPED". UX-0 (display-only Budget row treatment: BUD-1/BUD-2/SYS-3) is SHIPPED — see "## UX-0 SHIPPED". Next candidate is UX-0.5 (Wendy visual polish, display-only; planning pending). 5G-1 is the first schema/build sub-phase and remains gated. See `docs/phase-status.md` for the 5G-0 through 5G-5 map, gates, and the pre/post-Alaska split.
+Next major phase: 5G Cash Planning + Allocation (locked). 5G-0 (label/docs cleanup) is CLOSED — see "## 5G-0 CLOSED". 5G-1A (Weekly Transfer Routing + Readiness) is SHIPPED (commit `c8613bc`) — see "## 5G-1A SHIPPED". UX-0 (display-only Budget row treatment: BUD-1/BUD-2/SYS-3) is SHIPPED (commit `c5873fb`) — see "## UX-0 SHIPPED". UX-0.5 (Wendy visual polish, display-only: B1–B4, R1–R2) is SHIPPED (commit `739567b`) — see "## UX-0.5 SHIPPED". 5G-1 is the first schema/build sub-phase and remains gated. See `docs/phase-status.md` for the 5G-0 through 5G-5 map, gates, and the pre/post-Alaska split.
 
 ## Current Goal
 
@@ -16,8 +16,8 @@ Prepare the system for Wendy using the Budget tab in live household workflow whi
 
 ## Recent Verified State
 
-- Static regression tests: 1344/0 passing (as of UX-0 display-only Budget row treatment; 5G-1A was 1339/0)
-- E2E: 131/0 passing on this branch (unchanged by UX-0; e2e.js not touched). The earlier WC-3/BR-3 "known e2e failure" language is stale for this branch; do not re-cite it without re-verifying.
+- Static regression tests: 1350/0 passing (as of UX-0.5 Budget/Register visual polish; UX-0 was 1344/0)
+- E2E: 131/0 passing on this branch (unchanged count through UX-0.5; e2e.js touched only for the R1 caption wording). The earlier WC-3/BR-3 "known e2e failure" language is stale for this branch; do not re-cite it without re-verifying. Note: the balance-invariant e2e tests LEDGER-1 and A9-1 are intermittently flaky in the headless environment and clear on immediate re-run with no code change.
 - Dashboard stable
 - GitHub Pages deploys from main
 
@@ -32,12 +32,12 @@ Prepare the system for Wendy using the Budget tab in live household workflow whi
 
 ## Next Candidate Work
 
-Active next-phase pointer: 5G-0 CLOSED, 5G-1A SHIPPED, UX-0 SHIPPED. **Next candidate is UX-0.5** (Wendy visual polish, display-only — planning pending), then 5G-1 behind existing gates.
+Active next-phase pointer: 5G-0 CLOSED, 5G-1A SHIPPED, UX-0 SHIPPED, UX-0.5 SHIPPED. **Next candidate is 5G-1** (behind existing gates: staging Supabase + baseline export + explicit go-ahead). Optional still-open: the capped pre-5G UX cleanup bundle (FLOW-2, FLOW-1, WK-1, REG-1, SYS-2; rider REG-2). Future candidate (not sequenced): TX-1 — see `docs/tx-1-candidate.md`.
 
 1. 5G-0: label/docs cleanup — DONE (static 1332/0, e2e 131/0). See "## 5G-0 CLOSED".
 2. 5G-1A: Weekly Transfer Routing + Readiness — SHIPPED 2026-07-07, commit `c8613bc` (static 1339/0, e2e 131/0). RCCL/DCL reclassified to AMEX Savings holding (out of the `'goal'` sentinel), holding labels, paycheck-cleared readiness note. See "## 5G-1A SHIPPED".
 3. **UX-0: BUD-1, BUD-2, SYS-3 — Budget row treatment, display-only — SHIPPED 2026-07-07 (static 1344/0, e2e 131/0).** Treatment authority: the Wendy 5G Budget mockup spec v1.2 (`docs/specs/wendy-5g-budget-mockup-spec-2026-07-07.md`). Desktop visual review passed (Adam, 2026-07-07). See "## UX-0 SHIPPED".
-4. **UX-0.5 (NEXT — planning only): Wendy Visual Polish.** Display-only presentation pass over Budget + Register (legend, optional attention strip, header hierarchy, Register helper-bar/affordance). No data/math/schema/reconciliation/routing/workflow changes. Not yet planned; do not implement inside UX-0. Optional decision still open: the capped pre-5G UX cleanup bundle (FLOW-2, FLOW-1, WK-1, REG-1, SYS-2; rider REG-2).
+4. **UX-0.5: Wendy Visual Polish — SHIPPED 2026-07-07, commit `739567b` (static 1350/0, e2e 131/0).** Display-only presentation pass over Budget + Register (B1 legend, B2 attention strip, B3 section-header hierarchy, B4 "Over by" badge rhythm, R1 Register helper bar, R2 edit/delete affordance). Desktop visual review passed (Adam, 2026-07-07). R3 (uncleared-row treatment) deferred. See "## UX-0.5 SHIPPED".
 5. 5G-1: planned_outflows + outflow_events schema; seed Mint Mobile; append-only events; opening adjustment from dated snapshot; Mint transfer_funded to AMEX Savings. GATED — must NOT start until Adam's explicit in-session go-ahead AND staging Supabase + baseline export are in place.
 6. 5G-2: derived Account Allocation view (Spoken For / Free to Use).
 
@@ -124,6 +124,20 @@ Display-only presentation slice; treatment authority is the Wendy 5G Budget mock
 - **Tests:** widened three fixed-offset slice windows (`5B-24`, `5F15-A1-07`, `5F15-A2-09`) that the added lines pushed past; rewrote `5F15-A2-09`'s income-coloring assertion to expect the muted "expected" treatment; added `UX0-01…05` (the `_budgetRowState` truth table incl. the Google $34 and $2000-line cases, leaf-only "Over by" badge, SYS-3 control colors, and the BUD-2 empty-state copy/link).
 
 Not in UX-0 (deferred to UX-0.5, planning only): legend, attention summary strip, section-header hierarchy polish, Remaining-column/badge spacing rhythm, Register reconciliation helper-bar rewrite, edit/delete affordance, uncleared-row visual treatment. UX-0.5 is display-only and must not change UX-0 behavior, data, math, schema, reconciliation, routing, or workflows.
+
+## UX-0.5 SHIPPED (2026-07-07): Wendy visual polish (Budget B1–B4, Register R1–R2)
+
+**SHIPPED, commit `739567b` (local `main`, not yet pushed at time of writing). Static 1350/0, e2e 131/0. Desktop visual review passed (Adam, 2026-07-07).** Display-only presentation pass; no UX-0 semantics changed (thresholds, red/amber/neutral, "Over by" text, income "expected" all intact). Files: `index.html`, `test_regression.js`, `e2e.js` only. No schema/RLS/RPC/SQL, no `runModel`, no reconciliation/account-routing, no transaction workflow changes. `e2e.js` was touched only for the R1 caption wording. BUILD_TS was stamped to `2026-07-07T18:22:06` by the pre-commit hook (normal code-commit behavior).
+
+- **B1 — color/status legend:** compact key under the Budget title (Within budget / Near limit / Over budget "Over by $X" / Income "expected"), reusing UX-0 color tokens.
+- **B2 — attention summary strip:** slim strip under the legend, above the grid — Over budget (N lines), Near limit (N lines), Planned remaining, Income expected. Over/near counts are tallied **inside the expense-leaf render loop** from the same `_budgetRowState` the grid renders (single source of truth — no parallel computation, cannot drift). Injected into a slot via `split/join` (literal `$` safe). Income expected is clamped `Math.max(0,_iTotRem)` so it never shows a positive figure once income is fully/over-received; Planned remaining = `totalRem` (red only if the total is actually over).
+- **B3 — section-header hierarchy:** parent group headers get a 2px top rule and uppercase small-caps labels for easier scanning.
+- **B4 — "Over by $X" badge rhythm:** badge spacing/alignment improved (margin-left 8px + vertical-align); text, colors, and threshold logic unchanged.
+- **R1 — Register helper bar:** the long italic reconcile paragraph replaced with a cleaner non-italic helper bar (same `tx-bal-caption` class), copy: "Uncleared transactions appear first. Balance reflects the full account ledger, not just visible rows. The newest cleared row should match your bank balance." (trimmed reconcile-against-bank hint retained per Adam decision A).
+- **R2 — Register edit/delete affordance:** ✎/✕ get larger click targets, clearer tooltips, and aria-labels; UX-0 SYS-3 colors preserved (✎ neutral/muted, ✕ amber).
+- **Token hygiene:** new UX-0.5 borders (B2 strip, B3 rule, R1 bar) use the defined `--line` token, not the undefined `--border`. No global `--border` cleanup performed (pre-existing usages left untouched; that would be a separate pass).
+- **R3 (uncleared-row visual treatment) — DEFERRED**, not implemented. It touches reconciliation-sensitive Register semantics (CL/reconcile default sort + full-ledger balance invariant).
+- **Tests:** updated the R1 reconcile-caption assertions (static `A10-9`; e2e caption references); added `UX0.5-B1..R2` covering the legend, the strip wiring (slot placement, in-loop tally, clamp, `--line` borders), header hierarchy, badge rhythm, helper-bar copy, and action affordance. Note the balance-invariant e2e tests LEDGER-1/A9-1 are intermittently flaky and clear on re-run with no code change.
 
 ## 5E-8 CLOSED: Register Category Sync (2026-07-02)
 
