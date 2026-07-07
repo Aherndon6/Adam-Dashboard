@@ -5109,7 +5109,7 @@ test('5B-24: Budget printout total row uses "Total Planned Budget" label (update
   var budgetFnSrc=htmlSrc.slice(budgetFnIdx,budgetFnIdx+20000);
   assert(budgetFnSrc.includes('Total Planned Budget'),'total row must say Total Planned Budget');
   assert(!budgetFnSrc.includes('excl. goal sweep'),'goal sweep exclusion note must be removed');
-  assert(budgetFnSrc.includes('Extra Pay Going to Spreadsheet'),'misc.goal_sweep must still render');
+  assert(budgetFnSrc.includes('Available for Goals'),'misc.goal_sweep must still render');
   assert(budgetFnSrc.includes('Budget out of balance'),'out-of-balance warning must exist');
 });
 
@@ -5408,7 +5408,7 @@ test('5D2-15: lifecycle toggle labels present in HTML',()=>{
 
 test('5D2-16: future tab labels include phase references',()=>{
   assertIncludes(html,'Register — Phase 5E','future Register tab must reference Phase 5E');
-  assertIncludes(html,'Reconciliation — Phase 5F','future Reconciliation tab must reference Phase 5F');
+  assertIncludes(html,'Reconciliation','future Reconciliation tab must be present (phase suffix stripped per 5G-0 SYS-1)');
 });
 
 test('5D2-17: budget_group_key column present in categories view',()=>{
@@ -7243,7 +7243,7 @@ test('5E8-R11: _normalizeCatRow-based leaf&&assignable filter excludes parent/gr
   var groupRow=_normalizeCatRow({key:'trips',label:'Trips',parent_key:null,is_leaf:false,lifecycle_status:'active',behavior_class:null,budget_treatment:null});
   assert(!(groupRow.leaf&&groupRow.assignable),'a non-leaf parent/group row (e.g. "Trips") must not pass leaf&&assignable');
 
-  var savingsRow=_normalizeCatRow({key:'misc.goal_sweep',label:'Extra Pay Going to Spreadsheet',parent_key:'misc',is_leaf:true,lifecycle_status:'active',behavior_class:'savings_allocation',budget_treatment:null});
+  var savingsRow=_normalizeCatRow({key:'misc.goal_sweep',label:'Available for Goals',parent_key:'misc',is_leaf:true,lifecycle_status:'active',behavior_class:'savings_allocation',budget_treatment:null});
   assert(!(savingsRow.leaf&&savingsRow.assignable),'a savings_allocation leaf must not pass leaf&&assignable');
 
   var plannedRow=_normalizeCatRow({key:'goals.alaska_sweep',label:'Alaska Sweep',parent_key:'goals',is_leaf:true,lifecycle_status:'active',behavior_class:null,budget_treatment:'planned_allocation'});
@@ -7715,8 +7715,8 @@ test('5E10-05: Help panel "Logging a Jabian expense" section points to the Jabia
 
 test('5E10-06: Help panel reconciliation/printout sections are unmodified (guardrail: do not touch reconciliation)',()=>{
   assertIncludes(budgetFnSrc,'Clearing transactions against your statement','Reconciliation help section header must be unchanged');
-  assertIncludes(budgetFnSrc,'In the <strong>Reconciliation</strong> panel, select the account and enter the statement ending balance.',
-    'Reconciliation help instructions must be untouched');
+  assertIncludes(budgetFnSrc,'In the <strong>Statement check</strong> panel, select the account and enter the statement ending balance.',
+    'Statement check help instructions must be present (5G-0 SYS-1 renamed the Budget block from Reconciliation to Statement check)');
 });
 
 test('5E10-07: _saveTxForm rejects a blank payee before the Supabase call',()=>{
@@ -7843,7 +7843,7 @@ console.log('\n── Section 5F-1.5 A10: Register CL reconciliation default ─
     assertIncludes(reg,"setTxLedgerSort(\\'reconcile\\')",'Clr header onclick must call setTxLedgerSort(reconcile)');
     assertIncludes(reg,"_txLedgerSortCol==='reconcile'?' ▼'",'Clr header must show an active indicator in reconcile mode');
     assertIncludes(reg,'Reconciliation view: uncleared transactions are shown above cleared','reconcile caption must exist');
-    assertIncludes(reg,'In normal daily reconciliation, the newest cleared row is the online-balance checkpoint','reconcile caption must use conditional (non-overpromising) checkpoint wording');
+    assertIncludes(reg,'the newest cleared row should match your current bank balance','reconcile caption must use conditional (non-overpromising) household wording');
     assertIncludes(reg,"_startAtBottom=(_txLedgerSortCol==='reconcile')",'starting-balance-at-bottom must include reconcile mode');
   });
   test('A10-10: reconcile caption takes precedence over the generic non-date warning (which stays for Payee/Category/Outflow/Inflow)',()=>{

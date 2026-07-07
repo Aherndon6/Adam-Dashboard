@@ -8,7 +8,7 @@ Budget Module v1 live.
 5F-1.5 Gate A (Wendy July usability) UI shipped and live (2026-07-05/06), including the Register Quicken-style ledger hotfix (historical Balance) and the Register CL/reconciliation default view (commit 8d48b04, Wendy-confirmed and live-smoked on dashboard.herndons.us). A4 (AMEX Gold starting-balance correction) is DONE (executed and verified 2026-07-06).
 Wendy Budget-tab live use in progress (target July 1, 2026).
 
-Next major phase: 5G Cash Planning + Allocation (locked). Not started. 5G-0 is the first implementation sub-phase and is label/docs cleanup only. 5G-1 is the first schema/build sub-phase. See `docs/phase-status.md` for the 5G-0 through 5G-5 map, gates, and the pre/post-Alaska split.
+Next major phase: 5G Cash Planning + Allocation (locked). 5G-0 (label/docs cleanup only) is CLOSED — see "## 5G-0 CLOSED" below. 5G-1 is the first schema/build sub-phase. A new narrow hotfix candidate, 5G-1A (Weekly Transfer Routing + Readiness), is queued ahead of 5G-1 proper — see "## 5G-1A CANDIDATE" below. See `docs/phase-status.md` for the 5G-0 through 5G-5 map, gates, and the pre/post-Alaska split.
 
 ## Current Goal
 
@@ -32,11 +32,12 @@ Prepare the system for Wendy using the Budget tab in live household workflow whi
 
 ## Next Candidate Work
 
-Active next-phase pointer: 5G-0, then 5G-1 after label/docs cleanup is complete.
+Active next-phase pointer: 5G-0 is CLOSED. Next is 5G-1A (narrow hotfix candidate), then UX-0, then 5G-1 behind existing gates.
 
-1. 5G-0: label/docs cleanup (rename "Extra Pay Going to Spreadsheet" to "Available for Goals"; no logic change). Safe to start before a staging Supabase exists.
-2. 5G-1: planned_outflows + outflow_events schema; seed Mint Mobile; append-only events; opening adjustment from dated snapshot; Mint transfer_funded to AMEX Savings. Must NOT start until staging Supabase + baseline export are in place.
-3. 5G-2: derived Account Allocation view (Spoken For / Free to Use).
+1. 5G-0: label/docs cleanup — DONE (shipped in the working tree, static 1332/0). See "## 5G-0 CLOSED".
+2. 5G-1A: Weekly Transfer Routing + Readiness (narrow hotfix). Route Week 27 Wewe RCCL $600 + Wewe DCL $500 to AMEX Savings as holding transfers (not the `'goal'` sentinel), so AMEX Savings projects +$1,100; relabel as holding transfers; add regression coverage; readiness/paycheck-cleared labeling folded in only if low-risk else defer to 5G-1B. See "## 5G-1A CANDIDATE".
+3. 5G-1: planned_outflows + outflow_events schema; seed Mint Mobile; append-only events; opening adjustment from dated snapshot; Mint transfer_funded to AMEX Savings. Must NOT start until staging Supabase + baseline export are in place.
+4. 5G-2: derived Account Allocation view (Spoken For / Free to Use).
 
 Do not start 5G-1 implementation until Adam gives the in-session go-ahead and staging Supabase + baseline export are in place.
 
@@ -70,6 +71,33 @@ UI/Flow Review v2 completed 2026-07-07 (`docs/reviews/ui-flow-review-triage-2026
 - 5G-2 allocation frame added to the mock set, annotated "Arrives after the first Cash Planning release."
 
 **Next action:** build the four static mock frames (5G-0, 5G-1 set, 5G-2 allocation, 5G-3 before/after) from the spec for the Wendy walkthrough.
+
+## 5G-0 CLOSED: label/docs cleanup (2026-07-07)
+
+Scope was LOCKED to label/docs cleanup only, display strings, no logic, no schema/RLS/RPC. Shipped in the working tree; static regression **1332/0** (unchanged count — modified existing assertions, added no new tests). Changes (index.html + matching test updates in test_regression.js/e2e.js):
+
+- "Available for Goals" rename: `misc.goal_sweep` label + Budget help copy + out-of-balance hint no longer say "Extra Pay Going to Spreadsheet".
+- SYS-1: Budget "Reconciliation" panel retitled "Statement check"; phase strings stripped from tab labels ("Reconciliation — Phase 5F" → "Reconciliation"; "Phase 5D-2" footers removed). "Register — Phase 5E" disabled label intentionally retained (Register-not-enabled state).
+- SYS-4 exact-string edits: "Budget Rule" → "Budget Line" (Edit/Add/Archive titles, buttons, body copy); "registry keys" → "categories"; Transfers "Model" badge → "Planned"; custom "Transfer" badge → "Custom"; Register "Clr" column/header/form label + Category Report "Clr" → "Cleared".
+- WK-6 pluralization: Phase 2 recon banner reads "1 current-week protected obligation not yet recorded." (singular) when count === 1.
+
+Not in 5G-0 (correctly deferred): no Budget row treatment (UX-0), no transfer routing / account-reconciliation / runModel change. The two Weekly Model issues Adam raised on 2026-07-07 were captured as findings and routed OUT of 5G-0 — see `docs/5g-0-finding-weekly-model-transfer-issues.md` and "## 5G-1A CANDIDATE" below.
+
+Manual e2e Adam must run before push: `node e2e.js` (label assertions for Reconciliation tab, Register "Cleared" column, and the reconcile caption changed — RG/LEDGER/5D2-16 families). Static is confirmed green; e2e delta is limited to the deliberate label re-assertions plus knowns WC-3/BR-3.
+
+## 5G-1A CANDIDATE: Weekly Transfer Routing + Readiness (queued, not started)
+
+Promoted from the 5G-0 finding (`docs/5g-0-finding-weekly-model-transfer-issues.md`). This is a narrow hotfix candidate to run after 5G-0 closes. It touches `runModel` internals, which are on the Do Not Touch list ("frozen through 5G-2"), so it requires Adam's explicit in-session go-ahead and a deliberate gating decision before any code changes — do not start on your own.
+
+**Known real-world state (Adam, 2026-07-07):** Adam will execute the Week 27 Wewe RCCL $600 and Wewe DCL $500 transfers to AMEX Savings manually after the 7/7 paycheck clears, and treat the resulting **$1,100 AMEX Savings variance as KNOWN** until the model is fixed. Do not "correct" that variance in reconciliation as an error — it is expected until 5G-1A ships.
+
+**Desired scope:**
+1. Route Week 27 `wewe_rccl` ($600) and `wewe_dcl` ($500) to AMEX Savings as holding transfers, not the `'goal'` sentinel. Today the routing ternary at `index.html:2434` sends every non-Alaska, non-`_amxHold` goal to `dst='goal'` (leaves checking, no destination account tracked — `index.html:2262`); RCCL/DCL currently fall here.
+2. AMEX Savings projected balance (`amx` / modeled `mAmx`) increases by $1,100 in and after the funding weeks.
+3. UI labels them as holding transfers, not final vendor payments (today `dest` = "RCCL payment" / "DCL payment" — display string only, `index.html:1526-1527`, used at `index.html:2460`, `4358`, `4728`).
+4. Add/adjust regression coverage proving the Week 27 AMEX Savings projection includes the $1,100.
+5. Do NOT disturb IRA/529 AMEX-holding behavior, Alaska savings behavior, LC boost, floors, or unrelated runModel logic. Caveat to design around: `_amxHold` (`index.html:2425`) also drives the 5-week AMEX-sweep lookahead gate (`index.html:2437-2445`) and the `needsFlag` bypass (`index.html:2426`) — simply adding RCCL/DCL to `_amxHold` changes their gating semantics, not just their destination account. Prefer a routing that lands them in `amx` without inheriting the full `_amxHold` gating, unless the lookahead gate is explicitly wanted.
+6. Transfer readiness / paycheck-cleared labeling ("After Adam paycheck clears — target Jul 7"): fold into 5G-1A ONLY if low-risk; otherwise defer to 5G-1B. Note there is no per-transfer readiness field today — actions carry label/key/result/reason only, and the shown date is the week-start `getWeekDate(w.num)` (`index.html:4112`, `7759`); paydays are modeled at week granularity only (`PAYCHECK_WKS`, `index.html:2194`). Delivering it well is net-new structured data, which argues for 5G-1B.
 
 ## 5E-8 CLOSED: Register Category Sync (2026-07-02)
 

@@ -1456,7 +1456,7 @@ async function clickNav(page, id) {
       const el = document.getElementById('budget-content');
       return el ? el.innerText : '';
     });
-    assert(text.includes('Reconciliation'), 'Reconciliation panel not found in budget-content');
+    assert(text.includes('Statement check'), 'Statement check panel not found in budget-content (5G-0 SYS-1 renamed the Budget block from Reconciliation to Statement check)');
     assert(text.includes('Transactions'), 'Transactions header not found in budget-content');
     await context.close();
   });
@@ -1945,13 +1945,13 @@ async function clickNav(page, id) {
       return {
         registerIsPlainLabel: (html.match(/<button[^>]*>Register<\/button>/) || []).length > 0,
         registerNotDisabledSpan: !html.includes('Register — Phase 5E'),
-        reconciliationLabel: html.includes('Reconciliation — Phase 5F'),
+        reconciliationLabel: html.includes('Reconciliation'),
         registerNotClickable: html.includes('cursor:not-allowed') || html.includes('cursor: not-allowed')
       };
     }, TX_MOCK_ACCOUNTS);
     assert(result.registerIsPlainLabel, 'Register must render as a plain clickable "Register" button when showTransactionLedger=true (production default)');
     assert(result.registerNotDisabledSpan, 'Register must NOT show the "Register — Phase 5E" disabled label when showTransactionLedger=true');
-    assert(result.reconciliationLabel, 'Reconciliation future tab must still be labeled "Reconciliation — Phase 5F" (Phase 5F-1 not yet built)');
+    assert(result.reconciliationLabel, 'Reconciliation future tab must be present (phase suffix stripped per 5G-0 SYS-1; Phase 5F-1 not yet built)');
     assert(result.registerNotClickable, 'Reconciliation (the one remaining future tab) must have cursor:not-allowed to signal it is disabled');
     await context.close();
   });
@@ -2203,7 +2203,7 @@ async function clickNav(page, id) {
         hasCategory: html.includes('Category'),
         hasOutflow: html.includes('Outflow'),
         hasInflow: html.includes('Inflow'),
-        hasClr: html.includes('Clr'),
+        hasClr: html.includes('Cleared'),
         hasBalance: html.includes('Balance')
       };
     }, [TX_MOCK_ACCOUNTS, RG_MOCK_TRANSACTIONS]);
@@ -2213,7 +2213,7 @@ async function clickNav(page, id) {
     assert(result.hasCategory, 'Category column must be present');
     assert(result.hasOutflow, 'Outflow column must be present');
     assert(result.hasInflow, 'Inflow column must be present');
-    assert(result.hasClr, 'Clr column must be present');
+    assert(result.hasClr, 'Cleared column must be present');
     assert(result.hasBalance, 'Balance column must be present');
     await context.close();
   });
@@ -2556,14 +2556,14 @@ async function clickNav(page, id) {
       setSection('transactions'); setTxSubNav('register'); renderApp();
       var h = document.getElementById('transactions-content').innerHTML;
       var capStart = h.indexOf('Reconciliation view:');
-      var capText = capStart > -1 ? h.slice(capStart, capStart + 260) : '';
+      var capText = capStart > -1 ? h.slice(capStart, capStart + 340) : '';
       return {
         iFresh: h.indexOf('Fresh Uncleared'), iStale: h.indexOf('Stale Uncleared'),
         iC2: h.indexOf('Cleared Two'), iC1: h.indexOf('Cleared One'),
         staleBal: h.indexOf('$-500.00') !== -1, freshBal: h.indexOf('$-680.00') !== -1,
         c2Bal: h.indexOf('$-650.00') !== -1, c1Bal: h.indexOf('$-600.00') !== -1,
         overpromiseInCaption: /always/i.test(capText),
-        conditionalCaption: capText.indexOf('In normal daily reconciliation, the newest cleared row is the online-balance checkpoint') !== -1
+        conditionalCaption: capText.indexOf('the newest cleared row should match your current bank balance') !== -1
       };
     }, [acct, txns]);
     assert(r.iFresh > -1 && r.iStale > -1 && r.iC2 > -1 && r.iC1 > -1, 'all four rows render');
@@ -2572,7 +2572,7 @@ async function clickNav(page, id) {
     assert(r.iC2 < r.iC1, 'cleared group is newest-first (Cleared Two 7/02 above Cleared One 7/01)');
     assert(r.staleBal && r.freshBal && r.c2Bal && r.c1Bal, 'balances stay full-ledger historical (-500/-680/-650/-600), intentionally non-monotonic down the page');
     assert(!r.overpromiseInCaption, 'the reconcile caption must not claim the checkpoint "always" equals the online balance');
-    assert(r.conditionalCaption, 'the reconcile caption uses the conditional "in normal daily reconciliation" wording');
+    assert(r.conditionalCaption, 'the reconcile caption uses conditional (non-overpromising) household wording ("should match your current bank balance")');
     // Budget still renders (guardrail: no Budget changes).
     const budgetOk = await page.evaluate(() => {
       setSection('budget'); renderApp();

@@ -859,7 +859,7 @@ button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-vis
 // ── Constants (unchanged) ──────────────────────────────────────────────────
 // Simplified architecture — $8,250 total from LC · $6,500 operating floor · no legacy mechanics
 // Real-world moves: keep $2,250 in chk, move $2,750 sav→chk, move $1,000 LC→chk, move $2,250 LC→chk (Option 1 correction)
-const BUILD_TS='2026-07-06T18:54:57'; // updated each push — local time string
+const BUILD_TS='2026-07-07T13:48:15'; // updated each push — local time string
 const START_CHK=18037.73,START_SAV=3772.77,START_AMX=103.64,START_TAX=0,START_LC=13488.88;
 const EF_AMT=13488.88; // LC/EF balance — static this model year (no transfers in or out)
 const BASE_TAX=521.36,RET_SAV_XFR=3772.74;
@@ -3771,7 +3771,7 @@ function renderReconPhase01(w){
   // neutral text and no verdict / Review-Required language. Informational only: it does not
   // touch canSaveRecon/canPersistReconNow/reconSaveBlockedReason or save eligibility.
   if(p2cands.length>0){
-    html+='<div class="recon-p2-banner" style="margin-bottom:8px;padding:6px 10px;background:#fef3c7;border:1px solid #fcd34d;border-radius:6px;font-size:12.5px;font-weight:600;color:#92400e">'+p2cands.length+' current-week protected obligations not yet recorded.</div>';
+    html+='<div class="recon-p2-banner" style="margin-bottom:8px;padding:6px 10px;background:#fef3c7;border:1px solid #fcd34d;border-radius:6px;font-size:12.5px;font-weight:600;color:#92400e">'+(p2cands.length===1?'1 current-week protected obligation not yet recorded.':p2cands.length+' current-week protected obligations not yet recorded.')+'</div>';
   }
   if(!p2cands.length){
     html+='<div style="color:var(--muted);font-size:13px">No unrecorded protected obligations for this week.</div>';
@@ -4090,7 +4090,7 @@ function renderWeekDetail(w,weeks){
         var canDelete=actionKey&&DELETEABLE_MODEL_ACTIONS.has(actionKey);
         var hasOv=actionKey&&hasActionOverride(actionKey);
         var note=actionKey?getActionOverrideNote(actionKey):'';
-        var badge=isLocked?'<span class="act-type-badge locked">Locked</span>':isModelAct?'<span class="act-type-badge model">Model</span>':'';
+        var badge=isLocked?'<span class="act-type-badge locked">Locked</span>':isModelAct?'<span class="act-type-badge model">Planned</span>':'';
         var noteHtml=note?'<div class="act-override-note">'+esc(note)+'</div>':'';
         var controls='';
         if(isModelAct&&!isLocked&&!_weekIsRecon&&canWriteFinancials()){
@@ -4119,7 +4119,7 @@ function renderWeekDetail(w,weeks){
         var meta=getTaskMeta(ct.id,ct.label);
         var isAutoXfr=meta.source==='auto_reminder';
         var _canFlipXfr=meta.source==='user'&&canWriteFinancials();
-        var typeBadge='<span class="act-type-badge" style="background:var(--surface);border:1px solid var(--line2);cursor:'+(_canFlipXfr?'pointer':'default')+'" '+(_canFlipXfr?'onclick="flipCustomTaskType('+w.num+',\''+ct.id+'\')" title="Click to reclassify as Action Item"':'')+'>Transfer</span>';
+        var typeBadge='<span class="act-type-badge" style="background:var(--surface);border:1px solid var(--line2);cursor:'+(_canFlipXfr?'pointer':'default')+'" '+(_canFlipXfr?'onclick="flipCustomTaskType('+w.num+',\''+ct.id+'\')" title="Click to reclassify as Action Item"':'')+'>Custom</span>';
         return'<div class="task-row">'+
           '<input type="checkbox" class="task-check" '+(ct.completed?'checked':'')+' '+(canWriteFinancials()?'onchange="toggleCustomTask('+w.num+',\''+ct.id+'\',this.checked)"':'disabled')+'>'+
           '<div class="task-text'+(ct.completed?' done':'')+'">'+typeBadge+esc(ct.label)+'<span class="task-date">'+(isAutoXfr?'Auto':'Custom')+'</span></div>'+
@@ -5681,7 +5681,7 @@ function _catReportRenderModal(){
       html+='<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:12px">'
         +'<thead><tr style="background:var(--surface2)">'
         +'<th style="'+thS+'">Date</th><th style="'+thS+'">Account</th><th style="'+thS+'">Payee</th>'
-        +'<th style="'+thS+'">Memo</th><th style="'+thS+'">Category</th><th style="'+thS+';text-align:center">Clr</th>'
+        +'<th style="'+thS+'">Memo</th><th style="'+thS+'">Category</th><th style="'+thS+';text-align:center">Cleared</th>'
         +'<th style="'+thS+';text-align:right">Amount</th>'
         +'</tr></thead><tbody>';
       m.rows.forEach(function(t){
@@ -5795,7 +5795,7 @@ function _renderTxAccounts(){
     }
   });
   html+='</tbody></table></div>'
-    +'<div style="padding:8px 12px;font-size:10px;color:var(--muted2)">'+rows.length+' accounts · Read only · Phase 5D-2</div>';
+    +'<div style="padding:8px 12px;font-size:10px;color:var(--muted2)">'+rows.length+' accounts · Read only</div>';
   return html;
 }
 
@@ -5876,7 +5876,7 @@ function _renderTxCategories(){
     });
   }
   html+='</tbody></table></div>'
-    +'<div style="padding:8px 12px;font-size:10px;color:var(--muted2)">'+visible.length+' rows shown · Read only · Phase 5D-2</div>';
+    +'<div style="padding:8px 12px;font-size:10px;color:var(--muted2)">'+visible.length+' rows shown · Read only</div>';
   return html;
 }
 
@@ -6325,7 +6325,7 @@ function _renderTxRegister(){
       +amtInp('inflow','0.00',fd.inflow)+'</div>'
       // Cleared checkbox
       +'<div style="display:flex;flex-direction:column;align-items:center;gap:3px">'
-      +'<label style="font-size:11px;font-weight:600;color:var(--muted)">Clr</label>'
+      +'<label style="font-size:11px;font-weight:600;color:var(--muted)">Cleared</label>'
       +'<input type="checkbox" '+(fd.cleared?'checked':'')+' '
       +'onchange="_setTxFormField(\'cleared\',this.checked)" style="width:16px;height:16px;cursor:pointer"></div>'
       // Buttons
@@ -6418,7 +6418,7 @@ function _renderTxRegister(){
     var _balCaption=_filtersOn
       ?'<div class="tx-bal-caption" style="'+_capStyle+'">Balance reflects the full ledger as of each transaction date, not the filtered subset.</div>'
       :(_txLedgerSortCol==='reconcile'
-        ?'<div class="tx-bal-caption" style="'+_capStyle+'">Reconciliation view: uncleared transactions are shown above cleared transactions; balances remain full-ledger values. In normal daily reconciliation, the newest cleared row is the online-balance checkpoint.</div>'
+        ?'<div class="tx-bal-caption" style="'+_capStyle+'">Reconciliation view: uncleared transactions are shown above cleared transactions; the balance on each row is still the running total through that date across the whole account, not just the rows in view. When you reconcile against the bank, the newest cleared row should match your current bank balance.</div>'
         :((_txLedgerSortCol==='date')?''
           :'<div class="tx-bal-caption" style="'+_capStyle+'">Balance is shown as of each transaction date, not recalculated in sorted order.</div>'));
 
@@ -6431,7 +6431,7 @@ function _renderTxRegister(){
       +thSort('Outflow','outflow','right')+thSort('Inflow','inflow','right')
       +'<th data-sort-col="reconcile" onclick="setTxLedgerSort(\'reconcile\')" '
       +'title="Reconciliation (CL) view: uncleared on top, cleared below, newest-first within each group; edit cleared status with the checkbox" '
-      +'style="'+_thBase+';cursor:pointer;user-select:none;text-align:center">Clr'
+      +'style="'+_thBase+';cursor:pointer;user-select:none;text-align:center">Cleared'
       +(_txLedgerSortCol==='reconcile'?' ▼':'')+'</th>'+th('Balance','right')
       +'<th style="padding:8px 12px;width:60px"></th>'
       +'</tr></thead><tbody>';
@@ -6558,7 +6558,7 @@ function renderTransactions(){
     // Register tab: active when showTransactionLedger=true; disabled placeholder otherwise.
     {id:'register',       label:FEATURE_FLAGS.showTransactionLedger?'Register':'Register — Phase 5E',
                           future:!FEATURE_FLAGS.showTransactionLedger},
-    {id:'reconciliation', label:'Reconciliation — Phase 5F', future:true}
+    {id:'reconciliation', label:'Reconciliation', future:true}
   ];
   var nav='<div style="display:flex;gap:2px;padding:16px 16px 0;background:var(--surface);border-bottom:1px solid var(--line);flex-wrap:wrap">';
   subTabs.forEach(function(t){
@@ -6815,7 +6815,7 @@ function renderBudget(){
     html+='<ol style="margin:0 0 14px 18px;padding:0">';
     html+='<li>When your credit card or bank statement arrives, go through each transaction in the list and check the <strong>Cleared</strong> box for anything that appears on the statement.</li>';
     html+='<li>Use the <strong>Account</strong> filter (top of the list) to show only one card at a time — makes it easier to work through one statement at a time.</li>';
-    html+='<li>In the <strong>Reconciliation</strong> panel, select the account and enter the statement ending balance. The panel shows your total cleared amount for that account vs the balance you entered.</li>';
+    html+='<li>In the <strong>Statement check</strong> panel, select the account and enter the statement ending balance. The panel shows your total cleared amount for that account vs the balance you entered.</li>';
     html+='<li>When Cleared matches Statement Balance, you are reconciled. A green checkmark appears in the panel.</li>';
     html+='<li>If they do not match, filter by that account and look for a missing or duplicate entry.</li>';
     html+='</ol>';
@@ -6825,7 +6825,7 @@ function renderBudget(){
     html+='<li><strong>Spent</strong> — what has been logged so far this month in that category.</li>';
     html+='<li><strong>Budget</strong> — the planned amount for the month (set by Adam in the financial model).</li>';
     html+='<li><strong>Remaining</strong> — Budget minus Spent. <span style="color:var(--green);font-weight:600">Green</span> means within budget, <span style="color:#ef4444;font-weight:600">red</span> means over.</li>';
-    html+='<li><em>Extra Pay Going to Spreadsheet</em> (under Misc) is the usual flexible sweep line — it is included in the Total Planned Budget. When expenses increase, reduce this line to keep the budget balanced. You can also offset changes by adjusting Misc → Extra or another discretionary category.</li>';
+    html+='<li><em>Available for Goals</em> (under Misc) is the usual flexible sweep line — it is included in the Total Planned Budget. When expenses increase, reduce this line to keep the budget balanced. You can also offset changes by adjusting Misc → Extra or another discretionary category.</li>';
     html+='<li>The <strong>Budget Balance</strong> row shows income minus Total Planned Budget. It should always be $0.00. If it is not, adjust a discretionary line until it zeros out.</li>';
     html+='</ul>';
 
@@ -7020,7 +7020,7 @@ function renderBudget(){
   if(!balanced){
     html+='<tr style="background:#fef3c7">';
     html+='<td colspan="4" style="padding:4px 8px;font-size:10px;color:#92400e">'
-      +'Budget does not balance to income. To fix, adjust Misc → Extra Pay Going to Spreadsheet (most common), '
+      +'Budget does not balance to income. To fix, adjust Misc → Available for Goals (most common), '
       +'Misc → Extra, or another discretionary category until the difference reaches $0.00.</td>';
     html+='</tr>';
   }
@@ -7211,7 +7211,7 @@ function _renderBudgetForm(monthIso){
 // ── Reconciliation Panel ───────────────────────────────────────────────────
 function _renderBudgetRecon(monthIso){
   var html='<div class="panel" style="margin-bottom:16px">';
-  html+='<h3 style="margin:0 0 10px;font-size:13px;font-weight:700;color:var(--ink)">Reconciliation</h3>';
+  html+='<h3 style="margin:0 0 10px;font-size:13px;font-weight:700;color:var(--ink)">Statement check</h3>';
 
   // Account picker
   html+='<div style="display:flex;align-items:center;gap:10px;margin-bottom:10px;flex-wrap:wrap">';
@@ -7990,7 +7990,7 @@ var BUDGET_CATEGORY_REGISTRY=[
   // Misc
   {key:'misc',                          label:'Misc.',                   parent:null,                 leaf:false, assignable:false, isIncome:false},
   {key:'misc.extra',                    label:'Extra',                   parent:'misc',               leaf:true,  assignable:true,  isIncome:false},
-  {key:'misc.goal_sweep',               label:'Extra Pay Going to Spreadsheet', parent:'misc',        leaf:true,  assignable:false, isIncome:false},
+  {key:'misc.goal_sweep',               label:'Available for Goals', parent:'misc',        leaf:true,  assignable:false, isIncome:false},
   // Personal Care
   {key:'personal_care',                 label:'Personal Care',           parent:null,                 leaf:false, assignable:false, isIncome:false},
   {key:'personal_care.hair',            label:'Hair',                    parent:'personal_care',      leaf:true,  assignable:true,  isIncome:false}
@@ -8196,7 +8196,7 @@ function _blrRenderModal(){
     // Compute preserved end_month for display and save
     var preservedEnd=m.currentRow?(m.currentRow.end_month||null):null;
     var endLabel=preservedEnd?('through '+_budgetMonthLabel(preservedEnd)):'onward (open-ended)';
-    html+='<div class="sc-modal-title">Edit Budget Rule</div>';
+    html+='<div class="sc-modal-title">Edit Budget Line</div>';
     if(m.isIncome){
       html+='<div style="background:#fef3c7;border:1px solid #f59e0b;border-radius:6px;padding:8px 10px;font-size:11px;color:#92400e;margin-bottom:12px">⚠ <strong>Income assumption.</strong> Editing this changes Total Income and budget balance.</div>';
     }
@@ -8212,7 +8212,7 @@ function _blrRenderModal(){
     html+='<div class="modal-field"><label class="modal-label">Amount ($)</label>';
     html+='<input class="modal-input" id="blr-amount" type="number" min="0" step="1" value="'+esc(String(m.amount))+'" oninput="window._blrModal.amount=this.value"></div>';
     html+='<div style="background:var(--surface2);border-radius:6px;padding:8px 10px;font-size:11px;color:var(--muted);margin-bottom:12px">';
-    html+='Prior months unchanged. The replacement rule will run '+monthLabel+' '+endLabel+' (preserving the original end date). Only label and amount change.';
+    html+='Prior months unchanged. The replacement line will run '+monthLabel+' '+endLabel+' (preserving the original end date). Only label and amount change.';
     html+='</div>';
     if(m.error){html+='<div style="color:#ef4444;font-size:12px;margin-bottom:8px">'+esc(m.error)+'</div>';}
     html+='</div>';
@@ -8225,9 +8225,9 @@ function _blrRenderModal(){
   } else if(m.mode==='add'){
     var monthLabel=_budgetMonthLabel(m.monthIso);
     var leafKeys=BUDGET_CATEGORY_REGISTRY.filter(function(c){return c.leaf;});
-    html+='<div class="sc-modal-title">Add Budget Rule</div>';
+    html+='<div class="sc-modal-title">Add Budget Line</div>';
     html+='<div class="sc-modal-body" style="margin-bottom:4px">';
-    html+='<div class="modal-field"><label class="modal-label">Category (existing registry keys only)</label>';
+    html+='<div class="modal-field"><label class="modal-label">Category (existing categories only)</label>';
     html+='<select class="modal-input" id="blr-key" onchange="window._blrOnAddKeyChange(this.value)">';
     html+='<option value="">— Select category —</option>';
     var lastParent='';
@@ -8269,7 +8269,7 @@ function _blrRenderModal(){
     html+='<div class="sc-modal-btns">';
     html+='<button class="sc-modal-cancel" onclick="window._blrCloseModal()">Cancel</button>';
     if(m.saving){html+='<button class="sc-modal-confirm" disabled style="opacity:.6;cursor:default">Saving…</button>';}
-    else{html+='<button class="sc-modal-confirm" onclick="window._blrSaveAdd()">Add Rule</button>';}
+    else{html+='<button class="sc-modal-confirm" onclick="window._blrSaveAdd()">Add Line</button>';}
     html+='</div>';
 
   } else if(m.mode==='archive'){
@@ -8277,21 +8277,21 @@ function _blrRenderModal(){
     var row=m.currentRow;
     var caseA=row&&row.start_month<m.monthIso;
     var priorLabel=_budgetMonthLabel(_blrPriorMonthIso(m.monthIso));
-    html+='<div class="sc-modal-title">Archive Budget Rule</div>';
+    html+='<div class="sc-modal-title">Archive Budget Line</div>';
     html+='<div class="sc-modal-body">';
     if(!row){
-      html+='<div style="color:#ef4444;font-size:13px">No active rule found for "'+esc(m.label)+'" in '+monthLabel+'. Nothing to archive.</div>';
+      html+='<div style="color:#ef4444;font-size:13px">No active line found for "'+esc(m.label)+'" in '+monthLabel+'. Nothing to archive.</div>';
     } else {
       html+='<div style="background:var(--surface2);border-radius:6px;padding:10px;font-size:12px;margin-bottom:12px">';
       html+='<strong>'+esc(row.line_label||m.label)+'</strong><br>';
       html+='Amount: '+f(parseFloat(row.amount))+'&nbsp;&nbsp;Active since: '+row.start_month+'<br><br>';
       if(caseA){
-        html+='This rule has history before '+monthLabel+'. It will be <strong>closed at end of '+priorLabel+'</strong> and remain visible in all prior months.';
+        html+='This line has history before '+monthLabel+'. It will be <strong>closed at end of '+priorLabel+'</strong> and remain visible in all prior months.';
       } else {
-        html+='This rule started in '+monthLabel+' with no prior history. It will be <strong>deactivated</strong> (set is_active = false).';
+        html+='This line started in '+monthLabel+' with no prior history. It will be <strong>deactivated</strong> (set is_active = false).';
       }
       html+='</div>';
-      html+='<div style="color:#92400e;background:#fef3c7;border-radius:6px;padding:8px 10px;font-size:12px;margin-bottom:12px">This rule will no longer appear from '+monthLabel+' onward. To restore, edit the row directly in Supabase.</div>';
+      html+='<div style="color:#92400e;background:#fef3c7;border-radius:6px;padding:8px 10px;font-size:12px;margin-bottom:12px">This line will no longer appear from '+monthLabel+' onward. To restore, edit the row directly in Supabase.</div>';
     }
     if(m.error){html+='<div style="color:#ef4444;font-size:12px;margin-bottom:8px">'+esc(m.error)+'</div>';}
     html+='</div>';
@@ -8299,7 +8299,7 @@ function _blrRenderModal(){
     html+='<button class="sc-modal-cancel" onclick="window._blrCloseModal()">Cancel</button>';
     if(row){
       if(m.saving){html+='<button style="padding:7px 16px;border-radius:8px;border:none;background:#dc2626;color:#fff;font-size:13px;font-weight:700;cursor:default;opacity:.6">Archiving…</button>';}
-      else{html+='<button style="padding:7px 16px;border-radius:8px;border:none;background:#dc2626;color:#fff;font-size:13px;font-weight:700;cursor:pointer" onclick="window._blrSaveArchive()">Archive Rule</button>';}
+      else{html+='<button style="padding:7px 16px;border-radius:8px;border:none;background:#dc2626;color:#fff;font-size:13px;font-weight:700;cursor:pointer" onclick="window._blrSaveArchive()">Archive Line</button>';}
     }
     html+='</div>';
   }
