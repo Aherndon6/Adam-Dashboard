@@ -1,25 +1,71 @@
 # Herndon Financial OS — Phase Status
 
-## Roadmap Sequence (as of 2026-06-28)
+## Roadmap Sequence (as of 2026-07-06)
 
-| Phase  | Name                                           | Status             |
-|--------|------------------------------------------------|--------------------|
-| 5E-1   | SQL Foundation + Read-Only Register Shell      | Complete           |
-| 5E-2   | Transaction Writes                             | Complete           |
-| 5E-3   | Register Live by Default                       | Complete           |
-| 5E-4   | Budget Correctness + Display Fixes             | Complete           |
-| 5E-5   | Budget Line Admin (required before 7/1)        | Complete                         |
-| 5E-6   | Monthly Entertainment Buckets                  | Complete                         |
-| 5E-7   | Role Enforcement / Security Maturity Gate      | Complete — live P8/V12 verified (2026-06-30) |
-| 5E-8   | 7/1 Wendy Operating Readiness                  | Smoke passed — conditionally ready pending 7/1 starting balance setup (2026-06-30) |
-| 5E-9   | Category Registry Admin                        | Deferred (unless 7/1 blocker found) |
-| 5F-0   | Needs Attention / Dashboard Usefulness         | Not started        |
-| 5F-1   | Reconciliation Design + Read-Only Scaffold     | Not started        |
-| 5F-2   | Reconciliation Writes                          | Not started        |
-| 5G     | Splits                                         | Not started        |
-| 5H     | Transfers                                      | Not started        |
-| 5I     | Import Readiness                               | Not started        |
-| 5J     | Budget Integration / Actuals                  | Not started        |
+| Phase | Name | Status |
+|-------|------|--------|
+| 5E-1 | SQL Foundation + Read-Only Register Shell | Complete |
+| 5E-2 | Transaction Writes | Complete |
+| 5E-3 | Register Live by Default | Complete |
+| 5E-4 | Budget Correctness + Display Fixes | Complete |
+| 5E-5 | Budget Line Admin (required before 7/1) | Complete |
+| 5E-6 | Monthly Entertainment Buckets | Complete |
+| 5E-7 | Role Enforcement / Security Maturity Gate | Complete — live P8/V12 verified (2026-06-30) |
+| 5E-8 | 7/1 Wendy Operating Readiness | Smoke passed — conditionally ready pending 7/1 starting balance setup (2026-06-30) |
+| 5E-9 | Category Registry Admin | Deferred (unless 7/1 blocker found) |
+| 5F-0 | Needs Attention / Dashboard Usefulness | Planned, not started |
+| 5F-1 | Reconciliation + Cash Availability Engine | Complete through Phase 4; Week 26 closeout proven in prod 2026-07-04; 2 deferrals (below) |
+| 5F-1.5 | Gate A: Wendy July usability | Live (2026-07-05/06); A4 done |
+| 5F-2 | (former) Reconciliation Writes | Absorbed into 5F-1 (writes shipped via save_reconciliation_with_commitments RPC) |
+| 5G | Cash Planning + Allocation | Next major phase; not started |
+| 5H | Register capture speed + mobile quick-add | Not started |
+| 5I | Splits (was 5G) | Not started |
+| 5J | Month-end close hardening + minimal goal editing | Not started |
+| 5K | Transfers (was 5H) | Not started |
+| 5L | Architecture hardening / broader modularization | Not started |
+
+**5F-1 deferrals (neither blocks forward closeout):** (1) dashboard Review Required verdict-text rendering; (2) historical repair mode via `repair_commitments_for_week`. Cash Availability Engine is live; `cash_commitments` exists and is part of the architecture. Verified repo baseline: static 1332/0, E2E 130/0.
+
+**Later / unlettered backlog (not yet lettered):**
+
+- Import Readiness (former 5I)
+- Budget Integration / Actuals (former 5J); A2 income actuals remains a specific gate before 5G-3
+- Old 5G Splits and 5H Transfers are relettered to 5I and 5K above, not dropped.
+
+### Phase 5G: Cash Planning + Allocation (NEXT MAJOR PHASE, NOT STARTED)
+
+Locked scope. Supersedes the earlier 5G = Splits assignment. One backend entity (`planned_outflows`) and one append-only event table (`outflow_events`). Upcoming Spend and Save-Up Bills are Wendy-facing groupings of `planned_outflows`, not separate backend systems. The Cash Allocation view is derived (Spoken For / Free to Use), never a manually maintained ledger. No fake Budget Clearance account, no fake Register transactions. Register stays source of truth for actual spend; Budget stays plan / spent / remaining / reporting. `misc.goal_sweep` key does not change. Full domain/funding taxonomy is canonical in AI Context 05; this section is the phase/gate map.
+
+| Sub | Name | Timing | Status |
+|-----|------|--------|--------|
+| 5G-0 | Roadmap/label cleanup; rename "Extra Pay Going to Spreadsheet" to "Available for Goals"; no logic change | Pre-Alaska | Not started |
+| 5G-1 | planned_outflows + outflow_events schema; seed Mint Mobile; append-only Set Aside / Paid / Adjust; opening adjustment from dated snapshot on posted balances; Mint rows transfer_funded to AMEX Savings; auto_renew=false | Pre-Alaska | Not started |
+| 5G-2 | Derived Account Allocation view (Spoken For / Free to Use); no stored allocation balances | Pre-Alaska | Not started |
+| 5G-2.5 | Calculation Core Extraction / Characterization under golden-master tests; no framework, no UI refactor, no build step | Post-Alaska | Not started |
+| 5G-3 | Budget identity change; Available for Goals becomes derived; hand-balancing retired; budgeted income lines only; variable income stays model-side under tax lock/waterfall | Post-Alaska; gated on Wendy feedback + A2 income actuals | Not started |
+| 5G-4a | Set-aside transfer recommendations + shortfall warnings; Checking-to-AMEX must pass AMEX lookahead / max-safe-sweep gate; deferred set-asides derived (accrued minus funded), not stored | Post-Alaska | Not started |
+| 5G-4b | Earmark-funded adapter into 5F-1 Cash Availability Engine; input layer only; no engine internals modified; zero-outflow identity gate as committed automated test | Post-Alaska | Not started |
+| 5G-5 | Spreadsheet retirement after one clean parallel month | Post-Alaska | Not started |
+
+**Pre / post-Alaska:** 5G-0 through 5G-2 are pre-Alaska candidates. Only 5G-0 is safe to start before a staging Supabase exists; 5G-1 requires a staging Supabase plus a baseline export via `scripts/export-ai-review-pack.sh`. 5G-2.5, 5G-3, 5G-4a, 5G-4b, 5G-5 are post-Alaska unless explicitly pulled forward after review. 5G-3+ also gates on Wendy feedback. Freeze window: **July 24 through August 10** (no 5G merges in that window).
+
+**Gates:**
+
+- Before 5G-3: Wendy response on Budget / Available for Goals workflow; A2 income-actuals sequencing; calculation-core extraction (5G-2.5) complete.
+- Before 5G-4a: Diablos/GLP WD gap fixed as a separate task; WC-3 disposition resolved or formally quarantined; fresh baseline weekly-model output captured after the WD fix; safe-sweep gate inside the extracted calculation/recommendation layer and characterization-covered.
+- Before 5G-4b: zero-outflow identity gate exists as an automated committed test; reserve/commitment precedence rule added to the closeout checklist (if an actual payment enters reconciliation as a Phase 3 manual commitment in a due week, the outflow release is recorded in the same closeout so reserve and commitment never overlap).
+
+**Funding modes:** `transfer_funded` (money moves to the funding account; allocation sits against that account; no checking reserve adapter) vs `earmark_funded` (money stays in checking, becomes reserve-shaped adapter records for the Cash Availability Engine). Mint v1 is `transfer_funded` to AMEX Savings.
+
+**Out-of-window planned_outflows:** not `model_year`-pinned; real `due_date`, may fall outside the weekly model window ending 2027-01-09. Adam Mint due 2027-02-01 and Bailey Mint due 2027-05-23 accrue set-asides and show in allocation views but produce no in-window release event.
+
+**Architecture:** stay vanilla JS + GitHub Pages; no framework, no build step, no replatform before 5G. New 5G code lands as ES modules in separate files (data / domain / view separation), not appended to the index.html script body; 5G-0 exempt (label/docs only). index.html limited to minimal mount/import points; local verification needs a static server, not file://. Extract the calculation core under golden-master / characterization tests before 5G-3 / 5G-4.
+
+**Do not touch during 5G-0 through 5G-2:** runModel, WD/effectiveWD, cash_commitments internals, reconciliation RPCs. Full list in AGENTS.md "Do Not Touch".
+
+**Stale spec warning:** `docs/dynamic-goal-registry-spec.md` (June 21 draft) is NOT implementation authority. Shipped reality is `goal_registry`, authenticated SELECT-only, hardcoded fallback, GR-A1 identity gate. New 5G tables must not inherit anon RLS patterns.
+
+---
 
 ### Phase 5E-5 — Budget Line Admin (COMPLETE + HARDENED, 2026-06-27 — browser smoke PASSED)
 Minimal Budget Rule Admin UI inside the Budget tab.

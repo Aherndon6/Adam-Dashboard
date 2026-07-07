@@ -8,6 +8,8 @@ Budget Module v1 live.
 5F-1.5 Gate A (Wendy July usability) UI shipped and live (2026-07-05/06), including the Register Quicken-style ledger hotfix (historical Balance) and the Register CL/reconciliation default view (commit 8d48b04, Wendy-confirmed and live-smoked on dashboard.herndons.us). A4 (AMEX Gold starting-balance correction) is DONE (executed and verified 2026-07-06).
 Wendy Budget-tab live use in progress (target July 1, 2026).
 
+Next major phase: 5G Cash Planning + Allocation (locked). Not started. 5G-0 is the first implementation sub-phase and is label/docs cleanup only. 5G-1 is the first schema/build sub-phase. See `docs/phase-status.md` for the 5G-0 through 5G-5 map, gates, and the pre/post-Alaska split.
+
 ## Current Goal
 
 Prepare the system for Wendy using the Budget tab in live household workflow while preserving platform stability, RLS security, and reconciliation accuracy. 5F-1 forward reconciliation is now live and proven; remaining 5F-1 sub-items (dashboard Review Required verdict rendering, historical repair mode) are deferred and do not block forward weekly closeout.
@@ -30,11 +32,17 @@ Prepare the system for Wendy using the Budget tab in live household workflow whi
 
 ## Next Candidate Work
 
-1. Finish Phase 5E-7.
-2. Prepare Phase 5E-8.
-3. Resolve or quarantine BR-3.
-4. Add Diablos/GLP into WD cash-flow projection.
-5. Improve Wendy usability only after core logic is safe.
+Active next-phase pointer: 5G-0, then 5G-1 after label/docs cleanup is complete.
+
+1. 5G-0: label/docs cleanup (rename "Extra Pay Going to Spreadsheet" to "Available for Goals"; no logic change). Safe to start before a staging Supabase exists.
+2. 5G-1: planned_outflows + outflow_events schema; seed Mint Mobile; append-only events; opening adjustment from dated snapshot; Mint transfer_funded to AMEX Savings. Must NOT start until staging Supabase + baseline export are in place.
+3. 5G-2: derived Account Allocation view (Spoken For / Free to Use).
+
+Do not start 5G-1 implementation until Adam gives the in-session go-ahead and staging Supabase + baseline export are in place.
+
+Active spec path: TBD (create a 5G-1 spec under docs/ before implementation; record the path here once it exists).
+
+Known gates and pre-reqs live in `docs/phase-status.md` (Phase 5G gates) and `AGENTS.md` (Do Not Touch, schema/migration conventions). Key blockers: Wendy feedback on Available for Goals; A2 income actuals before 5G-3; Diablos/GLP WD fix + WC-3 disposition + baseline weekly-model recapture before 5G-4a; zero-outflow identity automated test before 5G-4b; calculation-core extraction (5G-2.5) before 5G-3 / 5G-4a. Alaska freeze window: July 24 through August 10 (no 5G merges).
 
 ## 5E-8 CLOSED: Register Category Sync (2026-07-02)
 
@@ -156,7 +164,17 @@ Executed 2026-07-06; verified in DB (postflight) and in the live Register. `acco
 
 ## Post-5F-1 Build Path & Strategic Horizons
 
-See `docs/strategic-roadmap-future-horizons.md` for the agreed post-5F-1 build order (5F-2, 5G-1, 5I-3, 5G-2, 5F-3, 5G-3, 5F-4) and the longer-term Strategic Roadmap (bank integration, AI assistant, financial planning/retirement layer, household OS expansion — documentation only, not build-authorized). Guardrail: no bank import, AI assistant, forecast integration, or household OS expansion work until one clean July operating week with Wendy is complete.
+AUTHORITATIVE PHASE MAP: `docs/phase-status.md` is now the source of truth for the locked 5G+ scheme (5G Cash Planning + Allocation, 5H Register capture speed + mobile quick-add, 5I Splits, 5J Month-end close + minimal goal editing, 5K Transfers, 5L Architecture hardening). The sub-lettering in `docs/strategic-roadmap-future-horizons.md` (its 5G-1/5G-2/5G-3, 5F-2/5F-3/5F-4) is SUPERSEDED for naming and must not be used as the current phase map. That doc is retained for its longer-horizon content (bank integration, AI assistant, planning/retirement layer, household OS) only, and will be reconciled in a later pass.
+
+Guardrail unchanged: no bank import, AI assistant, forecast integration, or household OS expansion work until one clean July operating week with Wendy is complete.
+
+### Stale spec warning
+
+`docs/dynamic-goal-registry-spec.md` (June 21 draft) is NOT implementation authority. It references a goals table and anon read/write policies that do not match shipped 6A. Shipped reality: goal_registry, authenticated SELECT-only, hardcoded fallback, GR-A1 identity gate. New 5G tables must not inherit anon RLS patterns.
+
+### Do Not Touch
+
+See AGENTS.md "Do Not Touch" for the authoritative list (WD/effectiveWD, runModel internals frozen through 5G-2, cash_commitments, 5F-1 engine internals, reconciliation RPCs, Register schema, misc.goal_sweep, Budget identity math before 5G-3, RLS/anthropic_key, goal waterfall + ira_cpa_cleared, prod DDL, index.html script body/globals for new code, Quicken parallel data, golden-master expected outputs).
 
 ## Codex Operating Rule
 
@@ -169,3 +187,5 @@ Before editing, Codex should perform a read-only orientation against:
 - `CODEX_STATUS.md`
 
 Codex should not change files until it confirms the active goal, affected files/functions, intended tests, and risk areas.
+
+Claude Code follows the same read-only orientation and the "Claude Code Session Protocol" in AGENTS.md before implementation.

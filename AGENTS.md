@@ -25,11 +25,13 @@ Do not copy AI Context files into this repo.
 
 ## Architecture
 
-Single-file app:
+No framework, no build step.
+
+Legacy app is centered on a single file:
 - `/Users/aherndon/Adam-Dashboard/index.html`
-- all HTML, CSS, and JS in one file
-- no framework
-- no build step
+- existing HTML, CSS, and JS live in that file
+
+New feature code (5G onward) ships as ES modules in separate files, not appended to the index.html script body. index.html carries minimal mount/import points only: one entry module per feature area, loaded with `<script type="module">`. Local verification of module code requires a static server, not file://. 5G-0 is exempt because it is label/docs cleanup only. Do not introduce a framework, bundler, or build step to enable this; ES modules load natively.
 
 Backend:
 - Supabase project ID: `usayoldrawwmjsmretin`
@@ -73,6 +75,11 @@ Next milestone:
 - Wendy's Budget tab live use starting July 1, 2026
 - parallel run with Quicken through August-September
 - Quicken cancellation only after one full parallel month where category totals match, card totals reconcile, and reimbursables track cleanly
+
+Next build phase:
+- 5G Cash Planning + Allocation (locked). 5G-0 is the first implementation sub-phase and is label/docs cleanup only. 5G-1 is the first schema/build sub-phase.
+- See `docs/phase-status.md` for the 5G-0 through 5G-5 map, gates, and the pre/post-Alaska split, and `CODEX_STATUS.md` for the active pointer.
+- Claude Code owns 5G local implementation. This AGENTS.md + CODEX_STATUS.md update is the enabling gate before 5G-1 starts.
 
 ## Budget Module
 
@@ -133,6 +140,69 @@ Before changing code:
 7. Add or update regression coverage for behavior changes.
 8. Call out any test that Adam must run manually.
 
+## Standing Rules for New Feature Code (5G+)
+
+- New feature code ships as ES modules in separate files. No new growth of the index.html script body except minimal mount/import points. 5G-0 is exempt.
+- No new globals.
+- data / domain / view separation for new modules: data access, pure domain logic, and view/DOM wiring kept distinct.
+- Future modularization is selective and characterization-tested, not a blanket rewrite.
+- Before 5G-3 / 5G-4, extract the calculation core under golden-master / characterization tests first.
+
+### Schema / migration conventions
+
+- Staging Supabase first. No direct prod DDL.
+- Capture a pre-migration baseline export via `scripts/export-ai-review-pack.sh` before any migration.
+- New tables use conforming `can_write_financials()` policies. Never anon RLS patterns, and never inherit the `dynamic-goal-registry-spec.md` anon read/write draft.
+- planned_outflows are not model_year-pinned; they use real due_date and may fall outside the weekly model window.
+
+### Test gates
+
+- Golden-master runModel fixtures must be captured and kept green.
+- Wendy-critical smoke paths must pass; if no named suite exists yet, document the manual/e2e coverage used.
+- Never edit golden-master expected outputs to make a test pass without Adam's explicit approval.
+- Call out any test Adam must run manually (e2e from Terminal).
+
+## Do Not Touch
+
+- WD / effectiveWD logic. Do not inject planned outflows into either.
+- runModel internals: frozen through 5G-2; move-only during extraction under golden-master identity; modifiable at 5G-3+ per spec only.
+- cash_commitments schema. No synthetic rows.
+- 5F-1 Cash Availability Engine internals. The earmark adapter integrates at the input layer only.
+- Reconciliation RPCs and the reconciliation state machine.
+- Register transaction schema. No fake Register transactions.
+- No fake Budget Clearance account.
+- misc.goal_sweep key.
+- Budget identity math before 5G-3.
+- Existing RLS role model and the anthropic_key guardrail.
+- New tables must use conforming can_write_financials() policies, never anon.
+- Goal waterfall ordering and the ira_cpa_cleared gate.
+- prod Supabase DDL; staging first.
+- index.html script body and global namespace for new feature code.
+- Quicken parallel comparison data during Aug-Sep.
+- Never edit golden-master expected outputs to make tests pass without Adam approval.
+
+## Claude Code Session Protocol
+
+Roles:
+
+- Claude Code: local implementation agent. Runs local edits, tests, and commits under approved permissions. Runs locally, not the cloud sandbox.
+- ChatGPT: designer / challenger / spec reviewer.
+- Adam: product owner, final approval, prod migration, and push gate.
+
+Adam manually approves: pushes, prod Supabase migrations, destructive actions, secrets, and Context Manager patch application. Claude Code can commit locally under approved permissions but does not push.
+
+Session start:
+
+1. Read this AGENTS.md and CODEX_STATUS.md.
+2. When available locally, read the AI Context files from ~/AI-Context (00, 02, 05, 08); never copy them into this repo. Do not assume the repo requires those files to exist.
+3. Confirm the active goal, affected files/functions, intended tests, and risk areas before changing code.
+
+Session end:
+
+- Propose a clear commit message.
+- State test status and any test Adam must run manually.
+- Update the CODEX_STATUS.md current-state pointer.
+
 ## Definition of Done
 
 A change is not done until:
@@ -142,6 +212,7 @@ A change is not done until:
 - known gaps are not accidentally changed
 - clear commit message is proposed
 - manual test instructions are provided when Codex cannot run them
+- for phase-closing commits, propose any needed canonical AI Context patch into /Users/aherndon/AI-Context/_system/patches/proposed/ so context does not re-stale; Adam applies patches via Context Manager
 
 ## Privacy / Repo Guardrail
 
