@@ -17,7 +17,7 @@
 | 5F-1 | Reconciliation + Cash Availability Engine | Complete through Phase 4; Week 26 closeout proven in prod 2026-07-04; 2 deferrals (below) |
 | 5F-1.5 | Gate A: Wendy July usability | Live (2026-07-05/06); A4 done |
 | 5F-2 | (former) Reconciliation Writes | Absorbed into 5F-1 (writes shipped via save_reconciliation_with_commitments RPC) |
-| 5G | Cash Planning + Allocation | Next major phase; not started |
+| 5G | Cash Planning + Allocation | Next major phase; 5G-0 complete (2026-07-07), 5G-1+ not started |
 | 5H | Register capture speed + mobile quick-add | Not started |
 | 5I | Splits (was 5G) | Not started |
 | 5J | Month-end close hardening + minimal goal editing | Not started |
@@ -32,13 +32,13 @@
 - Budget Integration / Actuals (former 5J); A2 income actuals remains a specific gate before 5G-3
 - Old 5G Splits and 5H Transfers are relettered to 5I and 5K above, not dropped.
 
-### Phase 5G: Cash Planning + Allocation (NEXT MAJOR PHASE, NOT STARTED)
+### Phase 5G: Cash Planning + Allocation (NEXT MAJOR PHASE — 5G-0 COMPLETE; 5G-1+ NOT STARTED)
 
 Locked scope. Supersedes the earlier 5G = Splits assignment. One backend entity (`planned_outflows`) and one append-only event table (`outflow_events`). Upcoming Spend and Save-Up Bills are Wendy-facing groupings of `planned_outflows`, not separate backend systems. The Cash Allocation view is derived (Spoken For / Free to Use), never a manually maintained ledger. No fake Budget Clearance account, no fake Register transactions. Register stays source of truth for actual spend; Budget stays plan / spent / remaining / reporting. `misc.goal_sweep` key does not change. Full domain/funding taxonomy is canonical in AI Context 05; this section is the phase/gate map.
 
 | Sub | Name | Timing | Status |
 |-----|------|--------|--------|
-| 5G-0 | Roadmap/label cleanup; rename "Extra Pay Going to Spreadsheet" to "Available for Goals"; no logic change | Pre-Alaska | Not started |
+| 5G-0 | Roadmap/label cleanup; rename "Extra Pay Going to Spreadsheet" to "Available for Goals"; no logic change | Pre-Alaska | Complete (2026-07-07); static 1332/0, e2e 131/0 |
 | 5G-1 | planned_outflows + outflow_events schema; seed Mint Mobile; append-only Set Aside / Paid / Adjust; opening adjustment from dated snapshot on posted balances; Mint rows transfer_funded to AMEX Savings; auto_renew=false | Pre-Alaska | Not started |
 | 5G-2 | Derived Account Allocation view (Spoken For / Free to Use); no stored allocation balances | Pre-Alaska | Not started |
 | 5G-2.5 | Calculation Core Extraction / Characterization under golden-master tests; no framework, no UI refactor, no build step | Post-Alaska | Not started |
@@ -46,6 +46,8 @@ Locked scope. Supersedes the earlier 5G = Splits assignment. One backend entity 
 | 5G-4a | Set-aside transfer recommendations + shortfall warnings; Checking-to-AMEX must pass AMEX lookahead / max-safe-sweep gate; deferred set-asides derived (accrued minus funded), not stored | Post-Alaska | Not started |
 | 5G-4b | Earmark-funded adapter into 5F-1 Cash Availability Engine; input layer only; no engine internals modified; zero-outflow identity gate as committed automated test | Post-Alaska | Not started |
 | 5G-5 | Spreadsheet retirement after one clean parallel month | Post-Alaska | Not started |
+
+**5G-0 complete (2026-07-07):** Label/docs cleanup only. "Available for Goals" visible rename done (`misc.goal_sweep` key unchanged); SYS-1 (Budget block retitled "Statement check", user-facing phase strings stripped), SYS-4 (exact-string plain-language: Clr→Cleared, Model→Planned / Transfer→Custom chips, Budget Rule→Budget Line, "registry keys"→"categories", register reconciliation hint reworded), and WK-6 (banner pluralization) complete. No Budget identity, model/runModel, reconciliation-engine, schema/RLS/RPC, or Cash Planning changes. Tests: static regression 1332/0, e2e 131/0. BUD-1/BUD-2/SYS-3 remain routed to UX-0 (not 5G-0). Full detail in CODEX_STATUS.md "5G-0 CLOSED".
 
 **Pre / post-Alaska:** 5G-0 through 5G-2 are pre-Alaska candidates. Only 5G-0 is safe to start before a staging Supabase exists; 5G-1 requires a staging Supabase plus a baseline export via `scripts/export-ai-review-pack.sh`. 5G-2.5, 5G-3, 5G-4a, 5G-4b, 5G-5 are post-Alaska unless explicitly pulled forward after review. 5G-3+ also gates on Wendy feedback. Freeze window: **July 24 through August 10** (no 5G merges in that window).
 
