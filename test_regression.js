@@ -7912,8 +7912,9 @@ console.log('\n── Section 5F-1.5 A10: Register CL reconciliation default ─
     assertIncludes(reg,'data-sort-col="reconcile"','Clr header must activate reconcile mode');
     assertIncludes(reg,"setTxLedgerSort(\\'reconcile\\')",'Clr header onclick must call setTxLedgerSort(reconcile)');
     assertIncludes(reg,"_txLedgerSortCol==='reconcile'?' ▼'",'Clr header must show an active indicator in reconcile mode');
-    assertIncludes(reg,'Reconciliation view: uncleared transactions are shown above cleared','reconcile caption must exist');
-    assertIncludes(reg,'the newest cleared row should match your current bank balance','reconcile caption must use conditional (non-overpromising) household wording');
+    // UX-0.5 (R1): reconcile helper is now a cleaner helper bar (same tx-bal-caption class).
+    assertIncludes(reg,'Uncleared transactions appear first. Balance reflects the full account ledger, not just visible rows.','reconcile helper-bar copy must exist');
+    assertIncludes(reg,'The newest cleared row should match your bank balance.','reconcile helper bar keeps the trimmed reconcile-against-bank hint (non-overpromising)');
     assertIncludes(reg,"_startAtBottom=(_txLedgerSortCol==='reconcile')",'starting-balance-at-bottom must include reconcile mode');
   });
   test('A10-10: reconcile caption takes precedence over the generic non-date warning (which stays for Payee/Category/Outflow/Inflow)',()=>{
@@ -10540,8 +10541,72 @@ test('UX0-04: BUD-2 — Budget empty-state explains why and links to Register',(
 test('UX0-05: SYS-3 — Register manual-row delete trigger (✕) is amber, not red',()=>{
   assertIncludes(html,'color:var(--amber)">✕','Register delete trigger ✕ must be amber');
   var xIdx=html.indexOf('">✕</button>');
-  var x=html.slice(xIdx-140,xIdx+12);
+  var x=html.slice(xIdx-160,xIdx+12);
   assert(x.indexOf('color:var(--red)')===-1,'delete trigger ✕ must not use var(--red)');
+});
+
+// ── UX-0.5: Wendy visual polish (B1-B4 Budget, R1-R2 Register) ───────────────
+// Display-only. Must NOT alter UX-0 semantics (thresholds, red/amber/neutral, "Over by", income "expected").
+test('UX0.5-B1: Budget color/status legend present under the title with the four states',()=>{
+  var i=html.indexOf('function renderBudget()');
+  var b=html.slice(i,i+34000);
+  assertIncludes(b,'_budgetLegend','Budget legend variable must exist');
+  assertIncludes(b,'Within budget','legend must label the neutral state');
+  assertIncludes(b,'Near limit','legend must label the amber near-limit state');
+  assertIncludes(b,'Over budget (shows "Over by $X")','legend must label the red over state and its badge');
+  assertIncludes(b,'Income shown as "expected"','legend must label the income expected treatment');
+});
+test('UX0.5-B2: attention strip is tallied inside the expense-leaf loop (matches grid) and injected above the table',()=>{
+  var i=html.indexOf('function renderBudget()');
+  var b=html.slice(i,i+34000);
+  // Slot emitted right after the title, before the table (top placement).
+  var slotPos=b.indexOf('<!--BUDGET_ATTN_SLOT-->');
+  var tablePos=b.indexOf('<table style="width:100%;border-collapse:collapse;font-size:12px">');
+  assert(slotPos>-1&&tablePos>-1&&slotPos<tablePos,'attention slot must be emitted above the grid table');
+  // Counts tallied from the SAME _rowState the grid renders from (no parallel computation).
+  assertIncludes(b,"if(_rowState==='over')_overCount++;else if(_rowState==='near')_nearCount++;",'over/near counts must be tallied from the grid render state');
+  // Strip reads only values the grid already computed.
+  assertIncludes(b,"_attnItem('Over budget',_overCount","over-budget tile must read _overCount");
+  assertIncludes(b,"_attnItem('Near limit',_nearCount","near-limit tile must read _nearCount");
+  assertIncludes(b,"_attnItem('Planned remaining',f(totalRem)",'planned-remaining tile must read totalRem');
+  assertIncludes(b,'var _incomeExpected=Math.max(0,_iTotRem);','income expected must be clamped to >= 0 (never positive once fully/over-received)');
+  assertIncludes(b,"_attnItem('Income expected',f(_incomeExpected)",'income-expected tile must read the clamped _incomeExpected');
+  // Injected via split/join (literal '$' safe), not String.replace.
+  assertIncludes(b,"html.split('<!--BUDGET_ATTN_SLOT-->').join(_budgetLegend+_budgetStrip)",'legend+strip injected into the slot via split/join');
+  // New UX-0.5 strip border uses the defined --line token, not the undefined --border.
+  assertIncludes(b,'background:var(--surface2);border:1px solid var(--line);border-radius:8px','attention strip border must use var(--line)');
+});
+test('UX0.5-B3: section-header hierarchy strengthened (2px rule, uppercase small-caps group label)',()=>{
+  var i=html.indexOf('function renderBudget()');
+  var b=html.slice(i,i+34000);
+  assertIncludes(b,'background:var(--bg);border-top:2px solid var(--line)','section header must use a thicker 2px top rule with the defined --line token');
+  assertIncludes(b,"text-transform:uppercase;letter-spacing:.05em;color:var(--ink)\">'+parent.label",'group label must be uppercase small-caps');
+});
+test('UX0.5-B4: "Over by" badge rhythm improved without changing UX-0 semantics',()=>{
+  var i=html.indexOf('function renderBudget()');
+  var b=html.slice(i,i+34000);
+  assertIncludes(b,'margin-left:8px;vertical-align:middle;white-space:nowrap">Over by ','badge spacing/alignment improved, text and nowrap preserved');
+  // UX-0 semantics intact: over is still red value + badge; threshold helper untouched.
+  assertIncludes(b,"var _rowState=_budgetRowState(s,b);",'leaf state still derives from _budgetRowState (thresholds unchanged)');
+  assertIncludes(b,"_rowState==='over'?'#ef4444'",'over is still red value');
+});
+test('UX0.5-R1: Register reconcile helper is a cleaner helper bar (new copy, trimmed reconcile hint)',()=>{
+  var reg=html.slice(html.indexOf('function _renderTxRegister()'),html.indexOf('function renderTransactions()'));
+  assertIncludes(reg,'var _barStyle=','helper-bar style must be defined');
+  assertIncludes(reg,'background:var(--surface2);border:1px solid var(--line);border-radius:7px','helper bar border must use the defined --line token, not --border');
+  assert(reg.indexOf('font-style:italic')===-1||reg.indexOf('_barStyle')>-1,'helper bar exists');
+  assertIncludes(reg,'Uncleared transactions appear first. Balance reflects the full account ledger, not just visible rows. The newest cleared row should match your bank balance.','new helper-bar copy incl. trimmed reconcile hint');
+  assert(reg.indexOf('Reconciliation view: uncleared transactions are shown above cleared')===-1,'old long italic reconcile paragraph must be gone');
+  assertIncludes(reg,'class="tx-bal-caption"','helper bar keeps the tx-bal-caption class (selectors resolve)');
+});
+test('UX0.5-R2: Register edit/delete affordance polished; UX-0 SYS-3 colors preserved',()=>{
+  var reg=html.slice(html.indexOf('function _renderTxRegister()'),html.indexOf('function renderTransactions()'));
+  assertIncludes(reg,'aria-label="Edit transaction"','edit button gets an aria-label');
+  assertIncludes(reg,'aria-label="Delete transaction"','delete button gets an aria-label');
+  assertIncludes(reg,'font-size:13px;line-height:1;padding:5px 9px','action buttons get larger click targets');
+  // UX-0 SYS-3 colors preserved: ✎ neutral/muted, ✕ amber (not red).
+  assertIncludes(reg,'background:var(--surface);color:var(--muted);margin-right:4px">✎','edit ✎ stays neutral/muted');
+  assertIncludes(reg,'background:var(--surface);color:var(--amber)">✕','delete ✕ stays amber');
 });
 
 // A5 (Wendy item): account dropdowns should be alphabetical. Payment-account

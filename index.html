@@ -859,7 +859,7 @@ button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-vis
 // ── Constants (unchanged) ──────────────────────────────────────────────────
 // Simplified architecture — $8,250 total from LC · $6,500 operating floor · no legacy mechanics
 // Real-world moves: keep $2,250 in chk, move $2,750 sav→chk, move $1,000 LC→chk, move $2,250 LC→chk (Option 1 correction)
-const BUILD_TS='2026-07-07T16:37:13'; // updated each push — local time string
+const BUILD_TS='2026-07-07T18:22:06'; // updated each push — local time string
 const START_CHK=18037.73,START_SAV=3772.77,START_AMX=103.64,START_TAX=0,START_LC=13488.88;
 const EF_AMT=13488.88; // LC/EF balance — static this model year (no transfers in or out)
 const BASE_TAX=521.36,RET_SAV_XFR=3772.74;
@@ -6443,13 +6443,16 @@ function _renderTxRegister(){
 
     // A6/A9 caption: the filtered-subset note is the stronger warning and wins over sort-off-date.
     var _capStyle='font-size:11px;color:var(--muted);font-style:italic;padding:4px 12px';
+    // UX-0.5 (R1): the reconcile-view helper is shown as a cleaner, non-italic helper bar rather
+    // than a long italic paragraph. Same class (tx-bal-caption) so existing selectors still resolve.
+    var _barStyle='font-size:11px;color:var(--muted2);background:var(--surface2);border:1px solid var(--line);border-radius:7px;padding:7px 12px;margin:2px 0 6px;line-height:1.5';
     // Date asc AND date desc are both valid ledger orders (Balance reads as a running
     // sequence), so the sort caption is shown only for NON-date sorts. The filter caption
     // is the stronger warning and wins whenever a filter is active.
     var _balCaption=_filtersOn
       ?'<div class="tx-bal-caption" style="'+_capStyle+'">Balance reflects the full ledger as of each transaction date, not the filtered subset.</div>'
       :(_txLedgerSortCol==='reconcile'
-        ?'<div class="tx-bal-caption" style="'+_capStyle+'">Reconciliation view: uncleared transactions are shown above cleared transactions; the balance on each row is still the running total through that date across the whole account, not just the rows in view. When you reconcile against the bank, the newest cleared row should match your current bank balance.</div>'
+        ?'<div class="tx-bal-caption" style="'+_barStyle+'">Uncleared transactions appear first. Balance reflects the full account ledger, not just visible rows. The newest cleared row should match your bank balance.</div>'
         :((_txLedgerSortCol==='date')?''
           :'<div class="tx-bal-caption" style="'+_capStyle+'">Balance is shown as of each transaction date, not recalculated in sorted order.</div>'));
 
@@ -6525,13 +6528,15 @@ function _renderTxRegister(){
         var actionCell;
         if(isManual){
           if(canWriteFinancials()){
+            // UX-0.5 (R2): larger click targets + clearer tooltips + aria-labels. UX-0 SYS-3 colors
+            // preserved (✎ neutral/muted, ✕ amber); handlers, ids, and the delete-confirm flow unchanged.
             actionCell='<td style="padding:4px 8px;white-space:nowrap;text-align:right">'
               +'<button onclick="_openTxEditById(\''+_esc(tx.id)+'\')" '
-              +'title="Edit" style="font-family:inherit;font-size:11px;padding:2px 7px;cursor:pointer;'
-              +'border:1px solid var(--line);border-radius:4px;background:var(--surface);color:var(--muted);margin-right:2px">✎</button>'
+              +'title="Edit transaction" aria-label="Edit transaction" style="font-family:inherit;font-size:13px;line-height:1;padding:5px 9px;cursor:pointer;'
+              +'border:1px solid var(--line);border-radius:5px;background:var(--surface);color:var(--muted);margin-right:4px">✎</button>'
               +'<button onclick="_openTxDeleteConfirm(\''+_esc(tx.id)+'\')" '
-              +'title="Delete" style="font-family:inherit;font-size:11px;padding:2px 7px;cursor:pointer;'
-              +'border:1px solid var(--line);border-radius:4px;background:var(--surface);color:var(--amber)">✕</button>'
+              +'title="Delete transaction" aria-label="Delete transaction" style="font-family:inherit;font-size:13px;line-height:1;padding:5px 9px;cursor:pointer;'
+              +'border:1px solid var(--line);border-radius:5px;background:var(--surface);color:var(--amber)">✕</button>'
               +'</td>';
           }else{
             actionCell='<td style="padding:4px 8px"></td>';
@@ -6892,6 +6897,10 @@ function renderBudget(){
   // ── Budget Printout (Spent | Budget | Remaining) ───────────────────────────
   html+='<div class="panel" style="margin-bottom:16px;overflow-x:auto">';
   html+='<h3 style="margin:0 0 10px;font-size:13px;font-weight:700;color:var(--ink)">'+_budgetMonthLabel(monthIso)+' Budget</h3>';
+  // UX-0.5 (B1 legend + B2 attention strip): rendered under the title, above the table. The
+  // markup is injected here after the expense-leaf loop tallies _overCount/_nearCount, so the
+  // strip always matches the grid (single source of truth, no parallel computation). Slot below.
+  html+='<!--BUDGET_ATTN_SLOT-->';
   html+='<table style="width:100%;border-collapse:collapse;font-size:12px">';
   html+='<thead><tr style="border-bottom:2px solid var(--border)">';
   html+='<th style="text-align:left;padding:5px 8px;color:var(--muted);font-weight:600">Category</th>';
@@ -6963,6 +6972,9 @@ function renderBudget(){
 
   // Render EXPENSE sections
   var totalExpSpent=0,totalExpBudget=0;
+  // UX-0.5 (B2): tallied inside the expense-leaf loop below (same _budgetRowState the grid renders
+  // from) so the attention strip matches the grid exactly. Leaf lines only, not parents/total.
+  var _overCount=0,_nearCount=0;
   // Get top-level expense parents (in order)
   var expenseParents=_getActiveCategoryRegistry().filter(function(c){
     return !c.isIncome&&!c.parent&&c.key!=='misc'; // misc rendered last
@@ -7006,15 +7018,17 @@ function renderBudget(){
 
     // Section header row (bold parent, not for standalone leaves)
     if(!isStandalone){
-      html+='<tr style="background:var(--bg);border-top:1px solid var(--border)">';
-      html+='<td style="padding:6px 8px 3px;font-weight:700;font-size:12px;color:var(--ink)">'+parent.label+'</td>';
-      html+='<td style="text-align:right;padding:6px 8px 3px;font-weight:700">'+fSpent(pSpent)+'</td>';
-      html+='<td style="text-align:right;padding:6px 8px 3px;font-weight:700;color:var(--blue)">'+f(pBudget)+'</td>';
+      // UX-0.5 (B3): stronger section-header hierarchy — thicker top rule, uppercase small-caps
+      // group label, a touch more top padding — so major groups are easier to scan. Display-only.
+      html+='<tr style="background:var(--bg);border-top:2px solid var(--line)">';
+      html+='<td style="padding:9px 8px 3px;font-weight:700;font-size:11px;text-transform:uppercase;letter-spacing:.05em;color:var(--ink)">'+parent.label+'</td>';
+      html+='<td style="text-align:right;padding:9px 8px 3px;font-weight:700">'+fSpent(pSpent)+'</td>';
+      html+='<td style="text-align:right;padding:9px 8px 3px;font-weight:700;color:var(--blue)">'+f(pBudget)+'</td>';
       var pRem=pBudget-pSpent;
       // UX-0 (BUD-1): parents apply the same red/amber/neutral rule to their own totals; no badge.
       var _pState=_budgetRowState(pSpent,pBudget);
       var _pColor=_pState==='over'?'#ef4444':(_pState==='near'?'var(--amber)':((pRem===pBudget&&pSpent===0)?'var(--muted)':'var(--ink)'));
-      html+='<td style="text-align:right;padding:6px 8px 3px;font-weight:700;color:'+_pColor+'">'+f(pRem)+'</td>';
+      html+='<td style="text-align:right;padding:9px 8px 3px;font-weight:700;color:'+_pColor+'">'+f(pRem)+'</td>';
       html+='</tr>';
     }
 
@@ -7053,8 +7067,10 @@ function renderBudget(){
       // UX-0 (BUD-1): over=red value + "Over by $X" badge; near=amber value; under-with-spend=ink;
       // idle=muted. No row tint. Badge (red) is the only over-budget signal beyond the value.
       var _rowState=_budgetRowState(s,b);
+      // UX-0.5 (B2): tally the very state the grid renders — guarantees the strip matches the grid.
+      if(_rowState==='over')_overCount++;else if(_rowState==='near')_nearCount++;
       var _remColor=_rowState==='over'?'#ef4444':(_rowState==='near'?'var(--amber)':((rem===b&&s===0)?'var(--muted)':'var(--ink)'));
-      var _overBadge=_rowState==='over'?' <span style="font-size:10px;font-weight:600;color:#ef4444;background:var(--redSoft);border:1px solid #fca5a5;border-radius:4px;padding:1px 5px;margin-left:4px;white-space:nowrap">Over by '+f(Math.abs(rem))+'</span>':'';
+      var _overBadge=_rowState==='over'?' <span style="font-size:10px;font-weight:600;color:#ef4444;background:var(--redSoft);border:1px solid #fca5a5;border-radius:4px;padding:1px 5px;margin-left:8px;vertical-align:middle;white-space:nowrap">Over by '+f(Math.abs(rem))+'</span>':'';
       html+='<td style="text-align:right;padding:5px 8px;color:'+_remColor+'">'+f(rem)+_overBadge+'</td>';
       html+='</tr>';
       totalExpSpent+=s;totalExpBudget+=b;
@@ -7170,6 +7186,34 @@ function renderBudget(){
     html+='</tbody></table>';
   }
   html+='</div>';
+
+  // UX-0.5 (B1 + B2): compose the color legend and the attention summary strip, then inject them
+  // into the slot under the Budget title (above the grid). Counts come from the expense-leaf loop
+  // (_overCount/_nearCount); Planned remaining is totalRem; Income expected is _iTotRem — all values
+  // the grid already computed, so nothing is recomputed and the strip cannot drift from the grid.
+  // Display-only: reuses UX-0 color tokens and states; no thresholds or semantics changed.
+  var _sw=function(bg,extra){return '<span style="width:9px;height:9px;border-radius:2px;flex-shrink:0;background:'+bg+(extra||'')+'"></span>';};
+  var _legendItem=function(bg,extra,txt){return '<span style="display:inline-flex;align-items:center;gap:5px">'+_sw(bg,extra)+txt+'</span>';};
+  var _budgetLegend='<div style="display:flex;flex-wrap:wrap;gap:14px;align-items:center;margin:0 0 8px;font-size:11px;color:var(--muted)">'
+    +'<span style="font-weight:600">Key:</span>'
+    +_legendItem('var(--ink)',';opacity:.5','Within budget')
+    +_legendItem('var(--amber)','','Near limit')
+    +_legendItem('#ef4444','','Over budget (shows "Over by $X")')
+    +_legendItem('var(--muted)',';opacity:.4','Income shown as "expected"')
+    +'</div>';
+  var _attnItem=function(label,val,color){return '<div style="display:flex;flex-direction:column;gap:1px;min-width:92px">'
+    +'<span style="font-size:10px;text-transform:uppercase;letter-spacing:.04em;color:var(--muted)">'+label+'</span>'
+    +'<span style="font-size:14px;font-weight:700;color:'+color+'">'+val+'</span></div>';};
+  // Income expected never shows a positive figure once income is fully/over-received (_iTotRem<=0).
+  var _incomeExpected=Math.max(0,_iTotRem);
+  var _budgetStrip='<div style="display:flex;flex-wrap:wrap;gap:18px;align-items:center;padding:9px 12px;margin:0 0 12px;background:var(--surface2);border:1px solid var(--line);border-radius:8px">'
+    +_attnItem('Over budget',_overCount+' '+(_overCount===1?'line':'lines'),_overCount>0?'#ef4444':'var(--ink)')
+    +_attnItem('Near limit',_nearCount+' '+(_nearCount===1?'line':'lines'),_nearCount>0?'var(--amber)':'var(--ink)')
+    +_attnItem('Planned remaining',f(totalRem),totalRem<0?'#ef4444':'var(--ink)')
+    +_attnItem('Income expected',f(_incomeExpected),'var(--muted)')
+    +'</div>';
+  // split/join (not String.replace) so '$' in the injected money strings is inserted literally.
+  html=html.split('<!--BUDGET_ATTN_SLOT-->').join(_budgetLegend+_budgetStrip);
 
   el.innerHTML=html;
 }

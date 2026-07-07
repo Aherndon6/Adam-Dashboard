@@ -2491,7 +2491,7 @@ async function clickNav(page, id) {
         balUB: h.indexOf('$-200.00') !== -1, balUA: h.indexOf('$-170.00') !== -1,
         balCB: h.indexOf('$-150.00') !== -1, balCA: h.indexOf('$-100.00') !== -1,
         startZero: h.indexOf('$0.00') !== -1,
-        reconcileCaption: h.indexOf('Reconciliation view: uncleared transactions are shown above cleared') !== -1,
+        reconcileCaption: h.indexOf('Uncleared transactions appear first. Balance reflects the full account ledger') !== -1,
         clrActivatesReconcile: h.indexOf('data-sort-col="reconcile"') !== -1,
         hasCheckbox: h.indexOf('_toggleTxCleared') !== -1
       };
@@ -2555,7 +2555,7 @@ async function clickNav(page, id) {
       _txFilterSearch=''; _txFilterType='all'; _txFilterStatus='all'; _txFilterDateFrom=''; _txFilterDateTo='';
       setSection('transactions'); setTxSubNav('register'); renderApp();
       var h = document.getElementById('transactions-content').innerHTML;
-      var capStart = h.indexOf('Reconciliation view:');
+      var capStart = h.indexOf('Uncleared transactions appear first.');
       var capText = capStart > -1 ? h.slice(capStart, capStart + 340) : '';
       return {
         iFresh: h.indexOf('Fresh Uncleared'), iStale: h.indexOf('Stale Uncleared'),
@@ -2563,7 +2563,7 @@ async function clickNav(page, id) {
         staleBal: h.indexOf('$-500.00') !== -1, freshBal: h.indexOf('$-680.00') !== -1,
         c2Bal: h.indexOf('$-650.00') !== -1, c1Bal: h.indexOf('$-600.00') !== -1,
         overpromiseInCaption: /always/i.test(capText),
-        conditionalCaption: capText.indexOf('the newest cleared row should match your current bank balance') !== -1
+        conditionalCaption: capText.indexOf('newest cleared row should match your bank balance') !== -1
       };
     }, [acct, txns]);
     assert(r.iFresh > -1 && r.iStale > -1 && r.iC2 > -1 && r.iC1 > -1, 'all four rows render');
@@ -2572,7 +2572,7 @@ async function clickNav(page, id) {
     assert(r.iC2 < r.iC1, 'cleared group is newest-first (Cleared Two 7/02 above Cleared One 7/01)');
     assert(r.staleBal && r.freshBal && r.c2Bal && r.c1Bal, 'balances stay full-ledger historical (-500/-680/-650/-600), intentionally non-monotonic down the page');
     assert(!r.overpromiseInCaption, 'the reconcile caption must not claim the checkpoint "always" equals the online balance');
-    assert(r.conditionalCaption, 'the reconcile caption uses conditional (non-overpromising) household wording ("should match your current bank balance")');
+    assert(r.conditionalCaption, 'the reconcile helper bar uses conditional (non-overpromising) household wording ("should match your bank balance")');
     // Budget still renders (guardrail: no Budget changes).
     const budgetOk = await page.evaluate(() => {
       setSection('budget'); renderApp();
@@ -2616,7 +2616,7 @@ async function clickNav(page, id) {
           fandango: h.indexOf('Fandango'), kroger: h.indexOf('Kroger'), paycheck: h.indexOf('Paycheck'),
           hasFandangoBal: h.indexOf('$-150.00') !== -1,
           hasCaption: h.indexOf('Balance is shown as of each transaction date') !== -1,
-          hasReconcileCaption: h.indexOf('Reconciliation view: uncleared transactions are shown above cleared') !== -1
+          hasReconcileCaption: h.indexOf('Uncleared transactions appear first. Balance reflects the full account ledger') !== -1
         };
       }
       var def = snap();                                  // app default = reconcile CL view
