@@ -44,6 +44,20 @@ Active spec path: TBD (create a 5G-1 spec under docs/ before implementation; rec
 
 Known gates and pre-reqs live in `docs/phase-status.md` (Phase 5G gates) and `AGENTS.md` (Do Not Touch, schema/migration conventions). Key blockers: Wendy feedback on Available for Goals; A2 income actuals before 5G-3; Diablos/GLP WD fix + WC-3 disposition + baseline weekly-model recapture before 5G-4a; zero-outflow identity automated test before 5G-4b; calculation-core extraction (5G-2.5) before 5G-3 / 5G-4a. Alaska freeze window: July 24 through August 10 (no 5G merges).
 
+### UI/Flow Review v2 (2026-07-07) — planning note
+
+UI/Flow Review v2 completed 2026-07-07 (`docs/reviews/ui-flow-review-triage-2026-07-07.md`; triage input only, not implementation authority — Wendy-confirmed workflow overrides). Do not treat all 24 findings as immediate work. See `docs/phase-status.md` → "UI & Flow Review Inputs" for the full breakdown.
+
+- Capped pre-5G UX cleanup candidate: FLOW-2, FLOW-1, WK-1, REG-1, SYS-2, optional rider REG-2.
+- 5G-0 may fold in SYS-1, SYS-4, WK-6 (in-charter label/docs cleanup).
+- Wendy 5G Budget mockup inputs: BUD-1, BUD-2, SYS-3. 5H candidates (hold): REG-5, REG-4, FLOW-4.
+- Nav: no regroup now; 5G launches as one "Cash Planning" item under Planning next to Goals; FLOW-2 is the minimal nav fix.
+
+**Decision needed before 5G-1:** Adam should choose the sequencing —
+a) Wendy Budget mockup first, or
+b) 5G-0 first, or
+c) pre-5G UX cleanup bundle first.
+
 ## 5E-8 CLOSED: Register Category Sync (2026-07-02)
 
 Live-use bug: Register's Add Transaction category dropdown/row display didn't match Budget's categories (Wendy-facing, reported live). Root-caused and resolved across three rounds:

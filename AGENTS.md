@@ -181,6 +181,10 @@ Before changing code:
 - Quicken parallel comparison data during Aug-Sep.
 - Never edit golden-master expected outputs to make tests pass without Adam approval.
 
+## Review Artifacts
+
+UI review artifacts are triage inputs, not implementation authority. If a UI review conflicts with Wendy-confirmed workflow, active phase specs, or the Do Not Touch list, those controls win.
+
 ## Claude Code Session Protocol
 
 Roles:

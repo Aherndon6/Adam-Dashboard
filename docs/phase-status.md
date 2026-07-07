@@ -65,6 +65,44 @@ Locked scope. Supersedes the earlier 5G = Splits assignment. One backend entity 
 
 **Stale spec warning:** `docs/dynamic-goal-registry-spec.md` (June 21 draft) is NOT implementation authority. Shipped reality is `goal_registry`, authenticated SELECT-only, hardcoded fallback, GR-A1 identity gate. New 5G tables must not inherit anon RLS patterns.
 
+### UI & Flow Review Inputs (2026-07-07 v2)
+
+The 2026-07-07 UI/flow review (`docs/reviews/ui-flow-review-triage-2026-07-07.md`) is a **triage input, not implementation authority.** Its 24 findings are hypotheses; **Wendy-confirmed workflow overrides them.** It does **not** change 5G scope, architecture, gates, or the Do Not Touch list above. Do not treat all 24 findings as immediate work.
+
+**5G-0 fold-ins** (in-charter label/docs cleanup; must land before 5G-1 introduces Spoken For / Free to Use):
+
+- SYS-1: reconciliation naming cleanup (rename Budget block to "Statement check", strip leaked phase strings, reserve "Reconcile" for the weekly flow)
+- SYS-4: plain-language string sweep — exact strings only, no logic change
+- WK-6: pluralization fix ("1 current-week protected obligation…")
+
+**Pre-5G UX cleanup candidate** (display/routing only; no schema, model math, reconciliation engine, Register schema, Budget identity, or nav grouping. Hard cap — do not let it grow into a phase; cut the rider first):
+
+- FLOW-2: default Transactions to Register
+- FLOW-1: make the Budget helper a live Register link (button stays disabled per Wendy's confirmed flow)
+- WK-1: fix transfer status vs task-check semantics (adopt existing Accounts status pills)
+- REG-1: make the Register filtered state obvious
+- SYS-2: standardize money formatting (separators, one negative convention)
+- optional rider — REG-2: Uncleared/Cleared group labels, only if the Register table is already open (sort order untouched)
+
+**Wendy 5G Budget mockup inputs** (settle in the mockup, not as pre-5G cleanup):
+
+- BUD-1: red / over / near / under semantics — settle the income-red vs expense-red collision first
+- BUD-2: Budget empty state and the "actuals reconcile through Register" story
+- SYS-3: row-action (Archive/Edit) treatment so red is reserved for real money alerts
+
+**5H candidates** (capture speed / entry assistance — 5H's charter; do not build early):
+
+- REG-5: payee suggestions while typing
+- REG-4: uncategorized surfacing (count + filter)
+- FLOW-4: desktop quick-add
+
+**Nav decision (confirmed):**
+
+- No full left-nav regroup now.
+- FLOW-2 is the minimal nav fix.
+- 5G launches as one new "Cash Planning" item under Planning, next to Goals — nothing else moves.
+- A broader regroup waits for a single later decision, triggered by 3+ weeks of Wendy's real 5G usage (top anchor Weekly Model / bottom anchor Transactions preserved).
+
 ---
 
 ### Phase 5E-5 — Budget Line Admin (COMPLETE + HARDENED, 2026-06-27 — browser smoke PASSED)
