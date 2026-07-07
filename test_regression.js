@@ -5176,7 +5176,7 @@ test('5B-24: Budget printout total row uses "Total Planned Budget" label (update
   try{htmlSrc=require('fs').readFileSync(require('path').join(__dirname,'index.html'),'utf8');}catch(e){}
   assert(htmlSrc.length>0,'Could not read index.html');
   var budgetFnIdx=htmlSrc.indexOf('function renderBudget()');
-  var budgetFnSrc=htmlSrc.slice(budgetFnIdx,budgetFnIdx+20000);
+  var budgetFnSrc=htmlSrc.slice(budgetFnIdx,budgetFnIdx+24000); // widened for UX-0 row-treatment additions
   assert(budgetFnSrc.includes('Total Planned Budget'),'total row must say Total Planned Budget');
   assert(!budgetFnSrc.includes('excl. goal sweep'),'goal sweep exclusion note must be removed');
   assert(budgetFnSrc.includes('Available for Goals'),'misc.goal_sweep must still render');
@@ -10393,7 +10393,7 @@ test('5F15-A1-06: a category whose credits exceed outflows is preserved as a tru
 test('5F15-A1-07: renderBudget renders a net-credit Spent cell as a signed credit (fSpent), so visible actual reconciles to Remaining', ()=>{
   assertIncludes(html, 'function fSpent(', 'fSpent signed-credit formatter must exist');
   var fnIdx = html.indexOf('function renderBudget()');
-  var fnBlock = html.slice(fnIdx, fnIdx + 20000);
+  var fnBlock = html.slice(fnIdx, fnIdx + 24000); // widened for UX-0 row-treatment additions
   assertIncludes(fnBlock, 'fSpent(pSpent)', 'parent Spent cell must render via fSpent');
   assertIncludes(fnBlock, 's<0?fSpent(s)', 'child Spent cell must render a negative net via fSpent');
   assertIncludes(fnBlock, 'fSpent(totalExpSpent)', 'total Spent cell must render via fSpent');
@@ -10477,7 +10477,71 @@ test('5F15-A2-09: renderBudget income section wires received/remaining through s
   assertIncludes(fnBlock, 'fsigned(rec)', 'income row Actual/Received must render signed (never sign-stripped)');
   assertIncludes(fnBlock, 'bud-rec', 'income row Remaining must be budget minus received');
   assertIncludes(fnBlock, 'fsigned(incomeActualTotal)', 'Total Income actual must render signed');
-  assert(fnBlock.indexOf('_iRem>0?\'var(--amber)\':\'var(--green)\'')>-1 || fnBlock.indexOf('_iRem>0?"var(--amber)":"var(--green)"')>-1, 'income Remaining uses income coloring (amber when still expected, green when met/exceeded)');
+  // UX-0 (BUD-1, decision 2): income Remaining is muted "expected" — never red/amber/green.
+  // The numeric remaining amount is preserved; the legacy amber/green income ternary is gone.
+  assertIncludes(fnBlock, 'color:var(--muted)" title="Income not yet received', 'income Remaining row must render muted with an "expected" title, not a color state');
+  assert(fnBlock.indexOf("'var(--amber)':'var(--green)'")===-1 && fnBlock.indexOf('"var(--amber)":"var(--green)"')===-1, 'legacy income amber/green Remaining coloring must be removed');
+});
+
+// ── UX-0: display-only Budget row treatment (BUD-1 / BUD-2 / SYS-3) ──────────
+// Treatment authority: docs/specs/wendy-5g-budget-mockup-spec-2026-07-07.md (v1.2).
+test('UX0-01: _budgetRowState — over/near/neutral thresholds (BUD-1 decision 1)',()=>{
+  assert(typeof _budgetRowState==='function','_budgetRowState helper must exist');
+  assert(_budgetRowState(150,100)==='over','spent over budget => over');
+  assert(_budgetRowState(100.01,100)==='over','a cent over => over');
+  assert(_budgetRowState(100,100)==='near','exactly at budget (rem 0) => near, not over');
+  assert(_budgetRowState(95,100)==='near','>=90% spent and rem<=100 on a >=$100 line => near');
+  assert(_budgetRowState(1800,2000)==='neutral','$2000 line at $200 remaining stays neutral (rem>100)');
+  assert(_budgetRowState(1900,2000)==='near','$2000 line at $100 remaining goes amber');
+  assert(_budgetRowState(33.60,34)==='neutral','sub-$100 line never amber (Google $34/$33.60 stays neutral)');
+  assert(_budgetRowState(50,34)==='over','sub-$100 line over budget => over (red), no amber crossover');
+  assert(_budgetRowState(0,500)==='neutral','nothing spent => neutral');
+});
+test('UX0-02: BUD-1 over-state = red value + "Over by" badge on leaf rows only; parents/total value-only',()=>{
+  var i=html.indexOf('function renderBudget()');
+  var b=html.slice(i,i+24000);
+  assertIncludes(b,'_budgetRowState(s,b)','leaf rows derive state via _budgetRowState');
+  assertIncludes(b,'_budgetRowState(pSpent,pBudget)','parent header derives state via _budgetRowState');
+  assertIncludes(b,'_budgetRowState(totalExpSpent,totalExpBudget)','grand total derives state via _budgetRowState');
+  assertIncludes(b,'Over by ','leaf over-state renders an "Over by $X" badge');
+  // Badge is leaf-only: _overBadge is defined once and used once, both in the leaf cell.
+  assert((b.match(/_overBadge/g)||[]).length===2,'_overBadge must be defined and used exactly once (leaf only)');
+});
+test('UX0-03: SYS-3 — red retired from Budget/Register Archive/Delete/Confirm controls (amber-dark confirms)',()=>{
+  var ri=html.indexOf('function renderBudget()');
+  var rb=html.slice(ri,ri+30000); // reaches the transaction-list Del control near the end of renderBudget
+  // Archive row button neutral (no red styling)
+  var ai=rb.indexOf('window._blrOpenArchive');
+  var archBtn=rb.slice(ai-80,ai+240);
+  assert(archBtn.indexOf('#fca5a5')===-1 && archBtn.indexOf('var(--redSoft)')===-1 && archBtn.indexOf('#dc2626')===-1,'Archive row button must not use red styling');
+  // Archive confirm modal button amber-dark, not red
+  var ci=html.indexOf('window._blrSaveArchive()');
+  var conf=html.slice(ci-260,ci+40);
+  assert(conf.indexOf('#dc2626')===-1,'Archive confirm button must not be red #dc2626');
+  assertIncludes(conf,'background:var(--amber)','Archive confirm button must be amber-dark');
+  // Register manual-row delete confirm strip amber-dark
+  var di=html.indexOf('Delete this transaction? This cannot be undone.');
+  var ds=html.slice(di-160,di+520);
+  assert(ds.indexOf('var(--red)')===-1,'Register delete confirm strip must not use var(--red)');
+  assertIncludes(ds,'background:var(--amber)','Register delete confirm button must be amber-dark');
+  // Budget legacy-tx Del prompt amber, not red
+  assert(rb.indexOf('color:#ef4444;font-weight:600">Delete? ')===-1,'legacy Budget "Delete?" prompt must not be red');
+  assertIncludes(rb,'color:var(--amber);font-weight:600">Delete? ','legacy Budget "Delete?" prompt must be amber');
+});
+test('UX0-04: BUD-2 — Budget empty-state explains why and links to Register',()=>{
+  var i=html.indexOf('function renderBudget()');
+  var b=html.slice(i,i+30000); // empty-state panel sits near the end of renderBudget
+  assert(b.indexOf('No transactions for this period')===-1,'legacy vague empty-state copy must be gone');
+  assertIncludes(b,'No Budget-entered transactions for ','empty state must name the Budget-entered scope + month');
+  assertIncludes(b,'already counted in Spent above','empty state must reassure actuals count through Register');
+  assertIncludes(b,"setSection(\\'transactions\\')",'empty state must offer a live Open Register link (navigates to Transactions)');
+  assertIncludes(b,'>Open Register</a>','Open Register link text must be present');
+});
+test('UX0-05: SYS-3 — Register manual-row delete trigger (✕) is amber, not red',()=>{
+  assertIncludes(html,'color:var(--amber)">✕','Register delete trigger ✕ must be amber');
+  var xIdx=html.indexOf('">✕</button>');
+  var x=html.slice(xIdx-140,xIdx+12);
+  assert(x.indexOf('color:var(--red)')===-1,'delete trigger ✕ must not use var(--red)');
 });
 
 // A5 (Wendy item): account dropdowns should be alphabetical. Payment-account

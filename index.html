@@ -859,7 +859,7 @@ button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-vis
 // ── Constants (unchanged) ──────────────────────────────────────────────────
 // Simplified architecture — $8,250 total from LC · $6,500 operating floor · no legacy mechanics
 // Real-world moves: keep $2,250 in chk, move $2,750 sav→chk, move $1,000 LC→chk, move $2,250 LC→chk (Option 1 correction)
-const BUILD_TS='2026-07-07T14:47:35'; // updated each push — local time string
+const BUILD_TS='2026-07-07T16:37:13'; // updated each push — local time string
 const START_CHK=18037.73,START_SAV=3772.77,START_AMX=103.64,START_TAX=0,START_LC=13488.88;
 const EF_AMT=13488.88; // LC/EF balance — static this model year (no transfers in or out)
 const BASE_TAX=521.36,RET_SAV_XFR=3772.74;
@@ -6531,7 +6531,7 @@ function _renderTxRegister(){
               +'border:1px solid var(--line);border-radius:4px;background:var(--surface);color:var(--muted);margin-right:2px">✎</button>'
               +'<button onclick="_openTxDeleteConfirm(\''+_esc(tx.id)+'\')" '
               +'title="Delete" style="font-family:inherit;font-size:11px;padding:2px 7px;cursor:pointer;'
-              +'border:1px solid var(--line);border-radius:4px;background:var(--surface);color:var(--red)">✕</button>'
+              +'border:1px solid var(--line);border-radius:4px;background:var(--surface);color:var(--amber)">✕</button>'
               +'</td>';
           }else{
             actionCell='<td style="padding:4px 8px"></td>';
@@ -6554,15 +6554,16 @@ function _renderTxRegister(){
 
         // Delete confirmation strip — renders immediately below the target row
         if(isDeleteConfirm){
-          tbl+='<tr style="background:var(--redSoft,#fff0f0);border-top:1px solid var(--red)">'
+          // UX-0 (SYS-3): red retired from controls; delete confirm strip is amber-dark.
+          tbl+='<tr style="background:var(--amberSoft,#fffbeb);border-top:1px solid var(--amber)">'
             +'<td colspan="9" style="padding:10px 16px">'
-            +'<span style="font-size:13px;color:var(--red);font-weight:600">Delete this transaction? This cannot be undone.</span>'
+            +'<span style="font-size:13px;color:var(--amber);font-weight:600">Delete this transaction? This cannot be undone.</span>'
             +'&nbsp;&nbsp;'
             +'<button onclick="_confirmTxDelete()" '
             +(_txDeleteSaving?'disabled ':'')
             +'style="font-family:inherit;font-size:12px;font-weight:600;padding:4px 12px;cursor:'
-            +(_txDeleteSaving?'default':'pointer')+';border:1px solid var(--red);border-radius:6px;'
-            +'background:var(--red);color:#fff;margin-right:6px">'
+            +(_txDeleteSaving?'default':'pointer')+';border:1px solid var(--amber);border-radius:6px;'
+            +'background:var(--amber);color:#fff;margin-right:6px">'
             +(_txDeleteSaving?'Deleting…':'Confirm Delete')+'</button>'
             +'<button onclick="_cancelTxDelete()" '
             +'style="font-family:inherit;font-size:12px;padding:4px 12px;cursor:pointer;'
@@ -6767,6 +6768,23 @@ var _budgetReconBalance=''; // statement balance entered by Wendy
 var _budgetShowHelp=false; // collapsible help panel
 window._budgetToggleHelp=function(){_budgetShowHelp=!_budgetShowHelp;renderApp();};
 
+// UX-0 (BUD-1): per-row Remaining state for the Budget grid color treatment. Display-only,
+// no pacing logic. Applies identically to leaf rows, parent section headers, and grand totals.
+//   'over'    = Remaining below zero (expense over budget). Red value; leaf rows also get an
+//               "Over by $X" badge (parents/totals get the red value only).
+//   'near'    = near-limit amber, ONLY for Budget >= $100 lines: Spent >= 90% of Budget AND
+//               Remaining <= $100. Lines under $100 never go amber (worst-case overage is small
+//               money and an absolute-remaining trigger inverts below the $100 crossover) —
+//               they stay neutral until over, then red. (Decision 1, spec Section 6.)
+//   'neutral' = under budget / idle. Caller renders idle (nothing-spent) rows muted and
+//               under-with-spend rows in default ink (approved decision 1).
+function _budgetRowState(spent,budget){
+  var rem=budget-spent;
+  if(rem<-0.005)return 'over';
+  if(budget>=100&&spent>=0.9*budget&&rem<=100)return 'near';
+  return 'neutral';
+}
+
 function renderBudget(){
   var el=document.getElementById('budget-content');
   if(!el)return;
@@ -6855,7 +6873,7 @@ function renderBudget(){
     html+='<ul style="margin:0 0 6px 18px;padding:0">';
     html+='<li><strong>Spent</strong> — what has been logged so far this month in that category.</li>';
     html+='<li><strong>Budget</strong> — the planned amount for the month (set by Adam in the financial model).</li>';
-    html+='<li><strong>Remaining</strong> — Budget minus Spent. <span style="color:var(--green);font-weight:600">Green</span> means within budget, <span style="color:#ef4444;font-weight:600">red</span> means over.</li>';
+    html+='<li><strong>Remaining</strong> — Budget minus Spent. Rows read <span style="font-weight:600">neutral</span> when within budget, <span style="color:var(--amber);font-weight:600">amber</span> when near the limit, and <span style="color:#ef4444;font-weight:600">red with an "Over by" badge</span> when over. Income rows show their remaining amount as <span style="color:var(--muted);font-weight:600">expected</span> — income that has not arrived yet is normal, never a problem.</li>';
     html+='<li><em>Available for Goals</em> (under Misc) is the usual flexible sweep line — it is included in the Total Planned Budget. When expenses increase, reduce this line to keep the budget balanced. You can also offset changes by adjusting Misc → Extra or another discretionary category.</li>';
     html+='<li>The <strong>Budget Balance</strong> row shows income minus Total Planned Budget. It should always be $0.00. If it is not, adjust a discretionary line until it zeros out.</li>';
     html+='</ul>';
@@ -6926,8 +6944,11 @@ function renderBudget(){
     html+='<td style="padding:5px 8px 5px 20px;color:var(--muted)">'+_blrIncomeActions+c.label+'</td>';
     html+='<td style="text-align:right;padding:5px 8px;color:var(--muted)" title="Received this month">'+fsigned(rec)+'</td>';
     html+='<td style="text-align:right;padding:5px 8px;color:var(--blue)">'+f(bud)+'</td>';
+    // UX-0 (BUD-1, decision 2): income Remaining is muted "expected" — never red/amber/green.
+    // Income not yet received is a normal state, not a late-income signal. Amount preserved.
     var _iRem=bud-rec;
-    html+='<td style="text-align:right;padding:5px 8px;color:'+(_iRem>0?'var(--amber)':'var(--green)')+'">'+fsigned(_iRem)+'</td>';
+    var _iRemTxt=_iRem>0.005?fsigned(_iRem)+' <span style="font-size:10px">expected</span>':fsigned(_iRem);
+    html+='<td style="text-align:right;padding:5px 8px;color:var(--muted)" title="Income not yet received is expected, not a problem">'+_iRemTxt+'</td>';
     html+='</tr>';
   });
   html+='<tr style="border-bottom:2px solid var(--border);background:var(--bg)">';
@@ -6935,7 +6956,9 @@ function renderBudget(){
   html+='<td style="text-align:right;padding:5px 8px;font-weight:700" title="Received this month">'+fsigned(incomeActualTotal)+'</td>';
   html+='<td style="text-align:right;padding:5px 8px;font-weight:700;color:var(--blue)">'+f(incomeTotal)+'</td>';
   var _iTotRem=incomeTotal-incomeActualTotal;
-  html+='<td style="text-align:right;padding:5px 8px;font-weight:700;color:'+(_iTotRem>0?'var(--amber)':'var(--green)')+'">'+fsigned(_iTotRem)+'</td>';
+  // UX-0 (BUD-1, decision 2): muted "expected", never red/amber/green. Amount preserved.
+  var _iTotRemTxt=_iTotRem>0.005?fsigned(_iTotRem)+' <span style="font-size:10px;font-weight:400">expected</span>':fsigned(_iTotRem);
+  html+='<td style="text-align:right;padding:5px 8px;font-weight:700;color:var(--muted)">'+_iTotRemTxt+'</td>';
   html+='</tr>';
 
   // Render EXPENSE sections
@@ -6988,7 +7011,10 @@ function renderBudget(){
       html+='<td style="text-align:right;padding:6px 8px 3px;font-weight:700">'+fSpent(pSpent)+'</td>';
       html+='<td style="text-align:right;padding:6px 8px 3px;font-weight:700;color:var(--blue)">'+f(pBudget)+'</td>';
       var pRem=pBudget-pSpent;
-      html+='<td style="text-align:right;padding:6px 8px 3px;font-weight:700;color:'+(pRem<0?'#ef4444':'var(--green)')+'">'+f(pRem)+'</td>';
+      // UX-0 (BUD-1): parents apply the same red/amber/neutral rule to their own totals; no badge.
+      var _pState=_budgetRowState(pSpent,pBudget);
+      var _pColor=_pState==='over'?'#ef4444':(_pState==='near'?'var(--amber)':((pRem===pBudget&&pSpent===0)?'var(--muted)':'var(--ink)'));
+      html+='<td style="text-align:right;padding:6px 8px 3px;font-weight:700;color:'+_pColor+'">'+f(pRem)+'</td>';
       html+='</tr>';
     }
 
@@ -7002,7 +7028,7 @@ function renderBudget(){
       var isGoalSweep=c.key==='misc.goal_sweep';
       var _blrExpActions=canWriteFinancials()
         ?'<span style="float:right;margin-left:6px">'
-          +'<button onclick="window._blrOpenArchive(\''+c.key+'\',\''+monthIso+'\')" style="font-size:10px;padding:1px 5px;border:1px solid #fca5a5;border-radius:3px;background:var(--redSoft);cursor:pointer;color:#dc2626">Archive</button>'
+          +'<button onclick="window._blrOpenArchive(\''+c.key+'\',\''+monthIso+'\')" style="font-size:10px;padding:1px 5px;border:1px solid var(--border);border-radius:3px;background:var(--surface2);cursor:pointer;color:var(--ink)">Archive</button>'
           +' <button onclick="window._blrOpenEdit(\''+c.key+'\',\''+monthIso+'\')" style="font-size:10px;padding:1px 5px;border:1px solid var(--border);border-radius:3px;background:var(--surface2);cursor:pointer;color:var(--ink)">Edit</button>'
           +'</span>'
         :'';
@@ -7024,7 +7050,12 @@ function renderBudget(){
         ?'<td style="text-align:right;padding:5px 8px">'+_spentInner+'</td>'
         :'<td data-cat-report-target="spent"'+_drillAttrs+' style="text-align:right;padding:5px 8px;cursor:pointer">'+_spentInner+'</td>';
       html+='<td style="text-align:right;padding:5px 8px;color:var(--blue)">'+(b>0?f(b):'—')+'</td>';
-      html+='<td style="text-align:right;padding:5px 8px;color:'+(rem<0?'#ef4444':(rem===b&&s===0)?'var(--muted)':'var(--green)')+'">'+f(rem)+'</td>';
+      // UX-0 (BUD-1): over=red value + "Over by $X" badge; near=amber value; under-with-spend=ink;
+      // idle=muted. No row tint. Badge (red) is the only over-budget signal beyond the value.
+      var _rowState=_budgetRowState(s,b);
+      var _remColor=_rowState==='over'?'#ef4444':(_rowState==='near'?'var(--amber)':((rem===b&&s===0)?'var(--muted)':'var(--ink)'));
+      var _overBadge=_rowState==='over'?' <span style="font-size:10px;font-weight:600;color:#ef4444;background:var(--redSoft);border:1px solid #fca5a5;border-radius:4px;padding:1px 5px;margin-left:4px;white-space:nowrap">Over by '+f(Math.abs(rem))+'</span>':'';
+      html+='<td style="text-align:right;padding:5px 8px;color:'+_remColor+'">'+f(rem)+_overBadge+'</td>';
       html+='</tr>';
       totalExpSpent+=s;totalExpBudget+=b;
     });
@@ -7032,11 +7063,14 @@ function renderBudget(){
 
   // Total Planned Budget row — includes all expense lines including misc.goal_sweep
   var totalRem=totalExpBudget-totalExpSpent;
+  // UX-0 (BUD-1): grand total applies the same red/amber/neutral rule to its own totals; no badge.
+  var _totState=_budgetRowState(totalExpSpent,totalExpBudget);
+  var _totColor=_totState==='over'?'#ef4444':(_totState==='near'?'var(--amber)':((totalRem===totalExpBudget&&totalExpSpent===0)?'var(--muted)':'var(--ink)'));
   html+='<tr style="border-top:2px solid var(--border);background:var(--bg)">';
   html+='<td style="padding:6px 8px;font-weight:700">Total Planned Budget</td>';
   html+='<td style="text-align:right;padding:6px 8px;font-weight:700">'+fSpent(totalExpSpent)+'</td>';
   html+='<td style="text-align:right;padding:6px 8px;font-weight:700;color:var(--blue)">'+f(totalExpBudget)+'</td>';
-  html+='<td style="text-align:right;padding:6px 8px;font-weight:700;color:'+(totalRem<0?'#ef4444':'var(--green)')+'">'+f(totalRem)+'</td>';
+  html+='<td style="text-align:right;padding:6px 8px;font-weight:700;color:'+_totColor+'">'+f(totalRem)+'</td>';
   html+='</tr>';
   // Budget balance row — income vs total planned; warns when not zero
   var budgetDiff=incomeTotal-totalExpBudget;
@@ -7088,7 +7122,13 @@ function renderBudget(){
   });
 
   if(!txns.length){
-    html+='<div style="padding:12px;color:var(--muted);font-size:12px;text-align:center">No transactions for this period</div>';
+    // UX-0 (BUD-2): say why the panel is empty and the next step, with a live Register link
+    // (FLOW-1 pattern). Actuals live in Register and are already counted in Spent above.
+    html+='<div style="padding:14px 12px;color:var(--muted);font-size:12px;text-align:center;line-height:1.5">'
+      +'No Budget-entered transactions for '+esc(_budgetMonthLabel(monthIso))+'. '
+      +'Actual spending is entered in Register and is already counted in Spent above. '
+      +'<a href="#" onclick="setSection(\'transactions\');return false" style="color:var(--blue);text-decoration:underline;font-weight:600">Open Register</a>'
+      +'</div>';
   } else {
     html+='<table style="width:100%;border-collapse:collapse;font-size:12px">';
     html+='<thead><tr style="border-bottom:1px solid var(--border)"><th style="text-align:left;padding:4px 8px;color:var(--muted);font-weight:600">Date</th><th style="text-align:left;padding:4px 8px;color:var(--muted);font-weight:600">Description</th><th style="text-align:left;padding:4px 8px;color:var(--muted);font-weight:600">Category / Type</th><th style="text-align:left;padding:4px 8px;color:var(--muted);font-weight:600">Account</th><th style="text-align:right;padding:4px 8px;color:var(--muted);font-weight:600">Amount</th><th style="text-align:center;padding:4px 8px;color:var(--muted);font-weight:600">Cleared</th><th style="padding:4px 8px"></th></tr></thead><tbody>';
@@ -7112,12 +7152,13 @@ function renderBudget(){
         html+='<td style="text-align:center;padding:4px 8px"><input type="checkbox"'+(t.is_cleared?' checked':'')+' onchange="window._budgetToggleCleared(\''+t.id+'\','+t.is_cleared+')" style="cursor:pointer;width:15px;height:15px"></td>';
         html+='<td style="padding:4px 8px;text-align:right;white-space:nowrap">';
         if(isEdit){
-          html+='<span style="font-size:11px;color:#ef4444;font-weight:600">Delete? </span>';
-          html+='<button onclick="window._budgetDeleteTransaction(\''+t.id+'\')" style="font-size:11px;padding:2px 7px;border:1px solid #ef4444;border-radius:4px;background:#fef2f2;color:#ef4444;cursor:pointer">Yes</button> ';
+          // UX-0 (SYS-3): red retired from controls; delete confirm is amber-dark.
+          html+='<span style="font-size:11px;color:var(--amber);font-weight:600">Delete? </span>';
+          html+='<button onclick="window._budgetDeleteTransaction(\''+t.id+'\')" style="font-size:11px;padding:2px 7px;border:1px solid var(--amber);border-radius:4px;background:var(--amber);color:#fff;cursor:pointer">Yes</button> ';
           html+='<button onclick="window._budgetDeleteConfirmId=null;renderApp()" style="font-size:11px;padding:2px 7px;border:1px solid var(--border);border-radius:4px;background:var(--surface2);cursor:pointer">No</button>';
         } else {
           html+='<button onclick="window._budgetStartEdit(\''+t.id+'\')" style="font-size:11px;padding:2px 8px;border:1px solid var(--border);border-radius:4px;background:var(--surface2);cursor:pointer;color:var(--ink)">Edit</button> ';
-          html+='<button onclick="window._budgetDeleteConfirmId=\''+t.id+'\';renderApp()" style="font-size:11px;padding:2px 8px;border:1px solid var(--border);border-radius:4px;background:var(--surface2);cursor:pointer;color:#ef4444">Del</button>';
+          html+='<button onclick="window._budgetDeleteConfirmId=\''+t.id+'\';renderApp()" style="font-size:11px;padding:2px 8px;border:1px solid var(--border);border-radius:4px;background:var(--surface2);cursor:pointer;color:var(--amber)">Del</button>';
         }
         html+='</td>';
       }else{
@@ -8329,8 +8370,9 @@ function _blrRenderModal(){
     html+='<div class="sc-modal-btns">';
     html+='<button class="sc-modal-cancel" onclick="window._blrCloseModal()">Cancel</button>';
     if(row){
-      if(m.saving){html+='<button style="padding:7px 16px;border-radius:8px;border:none;background:#dc2626;color:#fff;font-size:13px;font-weight:700;cursor:default;opacity:.6">Archiving…</button>';}
-      else{html+='<button style="padding:7px 16px;border-radius:8px;border:none;background:#dc2626;color:#fff;font-size:13px;font-weight:700;cursor:pointer" onclick="window._blrSaveArchive()">Archive Line</button>';}
+      // UX-0 (SYS-3): red retired from controls; archive confirm is amber-dark.
+      if(m.saving){html+='<button style="padding:7px 16px;border-radius:8px;border:none;background:var(--amber);color:#fff;font-size:13px;font-weight:700;cursor:default;opacity:.6">Archiving…</button>';}
+      else{html+='<button style="padding:7px 16px;border-radius:8px;border:none;background:var(--amber);color:#fff;font-size:13px;font-weight:700;cursor:pointer" onclick="window._blrSaveArchive()">Archive Line</button>';}
     }
     html+='</div>';
   }

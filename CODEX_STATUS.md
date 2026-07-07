@@ -8,7 +8,7 @@ Budget Module v1 live.
 5F-1.5 Gate A (Wendy July usability) UI shipped and live (2026-07-05/06), including the Register Quicken-style ledger hotfix (historical Balance) and the Register CL/reconciliation default view (commit 8d48b04, Wendy-confirmed and live-smoked on dashboard.herndons.us). A4 (AMEX Gold starting-balance correction) is DONE (executed and verified 2026-07-06).
 Wendy Budget-tab live use in progress (target July 1, 2026).
 
-Next major phase: 5G Cash Planning + Allocation (locked). 5G-0 (label/docs cleanup) is CLOSED — see "## 5G-0 CLOSED". 5G-1A (Weekly Transfer Routing + Readiness) is SHIPPED (commit `c8613bc`) — see "## 5G-1A SHIPPED". Next candidate is UX-0 (display-only Budget row treatment); 5G-1 is the first schema/build sub-phase and remains gated. See `docs/phase-status.md` for the 5G-0 through 5G-5 map, gates, and the pre/post-Alaska split.
+Next major phase: 5G Cash Planning + Allocation (locked). 5G-0 (label/docs cleanup) is CLOSED — see "## 5G-0 CLOSED". 5G-1A (Weekly Transfer Routing + Readiness) is SHIPPED (commit `c8613bc`) — see "## 5G-1A SHIPPED". UX-0 (display-only Budget row treatment: BUD-1/BUD-2/SYS-3) is SHIPPED — see "## UX-0 SHIPPED". Next candidate is UX-0.5 (Wendy visual polish, display-only; planning pending). 5G-1 is the first schema/build sub-phase and remains gated. See `docs/phase-status.md` for the 5G-0 through 5G-5 map, gates, and the pre/post-Alaska split.
 
 ## Current Goal
 
@@ -16,8 +16,8 @@ Prepare the system for Wendy using the Budget tab in live household workflow whi
 
 ## Recent Verified State
 
-- Static regression tests: 1332/0 passing (as of 5F-1.5 Gate A + Register ledger hotfix + Register CL reconciliation default)
-- E2E: 130/0 passing on this branch. The earlier WC-3/BR-3 "known e2e failure" language is stale for this branch; do not re-cite it without re-verifying.
+- Static regression tests: 1344/0 passing (as of UX-0 display-only Budget row treatment; 5G-1A was 1339/0)
+- E2E: 131/0 passing on this branch (unchanged by UX-0; e2e.js not touched). The earlier WC-3/BR-3 "known e2e failure" language is stale for this branch; do not re-cite it without re-verifying.
 - Dashboard stable
 - GitHub Pages deploys from main
 
@@ -32,11 +32,12 @@ Prepare the system for Wendy using the Budget tab in live household workflow whi
 
 ## Next Candidate Work
 
-Active next-phase pointer: 5G-0 CLOSED and 5G-1A SHIPPED. **Next candidate is UX-0** (display-only), then 5G-1 behind existing gates.
+Active next-phase pointer: 5G-0 CLOSED, 5G-1A SHIPPED, UX-0 SHIPPED. **Next candidate is UX-0.5** (Wendy visual polish, display-only — planning pending), then 5G-1 behind existing gates.
 
 1. 5G-0: label/docs cleanup — DONE (static 1332/0, e2e 131/0). See "## 5G-0 CLOSED".
 2. 5G-1A: Weekly Transfer Routing + Readiness — SHIPPED 2026-07-07, commit `c8613bc` (static 1339/0, e2e 131/0). RCCL/DCL reclassified to AMEX Savings holding (out of the `'goal'` sentinel), holding labels, paycheck-cleared readiness note. See "## 5G-1A SHIPPED".
-3. **UX-0 (NEXT): BUD-1, BUD-2, SYS-3 — Budget row treatment, display-only, no schema/RLS/logic.** Treatment authority: the Wendy 5G Budget mockup spec v1.2 (`docs/specs/wendy-5g-budget-mockup-spec-2026-07-07.md`). Pre-Alaska-safe; lands before 5G-1. Optional decision: whether to run the capped pre-5G UX cleanup bundle (FLOW-2, FLOW-1, WK-1, REG-1, SYS-2; rider REG-2) before/alongside it.
+3. **UX-0: BUD-1, BUD-2, SYS-3 — Budget row treatment, display-only — SHIPPED 2026-07-07 (static 1344/0, e2e 131/0).** Treatment authority: the Wendy 5G Budget mockup spec v1.2 (`docs/specs/wendy-5g-budget-mockup-spec-2026-07-07.md`). Desktop visual review passed (Adam, 2026-07-07). See "## UX-0 SHIPPED".
+4. **UX-0.5 (NEXT — planning only): Wendy Visual Polish.** Display-only presentation pass over Budget + Register (legend, optional attention strip, header hierarchy, Register helper-bar/affordance). No data/math/schema/reconciliation/routing/workflow changes. Not yet planned; do not implement inside UX-0. Optional decision still open: the capped pre-5G UX cleanup bundle (FLOW-2, FLOW-1, WK-1, REG-1, SYS-2; rider REG-2).
 4. 5G-1: planned_outflows + outflow_events schema; seed Mint Mobile; append-only events; opening adjustment from dated snapshot; Mint transfer_funded to AMEX Savings. GATED — must NOT start until Adam's explicit in-session go-ahead AND staging Supabase + baseline export are in place.
 5. 5G-2: derived Account Allocation view (Spoken For / Free to Use).
 
@@ -109,6 +110,18 @@ e2e run and green: **131/0** (`node e2e.js`; assertions updated for the Reconcil
 4. Add/adjust regression coverage proving the Week 27 AMEX Savings projection includes the $1,100.
 5. Do NOT disturb IRA/529 AMEX-holding behavior, Alaska savings behavior, LC boost, floors, or unrelated runModel logic. Caveat to design around: `_amxHold` (`index.html:2425`) also drives the 5-week AMEX-sweep lookahead gate (`index.html:2437-2445`) and the `needsFlag` bypass (`index.html:2426`) — simply adding RCCL/DCL to `_amxHold` changes their gating semantics, not just their destination account. Prefer a routing that lands them in `amx` without inheriting the full `_amxHold` gating, unless the lookahead gate is explicitly wanted.
 6. Transfer readiness / paycheck-cleared labeling ("After Adam paycheck clears — target Jul 7"): fold into 5G-1A ONLY if low-risk; otherwise defer to 5G-1B. Note there is no per-transfer readiness field today — actions carry label/key/result/reason only, and the shown date is the week-start `getWeekDate(w.num)` (`index.html:4112`, `7759`); paydays are modeled at week granularity only (`PAYCHECK_WKS`, `index.html:2194`). Delivering it well is net-new structured data, which argues for 5G-1B.
+
+## UX-0 SHIPPED (2026-07-07): display-only Budget row treatment (BUD-1 / BUD-2 / SYS-3)
+
+Display-only presentation slice; treatment authority is the Wendy 5G Budget mockup spec v1.2 (`docs/specs/wendy-5g-budget-mockup-spec-2026-07-07.md`). No schema/RLS/RPC/SQL, no `runModel`, no reconciliation/account-routing, no transaction workflow changes. Files: `index.html` + `test_regression.js` only (`e2e.js` untouched). Static regression **1344/0**, e2e **131/0**. Desktop visual review passed (Adam, 2026-07-07); approved for showing Wendy.
+
+- **BUD-1 (color semantics):** new `_budgetRowState(spent,budget)` → `over | near | neutral`. Near-limit rule (decision 1): lines with Budget ≥ $100 go amber when Spent ≥ 90% AND Remaining ≤ $100; lines under $100 never go amber (neutral until over, then red) — the $34 Google line stays neutral at $33.60. Expense **leaf** rows: over = red value **plus an "Over by $X" badge**, near = amber value, under-with-spend = default ink, idle/nothing-spent = muted. **No row tint.** **Parent section headers and Total Planned Budget** apply the same red/amber/neutral value treatment to their own totals but show **no "Over by" badge**. **Income** rows (per-row + Total Income) render muted with an "expected" suffix (amount preserved), never red/amber/green (decision 2). The legacy income amber/green Remaining ternary is removed.
+- **BUD-2 (empty state):** the Budget bottom Transactions panel replaces "No transactions for this period" with "No Budget-entered transactions for [Month]. Actual spending is entered in Register and is already counted in Spent above." plus a live **Open Register** link (`setSection('transactions')`, FLOW-1 pattern).
+- **SYS-3 (row-action controls — red retired):** Budget row **Archive** button → neutral (matches Edit); Archive **confirm** modal button → amber-dark; Register manual-row **delete trigger ✕** → amber; Register **delete confirm strip + Confirm button** → amber-dark; Budget legacy-tx **Del / Delete? / Yes** confirm → amber-dark. Existing **green "Budget balanced" check is unchanged.** Red remains only on over-budget value/badge (status), money-display amounts, and error text — not on any Archive/Delete/Confirm control.
+- **Help copy:** the Budget "Remaining" help line was updated to describe the new neutral / amber / red("Over by" badge) / income-"expected" language.
+- **Tests:** widened three fixed-offset slice windows (`5B-24`, `5F15-A1-07`, `5F15-A2-09`) that the added lines pushed past; rewrote `5F15-A2-09`'s income-coloring assertion to expect the muted "expected" treatment; added `UX0-01…05` (the `_budgetRowState` truth table incl. the Google $34 and $2000-line cases, leaf-only "Over by" badge, SYS-3 control colors, and the BUD-2 empty-state copy/link).
+
+Not in UX-0 (deferred to UX-0.5, planning only): legend, attention summary strip, section-header hierarchy polish, Remaining-column/badge spacing rhythm, Register reconciliation helper-bar rewrite, edit/delete affordance, uncleared-row visual treatment. UX-0.5 is display-only and must not change UX-0 behavior, data, math, schema, reconciliation, routing, or workflows.
 
 ## 5E-8 CLOSED: Register Category Sync (2026-07-02)
 
