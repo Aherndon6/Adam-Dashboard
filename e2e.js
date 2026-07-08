@@ -771,6 +771,24 @@ async function clickNav(page, id) {
     await context.close();
   });
 
+  // 5G-1C-1: Funding Plan projection semantics — resilient (no dependence on live
+  // percentages). The retired "Beyond 2026" label must never appear; the funding
+  // table must render its "When" column.
+  await test('Goals › Funding Plan: no retired "Beyond 2026" label; When column renders', async () => {
+    const { page, context } = await openApp(browser);
+    await clickNav(page, 'goals');
+    await page.evaluate(() => { setSection('goals'); goalsSubTab = 'funding'; renderApp(); });
+    await page.waitForTimeout(400);
+    const res = await page.evaluate(() => {
+      const el = document.getElementById('goals-content') || document.body;
+      const html = el.innerHTML || '';
+      return { hasWhen: html.includes('ft-when'), hasBeyond: (el.innerText || '').includes('Beyond 2026') };
+    });
+    assert(res.hasWhen, 'Funding Plan "When" column (ft-when) did not render');
+    assert(!res.hasBeyond, 'Funding Plan still shows the retired "Beyond 2026" label');
+    await context.close();
+  });
+
   // ── Section J: Mobile viewport ─────────────────────────────────────────
   console.log('── Section J: Mobile viewport ──');
   await test('Mobile: all tabs reachable without horizontal overflow', async () => {

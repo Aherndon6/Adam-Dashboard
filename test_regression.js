@@ -329,8 +329,10 @@ test('_renderGoalsFunding: IRA hold destination changes with flag',()=>{
   const w=fullVm.weeks[0];
   goalFlags.ira_cpa_cleared=false;
   const hLocked=_renderGoalsFunding(fullVm,w);
-  // New dynamic render: locked goals show lock icon + Awaiting CPA
-  assertIncludes(hLocked,'Awaiting CPA');
+  // 5G-1C-1: the lock is surfaced via the ft-locked-row class + 🔒 name prefix.
+  // The "When" cell no longer carries a bare "Awaiting CPA" for a still-accumulating
+  // locked goal — it shows the projected completion (e.g. Cal Wk 29) instead.
+  assertIncludes(hLocked,'ft-locked-row');
   goalFlags.ira_cpa_cleared=true;
   const hCleared=_renderGoalsFunding(fullVm,w);
   // When cleared, IRA goals appear with their dest names
@@ -340,14 +342,95 @@ test('_renderGoalsFunding: IRA hold destination changes with flag',()=>{
 test('_renderGoalsFunding: no raw model week numbers in when-column (must use Cal Wk prefix)',()=>{
   const w=fullVm.weeks[0];
   const h=_renderGoalsFunding(fullVm,w);
-  // ft-when column values: only valid forms are "✅ Funded", "🔒 Awaiting CPA", "Cal Wk N...", "2027 restart", "Beyond 2026", "Auto..."
+  // 5G-1C-1 valid ft-when forms: "✅ Funded", "✅ Staged — awaiting CPA clearance",
+  // "Cal Wk N...", "2027 restart", "In Progress...", "Partial in 2026...",
+  // "No 2026 funding projected", "Auto...". "Beyond 2026" is retired.
   const whenFields=h.match(/class="ft-when[^"]*">([^<]+)/g)||[];
   whenFields.forEach(f=>{
     const raw=f.replace(/class="ft-when[^"]*">/,'');
-    const hasCalPrefix=raw.includes('Cal Wk')||raw.includes('✅')||raw.includes('🔒')||raw.includes('Auto')||raw.includes('2027')||raw.includes('Beyond')||raw.includes('In Progress')||raw.includes('Awaiting');
+    const hasCalPrefix=raw.includes('Cal Wk')||raw.includes('✅')||raw.includes('🔒')||raw.includes('Auto')||raw.includes('2027')||raw.includes('In Progress')||raw.includes('Partial')||raw.includes('projected')||raw.includes('Staged');
     assert(hasCalPrefix,'ft-when field missing cal prefix or known label: '+raw);
   });
 });
+
+// ─────────────────────────────────────────────────────────────────────────
+console.log('\n── Section 10a-2: 5G-1C-1 Funding Plan projection semantics ──');
+// Pure _fundingWhenLabel truth table — deterministic, independent of currentW/date.
+const _mkItem=(o)=>Object.assign({g:{auto:false,stretch:false,target:3500},isFunded:false,isLocked:false,funded:0,fundedYE:0,pctYE:0,comp:null},o);
+
+test('5G1C1-01: completes within horizon → Cal Wk XX (projected class)',()=>{
+  const rr=_fundingWhenLabel(_mkItem({comp:{num:7,dates:'Jul 12-18'},fundedYE:3500,pctYE:100}));
+  assertIncludes(rr.txt,'Cal Wk '+getCalWeek(7)); // Cal Wk 29
+  assert(rr.cls.indexOf('projected')>=0,'expected projected class, got '+rr.cls);
+});
+test('5G1C1-02: fully funded + unlocked → ✅ Funded',()=>{
+  const rr=_fundingWhenLabel(_mkItem({isFunded:true,funded:3500,fundedYE:3500,pctYE:100}));
+  assert(rr.txt==='✅ Funded','expected "✅ Funded", got '+rr.txt);
+  assert(rr.cls.indexOf('funded')>=0,'funded class');
+});
+test('5G1C1-03: fully funded + locked → ✅ Staged — awaiting CPA clearance',()=>{
+  const rr=_fundingWhenLabel(_mkItem({isFunded:true,isLocked:true,funded:7500,fundedYE:7500,pctYE:100,g:{auto:false,stretch:false,target:7500}}));
+  assertIncludes(rr.txt,'Staged');
+  assertIncludes(rr.txt,'awaiting CPA clearance');
+  assert(rr.cls.indexOf('funded')>=0,'staged reuses the funded class');
+});
+test('5G1C1-04: current funded, incomplete, no completion → In Progress · Continues in 2027 + projected YE',()=>{
+  const rr=_fundingWhenLabel(_mkItem({funded:1200,fundedYE:2000,pctYE:57}));
+  assertIncludes(rr.txt,'In Progress');
+  assertIncludes(rr.txt,'Continues in 2027');
+  assertIncludes(rr.txt,'Projected YE');
+});
+test('5G1C1-05: $0 now + partial projected YE → Partial in 2026 · Continues in 2027 (Bailey-style)',()=>{
+  const rr=_fundingWhenLabel(_mkItem({funded:0,fundedYE:2555,pctYE:73}));
+  assertIncludes(rr.txt,'Partial in 2026');
+  assertIncludes(rr.txt,'Continues in 2027');
+  assertIncludes(rr.txt,'Projected YE');
+});
+test('5G1C1-06: $0 now + no projected funding → No 2026 funding projected (Bryce/Preston-style)',()=>{
+  const rr=_fundingWhenLabel(_mkItem({funded:0,fundedYE:0,pctYE:0}));
+  assert(rr.txt==='No 2026 funding projected','got '+rr.txt);
+});
+test('5G1C1-07: EPS — sub-0.005 projected noise does NOT read as partial funding',()=>{
+  const rr=_fundingWhenLabel(_mkItem({funded:0,fundedYE:0.004,pctYE:0}));
+  assert(rr.txt==='No 2026 funding projected','sub-EPS fundedYE must not read as Partial; got '+rr.txt);
+});
+test('5G1C1-08: precedence — locked-but-incomplete goal shows projected completion, NOT Staged/Awaiting (Adam IRA 99% → Cal Wk 29)',()=>{
+  const rr=_fundingWhenLabel(_mkItem({isLocked:true,funded:7438.94,fundedYE:7500,pctYE:100,comp:{num:7,dates:'Jul 12-18'},g:{auto:false,stretch:false,target:7500}}));
+  assertIncludes(rr.txt,'Cal Wk '+getCalWeek(7));
+  assert(rr.txt.indexOf('Staged')<0&&rr.txt.indexOf('Awaiting')<0,'locked+incomplete must not show Staged/Awaiting, got '+rr.txt);
+});
+test('5G1C1-09: auto/payroll goal (401k-style) never relabeled Partial/Funded/No-2026 — stays Auto',()=>{
+  const rAuto=_fundingWhenLabel(_mkItem({g:{auto:true,stretch:false,target:24500},funded:10208,fundedYE:24500,pctYE:100}));
+  assertIncludes(rAuto.txt,'Auto');
+  assert(rAuto.txt.indexOf('Partial')<0&&rAuto.txt.indexOf('Funded')<0&&rAuto.txt.indexOf('No 2026')<0,'auto goal mislabeled: '+rAuto.txt);
+  const rAutoComp=_fundingWhenLabel(_mkItem({g:{auto:true,stretch:false,target:24500},funded:10208,fundedYE:24500,pctYE:100,comp:{num:9,dates:'x'}}));
+  assertIncludes(rAutoComp.txt,'Auto · Cal Wk '+getCalWeek(9)); // Cal Wk 31
+});
+test('5G1C1-10: stretch goal → 2027 restart (unchanged)',()=>{
+  const rr=_fundingWhenLabel(_mkItem({g:{auto:false,stretch:true,target:4999.79},fundedYE:0}));
+  assert(rr.txt==='2027 restart','got '+rr.txt);
+});
+test('5G1C1-11: projected-YE remaining clamps to >= 0 (rounding never shows negative)',()=>{
+  const rr=_fundingWhenLabel(_mkItem({funded:0,fundedYE:3500.004,pctYE:100,g:{auto:false,stretch:false,target:3500}}));
+  assert(!/-\s*\$|\$\s*-/.test(rr.txt),'projected YE remaining must not be negative; got '+rr.txt);
+});
+// Full-render integration — deterministic synthetic vm (no live-percentage dependence).
+test('5G1C1-12: full render — $0 current + meaningful projected YE shows "Partial in 2026" (Bailey-style)',()=>{
+  const _cw=getCurrentWeek();
+  const synthWeeks=[];for(let i=1;i<=31;i++){synthWeeks.push({num:i,dates:'x',goalSaved:{bailey_529:(i<=_cw?0:2555)}});}
+  const synthVm={weeks:synthWeeks,goalCompletion:{}};
+  const h=_renderGoalsFunding(synthVm,synthWeeks[_cw-1]||synthWeeks[0]);
+  assertIncludes(h,'Partial in 2026');
+});
+test('5G1C1-13: full render — $0 current + $0 projected shows "No 2026 funding projected" (Bryce/Preston-style)',()=>{
+  const _cw=getCurrentWeek();
+  const synthWeeks=[];for(let i=1;i<=31;i++){synthWeeks.push({num:i,dates:'x',goalSaved:{bailey_529:(i<=_cw?0:2555)}});}
+  const synthVm={weeks:synthWeeks,goalCompletion:{}};
+  const h=_renderGoalsFunding(synthVm,synthWeeks[_cw-1]||synthWeeks[0]);
+  assertIncludes(h,'No 2026 funding projected'); // bryce_529/preston_529/etc. = 0 current + 0 projected
+});
+// NOTE: 5G1C1-14/15 (live-fixture full render) live in the Funding-plan section below,
+// after the fpHtml/fpHtmlLocked consts are initialized (TDZ — they are declared later).
 
 // ─────────────────────────────────────────────────────────────────────────
 console.log('\n── Section 10b: Cash Flow Mechanics panel (Task #15) ──');
@@ -779,13 +862,25 @@ test('Funding plan: ft-stretch-row class present for taxable_etf',()=>assertIncl
 
 test('Funding plan: ✅ Funded text appears for completed goals',()=>assertIncludes(fpHtml,'✅ Funded'));
 
-test('Funding plan: 🔒 Awaiting CPA appears when IRA locked',()=>assertIncludes(fpHtmlLocked,'Awaiting CPA'));
+test('Funding plan: fully-funded locked goal shows Staged / awaiting CPA clearance (not hidden as plain Funded)',()=>{
+  const rLocked=_fundingWhenLabel({g:{auto:false,stretch:false,target:7500},isFunded:true,isLocked:true,funded:7500,fundedYE:7500,pctYE:100,comp:null});
+  assertIncludes(rLocked.txt,'Staged');
+  assertIncludes(rLocked.txt,'awaiting CPA clearance');
+});
 
 test('Funding plan: 2027 restart appears for stretch goal',()=>assertIncludes(fpHtml,'2027 restart'));
 
 test('Funding plan: Overall 2026 Progress summary panel present',()=>assertIncludes(fpHtml,'Overall 2026 Progress'));
 
 test('Funding plan: ft-live badge appears for model-tracked goals',()=>assertIncludes(fpHtml,'ft-live'));
+
+test('5G1C1-14: full render — retired "Beyond 2026" label no longer emitted (live fixture, locked + unlocked)',()=>{
+  assert(fpHtml.indexOf('Beyond 2026')<0,'Beyond 2026 must be retired from Funding Plan');
+  assert(fpHtmlLocked.indexOf('Beyond 2026')<0,'Beyond 2026 must be retired (locked render too)');
+});
+test('5G1C1-15: full render — funded/completed rows (Alaska/RCCL/DCL/Wendy SEP) still show ✅ Funded — no regression',()=>{
+  assertIncludes(fpHtml,'✅ Funded'); // completed/fully-funded rows unchanged at the current week
+});
 
 test('Funding plan: route-acct chips present',()=>assertIncludes(fpHtml,'route-acct'));
 

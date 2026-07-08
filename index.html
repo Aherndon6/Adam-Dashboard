@@ -859,7 +859,7 @@ button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-vis
 // ── Constants (unchanged) ──────────────────────────────────────────────────
 // Simplified architecture — $8,250 total from LC · $6,500 operating floor · no legacy mechanics
 // Real-world moves: keep $2,250 in chk, move $2,750 sav→chk, move $1,000 LC→chk, move $2,250 LC→chk (Option 1 correction)
-const BUILD_TS='2026-07-08T17:58:43'; // updated each push — local time string
+const BUILD_TS='2026-07-08T19:18:39'; // updated each push — local time string
 const START_CHK=18037.73,START_SAV=3772.77,START_AMX=103.64,START_TAX=0,START_LC=13488.88;
 const EF_AMT=13488.88; // LC/EF balance — static this model year (no transfers in or out)
 const BASE_TAX=521.36,RET_SAV_XFR=3772.74;
@@ -4662,6 +4662,47 @@ function _renderGoalsPriorities(vm){
   return dqHtml+'<div>'+listHtml+'</div>';
 }
 
+// ── 5G-1C-1: Funding Plan "When" label — pure display helper ────────────────
+// Distinguishes CURRENT-week funded state from PROJECTED year-end funded state so
+// a goal that receives projected partial funding (but is $0 today and never
+// completes in-horizon) no longer reads as the misleading "Beyond 2026". Pure:
+// derives label text + css class from already-computed item fields only — no
+// model run, no data access, no getGoalFunded/goalCompletion/runModel dependency.
+// item: {g, funded, fundedYE, pct, pctYE, comp, isFunded, isLocked}
+function _fundingWhenLabel(item){
+  var g=item.g,EPS=0.005;
+  function _projSub(){
+    var left=Math.max(0,r(g.target-item.fundedYE)); // clamp so rounding never shows negative remaining
+    return '<br><span style="font-size:9px;font-weight:400;color:var(--muted)">Projected YE '+f(item.fundedYE)+' · '+f(left)+' left ('+item.pctYE+'%)</span>';
+  }
+  // 1/2 — fully funded now (pct>=100) or registry-complete. Locked => Staged, else Funded.
+  if(item.isFunded){
+    return item.isLocked
+      ? {txt:'✅ Staged — awaiting CPA clearance',cls:'ft-when funded'}
+      : {txt:'✅ Funded',cls:'ft-when funded'};
+  }
+  // 3 — auto/payroll goals (401k). Checked before comp so they never read as Partial/etc.
+  if(g.auto){
+    return {txt:item.comp&&item.comp.num>0?'Auto · Cal Wk '+getCalWeek(item.comp.num):'Auto · Payroll',cls:'ft-when auto'};
+  }
+  // 4 — stretch goals.
+  if(g.stretch){return {txt:'2027 restart',cls:'ft-when stretch'};}
+  // 5 — completes within the model horizon. Checked before the lock so a locked-but-
+  //     still-accumulating goal (Adam IRA 99%, projected Wk 29) shows Cal Wk 29, not a bare lock.
+  if(item.comp&&item.comp.num>0){
+    return {txt:'Cal Wk '+getCalWeek(item.comp.num)+'<br><span style="font-size:9px;color:var(--muted);font-weight:400">'+item.comp.dates+'</span>',cls:'ft-when projected'};
+  }
+  // 6 — current funded, incomplete, does not complete in-horizon.
+  if(item.funded>EPS){
+    return {txt:'In Progress<br><span style="font-size:9px;font-weight:400;color:var(--amber)">Continues in 2027</span>'+_projSub(),cls:'ft-when pending'};
+  }
+  // 7 — $0 now but meaningful projected year-end funding (Bailey). EPS guards rounding noise.
+  if(item.fundedYE>EPS){
+    return {txt:'Partial in 2026<br><span style="font-size:9px;font-weight:400;color:var(--amber)">Continues in 2027</span>'+_projSub(),cls:'ft-when pending'};
+  }
+  // 8 — $0 now and no projected funding (Bryce/Preston/vehicle/cruise when idle).
+  return {txt:'No 2026 funding projected',cls:'ft-when pending'};
+}
 function _renderGoalsFunding(vm,w){
   // Build items: one per goal, sorted chronologically by projected completion week
   var items=GOALS_REGISTRY.map(function(g){
@@ -4671,10 +4712,17 @@ function _renderGoalsFunding(vm,w){
     var comp=(vm.goalCompletion&&vm.goalCompletion[g.id])||null;
     var isFunded=pct>=100||g.complete;
     var isLocked=!!(g.needsFlag&&!goalFlags[g.needsFlag]);
+    // 5G-1C-1: projected YEAR-END funded — read-only from the final model week's goalSaved
+    // snapshot (no new model run; no getGoalFunded/goalCompletion change). Drives the row's
+    // projection-aware "When" label so the row and the Funding Timeline agree.
+    var _wks=vm.weeks||[];
+    var _lastGS=(_wks[_wks.length-1]||{}).goalSaved||{};
+    var fundedYE=Math.round((_lastGS[g.id]||0)*100)/100;
+    var pctYE=g.complete?100:Math.min(100,fundedYE>0?Math.round(fundedYE/g.target*100):0);
     var tier=PRIORITY_TIERS.find(function(t){return t.goals.indexOf(g.id)>=0;});
     // sortKey: adam_401k pinned first (-2), funded goals next (-1), then by completion week, then tier
     var sortKey=g.id==='adam_401k'?-2:isFunded?-1:(comp&&comp.num>0?comp.num:999);
-    return{g:g,funded:funded,rem:rem,pct:pct,comp:comp,isFunded:isFunded,isLocked:isLocked,tier:tier,sortKey:sortKey};
+    return{g:g,funded:funded,rem:rem,pct:pct,comp:comp,isFunded:isFunded,isLocked:isLocked,fundedYE:fundedYE,pctYE:pctYE,tier:tier,sortKey:sortKey};
   });
   items.sort(function(a,b){
     if(a.isFunded!==b.isFunded)return a.isFunded?-1:1;
@@ -4756,25 +4804,9 @@ function _renderGoalsFunding(vm,w){
   html+='<div class="funding-tbl-header"><span>When</span><span>Goal</span><span>Progress</span><span style="text-align:right">Remaining</span><span>Route</span></div>';
   items.forEach(function(item){
     var g=item.g;var tier=item.tier;
-    // When column
-    var whenTxt,whenCls;
-    if(item.isFunded){whenTxt='✅ Funded';whenCls='ft-when funded';}
-    else if(item.isLocked){
-      whenTxt='🔒 Awaiting CPA';
-      whenCls='ft-when locked';
-    }
-    else if(g.auto){
-      whenTxt=item.comp&&item.comp.num>0?'Auto · Cal Wk '+getCalWeek(item.comp.num):'Auto · Payroll';
-      whenCls='ft-when auto';
-    }else if(g.stretch){whenTxt='2027 restart';whenCls='ft-when stretch';}
-    else if(item.comp&&item.comp.num>0){
-      whenTxt='Cal Wk '+getCalWeek(item.comp.num)+'<br><span style="font-size:9px;color:var(--muted);font-weight:400">'+item.comp.dates+'</span>';
-      whenCls='ft-when projected';
-    }else if(item.funded>0){
-      // Active in waterfall, has partial progress, but won't complete this year
-      whenTxt='In Progress<br><span style="font-size:9px;font-weight:400;color:var(--amber)">Continues in 2027</span>';
-      whenCls='ft-when pending';
-    }else{whenTxt='Beyond 2026';whenCls='ft-when pending';}
+    // When column — 5G-1C-1 projection semantics via the pure _fundingWhenLabel helper
+    var _wl=_fundingWhenLabel(item);
+    var whenTxt=_wl.txt,whenCls=_wl.cls;
     // Progress
     var fc2=_gProgCls(item.pct,item.isLocked,g.stretch);
     var progHtml='<div class="ft-prog-wrap"><div class="goal-tbl-bar" style="flex:1"><div class="goal-tbl-fill '+fc2+'" style="width:'+item.pct+'%"></div></div><span class="ft-pct">'+item.pct+'%</span></div>';
