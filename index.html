@@ -859,7 +859,7 @@ button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-vis
 // ── Constants (unchanged) ──────────────────────────────────────────────────
 // Simplified architecture — $8,250 total from LC · $6,500 operating floor · no legacy mechanics
 // Real-world moves: keep $2,250 in chk, move $2,750 sav→chk, move $1,000 LC→chk, move $2,250 LC→chk (Option 1 correction)
-const BUILD_TS='2026-07-08T15:27:01'; // updated each push — local time string
+const BUILD_TS='2026-07-08T17:51:13'; // updated each push — local time string
 const START_CHK=18037.73,START_SAV=3772.77,START_AMX=103.64,START_TAX=0,START_LC=13488.88;
 const EF_AMT=13488.88; // LC/EF balance — static this model year (no transfers in or out)
 const BASE_TAX=521.36,RET_SAV_XFR=3772.74;
@@ -2200,6 +2200,10 @@ function runModel(akGoal,rtGoal,flags){
   flags=flags||goalFlags;
   var akTarget=akGoal!=null?akGoal:((GOALS_REGISTRY.find(function(g){return g.id==='alaska';})||{}).target||7000);
   var rtTarget=rtGoal!=null?rtGoal:7694.87; // retained for backwards compat only — retirement_rebuild removed
+  // Phase A hotfix: retRem (below) tracks Adam IRA remaining. Source the target from the registry
+  // (currently $7,500) instead of the stale hardcoded 7000, so "retirement complete" no longer reads
+  // ~$500 early. Falls back to 7500 if the registry row is absent.
+  var adamIraTarget=(GOALS_REGISTRY.find(function(g){return g.id==='adam_ira';})||{}).target||7500;
   // ── Goal savings tracker (cumulative funded per goal) ────────────────────
   // Initialised to 0 for all model-tracked goals; 401k seeds from YTD amount
   var goalSaved={};
@@ -2459,10 +2463,30 @@ function runModel(akGoal,rtGoal,flags){
       // Pass sm() as proposed upper bound — never ask for more than current-week transferable surplus.
       if(_amxHold.indexOf(goalId)>=0){
         var proposed=sm(chk,rem0,effFl);
-        var safeAmt=maxSafeAmxSweep(proposed,chk,num,effectiveWD,effFl,AMX_SWEEP_LOOKAHEAD_WEEKS);
+        // Phase A hotfix (docs/funding-model-integrity-review-2026-07-08.md §3/§7): floor-safety of
+        // the FULL proposed sweep across the 5-week lookahead, computed once — powers both the
+        // completion carve-out and the accurate defer reason below. Pure predicate, no mutation.
+        var _amxFloorSafe=proposed>0&&amxSweepKeepsFloor(proposed,chk,num,effectiveWD,effFl,AMX_SWEEP_LOOKAHEAD_WEEKS);
+        // Completion carve-out — mirrors the allowFin rule at mv() (rem0<MIN_XFR*2). maxSafeAmxSweep()
+        // floors any amount <MIN_XFR to 0, so a sub-$100 FINAL sweep on an AMEX-hold goal would
+        // defer+break the whole waterfall permanently (the remainder can never grow past MIN_XFR,
+        // starving every lower-priority goal all year). When the goal is within a completion
+        // remainder AND the full proposed sweep is floor-safe, accept it. Floor safety is NOT
+        // bypassed: a floor-unsafe sub-$100 sweep still yields safeAmt<=0 below and defers+breaks
+        // (5-week lookahead safety preserved).
+        var safeAmt=(rem0<MIN_XFR*2&&_amxFloorSafe)?proposed
+          :maxSafeAmxSweep(proposed,chk,num,effectiveWD,effFl,AMX_SWEEP_LOOKAHEAD_WEEKS);
         if(safeAmt<=0){
           _amxDeferredThisWeek=true;
-          tr.push({l:gdef.name+' deferred — '+AMX_SWEEP_LOOKAHEAD_WEEKS+'-wk lookahead: floor risk',r:'defer',rsn:'Projected checking <$'+effFl.toLocaleString('en-US')+' within '+AMX_SWEEP_LOOKAHEAD_WEEKS+' weeks'});
+          // Phase A defer-reason accuracy (objective 6): maxSafeAmxSweep returns 0 both for a genuine
+          // 5-week floor risk AND for a surplus that is fully floor-safe but simply below the $100
+          // minimum transfer — the old note conflated them as "floor risk". Distinguish the
+          // below-minimum case; every other defer keeps the original wording byte-identical.
+          if(_amxFloorSafe){
+            tr.push({l:gdef.name+' deferred — $'+fc(proposed)+' surplus below $'+MIN_XFR+' minimum transfer',r:'defer',rsn:'Floor-safe across '+AMX_SWEEP_LOOKAHEAD_WEEKS+' weeks but under the $'+MIN_XFR+' minimum'});
+          }else{
+            tr.push({l:gdef.name+' deferred — '+AMX_SWEEP_LOOKAHEAD_WEEKS+'-wk lookahead: floor risk',r:'defer',rsn:'Projected checking <$'+effFl.toLocaleString('en-US')+' within '+AMX_SWEEP_LOOKAHEAD_WEEKS+' weeks'});
+          }
           break;
         }
         rem0=r(safeAmt);
@@ -2587,7 +2611,7 @@ function runModel(akGoal,rtGoal,flags){
       // Backwards-compat fields
       akSaved:r(goalSaved['alaska']||0),
       akRem:r(Math.max(0,akTarget-(goalSaved['alaska']||0))),
-      retRem:r(Math.max(0,7000-(goalSaved['adam_ira']||0))), // retRem now tracks adam_ira remaining (backwards compat)
+      retRem:r(Math.max(0,adamIraTarget-(goalSaved['adam_ira']||0))), // retRem tracks adam_ira remaining vs registry target (Phase A: was hardcoded 7000)
       ol:r(chk+sav),surplusSwept:r(surplusSwept),surplusStart,
       startChk,startSav,startAmx,startTax,startLc,reconciled,variance,actualBals,
       // ── Phase 5F-1: Cash Availability Engine output (non-UI; consumed by

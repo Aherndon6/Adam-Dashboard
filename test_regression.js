@@ -11274,6 +11274,142 @@ test('5F15-A7b-08: Budget calculation lines remain intact',()=>{
 })();
 
 // ─────────────────────────────────────────────────────────────────────────
+// Section PHASE-A: AMEX-hold sub-MIN_XFR waterfall deadlock hotfix
+//   (docs/funding-model-integrity-review-2026-07-08.md §3/§7/§8)
+//   Root cause: an AMEX-hold goal (adam_ira) left with a sub-$100 remainder passes through
+//   maxSafeAmxSweep() before mv(); that helper floors any amount <MIN_XFR to 0, and a 0 triggers
+//   defer+break, permanently starving every lower-priority goal. Fix: a completion carve-out at
+//   the call site mirroring mv()'s allowFin rule, gated on the full 5-week floor-safety check.
+console.log('\n── Section PHASE-A: AMEX-hold sub-MIN_XFR waterfall deadlock hotfix ──');
+(function(){
+  // Pinned production state (Fable P1): a wk-4 recon anchor tuned so the wk-5 (Cal Wk 27) Adam IRA
+  // sweep = $3,562.56, landing Adam IRA at $7,438.94 (99% of the $7,500 target) — the live deadlock.
+  var PROD_COMMITMENTS=[
+    {model_year:2026,origin_model_week:4,source_account:'truist_checking',status:'cleared',resolution_type:'cleared',reflected_model_week:4,resolved_model_week:4,amount_cents:200000,affects_deployable_cash:true},
+    {model_year:2026,origin_model_week:4,source_account:'truist_checking',status:'cleared',resolution_type:'cleared',reflected_model_week:4,resolved_model_week:4,amount_cents:200000,affects_deployable_cash:true},
+    {model_year:2026,origin_model_week:4,source_account:'truist_checking',status:'cleared',resolution_type:'cleared',reflected_model_week:4,resolved_model_week:4,amount_cents:140000,affects_deployable_cash:true},
+    {model_year:2026,origin_model_week:4,source_account:'truist_checking',status:'planned',resolution_type:null,reflected_model_week:null,resolved_model_week:null,amount_cents:43563,affects_deployable_cash:true}
+  ];
+  // Save globals we mutate, restore in finally so later runs / shared state are untouched.
+  var _saveRecon=reconData,_saveCommit=commitmentData,_saveOverride=overrideData;
+  var _saveTargets=GOALS_REGISTRY.map(function(g){return{id:g.id,target:g.target};});
+  function setup(chk4,extraOverride){
+    reconData={4:{chk:chk4,sav:3772.81,amx:103.64,tax:1516.59,lc:13774.76,balance_basis:'posted_current_balance',date:'Jul 4'}};
+    commitmentData=PROD_COMMITMENTS.map(function(c){return Object.assign({},c);});
+    overrideData=extraOverride||{};
+    GOALS_REGISTRY.forEach(function(g){if(g.id==='adam_ira'||g.id==='wendy_ira')g.target=7500;});
+  }
+  function tuneAnchor(){
+    var lo=13000,hi=14935.14,best=null;
+    for(var i=0;i<60;i++){var mid=(lo+hi)/2;setup(mid);
+      var wk5=runModel(null,null).find(function(w){return w.num===5;});
+      var adam=wk5.goalSaved['adam_ira'];
+      if(Math.abs(adam-7438.94)<0.005){best=mid;break;}
+      if(adam>7438.94)hi=mid;else lo=mid;best=mid;}
+    return best;
+  }
+  try{
+    var anchor=tuneAnchor();
+    setup(anchor);
+    var weeks=runModel(null,null);
+    var wk5=weeks.find(function(w){return w.num===5;});
+    var w31=weeks[weeks.length-1];
+    var IDS=['adam_ira','wendy_ira','bailey_529','bryce_529','preston_529'];
+    var g=function(id){return GOALS_REGISTRY.find(function(x){return x.id===id;});};
+
+    test('[Phase A] pinned production state reproduces Adam IRA 7438.94 (99%) at Cal Wk 27',function(){
+      assertApprox(wk5.goalSaved['adam_ira'],7438.94,'wk5 adam_ira',0.01);
+      assertApprox(anchor,14716.62,'tuned wk-4 anchor drifted — model changed unexpectedly',0.5);
+    });
+
+    // Week 27 (= model week 5) transfer outputs must be byte-identical to the pre-fix capture.
+    // (retRem is intentionally excluded — Edit C changes it 0 → 61.06; asserted separately below.)
+    var GOLD_TR=[
+      '401(k) $1,020.83 auto-deducted payroll (Empower)',
+      'Alaska Cruise $7,000.00 → Truist Savings — Alaska Cruise funded!',
+      'Wewe RCCL $600.00 → AMEX Savings (holding) — Wewe RCCL funded!',
+      'Wewe DCL $500.00 → AMEX Savings (holding) — Wewe DCL funded!',
+      'Adam IRA $3,562.56 → AMEX Savings: $3,833.80 remaining',
+      'Wendy IRA deferred — 5-wk lookahead: floor risk',
+      'Adam IRA seed $3,772.74 Truist Savings → AMEX Savings'
+    ];
+    var GOLD_AC=[
+      'Transfer $7,000.00 from Truist Checking to Truist Savings (Alaska Cruise)',
+      'Transfer $600.00 from Truist Checking to AMEX Savings (holding) (Wewe RCCL)',
+      'Transfer $500.00 from Truist Checking to AMEX Savings (holding) (Wewe DCL)',
+      'Transfer $3,562.56 from Truist Checking to AMEX Savings (Adam IRA)',
+      'Transfer $3,772.74 from Truist Savings to AMEX Savings (Adam IRA seed — IRA Holding)'
+    ];
+    test('[Phase A] Week 27 transfer outputs byte-identical to pre-fix golden',function(){
+      assert(JSON.stringify(wk5.tr.map(function(t){return t.l;}))===JSON.stringify(GOLD_TR),'wk5 tr[] labels changed');
+      assert(JSON.stringify(wk5.ac)===JSON.stringify(GOLD_AC),'wk5 ac[] changed');
+      assertApprox(wk5.chk,8079.56,'wk5 chk',0.01);assertApprox(wk5.sav,7000.07,'wk5 sav',0.01);
+      assertApprox(wk5.amx,8538.94,'wk5 amx',0.01);assertApprox(wk5.tax,1516.59,'wk5 tax',0.01);
+      assertApprox(wk5.lc,13774.76,'wk5 lc',0.01);
+    });
+
+    test('[Phase A] deadlock resolved: Adam IRA completes and the waterfall proceeds',function(){
+      // PRE-FIX (buggy, captured against commit 1dcc686): adam_ira stuck 7438.94/7500=99%,
+      // wendy_ira=0, all 529s=0, 23 "Adam IRA deferred" break weeks, 0 goal transfers after mw6.
+      assertGt(w31.goalSaved['adam_ira'],g('adam_ira').target-0.01,'adam_ira still short of target');
+      assertGt(w31.goalSaved['wendy_ira'],0,'wendy_ira still starved (was 0)');
+      var adamDefer=weeks.filter(function(w){return w.tr.some(function(t){return t.r==='defer'&&/Adam IRA deferred/.test(t.l);});});
+      assert(adamDefer.length===0,'"Adam IRA deferred" break weeks remain: '+adamDefer.length);
+    });
+
+    test('[Phase A] no-permanent-starvation: goal transfers resume after mw6 (was NONE)',function(){
+      var xfer=weeks.filter(function(w){return w.num>=6&&w.tr.some(function(t){return t.r==='done'&&/→ (AMEX Savings|Truist Savings)/.test(t.l);});});
+      assertGt(xfer.length,0,'no goal transfers executed after mw6 — waterfall still halted');
+    });
+
+    test('[Phase A] all five held goals reach target end-of-model (pinned run)',function(){
+      IDS.forEach(function(id){assertGt((w31.goalSaved[id]||0),g(id).target-0.01,id+' did not reach target');});
+    });
+
+    test('[Phase A] carve-out predicate: floor-SAFE sub-$100 remainder is rescued',function(){
+      // ewd rows: [num,dates,inflows[],obligations[]]. Healthy forward weeks, $100 above floor now.
+      var ewdSafe=[[1,'',[],[]],[2,'',[3000],[]],[3,'',[3000],[]],[4,'',[3000],[]],[5,'',[3000],[]],[6,'',[3000],[]]];
+      assert(amxSweepKeepsFloor(61.06,6600,1,ewdSafe,6500,5)===true,'floor-safe sweep misjudged unsafe');
+      // This is the deadlock root cause: floor-safe but <MIN_XFR ⇒ clamped to 0 ⇒ defer+break.
+      assert(maxSafeAmxSweep(61.06,6600,1,ewdSafe,6500,5)===0,'maxSafeAmxSweep no longer clamps <MIN_XFR to 0');
+      // The carve-out's guard (rem0<MIN_XFR*2 && floor-safe) is exactly what accepts it instead.
+      assert(61.06<MIN_XFR*2,'completion-remainder guard MIN_XFR*2 changed');
+    });
+
+    test('[Phase A] safety preserved: floor-UNSAFE sub-$100 sweep is refused (predicate)',function(){
+      var ewdUnsafe=[[1,'',[],[]],[2,'',[3000],[]],[3,'',[],[9000]],[4,'',[3000],[]],[5,'',[3000],[]],[6,'',[3000],[]]];
+      assert(amxSweepKeepsFloor(61.06,6600,1,ewdUnsafe,6500,5)===false,'floor-unsafe sweep misjudged safe — 5-week lookahead broken');
+      assert(maxSafeAmxSweep(61.06,6600,1,ewdUnsafe,6500,5)===0,'floor-unsafe sweep not clamped to 0');
+    });
+
+    test('[Phase A] safety preserved: floor-unsafe sub-$100 completion defers in full model',function(){
+      // Inject a large obligation at week 12: OUTSIDE mw5's lookahead (6-10) so Adam IRA still gets
+      // its mw5 partial and reaches 7438.94, but INSIDE mw7's lookahead (8-12) so the $61.06
+      // completion sweep is floor-unsafe and must defer+break rather than carve through.
+      setup(anchor,{12:{week_num:12,dates:'inj',events_json:[{t:'ob',a:12000,d:'test floor-unsafe'}],is_custom:false}});
+      var wU=runModel(null,null);var wk7=wU.find(function(w){return w.num===7;});
+      assertApprox(wk7.goalSaved['adam_ira'],7438.94,'Adam IRA not at genuine sub-$100 remainder entering mw7',0.01);
+      assert(!wk7.tr.some(function(t){return t.r==='done'&&/Adam IRA \$/.test(t.l);}),'sub-$100 sweep executed despite floor risk');
+      assert(wk7.tr.some(function(t){return t.r==='defer'&&/Adam IRA deferred — 5-wk lookahead: floor risk/.test(t.l);}),'mw7 missing genuine floor-risk defer');
+      setup(anchor); // restore pinned (no override) for any later reads
+    });
+
+    test('[Phase A] retRem sourced from registry Adam IRA target (7500), not hardcoded 7000',function(){
+      var src=fs.readFileSync(htmlPath,'utf8');
+      assertIncludes(src,'retRem:r(Math.max(0,adamIraTarget-(goalSaved[\'adam_ira\']||0)))','retRem still hardcoded');
+      assert(!/retRem:r\(Math\.max\(0,7000-/.test(src),'stale hardcoded 7000 retRem still present');
+      // Behavioral: at the pinned state Adam IRA=7438.94 ⇒ retRem=61.06 (pre-fix it was 0, falsely
+      // reading "retirement complete" ~$500 early because 7000-7438.94 clamped to 0).
+      var w5b=runModel(null,null).find(function(w){return w.num===5;});
+      assertApprox(w5b.retRem,61.06,'retRem should be target(7500)-7438.94',0.01);
+    });
+  } finally {
+    reconData=_saveRecon;commitmentData=_saveCommit;overrideData=_saveOverride;
+    _saveTargets.forEach(function(s){var gg=GOALS_REGISTRY.find(function(x){return x.id===s.id;});if(gg)gg.target=s.target;});
+  }
+})();
+
+// ─────────────────────────────────────────────────────────────────────────
 console.log('\n╔══════════════════════════════════════════════════════════════╗');
 console.log('║                       RESULTS                               ║');
 console.log('╚══════════════════════════════════════════════════════════════╝');
