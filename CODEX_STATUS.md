@@ -9,6 +9,7 @@ Budget Module v1 live.
 Wendy Budget-tab live use in progress (target July 1, 2026).
 
 Next major phase: 5G Cash Planning + Allocation (locked). 5G-0 (label/docs cleanup) is CLOSED — see "## 5G-0 CLOSED". 5G-1A (Weekly Transfer Routing + Readiness) is SHIPPED (commit `c8613bc`) — see "## 5G-1A SHIPPED". UX-0 (display-only Budget row treatment: BUD-1/BUD-2/SYS-3) is SHIPPED (commit `c5873fb`) — see "## UX-0 SHIPPED". UX-0.5 (Wendy visual polish, display-only: B1–B4, R1–R2) is SHIPPED (commit `739567b`) — see "## UX-0.5 SHIPPED". 5G-1 is the first schema/build sub-phase; its **staging DB/security layer is validated** (schema rehearsal + real-caller RLS smoke + `app_environment` hardening, 2026-07-08; commits `eeee4cb`/`7f0d0a0`, pushed) — the **production DDL and app-side build remain gated**. See `docs/phase-status.md` for the 5G-0 through 5G-5 map, gates, and the pre/post-Alaska split.
+5G-1A.5 (AMEX Hold Sub-MIN_XFR Deadlock Hotfix) is SHIPPED in the working tree (commit `f307db7`, local `main`, **not yet pushed**) — resolves the AMEX-hold sub-`MIN_XFR` waterfall completion deadlock surfaced by the 2026-07-08 funding-model integrity review (`docs/funding-model-integrity-review-2026-07-08.md`); runModel freeze exception approved by Adam. See "## 5G-1A.5 SHIPPED".
 
 ## Current Goal
 
@@ -16,8 +17,8 @@ Prepare the system for Wendy using the Budget tab in live household workflow whi
 
 ## Recent Verified State
 
-- Static regression tests: 1350/0 passing (as of UX-0.5 Budget/Register visual polish; UX-0 was 1344/0)
-- E2E: 131/0 passing on this branch (unchanged count through UX-0.5; e2e.js touched only for the R1 caption wording). The earlier WC-3/BR-3 "known e2e failure" language is stale for this branch; do not re-cite it without re-verifying. Note: the balance-invariant e2e tests LEDGER-1 and A9-1 are intermittently flaky in the headless environment and clear on immediate re-run with no code change.
+- Static regression tests: 1359/0 passing (as of 5G-1A.5 AMEX sub-MIN_XFR deadlock hotfix; UX-0.5 was 1350/0, UX-0 1344/0)
+- E2E: 131/0 passing on this branch (unchanged count through 5G-1A.5; e2e.js touched only for the R1 caption wording). The earlier WC-3/BR-3 "known e2e failure" language is stale for this branch; do not re-cite it without re-verifying. Note: the balance-invariant e2e tests LEDGER-1 and A9-1 are intermittently flaky in the headless environment and clear on immediate re-run with no code change.
 - Dashboard stable
 - GitHub Pages deploys from main
 
@@ -32,7 +33,7 @@ Prepare the system for Wendy using the Budget tab in live household workflow whi
 
 ## Next Candidate Work
 
-Active next-phase pointer: 5G-0 CLOSED, 5G-1A SHIPPED, UX-0 SHIPPED, UX-0.5 SHIPPED. **5G-1 staging DB/security layer is validated and pushed** (RLS smoke `eeee4cb`, `app_environment` hardening `7f0d0a0`); **production DDL and the app-side functional build remain gated**. **Immediate next work item: IRA-goal correction** (Adam & Wendy 2026 IRA target $7,000→$7,500, preserving funded amounts), then the 5G-1 functional app build behind `showCashPlanning`. Optional still-open: the capped pre-5G UX cleanup bundle (FLOW-2, FLOW-1, WK-1, REG-1, SYS-2; rider REG-2). Future candidate (not sequenced): TX-1 — see `docs/tx-1-candidate.md`.
+Active next-phase pointer: 5G-0 CLOSED, 5G-1A SHIPPED, UX-0 SHIPPED, UX-0.5 SHIPPED. **5G-1 staging DB/security layer is validated and pushed** (RLS smoke `eeee4cb`, `app_environment` hardening `7f0d0a0`); **production DDL and the app-side functional build remain gated**. IRA-goal correction ($7,000→$7,500, funded amounts preserved) is DONE (commit `1dcc686`); the AMEX sub-`MIN_XFR` waterfall deadlock it exposed is FIXED by 5G-1A.5 (commit `f307db7`, not yet pushed — see "## 5G-1A.5 SHIPPED"). **Immediate next work item: 5G-1C — Goal Funding State Integrity + Funding Plan Projection Semantics** (review doc §5/§7 Phase B: week-anchored `goal_funding_snapshots` + Funding Plan projection labeling; absorbs the Bailey/Bryce/Preston forecast-vs-live-surplus follow-up), then the 5G-1 functional app build behind `showCashPlanning`. Optional still-open: the capped pre-5G UX cleanup bundle (FLOW-2, FLOW-1, WK-1, REG-1, SYS-2; rider REG-2). Future candidate (not sequenced): TX-1 — see `docs/tx-1-candidate.md`.
 
 1. 5G-0: label/docs cleanup — DONE (static 1332/0, e2e 131/0). See "## 5G-0 CLOSED".
 2. 5G-1A: Weekly Transfer Routing + Readiness — SHIPPED 2026-07-07, commit `c8613bc` (static 1339/0, e2e 131/0). RCCL/DCL reclassified to AMEX Savings holding (out of the `'goal'` sentinel), holding labels, paycheck-cleared readiness note. See "## 5G-1A SHIPPED".
@@ -81,6 +82,27 @@ UI/Flow Review v2 completed 2026-07-07 (`docs/reviews/ui-flow-review-triage-2026
 - 5G-2 allocation frame added to the mock set, annotated "Arrives after the first Cash Planning release."
 
 **Next action:** build the four static mock frames (5G-0, 5G-1 set, 5G-2 allocation, 5G-3 before/after) from the spec for the Wendy walkthrough.
+
+## 5G-1A.5 SHIPPED (2026-07-08): AMEX Hold Sub-MIN_XFR Deadlock Hotfix
+
+**COMMITTED at `f307db7` (local `main`, NOT yet pushed). Static 1359/0, e2e 131/0.** Phase A of the 2026-07-08 funding-model integrity review (`docs/funding-model-integrity-review-2026-07-08.md`); runModel freeze exception explicitly approved by Adam (5G-1A precedent).
+
+**Root cause:** an `_amxHold` goal left with a sub-`MIN_XFR` (<$100) remainder passed through `maxSafeAmxSweep()` — which floors any amount below `MIN_XFR` to 0 — before reaching `mv()`; a 0 from that gate triggered defer+`break`, halting the **entire** waterfall for the week, every week. After the $7,000→$7,500 IRA target correction (`1dcc686`) Adam IRA sat at **$7,438.94 of $7,500 (99%, $61.06 remainder)**, so from Cal Wk 28 on **no goal received another dollar** (Wendy IRA + all 529s $0; Bailey "Beyond 2026"). The `allowFin` completion carve-out already at `mv()` was unreachable because the AMEX gate broke first.
+
+**Fix (index.html, runModel only — Edits A/B/C):**
+- **A — completion carve-out** at the `_amxHold` call site: `(rem0 < MIN_XFR*2 && amxSweepKeepsFloor(proposed,…)) ? proposed : maxSafeAmxSweep(…)`, mirroring `mv()`'s `allowFin` rule. The 5-week `amxSweepKeepsFloor` safety check is retained — a floor-unsafe sub-$100 sweep still defers+breaks.
+- **B — defer-label accuracy:** distinguishes a floor-safe-but-below-$100-minimum surplus ("surplus below $100 minimum transfer") from a genuine floor risk (original "5-wk lookahead: floor risk" wording byte-identical).
+- **C — retRem** sourced from the registry Adam IRA target ($7,500) via a hoisted `adamIraTarget`, not the stale hardcoded 7000 (retirement no longer reads complete ~$500 early).
+
+**Scope guardrails honored:** no schema/RLS/RPC/SQL; no priority, target, or reconciliation-logic changes; no broader model refactor; Phase B (`goal_funding_snapshots`) NOT started. **Week 27 transfer outputs byte-identical** (tr/ac/goalSaved/balances pinned by test).
+
+**Tests (test_regression.js, +9 — Section PHASE-A):** pinned-production reproduction of the 99% deadlock; Week-27 byte-identity; deadlock-resolved (Adam IRA completes, Wendy IRA funds); no-permanent-starvation; all-five-goals-complete; carve-out predicate (floor-safe rescued); safety predicate + full-model safety (floor-unsafe sub-$100 still defers); retRem-from-registry. Pre-fix deadlock signature documented as constants.
+
+**Live smoke — PASSED (Adam, local build 2026-07-08):** Adam IRA completes at Cal Wk 29 ($61.06 → AMEX Savings, "Adam IRA funded"); Wendy IRA continuation confirmed; Week 27 transfer stack unchanged; genuine floor-risk labeling preserved.
+
+**Known follow-up (NOT a blocker):** in the live UI Bailey 529 reaches **73%** and its row still reads "Beyond 2026". Analysis (two headless demonstrations) shows this is a **live-surplus/forecast property**, not a hotfix defect: the waterfall now correctly flows through Adam→Wendy→Bailey, and downstream 2026 completion depends on total annual deployable surplus (live `budget_rules`/`model_week_overrides`/reconciled balances, tighter than the review's synthetic pinned anchor) plus the AMEX 5-week lookahead conservatism. The stale "Beyond 2026" row label is a projection-semantics issue. Both are folded into **5G-1C — Goal Funding State Integrity + Funding Plan Projection Semantics** (next phase).
+
+**Next phase: 5G-1C — Goal Funding State Integrity + Funding Plan Projection Semantics.** Review doc §5/§7 Phase B: week-anchored `goal_funding_snapshots` table (applied like `reconData`), per-goal variance, Funding Plan "anchored vs projected" labeling (fixes the misleading row labels), AMEX-holding data-quality invariant. Gated before 5G-2. **Not pushed / not deployed yet — awaiting Adam's push approval, then post-deploy live smoke per the review doc's Phase A gate.**
 
 ## 5G-0 CLOSED: label/docs cleanup (2026-07-07)
 
