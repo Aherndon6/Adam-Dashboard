@@ -11,6 +11,7 @@ package-lock.json
 
 # Local scratch / Claude prebuild artifacts
 *-prebuild-outputs.md
+scratchpad/
 
 # Office documents that are not intentional repo artifacts
 *.docx
