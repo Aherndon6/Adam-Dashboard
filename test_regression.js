@@ -74,6 +74,88 @@ console.log('\n╔════════════════════�
 console.log('║     Herndon Financial OS — Regression Suite v2             ║');
 console.log('╚══════════════════════════════════════════════════════════════╝\n');
 
+// ═══════════════════════════════════════════════════════════════════════════
+// Section 5G-1C-2 / C1 — Golden-Master Identity Gate (zero-snapshot baseline)
+// ───────────────────────────────────────────────────────────────────────────
+// PROTECTED FIXTURE: fixtures/runmodel-golden-pre-1c-2.json pins pre-5G-1C-2
+// runModel / view-model output. Do NOT regenerate or edit it without explicit
+// Adam approval (AGENTS.md never-edit-without-approval; Fable G3).
+//
+// Purpose (Fable R3): with NO goal snapshots applied, runModel weeks[],
+// goalCompletion, and getGoalFunded must stay deep-equal (values AND key sets)
+// to this baseline. In C1 there is no snapshot code yet, so this simply pins
+// current behavior. In C3 the loader/overlay/getGoalFunded/goalCompletion edits
+// must keep this GREEN with goalSnapData = {} (empty/unavailable) — that is the
+// zero-snapshot identity guarantee. currentW is pinned (fixture pinnedCurrentW)
+// so getGoalFunded is deterministic and calendar-stable. Run early, before any
+// other test can mutate model globals, matching the pristine capture.
+// ═══════════════════════════════════════════════════════════════════════════
+console.log('── Section 5G-1C-2/C1: Golden-Master Identity Gate ──');
+(function(){
+  const path=require('path');
+  const goldPath=path.join(path.dirname(htmlPath),'fixtures','runmodel-golden-pre-1c-2.json');
+  const GOLD=JSON.parse(fs.readFileSync(goldPath,'utf8'));
+
+  // Strict structural deep-equal: enforces identical KEY SETS and values (R2/R3).
+  function deepEq(a,b,p){
+    p=p||'$';
+    if(a===b) return;
+    if(a===null||b===null||typeof a!==typeof b)
+      throw new Error('mismatch at '+p+': '+JSON.stringify(a)+' !== '+JSON.stringify(b));
+    if(Array.isArray(a)||Array.isArray(b)){
+      if(!Array.isArray(a)||!Array.isArray(b)) throw new Error('array/non-array at '+p);
+      if(a.length!==b.length) throw new Error('array length at '+p+': '+a.length+' !== '+b.length);
+      for(let i=0;i<a.length;i++) deepEq(a[i],b[i],p+'['+i+']');
+      return;
+    }
+    if(typeof a==='object'){
+      const ka=Object.keys(a).sort(), kb=Object.keys(b).sort();
+      if(ka.length!==kb.length||ka.some(function(k,i){return k!==kb[i];}))
+        throw new Error('key-set mismatch at '+p+': ['+ka+'] vs ['+kb+']');
+      ka.forEach(function(k){ deepEq(a[k],b[k],p+'.'+k); });
+      return;
+    }
+    throw new Error('value mismatch at '+p+': '+JSON.stringify(a)+' !== '+JSON.stringify(b));
+  }
+
+  // Re-derive under the pinned currentW (save/restore so no other test is affected).
+  function reDerive(){
+    const _sw=currentW; currentW=GOLD._meta.pinnedCurrentW;
+    try{
+      const w=runModel(GOLD._meta.runModelArgs[0],GOLD._meta.runModelArgs[1]);
+      const vm=buildDashboardViewModel(w,{ak:GOLD._meta.runModelArgs[0],rt:GOLD._meta.runModelArgs[1]});
+      const ggf={}; GOLD._meta.goalOrder.forEach(function(id){ ggf[id]=getGoalFunded(id,vm); });
+      return {weeks:w,goalCompletion:vm.goalCompletion,getGoalFunded:ggf};
+    } finally { currentW=_sw; }
+  }
+
+  test('C1 golden master: fixture loads + structurally intact',function(){
+    assert(GOLD.weeks.length===31,'weeks!=31');
+    assert(Object.keys(GOLD.goalCompletion).length===13,'goalCompletion!=13');
+    assert(Object.keys(GOLD.getGoalFunded).length===13,'getGoalFunded!=13');
+    assert(GOLD._meta.pinnedCurrentW===5,'pinnedCurrentW!=5');
+  });
+
+  test('C1 deepEq self-check: key-set + value differences are caught',function(){
+    let threw=false; try{ deepEq({a:1},{a:1,b:2}); }catch(e){ threw=true; }
+    assert(threw,'deepEq failed to catch a key-set difference');
+    threw=false; try{ deepEq({a:1},{a:2}); }catch(e){ threw=true; }
+    assert(threw,'deepEq failed to catch a value difference');
+  });
+
+  const D=reDerive();
+
+  test('C1 identity: runModel weeks[] deep-equal (values + key sets) vs golden master',function(){
+    deepEq(D.weeks,GOLD.weeks,'weeks');
+  });
+  test('C1 identity: goalCompletion deep-equal vs golden master',function(){
+    deepEq(D.goalCompletion,GOLD.goalCompletion,'goalCompletion');
+  });
+  test('C1 identity: getGoalFunded (13 goals, pinned currentW) deep-equal vs golden master',function(){
+    deepEq(D.getGoalFunded,GOLD.getGoalFunded,'getGoalFunded');
+  });
+})();
+
 // ─────────────────────────────────────────────────────────────────────────
 console.log('── Section 1: Helper functions ──');
 test('f() formats positive',()=>assert(f(1234.56)==='$1,234.56'));
