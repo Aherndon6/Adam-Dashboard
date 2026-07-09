@@ -11586,6 +11586,135 @@ console.log('\n── Section PHASE-A: AMEX-hold sub-MIN_XFR waterfall deadlock 
   }
 })();
 
+// ═══════════════════════════════════════════════════════════════════════════
+// Section 5G-1C-2/C3 — Goal Funding Overlay (snapshot anchors)
+// ═══════════════════════════════════════════════════════════════════════════
+// Exercises goalSnapData: overwrite-at-anchor semantics, goalVariance sign,
+// getGoalFunded complete/manual chain, adam_401k(auto) non-interference, and
+// goalCompletion stays-complete under a downward anchor. Each test restores
+// goalSnapData={} so the C1 empty-state identity guarantee holds for later tests.
+console.log('\n── Section 5G-1C-2/C3: Goal Funding Overlay ──');
+(function(){
+  var AK=7000, RT=7694.87;
+  var IRA_TGT=(GOALS_REGISTRY.find(function(g){return g.id==='adam_ira';})||{}).target||7500;
+  function withSnap(snap,fn){ var _s=goalSnapData; goalSnapData=snap||{}; try{ return fn(); } finally{ goalSnapData=_s; } }
+  function wk(weeks,n){ return weeks.find(function(w){return w.num===n;}); }
+  var BASE=runModel(AK,RT);
+  var baseIra5=wk(BASE,5).goalSaved['adam_ira'];
+
+  // (5) Anchor overwrite at the anchor week
+  test('C3-05 anchor overwrite: goalSaved[adam_ira] pinned to observed at the anchor week',function(){
+    withSnap({5:{adam_ira:1234.56}},function(){
+      assertApprox(wk(runModel(AK,RT),5).goalSaved['adam_ira'],1234.56,'week 5 adam_ira should equal the anchor',0.001);
+    });
+  });
+
+  // (4) Unknown/untracked + complete goal_ids ignored — no new goalSaved key
+  test('C3-04 unknown goal_id ignored: no new goalSaved key created',function(){
+    withSnap({5:{__nope__:999,adam_ira:1000}},function(){
+      var g5=wk(runModel(AK,RT),5).goalSaved;
+      assert(!('__nope__' in g5),'unknown goal_id must not create a goalSaved key');
+      assertApprox(g5['adam_ira'],1000,'tracked adam_ira still anchored',0.001);
+    });
+  });
+  test('C3-04b complete-goal snapshot not injected into goalSaved (getGoalFunded owns it)',function(){
+    withSnap({5:{wendy_sep:20000}},function(){
+      var w5=wk(runModel(AK,RT),5);
+      assert(!('wendy_sep' in w5.goalSaved),'complete goal must not be injected into goalSaved');
+      assert(w5.goalVariance===undefined,'no goalVariance when only a complete/unknown snapshot present');
+    });
+  });
+
+  // (6) Mid-model re-anchor overwrites the modeled value (absolute, not additive)
+  test('C3-06 mid-model re-anchor overwrites (not additive)',function(){
+    withSnap({5:{adam_ira:1000},10:{adam_ira:3000}},function(){
+      var W=runModel(AK,RT);
+      assertApprox(wk(W,5).goalSaved['adam_ira'],1000,'week 5 anchor',0.001);
+      assertApprox(wk(W,10).goalSaved['adam_ira'],3000,'week 10 re-anchor overwrites',0.001);
+    });
+  });
+
+  // (7) Later anchor absorbs/replaces prior modeled flows incl. RET_SAV_XFR — no double-count
+  test('C3-07 later anchor absorbs RET_SAV_XFR (no double-count)',function(){
+    withSnap({8:{adam_ira:5000}},function(){
+      assertApprox(wk(runModel(AK,RT),8).goalSaved['adam_ira'],5000,'week 8 equals anchor exactly (not anchor+RET_SAV_XFR)',0.001);
+    });
+  });
+
+  // (8) goalVariance sign: modeled_before_anchor − observed
+  test('C3-08 goalVariance sign convention (modeled − observed)',function(){
+    withSnap({5:{adam_ira:r(baseIra5-100)}},function(){
+      var gv=wk(runModel(AK,RT),5).goalVariance;
+      assert(gv&&Math.abs(gv['adam_ira']-100)<0.01,'observed<modeled ⇒ positive (+100), got '+(gv&&gv['adam_ira']));
+    });
+    withSnap({5:{adam_ira:r(baseIra5+100)}},function(){
+      var gv=wk(runModel(AK,RT),5).goalVariance;
+      assert(gv&&Math.abs(gv['adam_ira']+100)<0.01,'observed>modeled ⇒ negative (−100), got '+(gv&&gv['adam_ira']));
+    });
+  });
+  test('C3-08b goalVariance absent when no anchor applied (key-set identity)',function(){
+    assert(!('goalVariance' in wk(runModel(AK,RT),5)),'zero-snapshot week object must not carry goalVariance');
+  });
+
+  // (9) getGoalFunded complete/manual chain: latest snapshot(≤cur) → goalFundedAmounts → 0
+  test('C3-09 getGoalFunded complete/manual chain (snapshot ≤ cur → static)',function(){
+    var _cw=currentW; currentW=5;
+    try{
+      var vm=buildDashboardViewModel(runModel(AK,RT),{ak:AK,rt:RT});
+      assertApprox(getGoalFunded('wendy_sep',vm),17859,'no-snapshot wendy_sep = static goalFundedAmounts');
+      withSnap({4:{wendy_sep:18000}},function(){ assertApprox(getGoalFunded('wendy_sep',vm),18000,'wk4(≤5) snapshot wins'); });
+      withSnap({4:{wendy_sep:18000},5:{wendy_sep:18500}},function(){ assertApprox(getGoalFunded('wendy_sep',vm),18500,'latest wk5(≤5) wins over wk4'); });
+      withSnap({6:{wendy_sep:19000}},function(){ assertApprox(getGoalFunded('wendy_sep',vm),17859,'future wk6(>5) ignored ⇒ static'); });
+    } finally { currentW=_cw; }
+  });
+
+  // (10) adam_401k / auto path unchanged under a realistic (no-auto-row) snapshot set
+  test('C3-10 adam_401k(auto) funded unchanged with non-auto anchors present',function(){
+    var _cw=currentW; currentW=5;
+    try{
+      var base401=getGoalFunded('adam_401k',buildDashboardViewModel(runModel(AK,RT),{ak:AK,rt:RT}));
+      withSnap({5:{adam_ira:1000,bailey_529:500}},function(){
+        assertApprox(getGoalFunded('adam_401k',buildDashboardViewModel(runModel(AK,RT),{ak:AK,rt:RT})),base401,'adam_401k unchanged');
+      });
+    } finally { currentW=_cw; }
+  });
+
+  // (11) goalCompletion unchanged under monotonic / no-snapshot
+  test('C3-11 goalCompletion stays-complete == first-crossing under monotonic',function(){
+    var W=runModel(AK,RT), comp=buildDashboardViewModel(W,{ak:AK,rt:RT}).goalCompletion['adam_ira'];
+    var firstCross=W.find(function(w){return w.goalSaved&&(w.goalSaved['adam_ira']||0)>=IRA_TGT-0.01;});
+    assert(comp&&firstCross&&comp.num===firstCross.num,'stays-complete == first-crossing week under monotonic funding');
+  });
+
+  // (12) goalCompletion corrected under a downward anchor
+  test('C3-12 goalCompletion clears when a downward anchor breaks completion through wk31',function(){
+    var compBase=buildDashboardViewModel(runModel(AK,RT),{ak:AK,rt:RT}).goalCompletion['adam_ira'];
+    assert(compBase&&compBase.num>0,'baseline: adam_ira completes in-model');
+    withSnap({31:{adam_ira:r(IRA_TGT-1000)}},function(){
+      var comp=buildDashboardViewModel(runModel(AK,RT),{ak:AK,rt:RT}).goalCompletion['adam_ira'];
+      assert(comp===null,'stays-complete clears: no week stays ≥ target through wk 31');
+    });
+  });
+
+  // Row-to-timeline agreement: Funding Plan funded value == anchored currentW timeline state
+  test('C3-13 Funding Plan funded value agrees with anchored timeline (currentW)',function(){
+    var _cw=currentW; currentW=5;
+    try{
+      withSnap({5:{adam_ira:2222.22}},function(){
+        var W=runModel(AK,RT), vm=buildDashboardViewModel(W,{ak:AK,rt:RT});
+        assertApprox(getGoalFunded('adam_ira',vm),wk(W,5).goalSaved['adam_ira'],'row funded == currentW timeline goalSaved');
+        assertApprox(getGoalFunded('adam_ira',vm),2222.22,'and both equal the anchor');
+      });
+    } finally { currentW=_cw; }
+  });
+
+  // Empty-state re-assert (belt-and-suspenders after this section's mutations)
+  test('C3-14 goalSnapData restored empty; runModel week carries no goalVariance',function(){
+    assert(Object.keys(goalSnapData).length===0,'goalSnapData must be restored to {}');
+    assert(!('goalVariance' in wk(runModel(AK,RT),5)),'empty-state week object has no goalVariance');
+  });
+})();
+
 // ─────────────────────────────────────────────────────────────────────────
 console.log('\n╔══════════════════════════════════════════════════════════════╗');
 console.log('║                       RESULTS                               ║');

@@ -789,6 +789,40 @@ async function clickNav(page, id) {
     await context.close();
   });
 
+  // 5G-1C-2 (C3): with a snapshot anchor injected into goalSnapData, the Funding Plan's
+  // funded value (getGoalFunded) must agree with the anchored timeline state (currentW
+  // goalSaved), and the panel must still render. Pins currentW=5 for determinism; restores
+  // currentW and clears goalSnapData afterward so no other test is affected.
+  await test('Goals › Funding Plan: injected snapshot anchor — funded agrees with timeline', async () => {
+    const { page, context } = await openApp(browser);
+    await clickNav(page, 'goals');
+    const res = await page.evaluate(() => {
+      // currentW is a const in the app — do NOT reassign it. Inject the anchor at the
+      // exact week getGoalFunded reads (currentW if present in weeks, else weeks[0]).
+      const g = getGoals();
+      const probe = runModel(g.ak, g.rt);
+      const readWk = probe.some(w => w.num === currentW) ? currentW : probe[0].num;
+      goalSnapData = {}; goalSnapData[readWk] = { adam_ira: 4321.00 };   // absolute anchor
+      try {
+        setSection('goals'); goalsSubTab = 'funding'; renderApp();
+        const weeks = runModel(g.ak, g.rt);
+        const vm = buildDashboardViewModel(weeks, g);
+        const funded = getGoalFunded('adam_ira', vm);
+        const wkObj = weeks.find(w => w.num === readWk) || {};
+        const timeline = (wkObj.goalSaved || {})['adam_ira'];
+        const el = document.getElementById('goals-content') || document.body;
+        const hasWhen = (el.innerHTML || '').includes('ft-when');
+        return { funded, timeline, hasWhen };
+      } finally {
+        goalSnapData = {}; renderApp();
+      }
+    });
+    assert(Math.abs(res.funded - 4321.00) < 0.01, 'getGoalFunded did not reflect the injected anchor: ' + res.funded);
+    assert(Math.abs(res.funded - res.timeline) < 0.01, 'Funding Plan funded (' + res.funded + ') != currentW timeline goalSaved (' + res.timeline + ')');
+    assert(res.hasWhen, 'Funding Plan "When" column did not render under the injected anchor');
+    await context.close();
+  });
+
   // ── Section J: Mobile viewport ─────────────────────────────────────────
   console.log('── Section J: Mobile viewport ──');
   await test('Mobile: all tabs reachable without horizontal overflow', async () => {
@@ -1278,6 +1312,11 @@ async function clickNav(page, id) {
         failedRequests.push(resp.status() + ' ' + resp.request().method() + ' ' + resp.url().replace(/.*\/rest\/v1\//, '/rest/v1/') + ' body=' + body.slice(0, 200));
       }
     });
+    // 5G-1C-2 (C3): goal_funding_snapshots is created by a later prod-DDL gate, so it 404s
+    // pre-DDL. Narrowly stub ONLY this endpoint to its eventual empty-table state (200 []) so
+    // the "no console errors" gate stays STRICT for every other request (that strict gate is
+    // the backstop — any other failed resource still fails). Console-error tolerance unchanged.
+    await page.route('**/rest/v1/goal_funding_snapshots**', route => route.fulfill({ status: 200, contentType: 'application/json', body: '[]' }));
     await page.goto(URL, { waitUntil: 'domcontentloaded', timeout: 15000 });
     await page.waitForTimeout(1000);
     await loginIfNeeded(page);
@@ -1289,6 +1328,9 @@ async function clickNav(page, id) {
     assert(overlayHidden, 'Auth overlay should be hidden after successful login');
     const bodyText = await page.evaluate(() => document.body.innerText);
     assert(bodyText.length > 200, 'Dashboard appears blank after successful login');
+    // Console-error tolerance is STRICT (favicon only) — unchanged from pre-C3. The expected
+    // pre-DDL goal_funding_snapshots 404 is handled by the endpoint-scoped page.route stub above,
+    // not by widening this filter, so any other failed resource still trips this gate.
     const authErrors = consoleErrors.filter(e => !e.includes('favicon'));
     const diagSuffix = failedRequests.length ? ' | Failed requests: ' + failedRequests.join(', ') : '';
     assert(authErrors.length === 0, 'Console errors after login: ' + authErrors.slice(0,3).join('; ') + diagSuffix);
