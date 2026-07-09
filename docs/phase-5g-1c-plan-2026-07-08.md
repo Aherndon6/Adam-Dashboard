@@ -1,8 +1,9 @@
 # Phase 5G-1C Plan — Goal Funding State Integrity + Funding Plan Projection Semantics
 
-**Status:** PLAN ONLY. No code written. Prepared for Fable architecture review before implementation.
-**Date:** 2026-07-08
+**Status:** REVIEW-INTEGRATED. **5G-1C-1 SHIPPED** (`de4e3c0`, production-verified 2026-07-08; static 1374/0, e2e 132/0). **5G-1C-2 = CONDITIONAL GO / HOLD** — Fable architecture APPROVED (Option B), R1–R13 + G1–G7 + required-test deltas folded into this doc (§13), D1–D8 pending Adam (§16). No 5G-1C-2 code, SQL, schema, RPC, RLS, migration, or seed written.
+**Date:** 2026-07-08 (plan) · updated 2026-07-08 (Fable review integration)
 **Author:** Claude (session under Adam)
+**Companion review:** `docs/phase-5g-1c-plan-review-2026-07-08.md` (Fable, verdict "architecture APPROVED; GO 1C-1; CONDITIONAL GO 1C-2"). §13 below maps every R1–R13 / G1–G7 into this plan; the review file is the source reasoning.
 **Predecessor:** 5G-1A.5 hotfix (commit `f307db7`), which resolved the AMEX-hold sub-`MIN_XFR` waterfall deadlock. This phase is "Phase B" of `docs/funding-model-integrity-review-2026-07-08.md` §5/§7.
 **Authoritative inputs read:** the integrity review (2026-07-08), `CODEX_STATUS.md`, `docs/phase-status.md`, `index.html` (runModel + Funding Plan + reconciliation overlay + loaders), `test_regression.js` (harness, GR-A1, PHASE-A), `e2e.js`, `AGENTS.md` (Do Not Touch, schema/migration conventions), the on-disk 5G-1 SQL package.
 
@@ -161,7 +162,7 @@ CREATE INDEX idx_gfs_year_week ON public.goal_funding_snapshots (model_year, wee
 
 Notes:
 - **Cumulative** funded, not delta (see §4.1). `funded_amount` is what the AMEX/T Rowe/custodian actually holds for that goal at that week's end.
-- PK `(model_year, week_num, goal_id)` — one observation per goal per reconciled week.
+- **PK is the surrogate `id UUID`; uniqueness is enforced by `uq_gfs_year_week_goal UNIQUE (model_year, week_num, goal_id)` (R12 — keep the DDL as written; this note is corrected to match it, the earlier "composite PK" phrasing was wrong).** One observation per goal per reconciled week. Upsert **mutates the current observation** (not history-grade; event/history grain arrives with the later ledger, Option C). Optional nicety: `DO UPDATE` appends the prior value to `note`.
 - FK `goal_id → goal_registry(id)`. (`goal_registry.id` is the PK; confirm type is `TEXT`/`text` in the live schema during preflight.)
 - `source`: `opening_anchor` for the first seed; `reconciliation` for weekly closeout anchors (5G-1D writes these); `correction` for ad-hoc fixes — the **only** source allowed to break cumulative monotonicity (DQ check §9). `release` reserved for 5G-1B, added then.
 - Shared `updated_at` trigger via `public.fn_set_updated_at()`.
@@ -174,7 +175,7 @@ Notes:
   - `LANGUAGE plpgsql SECURITY DEFINER SET search_path = public` (closes the search_path hijack class).
   - First statement: `IF NOT can_write_financials() THEN RAISE EXCEPTION 'save_goal_funding_snapshots: not authorized'; END IF;` — authorization is **not** delegated to RLS.
   - Explicit `IS NULL` input validation (the 5F-1 comment warns bare `<>`/`NOT IN` vs NULL silently bypasses guards); `jsonb_typeof(COALESCE(p_rows,'[]')) = 'array'`.
-  - Upsert each row `ON CONFLICT (model_year, week_num, goal_id) DO UPDATE` (so a re-confirmed closeout is idempotent). Every row validated: `goal_id` exists in `goal_registry`; `funded_amount >= 0`; `source` in the allowed set; **the week must be reconciled** (an `EXISTS` check against `weekly_reconciliations` for `(model_year, week_num)`) unless `source='opening_anchor'`.
+  - Upsert each row `ON CONFLICT (model_year, week_num, goal_id) DO UPDATE` (so a re-confirmed closeout is idempotent). Every row validated: `goal_id` exists in `goal_registry`; `funded_amount >= 0`; `source` in the allowed set; **the week must be reconciled** (an `EXISTS` check against `weekly_reconciliations` for `(model_year, week_num)`) — **including `opening_anchor` (R4: exemption dropped; both wk 4 and wk 5 qualify by seed time)**; `p_week_num BETWEEN 1 AND 31`; sane `p_model_year`; **reject `auto` goals (`adam_401k`) and `HOLDING_TO_AMEX_GOALS` ids (`wewe_rccl`/`wewe_dcl`) — policy enforced in the RPC, one place (R9)**.
   - Grant: `REVOKE ALL ON FUNCTION save_goal_funding_snapshots(...) FROM PUBLIC, anon, authenticated;` then `GRANT EXECUTE ... TO authenticated;`.
 - **Ships in 5G-1C-2** so the table is not write-dead and the first anchor can be written the house way. **5G-1D** adds the UI caller. (Open question for Fable: acceptable, or hold the RPC for 5G-1D and seed the first anchor via SQL only? Recommendation: ship the RPC now.)
 
@@ -182,7 +183,8 @@ Notes:
 
 - **Anchor week:** the latest **reconciled** week at seed time. Target is model week 5 (Cal Wk 27) once its closeout is saved; if only week 4 (Week 26) is reconciled at seed time, anchor there and let 5G-1D roll forward. Preflight asserts the chosen week has a `weekly_reconciliations` row.
 - **`source='opening_anchor'`** for this first seed.
-- **Confirmed values (Adam confirms before run):**
+- **Values are ILLUSTRATIVE, captured at seed time (R5).** The table below is a design sketch, **not** the source of truth. The seed script reads the latest closeout + bank/custodian reality at run time; seeding **after Cal Wk 29 executes** changes `adam_ira` (→ $7,500.00) and `wendy_ira` (→ ≈$927+). See §13 R5 and §15 (anchor-week recommendation).
+- **Confirmed values (Adam confirms at seed time):**
 
 | goal_id | funded_amount | Rationale |
 |---|---|---|
@@ -206,15 +208,20 @@ At the reconciliation overlay site (`index.html:2561-2566`), **after** `chk=rec.
 ```
 if (goalSnapData[num]) {                      // absent => untouched => identity with today
   const snap = goalSnapData[num];             // { goal_id: funded_amount, ... }
-  goalVariance = {};                          // per-goal modeled-minus-observed, mirrors balance `variance`
+  let goalVariance = null;                     // R2: stays null (key absent) unless an anchor applies
   Object.keys(snap).forEach(function(gid){
-    if (goalSaved[gid] !== undefined) goalVariance[gid] = r(goalSaved[gid] - snap[gid]);
+    if (goalSaved[gid] === undefined) return;  // R1: overwrite ONLY ids already tracked in goalSaved;
+                                               //     complete-goal snapshots are consumed by getGoalFunded, never injected here
+    if (!goalVariance) goalVariance = {};
+    goalVariance[gid] = r(goalSaved[gid] - snap[gid]);  // modeled − observed (sign convention pinned by test)
     goalSaved[gid] = snap[gid];               // OVERWRITE (not add) — reality wins
   });
 }
 ```
 
-Then include `goalVariance` in the week object beside `variance` (2606-2616), for display.
+Then include `goalVariance` in the week object beside `variance` (2606-2616) **only when it is non-null** (R2 — a zero-snapshot week object must be byte-identical to today, key sets included).
+
+> **R1/R2/R6 corrections folded in (see §13):** the overlay writes only `goal_id`s already present in `goalSaved` (active model-tracked goals); complete goals (e.g. `wendy_sep`) are handled **exclusively** in `getGoalFunded`, never pushed into `goalSaved`. `goalVariance` is attached to the week object only when an anchor actually applied. There is **no `auto` branch** in `getGoalFunded` — the edit is scoped to the `g.complete` branch only (R6); touching `adam_401k`'s accrual path would break the 401(k) display.
 
 **Why overwrite-at-anchor is the correct and only safe semantics under from-scratch re-simulation:**
 - Weeks are simulated in order. The overlay runs at the **end** of each week's iteration, *after* that week's waterfall already ran. So week W's own displayed sweeps stay simulation, but the **end-of-week** `goalSaved` is pinned to the observed anchor — exactly as `chk` is modeled (`mChk`) but reconciled (`chk`) after.
@@ -222,7 +229,7 @@ Then include `goalVariance` in the week object beside `variance` (2606-2616), fo
 - The re-fired `RET_SAV_XFR` seed and every prior simulated sweep that happened *before* an anchor are **superseded** by the overwrite at that anchor. Double-counting past an anchor is therefore **structurally impossible** — this is precisely the property a week-1-seeded stored balance (Option A) cannot provide.
 - `getGoalFunded` (currentW) and the Funding Timeline (final week) then read anchored-history for weeks ≤ last snapshot and projection for weeks after — the "current actual vs projected future" split the task requires.
 
-**`getGoalFunded` change:** the complete/auto branch (4308, 4311) reads the latest snapshot with `week_num ≤ currentW` for that goal, falling back to `goalFundedAmounts[id]`. The model-backed branch (4310-4313) is unchanged — `goalSaved` is already anchored by the overlay.
+**`getGoalFunded` change (R6 — `g.complete` branch ONLY; there is no `auto` branch):** the complete-goal branch (4308) reads the latest snapshot with `week_num ≤ currentW` for that goal via the chain **snapshot → `goalFundedAmounts[id]` → 0**. The model-backed branch (4310-4313) is unchanged — `goalSaved` is already anchored by the overlay. Do **not** add an `auto` branch; `adam_401k` (payroll YTD accrual) must keep reading its `goalFundedAmounts`/`PAY_401K` path untouched.
 
 ### 4.6 Interaction answers (task objectives 4-9)
 
@@ -273,9 +280,9 @@ Then include `goalVariance` in the week object beside `variance` (2606-2616), fo
 
 ## 8. Data-quality checks / invariants (SQL + JS)
 
-1. **AMEX invariant (advisory in 5G-1C):** at any snapshotted week, `Σ(funded_amount for _amxHold goals) + non-goal AMEX float (+ holding once 5G-1B) ≈ reconciled amx` within tolerance.
+1. **AMEX invariant (advisory + one-sided in 5G-1C, R11):** at any snapshotted week, flag **only over-attribution** — `Σ(funded_amount for _amxHold goals) + in-sim rccl/dcl holding − reconciled amx > $1 tolerance`. Positive float (under-attribution) is **informational only**, never an alarm. Note the real RCCL payout (~Cal Wk 30) lands mid-phase and produces a **known, expected** advisory variance — not a defect. Hard two-sided gate is deferred to 5G-1E.
 2. **snapshot ⊆ registry:** every `goal_id` exists in `goal_registry`.
-3. **snapshot-week-is-reconciled:** every non-`opening_anchor` snapshot week has a `weekly_reconciliations` row.
+3. **snapshot-week-is-reconciled (R4):** **every** snapshot week — `opening_anchor` included — has a `weekly_reconciliations` row (no exemption).
 4. **no snapshots for archived goals.**
 5. **cumulative monotonicity:** `funded_amount` per goal is non-decreasing across weeks **except** rows with `source='correction'` (the only sanctioned decrease, e.g. a custodian correction or a future `release`).
 
@@ -340,4 +347,92 @@ Using the roadmap in the task brief:
 
 ---
 
-*Plan-only. No code changed. Prepared for Fable architecture review. On approval, implementation proceeds slice 1 → staging rehearsal of slice 2 → prod DDL + overlay, each behind the standing test gates (static regression + e2e) and the golden-master identity gate.*
+## 13. Fable review integration — R1–R13 (how each was folded in)
+
+Fable's verdict (`docs/phase-5g-1c-plan-review-2026-07-08.md`): **architecture APPROVED (Option B), two-slice split approved, GO 1C-1, CONDITIONAL GO 1C-2** subject to R1–R13 folded into this doc, D1–D5 decided, staging rehearsal green, freeze checkpoint respected. Each required change and exactly where it now lives:
+
+| Ref | Fable requirement | Incorporated |
+|---|---|---|
+| **R1** | Overlay overwrites **only** `goal_id`s already in `goalSaved`; complete-goal snapshots are consumed only by `getGoalFunded`, never injected into `goalSaved`. | §4.5 overlay code rewritten — `if (goalSaved[gid] === undefined) return;` guard added; prose note added under the code block. |
+| **R2** | `goalVariance` attaches to the week object **only when an anchor applied**; zero-snapshot week objects byte-identical (values + key sets). | §4.5 — `goalVariance` initialized `null`, allocated lazily, included in the week object only when non-null. Identity-gate test (R3) asserts key-set equality. |
+| **R3** | Identity gate defined precisely: `goalSnapData={}` ⇒ `runModel` weeks[] deep-equal (values + key sets) vs golden master under (a) fallback and (b) pinned-recon fixtures; `getGoalFunded` equal per goal; table-absent/fetch-error ≡ zero rows; loader filters `model_year=eq.PLAN_YEAR`. | §6 test plan updated (see §13a); loader filter noted in §4-database and §13 G-notes. |
+| **R4** | Drop the `opening_anchor` exemption — **all** snapshot weeks must have a `weekly_reconciliations` row (wk 4 and wk 5 both qualify by seed time). | §4.3 RPC bullet + §8 DQ #3 both edited to remove the exemption. |
+| **R5** | Seed values captured at seed time from the latest closeout + bank reality; §4.4 table is illustrative, not source-of-truth (post-Cal-Wk-29 seeding changes adam/wendy). | §4.4 preamble edited: table marked ILLUSTRATIVE; seed script reads reality at run time; cross-linked to §15. |
+| **R6** | `getGoalFunded` edit scoped to the `g.complete` branch **only** — there is no `auto` branch; adding one breaks 401(k) accrual. | §4.5 `getGoalFunded` paragraph rewritten; chain stated as snapshot → `goalFundedAmounts` → 0; §4.5 overlay note reiterates. |
+| **R7** | Define the row-1 `isFunded × isLocked` matrix explicitly — the plan's status-only tree silently regressed Alaska/RCCL/DCL and locked-at-100% rows. | **Shipped in 1C-1** (`de4e3c0`): matrix is fully-funded+unlocked → `✅ Funded`; fully-funded+locked → `✅ Staged — awaiting CPA clearance`; locked-but-accumulating (Adam IRA 99%) shows projected `Cal Wk 29`, lock conveyed via name prefix + `ft-locked-row`; row-7 uses `fundedYE > 0.005` epsilon. Recorded here as resolved; D1/D8 wording was picked at 1C-1 implementation. |
+| **R8** | `goalCompletion` scan (index.html:3112) becomes **stays-complete** (first week ≥ target that stays ≥ target through wk 31) — identical under monotonic sims, correct under future downward anchors. Rescope the "monotonically non-decreasing goalSaved" regression test (test_regression.js:447-454) to zero-snapshot runs. What-If first-crossing ETA scans unchanged (accepted asymmetry — documented). | §13a test deltas + §4.5 note; this is a **1C-2** change (1C-1 did not touch `goalCompletion`). |
+| **R9** | RPC rejects `auto` goals and `HOLDING_TO_AMEX_GOALS` ids (one place); `p_week_num BETWEEN 1 AND 31`; sane `p_model_year`. | §4.3 RPC bullet edited. |
+| **R10** | Banner split: fetch-error/table-absent ⇒ **warn** banner; HTTP-ok zero rows ⇒ quiet "no anchors yet" **info** state (no wolf-crying pre-seed). | §4-database `loadAll` bullet intent + §13a e2e note; snapshots deliberately have **no** hardcoded fallback. |
+| **R11** | Advisory AMEX invariant is **one-sided** (over-attribution alarm only), $1 tolerance, rccl/dcl in-sim holding included; positive float informational. | §8 DQ #1 rewritten. |
+| **R12** | Schema-doc consistency: DDL has UUID PK + `UNIQUE(model_year,week_num,goal_id)`; the note wrongly said composite PK. Keep DDL, fix note; document upsert mutates the current observation; optional `note`-append nicety. | §4.2 notes edited. |
+| **R13** | Drop the ES-module gesture for the in-body seams — loader addition, overlay, `getGoalFunded` branch, and label tree land **in-place** under the freeze exception (classic-script body can't cleanly import modules without new globals). | Recorded here and supersedes §1.1's "new snapshot data-access as ES module(s)" line: the four in-body seams are in-place edits; only genuinely-new standalone helpers (if any) may be separate, but the seams are not. |
+
+### 13a. Required test deltas (over §6) — folded from Fable "Required tests"
+
+Keep everything in §6. **Add:** key-set shape identity (R2); table-absent/fetch-error identity ≡ zero rows; PLAN_YEAR loader filter; sparse-anchor passthrough (anchored goal pinned, others simulate on); downward-anchor behavior (goal re-opens, funds again, stays-complete completion correct, monotonicity test **rescoped to zero-snapshot runs** per R8); RPC rejects `auto`/holding goals + unreconciled week (**including `opening_anchor` post-R4**) + idempotent re-upsert; `getGoalFunded` chain (snapshot → `goalFundedAmounts` → 0); label truth table including the `isFunded × isLocked` matrix + Alaska/RCCL/DCL regression rows + `fundedYE` epsilon (**shipped in 1C-1**); **hotfix × overlay composition** (anchor `adam_ira` at 7,438.94 via snapshot ⇒ the 5G-1A.5 carve-out still completes it Cal Wk 29); Week-27 PHASE-A golden stays green (G4); e2e `goalSnapData` injection hygiene (G2). Sharpen "AMEX-held snapshot variance" into (i) a **one-sided** invariant unit test and (ii) a variance **sign-convention** test (modeled − observed).
+
+## 14. Implementation guardrails — G1–G7 (folded in)
+
+- **G1** Do not flip any goal's `goal_registry.status` to `funded`/`executed` before 1C-2's snapshot read lands (complete goals currently read `goalFundedAmounts`, which is $0 for everything except 401k/SEP — the $0-display trap). *Matches Adam's confirmed decision #5 ("No goal status flips before snapshot read lands").*
+- **G2** e2e runs against **real** Supabase — once prod rows exist, e2e must inject/clear `goalSnapData` via `page.evaluate`, never assume empty.
+- **G3** Golden-master fixture: capture at the exact pre-1C-2 commit, `runModel`-output-only, committed file (recommend `fixtures/`); AGENTS.md never-edit-without-approval applies from day one.
+- **G4** PHASE-A Week-27 golden tests (GOLD_TR/GOLD_AC) must stay green through **all** of 1C — any diff there is a stop-the-line signal. (Confirmed green through 1C-1.)
+- **G5** Freeze checkpoint **~Jul 21–22** for 1C-2 prod DDL; miss ⇒ post-Aug-10, July close runs on the SQL-script anchor path or without snapshots. Do **not** rush 5G-1D UI in before the freeze.
+- **G6** 1C-1 whenTxt whitelist tests updated deliberately (new labels added to valid-forms list, old assertions revised in the same commit). **Done in 1C-1.**
+- **G7** Update the stale "not yet pushed" 5G-1A.5 language in CODEX_STATUS.md (**done**) and reconcile the phase map (`docs/phase-status.md` 5G-2 vs the new 5G-1D/1E/1F + 5G-2-Planned-Outflows roadmap) in the 1C docs commit — **pending Adam (D5), see §16.**
+
+## 15. Anchor-week recommendation (D2)
+
+**Recommendation: anchor the first `opening_anchor` at model week 5 (Cal Wk 27), after Saturday's closeout is reconciled — not model week 4 now.**
+
+Rationale:
+1. **Anchor = currentW eliminates the projection gap.** Today (2026-07-08) `getCurrentWeek()` = model week 5. `getGoalFunded` reads the latest snapshot with `week_num ≤ currentW`. An anchor at wk 5 is read **directly** as current funded; an anchor at wk 4 would be one week stale and forward-projected across wk 5, re-introducing exactly the simulation-vs-reality gap this phase exists to close (integrity-review risk 13b, "stale single anchor between 1C-2 and 1D").
+2. **R4 is satisfied either way** (both wk 4 and wk 5 will be reconciled by seed time), so the exemption-drop does not force wk 4.
+3. **No schedule cost.** 1C-2 is staging-first, and prod DDL is gated on the ~Jul 21–22 freeze checkpoint (G5). Saturday's Cal Wk 27 closeout lands well before any prod seed, so waiting for it costs nothing.
+4. **Freshest reality captured at seed time (R5).** If seeding occurs after Cal Wk 29 executes, `adam_ira` → $7,500.00 and `wendy_ira` → ≈$927+; a wk-5 anchor lets the seed script capture the most current custodian state rather than pinning an older wk-4 basis.
+
+*One caveat for Adam:* if for any reason 1C-2 must seed **before** Saturday's closeout is saved, fall back to model week 4 (already reconciled) and let 5G-1D roll the wk-5 anchor forward at the next closeout. This is the only condition under which wk 4 is preferred.
+
+## 16. Confirmed decisions (from Adam's brief) + remaining open decisions D1–D8
+
+**Confirmed by Adam and now binding on 5G-1C-2 (from the session brief):**
+1. `adam_401k` **excluded** from `goal_funding_snapshots` (D3-adjacent; enforced in the RPC per R9).
+2. `wewe_rccl` / `wewe_dcl` **excluded** for now — deferred to holding/planned-outflow/account-purpose treatment (5G-1B/1E; enforced in the RPC per R9).
+3. AMEX/account-purpose invariant in 5G-1C is **advisory-only and one-sided** (over-attribution only) — matches R11.
+4. **RPC may ship in 5G-1C-2** if design is accepted; the weekly-closeout UI caller stays in 5G-1D (matches D4 recommendation and §4.3).
+5. **No goal status flips** before the snapshot read lands — matches G1.
+6. **Roadmap adopted:** 5G-1D Weekly Closeout Goal Attribution · 5G-1E Account Purpose/Holding Bucket Integrity · 5G-1F July Month-End Close (MVC) · 5G-2 Planned Outflows Foundation · 5G-3 Cash Allocation (Spoken For / Free to Use) · 5G-4 Dynamic Goal Management Architecture · 5G-5 Goal Admin UI · 5G-6 Full Month-End Close / Audit Hardening. This is the **D5** decision-in-favor; the remaining action is to update `docs/phase-status.md` to match (still to execute — see §17 open item).
+
+**Fable's D1–D8, current disposition:**
+
+| # | Decision | Status |
+|---|---|---|
+| **D1** | R7 wording matrix ("✅ Staged — awaiting CPA clearance"?) | **RESOLVED** — shipped in 1C-1 as `✅ Staged — awaiting CPA clearance`. |
+| **D2** | Anchor week: model wk 5 after Saturday's closeout (recommended) vs wk 4 now | **APPROVED (Adam, 2026-07-08)** — anchor = model week 5 after Saturday's closeout; wk 4 is **fallback only** if forced to seed before the closeout (§15). |
+| **D3** | Confirm seed values **at seed time** (incl. 529s / bryce_vehicle / christmas_cruise = 0) | **APPROVED (Adam, 2026-07-08)** — seed values captured from reality at seed time, never hardcoded; 529s / bryce_vehicle / christmas_cruise assumed **$0 unless confirmed otherwise**; `adam_ira` / `wendy_ira` captured from reality at seed time (R5). |
+| **D4** | RPC ships in 1C-2 (recommended yes) | **Confirmed yes** (Adam decision #4). |
+| **D5** | Phase-map reconciliation — adopt brief roadmap; update `phase-status.md` | **APPROVED + EXECUTED (Adam, 2026-07-08)** — new roadmap is authoritative; `docs/phase-status.md` reconciled docs-only in this same commit (§17). |
+| **D6** | Freeze / July-close contingency acceptance (G5) | **APPROVED (Adam, 2026-07-08)** — prod DDL checkpoint ~Jul 21–22; if missed, defer production DDL until after Aug 10. |
+| **D7** | Golden-master location + approval-rule acknowledgment | **APPROVED (Adam, 2026-07-08)** — golden-master lives in `fixtures/`; treated as protected — never edit without explicit approval (G3). |
+| **D8** | New-label wording for rows 6–8 | **RESOLVED** — shipped in 1C-1 ("In Progress · Continues in 2027", "Partial in 2026 · Continues in 2027", "No 2026 funding projected"). |
+
+**Net still-open for Adam before 1C-2 staging build starts: none of D1–D8** — all approved or resolved. D3's per-goal figures are still *captured at seed time* by design (that is the approved method, not an open decision). Remaining gate to **start** the staging build is Adam's explicit in-session go-ahead; prod DDL remains gated on the ~Jul 21–22 freeze checkpoint (D6/G5).
+
+## 17. Roadmap reconciliation (executed docs-only in this commit)
+
+Per Adam decision #6 / D5 the new roadmap is **authoritative**. `docs/phase-status.md` previously labeled 5G-2 as "Derived Account Allocation view" and predated the 5G-1D/1E/1F sub-phases. It has been reconciled **docs-only** in this same commit (G7) to the authoritative sequence:
+
+- **5G-1D** — Weekly Closeout Goal Attribution
+- **5G-1E** — Account Purpose / Holding Bucket Integrity
+- **5G-1F** — July Month-End Close / Audit Minimum Viable Close
+- **5G-2** — Planned Outflows Foundation
+- **5G-3** — Cash Allocation / Spoken For / Free to Use
+- **5G-4** — Dynamic Goal Management Architecture
+- **5G-5** — Goal Admin UI
+- **5G-6** — Full Month-End Close / Audit Hardening
+
+No code, SQL, schema, RPC, RLS, migration, or seed was written for this reconciliation.
+
+---
+
+*Plan + Fable-review integration. **No 5G-1C-2 code, SQL, schema, RPC, RLS, migration, or seed written this pass.** 5G-1C-1 shipped (`de4e3c0`). On Adam's go for 1C-2: staging rehearsal (marker → baseline → preflight → migration → validation → seed → seed-validation → rollback → clean diff + real-caller RLS smoke) → prod DDL + in-place overlay/`getGoalFunded`/loader/label edits under the freeze exception → first `opening_anchor` seed at model week 5, each behind the standing test gates (static regression + e2e) and the golden-master identity gate (G3/R3).*
