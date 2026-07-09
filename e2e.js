@@ -49,10 +49,28 @@ const TEST_PASSWORD = process.env.TEST_PASSWORD || '';
 const URL = process.env.HFOS_URL ||
   'file://' + path.resolve(process.env.HFOS_INDEX || './index.html');
 
-let pass = 0, fail = 0;
+// ── Run mode: full (default) vs smoke ─────────────────────────────────────
+// Full mode (default) runs the entire suite and ignores tags — behavior is
+// identical to before this flag existed. Smoke mode runs ONLY tests explicitly
+// tagged 'smoke'. Membership is per-test via the opts.tags array passed to
+// test(); there is no name-prefix or section-level implicit inclusion.
+//   node e2e.js                 → full (permanent default)
+//   node e2e.js --smoke         → smoke
+//   E2E_MODE=smoke node e2e.js  → smoke
+const SMOKE_MODE = process.argv.includes('--smoke') || process.env.E2E_MODE === 'smoke';
+
+let pass = 0, fail = 0, skipped = 0;
 const failures = [];
 
-function test(name, fn) {
+// test(name, fn, opts?) — opts.tags is an explicit string array (default []).
+// In smoke mode a test with no 'smoke' tag is skipped (no browser opened, not
+// counted pass/fail). In full mode tags are ignored and every test runs.
+function test(name, fn, opts = {}) {
+  const tags = opts.tags || [];
+  if (SMOKE_MODE && !tags.includes('smoke')) {
+    skipped++;
+    return Promise.resolve();
+  }
   return fn()
     .then(() => { pass++; console.log('  ✓ ' + name); })
     .catch(e => { fail++; failures.push({ name, error: e.message }); console.log('  ✗ ' + name + '\n    → ' + e.message); });
@@ -105,7 +123,11 @@ async function clickNav(page, id) {
   console.log('\n╔══════════════════════════════════════════════════════════════╗');
   console.log('║     Herndon Financial OS — E2E Suite (Playwright)           ║');
   console.log('╚══════════════════════════════════════════════════════════════╝');
-  console.log('  Target: ' + URL + '\n');
+  console.log('  Target: ' + URL);
+  console.log(SMOKE_MODE
+    ? '  ▶▶ SMOKE MODE — running smoke-tagged tests only ◀◀'
+    : '  ▶ FULL MODE (default) — running the complete suite');
+  console.log('');
 
   const browser = await chromium.launch({ headless: true });
 
@@ -121,7 +143,7 @@ async function clickNav(page, id) {
       // No "undefined" or "[object Object]" leak in rendered output
       assert(!content.includes('[object Object]'), 'Raw object rendered to DOM');
       await context.close();
-    });
+    }, { tags: ['overview','weekly','goals','budget'].includes(tab) ? ['smoke','tabs'] : [] });
   }
 
   // ── Section B: Console error check ────────────────────────────────────
@@ -141,7 +163,7 @@ async function clickNav(page, id) {
     );
     assert(relevant.length === 0, 'Console errors: ' + relevant.join(' | '));
     await context.close();
-  });
+  }, { tags: ['smoke'] });
 
   // ── Section C: Decision Engine ─────────────────────────────────────────
   // CPA flag is display/deployment status only — it does NOT gate IRA/529 AMEX holding.
@@ -197,7 +219,7 @@ async function clickNav(page, id) {
       assert(emptyText.includes('AMEX holding') || emptyText.includes('IRA/529'), 'Engine empty state missing IRA/529 AMEX holding language');
     }
     await context.close();
-  });
+  }, { tags: ['smoke'] });
 
   await test('Engine: CPA flag on vs off — IRA/529 allocation identical', async () => {
     const { page, context } = await openApp(browser);
@@ -307,7 +329,7 @@ async function clickNav(page, id) {
     );
     assert(reconEl, 'Reconciliation button or input not found in weekly view');
     await context.close();
-  });
+  }, { tags: ['smoke'] });
 
   // ── Section G: Wishlist CRUD ───────────────────────────────────────────
   console.log('── Section G: Wishlist ──');
@@ -787,7 +809,7 @@ async function clickNav(page, id) {
     assert(res.hasWhen, 'Funding Plan "When" column (ft-when) did not render');
     assert(!res.hasBeyond, 'Funding Plan still shows the retired "Beyond 2026" label');
     await context.close();
-  });
+  }, { tags: ['smoke','funding'] });
 
   // 5G-1C-2 (C3): with a snapshot anchor injected into goalSnapData, the Funding Plan's
   // funded value (getGoalFunded) must agree with the anchored timeline state (currentW
@@ -821,7 +843,7 @@ async function clickNav(page, id) {
     assert(Math.abs(res.funded - res.timeline) < 0.01, 'Funding Plan funded (' + res.funded + ') != currentW timeline goalSaved (' + res.timeline + ')');
     assert(res.hasWhen, 'Funding Plan "When" column did not render under the injected anchor');
     await context.close();
-  });
+  }, { tags: ['smoke','funding'] });
 
   // ── Section J: Mobile viewport ─────────────────────────────────────────
   console.log('── Section J: Mobile viewport ──');
@@ -1167,7 +1189,7 @@ async function clickNav(page, id) {
     const content = await page.evaluate(() => document.getElementById('goals-content').innerText);
     assert(content && content.trim().length > 50, 'Goals tab should render content after applyGoalsFromData');
     await context.close();
-  });
+  }, { tags: ['smoke'] });
 
   await test('GR-2: Savings Goals sub-tab shows active goals from DB-loaded registry', async () => {
     const { page, context } = await openApp(browser);
@@ -1228,7 +1250,7 @@ async function clickNav(page, id) {
     assert(result.registryLength === result.fallbackLength,
       'GOALS_REGISTRY.length (' + result.registryLength + ') should match fallback length (' + result.fallbackLength + ')');
     await context.close();
-  });
+  }, { tags: ['smoke'] });
 
   // ── Section AUTH-E2E: Auth v1 end-to-end tests ────────────────────────
   // AUTH-E2E-1 through AUTH-E2E-5 can run against file:// with or without credentials.
@@ -1519,7 +1541,7 @@ async function clickNav(page, id) {
     assert(text.includes('Statement check'), 'Statement check panel not found in budget-content (5G-0 SYS-1 renamed the Budget block from Reconciliation to Statement check)');
     assert(text.includes('Transactions'), 'Transactions header not found in budget-content');
     await context.close();
-  });
+  }, { tags: ['smoke'] });
 
   await test('BUD-4: Optimistic cleared toggle updates reconciliation immediately (no network)', async () => {
     // Simulates the optimistic update without a Supabase call to verify the state machine works.
@@ -1679,7 +1701,7 @@ async function clickNav(page, id) {
     assert(!/entertainment week 1[^\n]*100\.66/i.test(result.innerText), 'the $15.00 credit must never be ADDED as spend (100.66 would mean it leaked in with the wrong sign)');
     assert(!result.innerText.includes('7.17'), 'Jabian Expenses 2026 ($7.17, budget_treatment=excluded) must not appear as counted spend anywhere in Budget');
     await context.close();
-  });
+  }, { tags: ['smoke'] });
 
   await test('BUD-7 (Phase 5E-10): Budget "+ Add Transaction" is disabled with explanatory copy; Manage Lines stays active; help panel redirects to Register', async () => {
     const { page, context } = await openApp(browser);
@@ -1719,7 +1741,7 @@ async function clickNav(page, id) {
     assert(result.innerText.includes('Clearing transactions against your statement'),
       'Reconciliation help section must remain present and unmodified');
     await context.close();
-  });
+  }, { tags: ['smoke'] });
 
   await test('BUD-8 (Phase 5F-1.5 A2): Budget income rows show received actuals and Remaining = budget - received; hidden income never leaks into Total Income', async () => {
     const { page, context } = await openApp(browser);
@@ -1778,7 +1800,7 @@ async function clickNav(page, id) {
     assert(!result.innerText.includes('Old Bonus'), 'Archived income row must not render');
     assert(!result.innerText.includes('2,000') && !result.innerText.includes('2000.00'), 'Archived Old Bonus $2,000 inflow must not leak into the Budget grid');
     await context.close();
-  });
+  }, { tags: ['smoke'] });
 
   // ── Section TX: Transactions Module (Phase 5D-2) ─────────────────────
   // All tests use injected mock data — no Supabase connection required.
@@ -2095,7 +2117,7 @@ async function clickNav(page, id) {
     assert(result.hasDisabledSpan, 'Register — Phase 5E disabled span must be present when flag=false');
     assert(!result.hasRegisterButton, 'Register must not be a clickable button when showTransactionLedger=false');
     await context.close();
-  });
+  }, { tags: ['smoke'] });
 
   await test('RG-2: showTransactionLedger=true — Register tab is active button labeled Register', async () => {
     const { page, context } = await openApp(browser);
@@ -2114,7 +2136,7 @@ async function clickNav(page, id) {
     assert(result.hasRegisterButton, 'Register tab must be present and labeled Register (not Register — Phase 5E)');
     assert(result.noDisabledRegister, 'Disabled Phase 5E label must not appear when flag=true');
     await context.close();
-  });
+  }, { tags: ['smoke'] });
 
   await test('RG-3: showTransactionLedger=true alone (without showTransactionSection) — Transactions nav visible', async () => {
     const { page, context } = await openApp(browser);
@@ -2194,7 +2216,7 @@ async function clickNav(page, id) {
     assert(result.defaultKey === 'truist_checking', 'default account must remain Truist Checking (original activeAccounts[0]), not the alphabetically-first option');
     assert(result.hasTruistSelected, 'the preserved default (Truist Checking) must be the selected option');
     await context.close();
-  });
+  }, { tags: ['smoke'] });
 
   await test('RG-5: starting_balance null shows explicit warning, not silent $0.00', async () => {
     const { page, context } = await openApp(browser);
@@ -3401,7 +3423,7 @@ async function clickNav(page, id) {
     assert(!('user_id' in capturedBody), 'user_id must not be in POST body');
     assert(!('notes' in capturedBody), 'notes must not be in POST body');
     await context.close();
-  });
+  }, { tags: ['smoke'] });
 
   await test('WR-9: Valid inflow save fires POST with positive amount', async () => {
     const { page, context } = await openApp(browser);
@@ -3897,8 +3919,10 @@ async function clickNav(page, id) {
   console.log('\n╔══════════════════════════════════════════════════════════════╗');
   console.log('║                       RESULTS                               ║');
   console.log('╚══════════════════════════════════════════════════════════════╝');
+  console.log('  Mode:    ' + (SMOKE_MODE ? 'SMOKE (smoke-tagged only)' : 'FULL (default)'));
   console.log('  Passed:  ' + pass);
   console.log('  Failed:  ' + fail);
+  console.log('  Skipped: ' + skipped + (SMOKE_MODE ? ' (non-smoke tests)' : ''));
   if (failures.length) {
     console.log('\n  FAILURES:');
     failures.forEach((f, i) => console.log('  ' + (i+1) + '. ' + f.name + '\n     ' + f.error));
