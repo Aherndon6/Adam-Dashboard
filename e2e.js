@@ -62,6 +62,13 @@ const SMOKE_MODE = process.argv.includes('--smoke') || process.env.E2E_MODE === 
 let pass = 0, fail = 0, skipped = 0;
 const failures = [];
 
+// Slice B (5G-QA-1): deterministic readiness waits replace the old fixed sleeps
+// in openApp/clickNav. If a deterministic wait ever times out we fall back to
+// simply continuing (bounded cap already elapsed) and record it here. A run with
+// ANY fallback hit is NOT a clean green — the readiness condition is inadequate
+// and the run must be reviewed, not accepted, even if Failed: 0.
+const readinessFallbackHits = { openApp: 0, clickNav: 0 };
+
 // test(name, fn, opts?) — opts.tags is an explicit string array (default []).
 // In smoke mode a test with no 'smoke' tag is skipped (no browser opened, not
 // counted pass/fail). In full mode tags are ignored and every test runs.
@@ -107,14 +114,28 @@ async function openApp(browser, opts = {}) {
   page.on('console', msg => { if (msg.type() === 'error') consoleErrors.push(msg.text()); });
   page.on('pageerror', err => consoleErrors.push(err.message));
   await page.goto(URL, { waitUntil: 'domcontentloaded', timeout: 15000 });
-  await page.waitForTimeout(1000); // let auth init settle
+  // Wait for the auth init flow to reach a terminal AUTH_STATE (existing global)
+  // instead of a flat sleep. Terminal = auth has settled; transitional states
+  // (checking_session / authenticated) mean it is still in flight.
+  await page.waitForFunction(
+    () => typeof AUTH_STATE !== 'undefined'
+      && ['ready','unauthenticated','unauthorized','session_expired','auth_error'].includes(AUTH_STATE),
+    { timeout: 1500 }
+  ).catch(() => { readinessFallbackHits.openApp++; });
   await loginIfNeeded(page);
   return { page, context, consoleErrors };
 }
 
 async function clickNav(page, id) {
   await page.click('#nav-' + id);
-  await page.waitForTimeout(300);
+  // setSection() synchronously sets activeSection and toggles .active on the nav
+  // button and the section panel, so this resolves immediately on success.
+  await page.waitForFunction(
+    navId => window.activeSection === navId
+      && document.getElementById('nav-' + navId)?.classList.contains('active')
+      && document.getElementById('s-' + navId)?.classList.contains('active'),
+    id, { timeout: 750 }
+  ).catch(() => { readinessFallbackHits.clickNav++; });
 }
 
 // ── Main ──────────────────────────────────────────────────────────────────
@@ -3923,6 +3944,11 @@ async function clickNav(page, id) {
   console.log('  Passed:  ' + pass);
   console.log('  Failed:  ' + fail);
   console.log('  Skipped: ' + skipped + (SMOKE_MODE ? ' (non-smoke tests)' : ''));
+  console.log('  Readiness fallback hits — openApp: ' + readinessFallbackHits.openApp
+    + ', clickNav: ' + readinessFallbackHits.clickNav
+    + ((readinessFallbackHits.openApp || readinessFallbackHits.clickNav)
+        ? '  ⚠️ NOT clean green — readiness wait timed out (review required)'
+        : ''));
   if (failures.length) {
     console.log('\n  FAILURES:');
     failures.forEach((f, i) => console.log('  ' + (i+1) + '. ' + f.name + '\n     ' + f.error));
