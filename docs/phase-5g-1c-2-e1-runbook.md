@@ -8,6 +8,14 @@
 > Status: **PRE-EXECUTION — awaiting Fable clearance of this file, then Adam's
 > in-session execution approval.**
 
+> **Revision note (2026-07-09, backup mechanism).** The prior runbook halted E1
+> correctly at the Supabase Backup/PITR gate: Adam-Dashboard (`usayoldrawwmjsmretin`)
+> is on the Supabase **Free plan** — scheduled backups unavailable, PITR not enabled
+> (Pro add-on). **Fable revised the restore-point MECHANISM, not the E1/E2
+> separation.** The Backup/PITR gate is replaced by a **same-sitting full
+> public-schema `pg_dump` restore point** (§Step 4). E2 remains separately gated and
+> is untouched by this revision.
+
 ---
 
 ## 0. Approval chain — read first (E1 cannot start until this clears)
@@ -41,10 +49,13 @@ If clearance has lapsed, return to §0 step 1 before doing anything else.
 
 **E1 includes ONLY:**
 
-1. Confirm target = Adam-Dashboard (`usayoldrawwmjsmretin`).
-2. Pre-migration schema baseline (pg_dump preferred; documented fallback).
+1. Confirm target = Adam-Dashboard (`usayoldrawwmjsmretin`) + a working prod
+   connection string (no connection string = no E1).
+2. **Mandatory** pre-migration **schema-only** `pg_dump` baseline (schema/diff
+   baseline).
 3. Mandatory AI review pack (`scripts/export-ai-review-pack.sh`).
-4. Backup / PITR confirmation (STOP condition).
+4. **Mandatory same-sitting full public-schema `pg_dump` restore point** (schema +
+   data — replaces Supabase Backup/PITR).
 5. Fresh mechanical-diff verification (R2).
 6. Pre-migration live-site baseline.
 7. Preflight (read-only).
@@ -84,15 +95,21 @@ golden). The **security surface goes live** (table + RPC + RLS + grants); there 
 
 - **Who:** Adam, manually (Supabase UI; or `psql \conninfo`).
 - **Action:** Confirm the project ref reads **`usayoldrawwmjsmretin`** (Adam-Dashboard),
-  **not** `pkwotgqivgaapwuqgwqb` (staging).
-- **Expected:** Project ref = `usayoldrawwmjsmretin`.
-- **Stop condition:** Any other ref or ambiguity → **HALT.**
+  **not** `pkwotgqivgaapwuqgwqb` (staging). Also confirm a **working production
+  connection string** is in hand — it is required for both the schema-only baseline
+  (Step 2) and the mandatory restore-point dump (Step 4).
+- **Expected:** Project ref = `usayoldrawwmjsmretin`, and a usable prod connection
+  string.
+- **Stop condition:** Any other ref or ambiguity → **HALT.** **No working production
+  connection string → HALT (no E1)** — on the Free plan the restore point IS the
+  `pg_dump`, so without a connection string there is no restore point and E1 cannot
+  proceed.
 - **Backstop:** All three executed files also re-check
   `system_identifier = 7632885393857617092` in-SQL and refuse staging.
 
-### Step 2 — Pre-migration schema baseline (acceptance criterion 3)
+### Step 2 — Pre-migration schema-only baseline (MANDATORY; acceptance criterion 3)
 
-**Preferred — pg_dump schema-only baseline:**
+**Purpose:** schema/diff baseline (the restore/diff reference for the migration).
 
 - **Who:** Adam (requires a live read connection + prod connection string).
   **Claude is NOT assumed to hold production credentials.**
@@ -105,21 +122,11 @@ golden). The **security surface goes live** (table + RPC + RLS + grants); there 
   (`pg_dump` is available locally at `/opt/homebrew/opt/libpq/bin/pg_dump`.)
 - **Expected:** Schema-only `.sql` under `exports/` that does **not** contain
   `goal_funding_snapshots` or `save_goal_funding_snapshots`.
-
-**Fallback — acceptable ONLY if documented:**
-
-If Adam cannot run pg_dump (no connection string / credential in-session), the
-fallback is acceptable **only if all of the following are recorded**:
-
-- **What failed and why** pg_dump was unavailable (explicit note).
-- **Supabase dashboard backup/PITR evidence** (from Step 4) captured as the
-  restore-point proof.
-- **Preflight P6 evidence saved** (Step 7 output) as the schema-shape + object-
-  absence proof (P1/P2/P3a–c prove the objects do not pre-exist).
-
-- **Stop condition:** Dump fails/empty or already contains the 5G-1C-2 objects →
-  HALT. In the fallback path, if the three documentation items above cannot all be
-  produced → HALT.
+- **Mandatory — no fallback.** There is **no** documented-fallback path. **No working
+  production connection string means E1 is BLOCKED** (see Step 1). This schema-only
+  dump is the diff baseline and is committable evidence (it lives under `exports/`).
+- **Stop condition:** Dump fails/empty, already contains the 5G-1C-2 objects, or no
+  connection string → **HALT.**
 
 ### Step 3 — Mandatory AI review pack (acceptance criterion 3; local-only)
 
@@ -130,14 +137,44 @@ fallback is acceptable **only if all of the following are recorded**:
 - **Stop condition:** Pack not generated before migration → HALT (mandatory
   pre-migration evidence).
 
-### Step 4 — Backup / PITR confirmation (STOP condition)
+### Step 4 — Full public-schema restore-point dump (MANDATORY, same-sitting; replaces Backup/PITR)
 
-- **Who:** Adam, manually (Supabase UI → Database → Backups).
-- **Action:** Confirm a recent daily backup and/or PITR restore point predating any
-  DDL.
-- **Expected:** A confirmed restore point captured before DDL.
-- **Stop condition:** **No backup AND no PITR → HALT.** This is a hard STOP
-  condition, not advisory. Also serves as the fallback evidence for Step 2.
+**Purpose:** the restore point that **replaces Supabase Backup/PITR**. Adam-Dashboard
+(`usayoldrawwmjsmretin`) is on the Supabase **Free plan** — scheduled backups are
+unavailable and PITR is a Pro add-on that is not enabled. On the Free plan the only
+sanctioned pre-DDL restore point is a **full public-schema `pg_dump` (schema + data)**
+taken by Adam.
+
+- **Who:** Adam (requires the working prod connection string from Step 1).
+- **Command:**
+  ```
+  pg_dump "<prod connection string>" \
+    --schema=public --no-owner --no-privileges \
+    -f ~/Herndon-FOS-DB-Backups/Adam-Dashboard/db-restorepoint-5G-1C-2-prod-<timestamp>.sql
+  ```
+- **This is schema + DATA.** Do **NOT** pass `--schema-only` here (that is Step 2's
+  separate baseline). This dump must be a true restore point.
+- **Timing:** taken in the **SAME sitting** as preflight (Step 7) and migration
+  (Step 8). A stale restore point does not authorize the DDL.
+- **Storage — OUTSIDE the repo, NEVER committed:**
+  - Store under **`~/Herndon-FOS-DB-Backups/Adam-Dashboard/`** (recommended dir),
+    **outside** `~/Adam-Dashboard/`.
+  - The full dump must **NEVER** be committed, must **NOT** be placed in `exports/`,
+    and must **NOT** be placed anywhere under `~/Adam-Dashboard/`. It contains real
+    household financial data.
+- **Restore-point VERIFICATION (all required before proceeding):**
+  1. File is **non-empty**.
+  2. Contains **`CREATE TABLE public.transactions`**.
+  3. Contains **`COPY public.transactions`** rows consistent with the observed
+     transaction count (Step 7 preflight `P6-txcount ≈ 95`).
+  4. Does **NOT** contain `goal_funding_snapshots` (the object is created by the
+     migration, so a pre-DDL restore point must lack it).
+  5. **Size and sha256 recorded** (for the committed metadata, below).
+- **Committed evidence = METADATA ONLY.** The committed E1 evidence may record only:
+  **path, timestamp, file size, sha256 hash.** Never the dump contents.
+- **Stop condition:** No connection string, dump fails/empty, verification checks 1–4
+  fail, or the dump cannot be stored outside the repo → **HALT.** (This is the
+  hard-STOP that replaces the old "No backup AND no PITR → HALT" rule.)
 
 ### Step 5 — Fresh mechanical-diff verification (R2) — local, pre-execution
 
@@ -316,10 +353,16 @@ For preflight (Step 7) and validation (Step 9):
 
 ## 6. Evidence capture & commit timing (acceptance criterion 8)
 
-**Capture (save under `exports/` with timestamps, LOCAL only during execution):**
+**Capture (save under `exports/` with timestamps, LOCAL only during execution —
+EXCEPT the full restore-point dump, which lives OUTSIDE the repo and is never
+committed):**
 
-- Schema baseline (`db-baseline-5G-1C-2-prod-pre-<ts>.sql`) **or** the documented
-  fallback (Step 2).
+- **Mandatory schema-only baseline** (`db-baseline-5G-1C-2-prod-pre-<ts>.sql`, Step 2)
+  — committable, under `exports/`.
+- **Mandatory same-sitting full restore-point dump** (Step 4) — stored under
+  `~/Herndon-FOS-DB-Backups/Adam-Dashboard/`, **outside the repo, NEVER committed**;
+  the committed evidence records **metadata only** (path, timestamp, file size,
+  sha256).
 - AI review pack (`ai-review-pack-*.md`).
 - Full preflight output (`db-baseline-5G-1C-2-prod-preflight-<ts>.txt`).
 - Full validation output (`db-baseline-5G-1C-2-prod-validation-<ts>.txt`).
@@ -343,9 +386,9 @@ For preflight (Step 7) and validation (Step 9):
 |---|---|---|
 | 0 Fable clearance + approval | Review | **Adam + Fable** |
 | 1 Confirm target | Supabase UI (or `psql \conninfo`) | **Adam** |
-| 2 Schema baseline (pg_dump / fallback) | Local shell → prod, or Supabase UI | **Adam** (Claude does **not** hold prod creds) |
+| 2 Schema-only baseline (mandatory) | Local shell → prod (`pg_dump`) | **Adam** (Claude does **not** hold prod creds) |
 | 3 AI review pack (mandatory) | Local shell, repo files only | **Claude/local — no Supabase** |
-| 4 Backup/PITR (STOP) | Supabase UI → Backups | **Adam** |
+| 4 Restore-point dump (mandatory, same-sitting; replaces Backup/PITR) | Local shell → prod (`pg_dump` schema+data) | **Adam** |
 | 5 Fresh mechanical diff | Local git/diff | **Claude/local or Adam** |
 | 6 Live-site baseline | Browser (prod site) | **Adam** (Claude may assist reading) |
 | 7 Preflight | Supabase **SQL Editor** | **Adam** |
@@ -353,10 +396,11 @@ For preflight (Step 7) and validation (Step 9):
 | 9 Validation | Supabase SQL Editor | **Adam** |
 | 10 Inert live check | Browser (prod site) | **Adam** (Claude may assist reading) |
 
-- **Steps requiring the Supabase UI:** 1, 4, 7, 8, 9 (7–9 in the SQL Editor; 1/4 are
+- **Steps requiring the Supabase UI:** 1, 7, 8, 9 (7–9 in the SQL Editor; 1 is
   console navigation); Step 10 is the live site.
-- **Local, safe, no Supabase:** Steps 3 and 5. pg_dump (Step 2) reads prod and needs
-  prod credentials → Adam's; Claude is not assumed to hold prod creds.
+- **Local shell → prod (`pg_dump`, Adam's prod creds):** Steps 2 and 4. Claude is not
+  assumed to hold prod credentials.
+- **Local, safe, no Supabase:** Steps 3 and 5.
 
 ---
 
@@ -366,9 +410,13 @@ For preflight (Step 7) and validation (Step 9):
    in-session approval → rollback excluded, separate approval. (§0, §4)
 2. **E1/E2 separation:** E1 = preflight, migration, validation, empty-table inert
    live check only; no seed, no Value Card, no seed-validation, no 5G-1D. (§1)
-3. **Baseline / backup:** pg_dump preferred; fallback only if documented (what
-   failed + backup/PITR evidence + preflight P6 saved); backup/PITR is a STOP
-   condition; AI review pack mandatory before migration per AGENTS.md. (Steps 2–4)
+3. **Baseline / restore point (Free-plan rule):** **mandatory schema-only `pg_dump`
+   baseline** (Step 2, committable under `exports/`); **mandatory same-sitting full
+   public-schema `pg_dump` restore point** (Step 4, schema + data, stored OUTSIDE the
+   repo under `~/Herndon-FOS-DB-Backups/Adam-Dashboard/`, **never committed**,
+   **metadata only** in evidence, verified per Step 4 checks 1–5); **no working prod
+   connection string = E1 BLOCKED** (no fallback); AI review pack mandatory before
+   migration per AGENTS.md. (Steps 1–4)
 4. **Preflight gate:** guard exception stops; any `P1`–`P5` not-true stops; P6
    eyeballed; latest reconciled week noted; excluded-goal list matches; fresh
    mechanical diff clean; outside Wendy-hours; same-sitting freshness. (Step 5, 7, §3)
@@ -381,21 +429,25 @@ For preflight (Step 7) and validation (Step 9):
    unchanged rendered behavior, not identical network traffic; baseline includes same
    login, hard reload, BUILD_TS, Overview, Weekly, Goals/Funding, Budget, Register.
    (Steps 6, 10)
-8. **Evidence capture:** schema baseline or documented fallback; AI review pack; full
-   preflight output; full validation output; live pre/post notes with BUILD_TS; saved
-   under `exports/` with timestamps; commit only after the execution session ends;
-   `--no-verify` for docs/evidence commits. (§6)
+8. **Evidence capture:** mandatory schema-only baseline; mandatory full restore-point
+   dump (outside repo, never committed, **metadata only** — path/timestamp/size/
+   sha256); AI review pack; full preflight output; full validation output; live
+   pre/post notes with BUILD_TS; committable evidence saved under `exports/` with
+   timestamps; commit only after the execution session ends; `--no-verify` for
+   docs/evidence commits. (§6)
 
 ---
 
 ## 9. Gate checklist (condensed)
 
-- **Before preflight → migration:** Fable cleared (fresh) + Adam approved; schema
-  baseline (pg_dump or documented fallback) captured; AI review pack generated;
-  backup/PITR confirmed (STOP if absent); fresh mechanical diff clean (pinned
-  result); live-site baseline recorded with BUILD_TS; all preflight `P1`–`P5` true,
-  guard clean, P6 eyeballed, latest reconciled week noted, excluded-goal list
-  matches; outside Wendy's Budget-entry hours; same-sitting freshness satisfied.
+- **Before preflight → migration:** Fable cleared (fresh) + Adam approved; working
+  prod connection string in hand (else E1 BLOCKED); mandatory schema-only `pg_dump`
+  baseline captured; mandatory same-sitting full restore-point dump captured, stored
+  outside the repo, verified (Step 4 checks 1–5), metadata recorded; AI review pack
+  generated; fresh mechanical diff clean (pinned result); live-site baseline recorded
+  with BUILD_TS; all preflight `P1`–`P5` true, guard clean, P6 eyeballed, latest
+  reconciled week noted, excluded-goal list matches; outside Wendy's Budget-entry
+  hours; same-sitting freshness satisfied.
 - **Before migration → validation:** migration ran through `COMMIT` with no error;
   `M-table=1`, `M-rpc=1` (or session-drop rule → go to validation); no partial-object
   state (proven via `P1`–`P3` if in doubt).
@@ -412,10 +464,13 @@ For preflight (Step 7) and validation (Step 9):
    reviews `docs/phase-5g-1c-2-e1-runbook.md` and its corrections are resolved.
 2. **SQL execution surface** — recommend the Supabase **SQL Editor** for the three
    files; text output preferred over screenshots. Confirm SQL Editor vs `psql`.
-3. **pg_dump prod connection string availability** — if absent, the Step 2 fallback
-   applies (UI capture + backup/PITR evidence + saved preflight P6 + documented
-   reason). Claude is **not** assumed to hold prod credentials.
-4. **Backup/PITR must be verified to actually exist** (Step 4) — a hard STOP.
+3. **pg_dump prod connection string is REQUIRED** — it feeds both the Step 2
+   schema-only baseline and the Step 4 restore-point dump. **No working connection
+   string = E1 BLOCKED** (there is no fallback; on the Free plan the `pg_dump` IS the
+   restore point). Claude is **not** assumed to hold prod credentials.
+4. **Restore point is the Free-plan `pg_dump` (schema + data), same-sitting** (Step 4)
+   — a hard STOP if it cannot be captured/verified. It replaces Supabase Backup/PITR
+   (unavailable on Free). Stored outside the repo, never committed, metadata only.
 5. **Timing** — E1 has no anchor-week dependency (empty, inert) but must run outside
    Wendy's active Budget-entry hours and precede E2, whose wk-5 anchor is valid only
    **Jul 12–17** (else re-anchor wk 6 / Jul 18, or defer past the Alaska freeze
