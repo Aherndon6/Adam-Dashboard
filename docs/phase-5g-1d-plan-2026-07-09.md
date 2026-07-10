@@ -64,6 +64,14 @@ test gates); `CODEX_STATUS.md`; `docs/phase-status.md`; the E1/E2 runbooks; the
    same-week retry hard-stops into the separately approved **correction** path.
 7. **Source is server-pinned (§3.4).** The browser never supplies `source`; the wrapper
    pins `source='reconciliation'` and can never emit `opening_anchor`/`correction`.
+7b. **Complete retry identity + two supervised modes (§2.3.1, §5.8).** An "identical
+   retry" means exact equality across **both** halves (reconciliation *and* snapshots),
+   re-read from both persisted records; a changed value is never an idempotent retry. The
+   wrapper has two mechanically separate modes: `normal_closeout` (ordinary UX) and
+   owner-only `approved_reopen` (DB-enforced via `public.is_owner()`, latest completed
+   week only, separate Adam approval) for reconciliation fixes. Snapshot value fixes are
+   a separate owner-only `source='correction'` in-place upsert with adjacent-week
+   monotonicity checks — never combined with a reopen under one approval.
 8. **Goal-scope drift is a hard stop (§4).** The eligible set is the exact approved
    nine; any added/removed/archived goal or changed exclusion makes the wrapper raise;
    the closeout UI cannot override it. No new goal silently receives a first snapshot.
@@ -148,12 +156,42 @@ The client must:
   "reconciled" state shown until the single combined call returns success;
 - **treat a timeout or lost response as ambiguous, not failed** — never assume either
   outcome from a dropped connection;
-- **re-read reconciliation and snapshot state** (`reloadReconAndCommitments` + the
-  `goal_funding_snapshots` loader) **before offering retry**;
-- **allow automatic retry only when the persisted state or the resubmitted values are
-  identical** (idempotent same-value path, §6);
-- **route changed-value same-week attempts to the correction process** (§6/§3.5) — not
-  the ordinary retry.
+- **before offering or accepting an automatic retry, re-read BOTH persisted halves** —
+  the persisted **weekly reconciliation record** *and* the persisted **nine-row snapshot
+  set** (`reloadReconAndCommitments` + the `goal_funding_snapshots` loader) — and compare
+  the submitted payload against **both**;
+- **allow automatic retry only on complete combined-closeout identity** (§2.3.1) —
+  matching snapshot values alone is **not** sufficient;
+- **route any changed-value same-week attempt to the approved reopen/correction process**
+  (§5.8/§6) — never the ordinary retry. **The normal retry button must never update
+  changed reconciliation or snapshot values.**
+
+#### 2.3.1 Complete retry identity (across both halves)
+
+An "identical retry" means **exact equality across the entire combined closeout**, not
+just the snapshot amounts:
+
+- model year and target week;
+- **every** reconciliation actual;
+- **every** reconciliation commitment;
+- every other persisted reconciliation input or flag;
+- the exact **nine** snapshot goal IDs;
+- **all nine** funded amounts;
+- any other server-persisted closeout field that affects the resulting records.
+
+**Required outcomes** (after re-reading both persisted halves and comparing the payload
+against each):
+
+- **Both halves absent** → ordinary new-closeout rules apply (§6.1).
+- **Reconciliation and snapshots both present and exactly identical** → return/confirm
+  **idempotent success without changing any values.**
+- **Reconciliation present but snapshots absent** → treat as a **half-closed week**; the
+  fresh wrapper repairs that same week atomically (§6.3).
+- **Snapshots present but reconciliation absent** → **hard stop** as an
+  impossible/corrupt state (never auto-"repaired").
+- **Either half present with any changed value** → **not** an automatic retry; route to
+  the approved **reopen** (reconciliation change, §5.8) or **snapshot-correction**
+  (amount change, §3.5/§6.4) process.
 
 ### 2.4 Success / warning / failure / retry / partial-failure
 
@@ -237,13 +275,25 @@ model output is never the source.**
 - **A lower value raises and rolls back the complete closeout** (both reconciliation and
   snapshot persistence).
 - A **legitimate historical reduction or correction** must use the supervised
-  **correction path**, which requires: **explicit Adam approval; `source='correction'`;
-  documented before/after values and rationale; separate evidence; and no destructive
-  rollback of the completed reconciliation** (the reconciliation stays; only the
-  snapshot value is corrected additively).
+  **snapshot-correction path**, which requires **explicit Adam approval;
+  `source='correction'`; documented before/after values and rationale; separate
+  evidence; and no destructive rollback of the completed reconciliation** (the
+  reconciliation stays).
+- **Correction is an IN-PLACE natural-key replacement, not an appended row.** Under the
+  deployed unique key `(model_year, week_num, goal_id)`, a correction **upserts the
+  existing natural-key row in place**: it **replaces `funded_amount`**, **changes or pins
+  `source='correction'`**, **does not create a duplicate row**, and **leaves the table
+  with exactly one row** for that model_year/week/goal. (The phrase "corrected
+  additively" is retired — there is no second row.)
+- **Because the write is in-place, the DB row is NOT a complete history ledger** after a
+  correction. **External correction evidence is therefore MANDATORY and captured BEFORE
+  the write:** original value; corrected value; original source; corrected source;
+  reason; approving Adam decision; timestamp; target week and goal; execution evidence
+  and the resulting row.
+- **Adjacent-week monotonicity is validated (§6.4.1).**
 - **Correction UX is deferred.** Within 5G-1D, executing a correction is a **supervised
   manual database/RPC action after separate approval** — not a button in the ordinary
-  closeout flow.
+  closeout flow, and mechanically separate from the reconciliation-reopen mode (§5.8).
 
 ### 3.6 Why per-goal values remain operator-confirmed (not fully server-derived)
 
@@ -257,6 +307,22 @@ server-side validation are the necessary design for 5G-1D — not merely a UI
 convenience.** Everything *about* those amounts (which goals, how many, what order,
 never-decreasing, correct source) is server-enforced; only the amounts themselves are
 human-supplied.
+
+### 3.7 Correction effectivity, roll-forward, and "effective prior snapshot"
+
+- **"Effective prior snapshot"** is defined consistently throughout this plan as **the
+  latest applicable natural-key row for a goal after any approved in-place correction** —
+  i.e. the current `(model_year, week_num, goal_id)` row value, regardless of its
+  `source`. All prior-value comparisons (monotonicity, next-week close) use this.
+- **A corrected natural-key row becomes the effective snapshot for that week**, and
+  subsequent behavior uses it transparently:
+  - the **C3 overlay reads the corrected value**, because its lookup is by model_year /
+    week / goal — **not** by `source`;
+  - the **next ordinary weekly closeout uses the corrected amount as the effective prior
+    value**;
+  - **future monotonicity checks compare against the corrected value**;
+  - **`source='correction'` does not make the row invisible** to overlay or sequence
+    logic — it remains the effective row for its week and goal.
 
 ---
 
@@ -337,8 +403,11 @@ week" consumer reads as reconciled while no per-goal anchor exists. Unacceptable
 written this pass):**
 
 > **`public.save_weekly_closeout_with_snapshots(<reconciliation params...>,
-> p_snapshot_rows JSONB, p_expected_count INT DEFAULT NULL)`** that, in **one
-> transaction** (one PostgREST RPC call), **calls the deployed functions directly**:
+> p_snapshot_rows JSONB, p_mode TEXT DEFAULT 'normal_closeout', p_expected_count INT
+> DEFAULT NULL)`** that, in **one transaction** (one PostgREST RPC call), **calls the
+> deployed functions directly** (`p_mode` selects the mechanically separate operation
+> mode — `normal_closeout` or `approved_reopen`, §5.8; the ordinary browser may pass
+> only `normal_closeout`):
 > 1. `public.save_reconciliation_with_commitments(...)` — reconciliation persistence;
 > 2. `public.save_goal_funding_snapshots(...)` — snapshot persistence;
 > ordered reconciliation→snapshots so the snapshot step's **in-transaction**
@@ -389,6 +458,13 @@ only; PUBLIC/anon none) and **prove anonymous/unauthorized rejection**. Validati
 also separately assert that **direct `authenticated` EXECUTE on the old reconciliation
 RPC is available *before* activation and revoked *after*** the approved activation step
 (§7).
+
+**Exact-signature discipline (all grant operations).** Every `REVOKE`, `GRANT`,
+validation, and restoration — for both the wrapper and the old reconciliation RPC — must
+target the **exact deployed function signature** (name **and** the full ordered argument
+type list), **never the function name alone.** Postgres identifies a function by its
+signature; relying on the bare name risks hitting or missing an overload. The validation
+suite records the exact resolved signatures it acted on.
 
 ### 5.4 Exception behavior — straight-line, no swallowed errors
 
@@ -457,6 +533,80 @@ approval** — the wrapper **must not silently adapt to a different anchor week.
   the returned count, the written nine rows via REST/console, and the live overlay before
   treating 5G-1D as active.
 
+### 5.8 Two mechanically separate wrapper modes — `normal_closeout` and `approved_reopen`
+
+The wrapper exposes **two mechanically separate modes** via `p_mode`:
+
+- **`normal_closeout`** — the ordinary weekly-closeout write. **The browser's ordinary
+  weekly-closeout workflow may invoke ONLY `normal_closeout`.**
+- **`approved_reopen`** — exists **solely to correct reconciliation actuals,
+  commitments, or other reconciliation inputs for an already completed week**. It is
+  **not** reachable through the ordinary retry button or normal weekly-closeout UX.
+
+**`approved_reopen` requires ALL of the following:**
+
+- **explicit Adam approval for that specific week and correction;**
+- **owner-only authorization enforced in the DATABASE, not merely an operator note** —
+  grounded in the repo's actual owner predicate **`public.is_owner()`**
+  (`docs/phase-5a-role-enforcement.sql`: SECURITY DEFINER, `app_users.role='owner'` +
+  `active` + `auth.uid()`). The wrapper's `approved_reopen` branch **calls
+  `public.is_owner()`** and raises if false. (Preflight must confirm `is_owner()` is
+  deployed in production before this mode ships.) The client `isOwnerUser()`
+  (`USER_ROLE==='owner'`, index.html:7786) is UI-only and is **not** the enforcement.
+- **an explicit operation mode supplied to the wrapper** (`p_mode='approved_reopen'`);
+- **no access through the ordinary retry button or normal weekly-closeout UX;**
+- **supervised manual execution;**
+- **before/after reconciliation values and rationale captured as evidence;**
+- **the target week already has a complete reconciliation AND a complete nine-row
+  snapshot set;**
+- **the target week is the latest completed closeout week.**
+
+**An authenticated household writer who is NOT the owner must be rejected from
+`approved_reopen`, even though `can_write_financials()` ordinarily permits weekly
+closeout.** (Wendy/`household_admin` can `normal_closeout`, but cannot `approved_reopen`.)
+
+**Scope limit (initial 5G-1D):** `approved_reopen` **may not modify an older week after
+later weeks have closed** — only the latest completed closeout week. Modifying an older
+week (downstream reconciliation states may depend on it) requires a **separately
+reviewed historical-repair plan** and explicit Adam approval.
+
+#### 5.8.1 Atomic reopen behavior
+
+For an approved reconciliation reopen, in one wrapper transaction:
+
+1. The wrapper **validates owner-only authorization (`public.is_owner()`) and the
+   approved-reopen state** (latest completed week; complete existing reconciliation +
+   nine-row snapshot).
+2. It **calls the deployed reconciliation RPC with the corrected reconciliation values.**
+3. It **calls the deployed snapshot RPC with the exact already-approved nine snapshot
+   amounts** — **unless a separate snapshot correction has been approved.**
+4. The **snapshot call remains idempotent for those unchanged values** (natural-key
+   upsert, no change).
+5. **All in-transaction set, sequence, source, and returned-row assertions still run**
+   (§5.5).
+6. **Any error rolls back both calls** (§5.4, straight-line).
+
+The wrapper **continues to pin `source='reconciliation'`** in `approved_reopen`. The
+reopen mode **may not submit `source='correction'` and may not silently change snapshot
+amounts.** If the snapshot amounts also require correction, that is a **separate
+snapshot-correction gate and operation** (§6.4) — **do not combine an unapproved
+snapshot-value change with a reconciliation reopen.**
+
+#### 5.8.2 Reconciliation reopen vs snapshot correction (two distinct operations)
+
+| | **Reconciliation reopen** | **Snapshot correction** |
+|---|---|---|
+| Changes | reconciliation actuals / commitments / related fields | one or more `funded_amount`s in existing natural-key rows |
+| Mode / mechanism | wrapper owner-only `approved_reopen` | supervised owner-only correction (`source='correction'`) |
+| Snapshot values | resubmits existing nine **unchanged** | replaces value(s) in place (§3.5) |
+| Reconciliation | changed, atomic across both calls | **not** automatically altered or rolled back |
+| Approval | explicit Adam approval (that week/correction) | **separate** explicit Adam approval |
+| Validation | set/sequence/source/returned-row assertions | adjacent-week monotonicity (§6.4.1) |
+| Evidence | before/after reconciliation values + rationale | mandatory before/after (§3.5) |
+
+**If both are needed for one week, require two separately identified approvals and an
+explicit execution order.** One approval **does not** implicitly authorize the other.
+
 ---
 
 ## 6. Reconciliation consistency & exact sequence semantics
@@ -477,13 +627,22 @@ transaction (§5.2).**
 - **No future-week jump** is allowed.
 - **No past-week snapshot may be created from current observed values.**
 
-### 6.2 Target week already has a complete snapshot
+### 6.2 Target week already has a complete snapshot — normal-path hard stop
 
-- An **exact same-value retry** may be treated as **idempotent** (natural-key upsert,
-  no change).
-- A **changed-value retry is not an ordinary retry** and **must hard-stop into the
-  separately approved correction path** (§3.5) — it never silently overwrites via the
-  normal closeout.
+For `normal_closeout`:
+
+- An **exact combined-identity same-value retry** (§2.3.1) may be treated as
+  **idempotent** (natural-key upsert, no change).
+- An **already-completed same week with changed reconciliation values must raise.**
+- An **already-completed same week with changed snapshot values must raise.**
+- **Changed values may not be treated as idempotent.**
+- The **client must route the operator to the supervised reopen (§5.8, reconciliation
+  change) or snapshot-correction (§3.5/§6.4, amount change) process.**
+- **No ordinary UI acknowledgment or checkbox may bypass this rule.**
+- Because the **direct authenticated reconciliation RPC remains revoked after
+  activation** (§7), the supervised reopen **must execute through the wrapper's
+  owner-only `approved_reopen` branch — not by restoring ordinary direct access** to the
+  old RPC.
 
 ### 6.3 Reconciled week with no snapshot (old client half-closed it)
 
@@ -502,8 +661,26 @@ transaction (§5.2).**
   evidence, no destructive rollback of completed reconciliation. Correction UX is
   deferred (§3.5); execution is a supervised manual DB/RPC action.
 - **Correction metadata:** the deployed table already carries `source`, `note`,
-  `created_by_user_id`, `created_at`, `updated_at` — sufficient for 5G-1D. A dedicated
-  append-only correction/audit ledger is Option-C / 5G-1E+ (rider §10.9), out of scope.
+  `created_by_user_id`, `created_at`, `updated_at`, but an in-place correction is **not**
+  a complete history ledger — so the **external before/after evidence (§3.5) is
+  mandatory.** A dedicated append-only correction/audit ledger is Option-C / 5G-1E+
+  (rider §10.9), out of scope.
+
+#### 6.4.1 Adjacent-week monotonicity during a snapshot correction
+
+A historical snapshot correction must preserve the cumulative sequence **in both
+directions**. For a corrected week and goal, require:
+
+- **corrected amount ≥ the immediately preceding effective snapshot amount**, if one
+  exists (§3.7 "effective prior snapshot");
+- **corrected amount ≤ the immediately following effective snapshot amount**, if one
+  exists.
+
+If either condition fails, **hard stop.** **Do not silently cascade or rewrite later
+snapshots.** A correction that would require changes to later weeks needs a **separately
+reviewed multi-week remediation plan and explicit Adam approval** (§9). For a correction
+of the **latest completed week**, only the preceding-value check applies until a later
+snapshot exists.
 
 ### 6.5 Retry after transport interruption / ambiguous response
 
@@ -529,7 +706,9 @@ and repair later" is explicitly NOT the recommended production choice.**
 2. **Deploy the updated browser** that calls the wrapper.
 3. **Validate the new browser** in staging and in production inert checks.
 4. **At the separately approved activation gate, revoke direct `authenticated` EXECUTE
-   on `public.save_reconciliation_with_commitments`.**
+   on the old reconciliation RPC**, targeting its **exact deployed function signature**
+   (name + full ordered argument type list, **not the name alone** — §5.3), so an
+   overload is neither missed nor hit by accident.
 5. **Keep that function's body and signature unchanged** (revocation is a grant change,
    not an edit).
 6. **The wrapper continues to call it as the definer owner** (the wrapper's SECURITY
@@ -593,14 +772,47 @@ default and release gate.
 - **exact wrapper grants**; **old reconciliation RPC direct grant before and after
   activation**.
 
+**Complete retry identity (R1)**
+- **complete retry identity across reconciliation and snapshots** (full combined
+  equality, §2.3.1);
+- **same snapshots but changed reconciliation actuals** → not idempotent → route;
+- **same snapshots but changed commitments** → not idempotent → route;
+- **same reconciliation but changed snapshot amount** → not idempotent → route;
+- **half-closed reconciliation-only state repaired through the wrapper** (§6.3);
+- **impossible snapshots-without-reconciliation state rejected** (hard stop);
+- **ordinary mode rejects changed same-week input** (no idempotent overwrite).
+
+**Reconciliation reopen (R2)**
+- **owner-approved reopen of the latest completed week succeeds atomically**;
+- **non-owner authenticated household writer cannot invoke reopen mode** (rejected by
+  `is_owner()` even though `can_write_financials()` is true);
+- **ordinary browser cannot invoke reopen mode** (`p_mode` restricted to
+  `normal_closeout` in the ordinary UX);
+- **reopen failure rolls back both the corrected reconciliation and the snapshot call**;
+- **reopen resubmits unchanged snapshot values idempotently**;
+- **reopen attempt on an older, non-latest week is rejected**;
+- **direct old reconciliation RPC remains unavailable after activation** (reopen must go
+  through the wrapper owner-only branch, not direct access).
+
+**Snapshot correction & adjacent-week monotonicity**
+- **snapshot correction replaces one natural-key row rather than appending**;
+- **row count remains unchanged after correction** (one row per year/week/goal);
+- **`source` becomes `correction`**;
+- **C3 overlay resolves the corrected value** (lookup by year/week/goal, not source);
+- **next-week monotonicity uses the corrected value** (effective prior, §3.7);
+- **correction below the preceding effective value is rejected** (§6.4.1);
+- **correction above an existing following effective value is rejected** (§6.4.1);
+- **a correction requiring downstream rewrites hard-stops** (no silent cascade);
+- **before/after correction evidence is required** (§3.5).
+
 **Contract non-regression**
 - **unchanged deployed reconciliation function definition**;
 - **unchanged E1 snapshot RPC/table/RLS contract**;
 - **existing reconciliation regression** suite green.
 
-**For every forced wrapper failure, assert that neither half of the combined closeout
-persisted** (week not reconciled AND no snapshot). Golden-master identity still holds for
-zero-snapshot runs.
+**For every forced failure, assert that no unauthorized or partial state persisted**
+(neither half of the combined closeout committed; no reopen/correction by an
+unauthorized caller). Golden-master identity still holds for zero-snapshot runs.
 
 ---
 
@@ -620,10 +832,31 @@ Each is a distinct gate; none implies another:
    its **own explicit Adam approval**.
 9. **Rollback approval** — separate; wrapper rollback (drop the wrapper and/or restore
    grants) **requires explicit Adam approval.**
-10. **Correction approval** — separate; each supervised correction (§3.5) is its own
-    approval.
-11. **Future scope-change approval** — any change to the eligible nine (§4) needs a
+10. **Future scope-change approval** — any change to the eligible nine (§4) needs a
     separately reviewed scope-change design + Adam approval before closeout resumes.
+
+**Operation-level gates (each distinct; none implies another):**
+
+- **Ordinary closeout** (`normal_closeout`, §5.8) — the standing weekly write path.
+- **Automatic identical retry** — permitted only on complete combined-identity re-read
+  match (§2.3.1); no approval beyond the original closeout, but strictly gated on
+  identity.
+- **Half-closed-week repair** — the fresh wrapper completing a reconciled-but-
+  unsnapshotted week (§6.3); atomic, blocks advancing until repaired.
+- **Reconciliation reopen** — owner-only `approved_reopen` (§5.8); its own explicit
+  per-week Adam approval.
+- **Snapshot correction** — owner-only `source='correction'` (§3.5/§6.4); its own
+  separate explicit Adam approval.
+- **Historical multi-week remediation** — any correction/reopen touching an older week
+  after later weeks closed, or requiring downstream rewrites (§5.8/§6.4.1); a
+  **separately reviewed** remediation plan + explicit Adam approval.
+
+**Cross-authorization is prohibited:**
+
+- **A reconciliation reopen does NOT authorize a snapshot correction.**
+- **A snapshot correction does NOT authorize a reconciliation reopen.**
+- **Neither operation restores direct `authenticated` access to the deployed
+  reconciliation RPC** (the §7 revocation stands; both go through the wrapper).
 
 **Rollback must not delete approved historical snapshots or undo completed reconciliation
 data automatically.** Wrong *values* are corrected via the correction path, never dropped.
@@ -675,6 +908,12 @@ data automatically.** Wrong *values* are corrected via the correction path, neve
    | Reproducing/forking inner logic | Direct-call-only mandate; contract-unchanged tests (§5.2, §8) |
    | Stale cached browser half-closes | Engineered activation + direct-RPC EXECUTE revocation (§7) |
    | Grant broadening / anon path | Exact wrapper grant normalization + validation (§5.3) |
+   | Changed value slipped in as an "idempotent retry" | Complete combined retry identity across both halves; re-read both persisted records (§2.3.1) |
+   | Non-owner (Wendy) performs a reconciliation reopen | DB-enforced `public.is_owner()` in `approved_reopen`; ordinary UX cannot pass `p_mode` (§5.8) |
+   | Reopen silently changes snapshot amounts / bundles a correction | Reopen resubmits unchanged nine; `source='reconciliation'` pinned; correction is a separate gate (§5.8.1/§5.8.2) |
+   | In-place correction erases history | Mandatory external before/after evidence; one row per natural key (§3.5) |
+   | Correction breaks adjacent-week cumulative order | Two-sided adjacent-week monotonicity; hard-stop, no silent cascade (§6.4.1) |
+   | Grant op targets bare name / wrong overload | Exact deployed function signature for every REVOKE/GRANT/validate/restore (§5.3, §7) |
    | Freeze-window merge | No 5G merges Jul 24–Aug 10; sequence around it |
 6. **Execution checklist:** E2 done + validated → Slice 0 (read-only closeout-complete
    state) → Slice 1 (pure client payload builder + unit tests) → Slice 2 (wrapper RPC
@@ -696,8 +935,17 @@ data automatically.** Wrong *values* are corrected via the correction path, neve
    - **Target week not sequential** (skip/future/past) (§6.1) → hard stop.
    - **Any unclosed prior post-anchor snapshot week** (§6.1/§6.3) → hard stop until
      repaired.
-   - **Changed-value retry through the normal path** (§6.2) → hard stop → correction.
+   - **Changed-value retry through the normal path** (§6.2) → hard stop → reopen/correction.
+   - **Snapshots-present-but-reconciliation-absent** (impossible/corrupt) (§2.3.1) → hard stop.
    - **Monotonic decrease through the normal path** (§3.5) → hard stop → correction.
+   - **`approved_reopen` invoked by a non-owner** (fails `public.is_owner()`), **through
+     the ordinary UX/retry**, or on a **non-latest week** (§5.8) → hard stop.
+   - **Reopen attempting to change snapshot amounts**, or a **correction bundled into a
+     reopen** without its own approval (§5.8.1/§5.8.2) → hard stop.
+   - **Correction below the preceding, or above the following, effective value**
+     (§6.4.1), or one **requiring downstream rewrites** → hard stop (→ multi-week
+     remediation gate).
+   - **Correction executed without the mandatory before/after evidence** (§3.5) → stop.
    - **Stale-client protection not approved or not testable** (§7) → do not activate.
    - **Wrapper grants broader than intended** (§5.3) → stop.
    - **Any need to change the deployed E1 snapshot RPC** → stop (out of scope).
@@ -750,9 +998,22 @@ modification/rerun. No edit to the deployed reconciliation function body/signatu
 a grant revocation at the §7 activation gate, separately approved). No reproduction/
 inlining of either inner RPC's logic. No 5G-1E account-purpose/holding-bucket hard gate.
 No 5G-1B release rows. No append-only audit ledger and no in-flow correction UX (manual
-supervised correction only). No new role logic. No `runModel` math change beyond the
-already-shipped C3 overlay. No name-prefix e2e filtering. No write on load/calc/render/
-refresh. No newly added goal auto-flowing into snapshots.
+supervised correction only). **No new role logic for ordinary closeout** (both Adam and
+Wendy write via `can_write_financials()`); the owner-only `approved_reopen` branch
+**reuses the existing deployed `public.is_owner()` predicate**, not a newly invented
+role. No `runModel` math change beyond the already-shipped C3 overlay. No name-prefix
+e2e filtering. No write on load/calc/render/refresh. No newly added goal auto-flowing
+into snapshots.
+
+### 11.1 Previously-cleared controls preserved (unchanged by this R1/R2 revision)
+
+This revision **adds** retry-identity and reopen/correction rigor and **weakens or
+removes nothing** cleared at `949ee3f`: direct calls to the two deployed functions; no
+copied/reproduced inner logic; no swallowed exceptions; the exact server-derived
+nine-goal set; the complete Week-5 opening-anchor requirement; contiguous next-week
+sequencing; source pinning; ordinary-path monotonicity; the goal-scope hard stop; the
+stale-client grant revocation; wrapper grant normalization; separate activation and
+rollback approvals; and E1 immutability.
 
 ---
 
