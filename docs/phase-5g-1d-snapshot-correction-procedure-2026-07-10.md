@@ -6,10 +6,24 @@ written or run this pass. No Supabase access. E2 has **not** executed;
 `goal_funding_snapshots` is **EMPTY**; the 5G-1D wrapper does **not** exist yet.
 **Author:** Claude (session under Adam)
 **Date:** 2026-07-10
-**Revision:** R1 (2026-07-10) — folds in the four Fable pre-review anchors: **A**
-existing-row requirement (§4, §14, §18), **B** opening-anchor source collision resolved
-(§4, §8.0, §18, §19), **C** shared-`authenticated`-role grant reality (§13), **D**
-`is_owner()` identity as a mandatory read-only preflight (Finding 8, §5, §16, §18, §19).
+**Revision:** R1 (2026-07-10) — folded in four Fable pre-review anchors: **A**
+existing-row requirement, **B** opening-anchor source collision, **C**
+shared-`authenticated`-role grant reality, **D** `is_owner()` identity preflight.
+R2 (2026-07-10) — folds in the eight Fable review findings: **F-1** governs the deployed
+`repair_commitments_for_week` RPC (Finding 11, §3.1, §14, §17, §18); **F-2** adds the
+E2→activation interim-window rule (§3.2, §18); **F-3** makes Option B concrete and
+time-bound to 5G-1D Slice-2 (§4.1, §4.2); **F-4** defines nearest-existing adjacent
+semantics (§7.0); **F-5** removes row-creation ambiguity (§4, §9, §10, §14, §15, §18);
+**F-6** requires hard-reload live-render verification (§6.1, §9, §15, §16); **F-7**
+strengthens the evidence/artifact model (§11); **F-8** expands the tests (§15). Plus
+tightened opening-anchor execution (§8), strengthened `is_owner()` preflight (Finding 8,
+§19), and the subordinate-artifact boundary (§17.1).
+
+> **Review-state note.** This file being **committed on the feature branch
+> `claude/5g-1d-snapshot-correction-spec-efjplu` is NOT the same as being cleared.** The
+> commit exists only to give Fable a stable, hash-pinned artifact to review. Clearance is
+> a separate act by Fable + Adam; nothing here authorizes merge, implementation, SQL,
+> Supabase access, or any production action.
 
 **Subordinate to — and consistent with, not a replacement for:**
 - `docs/phase-5g-1c-2-e2-runbook.md` (E2 first-anchor seed gate; cleared).
@@ -107,12 +121,19 @@ load-bearing constraints for every section below.
    `aherndon6@gmail.com` and that `adam@herndons.us` "exists in auth.users for seed UUID
    purposes only, not app_users." This is **not** asserted here as a live bug — it is a
    verification obligation. **Before any owner-only correction or reopen feature ships, a
-   read-only preflight must confirm `public.is_owner()` returns true for Adam's real
-   authenticated session** (otherwise an `is_owner()`-gated path would reject Adam
-   himself). **This task makes NO production role-data change** — it only records the
-   preflight requirement. (The 5G-1 RLS smoke already re-confirmed
-   `can_write_financials()` keys on `auth.uid()`; `is_owner()` needs the same explicit,
-   read-only confirmation for the *owner* row.)
+   read-only production preflight must prove all of:**
+   - **exactly one active owner row exists** in `app_users` (`role='owner' AND
+     active=true`);
+   - **its `auth_user_id` maps to Adam's real authenticated account** (the app login, not
+     the seed identity);
+   - **Adam's real login session returns `public.is_owner() = true`**;
+   - **Wendy's session returns `public.is_owner() = false`**;
+   - **no role-data change is inferred or authorized by the preflight** (it is read-only).
+
+   **This task makes NO production role-data change** — it only records the preflight
+   requirement. The 5G-1 RLS smoke's confirmation that `can_write_financials()` keys on
+   `auth.uid()` is **supporting expectation, not a substitute** for this owner-row
+   production verification.
 
 9. **No wrapper, no anchor, no snapshots yet.** `save_weekly_closeout_with_snapshots` /
    `approved_reopen` are plan-only. E2 has not run. `goal_funding_snapshots` is empty.
@@ -124,6 +145,32 @@ load-bearing constraints for every section below.
     — natural-key-pinned, guarded single transaction, preflight/postflight assertions
     inside the transaction, no row history disturbed) and the E2 seed-anchor pattern.
     The correction mechanism recommended here (§4/§5) follows that established shape.
+
+11. **A second deployed reconciliation-mutation path exists and is REST-callable by Wendy:
+    `repair_commitments_for_week` (Fable finding F-1).** Signature (grounded in
+    `docs/phase-5f-1-migration.sql:997`):
+    `public.repair_commitments_for_week(p_week_num INT, p_model_year INT, p_balance_basis
+    TEXT DEFAULT NULL, p_new_commitments JSONB DEFAULT '[]', p_patched JSONB DEFAULT '[]')
+    RETURNS JSONB`. It is:
+    - **`SECURITY DEFINER`**, `SET search_path = public` (line 1006–1007);
+    - **gated by `can_write_financials()`** (line 1036) — so **executable by
+      `authenticated`, i.e. callable by BOTH Adam and Wendy/household_admin**;
+    - granted `GRANT EXECUTE … TO authenticated` (line ~1338; `REVOKE ALL … FROM PUBLIC,
+      anon, authenticated` first);
+    - **currently unwired in the UI** (historical-repair mode was never built — 5F-1
+      Phase-4 handoff) **but fully REST-callable** at `POST /rest/v1/rpc/`;
+    - able to **insert new historical commitments** (`p_new_commitments`) and **patch
+      existing ones** (`p_patched`) for a week whose reconciliation row already exists;
+    - **able to mutate terminal (cleared/voided) commitment rows** — explicitly intended
+      (line 975–995), unlike `save_reconciliation_with_commitments`, though every call is
+      scope-confined to `origin_model_week = p_week_num`;
+    - able to **update `weekly_reconciliations.balance_basis` for a reconciled week**
+      (line ~1066, `UPDATE weekly_reconciliations SET balance_basis = p_balance_basis
+      WHERE week_num = p_week_num`).
+    **Consequence:** `repair_commitments_for_week` is a *pre-wrapper* REST path — usable by
+    Wendy today — that can change a **closed, reconciled, anchored, or historical** week's
+    commitments and `balance_basis`. It is therefore an **exceptional remediation operation
+    governed by this specification** (§3.1). **This task does not alter the deployed RPC.**
 
 ---
 
@@ -171,9 +218,9 @@ this document. Each cites its source of truth.
 4. **No bypass of the Week-5 opening anchor.** The E2 anchor is the floor of all
    forward reasoning; no operation here creates, replaces, or reinterprets it except the
    explicitly-gated opening-anchor correction (§8). (5G-1D plan §5.6; E2 runbook §1.)
-5. **No changes to the deployed E1 snapshot RPC unless this spec returns STOP.** If any
-   design below would require editing `save_goal_funding_snapshots`, that is a hard stop
-   (§18), not a silent edit.
+5. **No changes to the deployed E1 snapshot RPC.** If any design below would require
+   editing `save_goal_funding_snapshots`, the design instead halts and reports it as a
+   hard stop (§18) — the RPC is never silently edited.
 6. **No changes to the deployed reconciliation RPC body or signature.** Reopen uses the
    future 5G-1D wrapper, which *calls* the deployed RPC directly; it never edits it.
    (5G-1D plan §1, §5.2.)
@@ -196,8 +243,13 @@ snapshot set).
 **This operationalizes 5G-1D plan §5.8 / §5.8.1 — it does not redefine it.** Reopen is a
 mode of the *future* 5G-1D orchestration wrapper (`p_mode='approved_reopen'`), not a
 standalone artifact. Until that wrapper is built and activated, **there is no approved
-reopen mechanism** — the only pre-wrapper way to touch closed reconciliation would be a
-direct DB action, which this document forbids (§14) for reconciliation.
+*owner-only* reopen mechanism.** Note (correcting an earlier draft): a direct SQL editor
+action is **not** the only pre-wrapper way to touch closed reconciliation — the deployed
+`repair_commitments_for_week` RPC (Finding 11) is a **REST-callable pre-wrapper path**,
+usable by Wendy today, that can mutate a closed/anchored week's commitments and
+`balance_basis`. Both surfaces (direct SQL and `repair_commitments_for_week`) are
+**forbidden outside the exceptional-remediation gate** defined in §3.1 and §3.2; neither
+is an ordinary or self-authorizing path.
 
 Requirements (all mandatory; any missing → HALT):
 
@@ -236,6 +288,63 @@ Requirements (all mandatory; any missing → HALT):
 **Preflight gate specific to reopen:** production must first confirm `is_owner()`
 returns true for the real Adam login (Finding 8) — otherwise the owner-only branch would
 reject Adam.
+
+### 3.1 Governance of `repair_commitments_for_week` (F-1)
+
+**Any invocation of `repair_commitments_for_week` that affects a closed, reconciled,
+anchored, or historical week is an exceptional remediation operation governed by this
+specification** — not an ordinary reconciliation write, and never a self-authorizing one.
+Because the deployed RPC is gated only on `can_write_financials()` (Finding 11), the
+owner-only and evidence boundaries below are **procedural** until the 5G-1D activation
+step revisits its grant (see §17 handoff); the DB does not yet enforce them for this RPC.
+
+Every such invocation requires **all** of:
+
+- **explicit Adam approval** for that specific week and change (its own gate; §12);
+- **the full §11 evidence package**, including **pre/post capture of both the
+  reconciliation row (`weekly_reconciliations`, incl. `balance_basis`) and the affected
+  `cash_commitments` rows** (before and after);
+- **no household_admin (Wendy) use** — even though the deployed grant technically permits
+  it, Wendy must not invoke `repair_commitments_for_week` against a closed/anchored/
+  historical week under this design;
+- **no ordinary UI or retry-path invocation** — it is not wired into the UI and must not
+  be reached through any ordinary closeout, resave, or retry control;
+- **no silent use outside this documented remediation gate** — no unlogged, unapproved,
+  or "quick fix" call.
+
+If the repaired week is **anchored**, and the commitment/`balance_basis` change alters the
+factual basis of a seeded anchor amount, **route to the opening-anchor correction process
+(§8)** — a `repair_commitments_for_week` call cannot silently invalidate an anchor.
+
+### 3.2 E2-to-activation interim-window rule (F-2)
+
+This subsection governs the interval **from E2 production seed complete through 5G-1D
+production activation.** During this window the 5G-1D wrapper does not yet exist, so the
+deployed `save_reconciliation_with_commitments` **and** `repair_commitments_for_week`
+remain directly callable (both `authenticated`, i.e. Adam and Wendy).
+
+Plainly, during the interim window:
+
+- **Any change to an anchored week's reconciliation actuals, commitments, or
+  `balance_basis` requires explicit Adam approval.** Once the E2 anchor is established, the
+  anchored week's reconciliation is no longer freely editable.
+- **Ordinary UI resave of an anchored week is NOT treated as routine.** The convenience of
+  re-saving reconciliation from the UI does not carry over to a week that has been
+  anchored.
+- **Any such change requires the full §11 evidence package** (with pre/post reconciliation
+  + commitment capture, §3.1).
+- **The original E2 First-Anchor Value Card basis must be re-verified** — confirm whether
+  the change affects the reconciled state the anchor was built on.
+- **If the changed reconciliation state affects the factual basis of an anchor amount,
+  route to the opening-anchor correction process (§8).**
+- **This control is procedural only** until the 5G-1D wrapper and the activation grant
+  changes (§7 of the 5G-1D plan) exist to enforce it in the database.
+- **Wendy (household_admin) must not perform an anchored-week reconciliation amendment
+  during the interim window.**
+
+This is an explicit **risk** (a stale-anchor / silent-reconciliation-drift window) and an
+**operational stop condition** (§18): an unapproved anchored-week reconciliation or
+commitment change during the interim window is a hard stop.
 
 ---
 
@@ -277,11 +386,10 @@ mechanism**, for three grounded reasons:
 
 1. **It authorizes Wendy.** Its gate is `can_write_financials()` (Finding 3), so
    `household_admin` could submit `source='correction'` — violating the owner-only
-   boundary this operation requires. *Assessment of the §4 question ("could Wendy
-   technically submit source=correction"): **Yes — via the deployed RPC over an
-   authenticated REST call, Wendy can submit `source='correction'` today; the CHECK
-   permits it and `can_write_financials()` passes for her. That is precisely the
-   boundary violation this spec must close.***
+   boundary this operation requires. **Could Wendy technically submit `source='correction'`
+   today? Yes** — via the deployed RPC over an authenticated REST call: the CHECK permits
+   the literal and `can_write_financials()` passes for her. That is precisely the boundary
+   violation this spec must close.
 2. **It cannot be called from the SQL editor** (`auth.uid()` NULL → 'not authorized',
    Finding 5), so the usual supervised-SQL execution surface is unavailable through it.
 3. **It enforces no correction-specific invariant** — no adjacent-week monotonicity
@@ -308,47 +416,80 @@ unchanged, single row, adjacent-week monotonicity holds), all wrapped `BEGIN/COM
   DB-cryptographic one; a hand-authored guarded UPDATE is inherently more error-prone
   than a reviewed function and must be diffed against a reviewed template each time.
 
-**Option B — new additive owner-only correction RPC.**
-`public.correct_goal_funding_snapshot(...)` — SECURITY DEFINER, `SET search_path`,
-fully schema-qualified, **explicit `public.is_owner()` check**, adjacent-week
-monotonicity baked in, `source` pinned to `'correction'`, single-goal scoped, no dynamic
-SQL. Called via **REST with a real Adam JWT** (not the SQL editor).
-- **Owner-only is DB-enforced** (`is_owner()` rejects Wendy).
-- Pros: durable, testable, DB-enforced owner boundary; reusable when a correction UX
-  eventually lands (5G-1E+); monotonicity and single-row invariants are code, not prose.
-- Cons: a **new deployed surface** requiring staging-first migration + validation +
-  RLS/grant smoke + Fable review + separate Adam deploy approval; cannot run from the SQL
-  editor (needs REST-as-Adam); **depends on Finding 8** (`is_owner()` must return true
-  for the real Adam login or it rejects Adam).
+**Option B — new additive owner-only *call-through* correction RPC (planned into 5G-1D
+Slice-2; F-3).** `public.correct_goal_funding_snapshot(...)` is an additive SECURITY
+DEFINER wrapper — the **post-anchor correction counterpart** of the 5G-1D closeout
+wrapper — with the concrete contract:
+- **`SECURITY DEFINER`**, safe fixed `SET search_path`, fully schema-qualified, no dynamic
+  SQL;
+- **`GRANT EXECUTE … TO authenticated`** (PostgREST routing) with an **internal
+  `public.is_owner()` check as its first action** that **rejects `household_admin`**
+  (Wendy) — owner-only is DB-enforced, not grant-enforced (§13);
+- **asserts the target natural-key row already exists** (F-5; a missing row → raise, never
+  a backfill);
+- **derives and enforces the nearest-existing preceding and following bounds** (§7.0)
+  server-side;
+- **calls the deployed `public.save_goal_funding_snapshots(...)` directly** to perform the
+  write — it does **not** reproduce that RPC's validation/write logic and does **not**
+  write `goal_funding_snapshots` directly;
+- **submits exactly one post-anchor row with `source='correction'`**;
+- **performs post-call returned-row validation** (the written row equals the intended
+  corrected value; count = 1);
+- **propagates all exceptions** (straight-line, no swallowed error);
+- **does NOT handle Week-5 opening-anchor amendments** — those preserve
+  `source='opening_anchor'` and stay on the separate guarded-SQL path (§8).
+- Owner-only is DB-enforced (`is_owner()` rejects Wendy). Pros: durable, testable,
+  reusable for a later correction UX (5G-1E+); invariants are code, not prose. Cons: a
+  **new deployed surface** (staging-first migration + validation + RLS/grant smoke + Fable
+  review + separate Adam deploy approval); cannot run from the SQL editor (needs
+  REST-as-Adam); **depends on Finding 8** (`is_owner()` must return true for the real Adam
+  login or it rejects Adam).
 
 ### 4.2 Recommendation
 
-**Start with Option A** as the initial mechanism, and **earmark Option B** as the
-durable upgrade to be designed alongside 5G-1D (or as a 5G-1E rider) when correction
-frequency or a correction UX justifies a deployed, DB-enforced path.
+**A-FIRST / B-LATER, but time-bound — not open-ended (F-3).** Option A is the **bridge
+path only**; **Option B is planned into the 5G-1D Slice-2 staging package** (the same
+slice that builds the closeout wrapper — 5G-1D plan §10 execution checklist, Slice 2).
+
+The concrete rule (replacing the earlier vague "once corrections become routine / when a
+button is needed" triggers, which are removed):
+
+- **Option A is the bridge path only.** It exists to make a rare correction executable
+  *before* Option B is deployed, using the guarded-SQL / A4 precedent.
+- **Option A retires for post-anchor corrections the moment Option B is deployed.** Once
+  `correct_goal_funding_snapshot` exists, post-anchor `source='correction'` fixes go
+  through it, not through hand-authored SQL.
+- **5G-1D activation is GATED on Option B** being deployed and tested — *unless* Adam
+  explicitly approves a documented deferral.
+- **Any deferral must be written into the implementation-readiness package** with:
+  **rationale; owner; a dated expiration or review point; interim operating controls; and
+  explicit Adam approval.** A deferral is never implicit and never open-ended.
+- **Week-5 opening-anchor amendments are excluded from Option B** and remain on the
+  separate guarded-SQL path (they preserve `source='opening_anchor'`, §8).
 
 Rationale (the tradeoff, stated plainly): corrections are expected to be **rare,
-exceptional, one-off** events, and E2 has not even run — there is nothing to correct yet.
-Option A delivers the full safety envelope (guarded transaction, natural-key targeting,
-adjacent-week monotonicity, before/after evidence, single-row proof) with **no new
-deployed surface** and follows the exact precedent Adam has already executed safely (A4).
-Its one concession — owner-only is operational rather than `is_owner()`-enforced — is
-acceptable for a rare supervised action gated behind SQL-editor access that only Adam
-holds. Option B's DB-enforced owner boundary is genuinely better, but it costs a new
-reviewed surface and inherits the Finding-8 identity risk; that cost is worth paying only
-once corrections become routine enough to need a button, at which point B becomes the
-correction path for the deferred correction UX.
+exceptional** events, and E2 has not even run — there is nothing to correct yet. Option A
+delivers the full safety envelope (guarded transaction, natural-key targeting,
+nearest-existing adjacent monotonicity, before/after evidence, single-row proof) with
+**no new deployed surface** and follows the exact precedent Adam has already executed
+safely (A4). Its one concession — owner-only is operational rather than
+`is_owner()`-enforced — is acceptable for a *bridge* window that closes when Slice-2 lands
+Option B. Option B's DB-enforced owner boundary is the durable state and is what 5G-1D
+activation is gated on.
 
-**Do NOT use the deployed `save_goal_funding_snapshots` RPC for corrections under either
-option** — it permits Wendy and enforces no monotonicity.
+**Do NOT use the deployed `save_goal_funding_snapshots` RPC directly for corrections under
+either option** — it permits Wendy and enforces no monotonicity. (Option B *calls* it as
+the write primitive behind an `is_owner()` gate and the monotonicity checks; it does not
+expose it directly.)
 
-**Unresolved for Adam:** confirm A-first / B-later, or direct B now (see §19).
+**Unresolved for Adam:** confirm A-bridge / B-in-Slice-2 with activation gated on B, or an
+explicitly documented deferral (see §19).
 
 ---
 
 ## 5. SQL-editor and authentication reality
 
-Grounded answers to the §5 questions:
+Grounded answers to the execution-constraint questions:
 
 - **Would calling the deployed RPC from the SQL editor fail because `auth.uid()` is
   null?** **Yes.** `save_goal_funding_snapshots` and `save_reconciliation_with_commitments`
@@ -410,18 +551,73 @@ Grounded in the actual loader/overlay (Finding 7).
   existing week/goal is an in-place upsert — one row before, one row after; no duplicate,
   no second row (Finding 6).
 
+### 6.1 Post-write live verification requires a hard reload (F-6)
+
+An open browser session **retains stale `goalSnapData` after a database correction** — the
+C3 loader runs at `loadAll` (`index.html:7843`), so a session that loaded before the write
+keeps the pre-correction value in memory and will *appear* unchanged. **Post-write
+validation must therefore never rely on an unreloaded session.** Aligned with the E2
+Step-7 browser-verification pattern, post-write verification must include:
+
+- a **hard reload** of the application (same login used for the write);
+- a **fresh loader request** to `goal_funding_snapshots`;
+- **confirmation the corrected natural-key row is returned** by the loader (200,
+  non-empty, expected `week_num`/`goal_id`);
+- **confirmation the rendered funded value equals the corrected value**;
+- **confirmation unaffected included goals remain unchanged**;
+- **confirmation excluded goals remain unchanged** (`adam_401k`, `wewe_rccl`, `wewe_dcl`,
+  `taxable_etf`);
+- **confirmation that no validation step relied on an unreloaded browser session**
+  (an unreloaded session is not accepted as evidence).
+
+As with E2 Step 7, "no visible movement" can be a correct result where the corrected value
+equals what was already displayed — success is validated by the loader row + rendered
+value agreeing with the correction, not by the screen changing.
+
 ---
 
 ## 7. Adjacent-week monotonicity
 
-For each corrected `(goal_id)` at the target week, the correction must satisfy **both
-bounds against the effective (natural-key) neighboring snapshots**, consistent with 5G-1D
-plan §6.4.1:
+### 7.0 Nearest-existing adjacent-snapshot semantics (F-4)
 
-- **corrected value ≥ immediately preceding effective snapshot** for that goal, if one
-  exists;
-- **corrected value ≤ immediately following effective snapshot** for that goal, if one
-  exists.
+"Adjacent" means **nearest existing snapshot row for that goal**, by `week_num` — **not**
+`week_num − 1` / `week_num + 1`. Snapshot weeks can be sparse (reconciliation-only gaps,
+skipped snapshot weeks, prior corrections), so the neighbors are defined by row existence,
+not by arithmetic adjacency. This reuses the cleared 5G-1D plan §3.7 "effective prior
+snapshot" definition (the latest applicable natural-key row for a goal, regardless of
+`source`), extended symmetrically to the following side; it does **not** invent a new
+definition.
+
+- **preceding effective snapshot** = the natural-key row for that goal with the **greatest
+  `week_num` strictly less than** the target week that **exists** (any `source`);
+- **following effective snapshot** = the natural-key row for that goal with the **least
+  `week_num` strictly greater than** the target week that **exists** (any `source`).
+
+Applied consistently to every case:
+
+- **latest-week correction** — following = none (no higher row exists); preceding =
+  nearest existing lower row.
+- **middle-week correction** — both = the nearest existing lower and higher rows (which
+  may be several weeks away).
+- **opening-anchor amendment** — preceding = none (the anchor is the floor); following =
+  the nearest existing higher row (the first post-anchor week that has a snapshot).
+- **first post-anchor correction** — preceding = the Week-5 anchor row (nearest existing
+  lower); following = the nearest existing higher row, if any.
+- **weeks with reconciliation-only gaps** — a week reconciled but not snapshotted has **no
+  snapshot row**, so it is **skipped** when finding the nearest neighbor; the neighbor is
+  the nearest week that actually has a snapshot row.
+- **weeks with a prior correction** — the corrected row is the effective row at its week
+  (source-blind, §6), so it is a valid neighbor like any other existing row.
+- **skipped snapshot weeks** — likewise skipped; adjacency follows existing rows only.
+
+### 7.1 The two-sided bound
+
+For each corrected `(goal_id)` at the target week, the correction must satisfy **both
+bounds against the nearest-existing effective neighboring snapshots** (§7.0), consistent
+with 5G-1D plan §6.4.1:
+
+- **corrected value ≥ preceding effective snapshot** for that goal, if one exists;
+- **corrected value ≤ following effective snapshot** for that goal, if one exists.
 
 Cases:
 
@@ -513,6 +709,32 @@ must be an explicit plan change, not a silent one.)
   weekly correction, (b) change the anchor week or ID set, (c) proceed without a revised
   Value Card, or (d) proceed without re-verifying the anchor guard → **STOP**.
 
+### 8.1 Execution requirements for a Week-5 opening-anchor amendment
+
+Any Week-5 opening-anchor amendment:
+
+- **runs in its own supervised production session** (not folded into any other operation);
+- **requires a fresh pre-correction state check** (re-verify the current anchor rows, the
+  reconciled-week map, and production identity immediately before the write);
+- **requires a revised First-Anchor Value Card** (E2 runbook §4), re-approved;
+- **requires explicit opening-anchor correction approval** (its own gate, §12 — distinct
+  from ordinary snapshot correction);
+- **preserves `source='opening_anchor'`** (§8.0 — never flips to `correction`);
+- **requires a new local backup/export** of `goal_funding_snapshots` before the write
+  (§11);
+- **requires new artifact hashes** (fresh SHA-256 of the pre-write export and the
+  execution copy/output);
+- **requires downstream Week-6+ impact review** (does any existing post-anchor snapshot now
+  violate the following-bound against the corrected anchor? §7.0);
+- **requires the future anchor guard (5G-1D plan §5.6) to be revalidated** after the write
+  (still nine rows, all `opening_anchor`, single anchor week);
+- **requires the E2 closeout evidence to be amended** (a correction addendum referencing
+  the revised Value Card; the cleared E2 runbook *file* is not edited — §8);
+- **does NOT use Option B** (the correction RPC excludes anchor amendments, §4.1) — it uses
+  the separate guarded-SQL path;
+- **defaults to escalation until Adam resolves the spec's open anchor-correction decision**
+  (§19) — an anchor amendment is never the operator's default action.
+
 **An opening-anchor correction may not be run as an ordinary weekly snapshot correction.**
 
 ---
@@ -522,8 +744,17 @@ must be an explicit plan change, not a silent one.)
 Corrects a **past** week (not the latest) where the fix requires **no** changes to any
 later week.
 
+**Row-creation rule (F-5).** Historical single-week remediation **amends an existing
+natural-key row**; it may **not** create a missing snapshot row. A nonexistent target
+natural key is **always a hard stop** — no single-week path (correction or single-week
+remediation) may backfill a missed week. **Deliberately creating a missing historical row
+is exclusively a §10 multi-week / historical-backfill operation under its own reviewed
+plan and explicit Adam approval** — never the ordinary correction or single-week amendment
+path.
+
 Permitted only when **all** hold; require and capture:
 
+- **The target natural-key row already exists** (else HARD STOP; §4 / F-5).
 - **Exact affected week and goals** enumerated.
 - **Before/after values** for each affected goal.
 - **Proof that adjacent-week monotonicity remains valid** (§7) in **both** directions for
@@ -534,8 +765,9 @@ Permitted only when **all** hold; require and capture:
 - **Explicit Adam approval** (its own gate; §12).
 - **Owner-only execution** (§4/§5 mechanism; operational owner-only for Option A,
   `is_owner()` for Option B).
-- **Pre/post validation** (guard block: row exists, single row after, bounds hold).
-- **Evidence and hash capture** (§11).
+- **Pre/post validation** (guard block: row exists, single row after, nearest-existing
+  bounds hold §7.0) **plus post-write hard-reload live verification** (§6.1).
+- **Full local-only pre-write export + hash capture and the §11 evidence package.**
 - **No automatic reconciliation rollback** — the reconciled `weekly_reconciliations` row
   for that historical week is untouched; a snapshot correction does not reopen
   reconciliation (§4).
@@ -547,7 +779,13 @@ remediation — escalate to §10.
 
 ## 10. Historical multi-week remediation (escalated)
 
-The escalation path when a correction **would require changes to later weeks**.
+The escalation path when a correction **would require changes to later weeks**, or when a
+**missing historical row must be deliberately created (backfill)**.
+
+**Row-creation authority (F-5).** This is the **only** place a missing snapshot natural-key
+row may be created, and only under a reviewed remediation plan + explicit Adam approval —
+never through the §4 correction path or a §9 single-week amendment. Each created row must
+itself satisfy the nearest-existing bounds (§7.0) at the point it is written.
 
 - **No automatic cascade** — the operator never lets a single correction ripple.
 - **No bulk rewrite under an ordinary correction approval** — a multi-week change is a
@@ -610,6 +848,48 @@ pre-remediation row export) are stored **locally** (external backup dir, e.g.
 committed**. Only the **metadata tier** (filename, byte size, SHA-256, timestamp,
 purpose) and balance-free preflight/counts may be committed. There is no path that
 commits observed household balances without a separate explicit Adam privacy override.
+
+### 11.1 Mandatory pre-write full export (F-7)
+
+**Before every exceptional write — including a single-week snapshot correction — capture a
+full local-only export of `goal_funding_snapshots`** (`SELECT * … ORDER BY model_year,
+week_num, goal_id`). This is the recovery baseline (there is no automatic rollback of
+values, §2 principle 1). Record for the export:
+
+- path
+- filename
+- timestamp
+- byte size
+- SHA-256
+- row count
+- purpose
+
+The export **remains local** under the approved backup path or gitignored `exports/` and
+is **never committed** (it contains household balances). Only its metadata/hash row is
+committable.
+
+### 11.2 Option-A guarded-SQL artifact contract (E2/A4 discipline; F-7)
+
+When Option A is the mechanism, its artifacts follow the E2/A4 model. **No executable SQL
+is created in this revision — this defines the contract only:**
+
+- a **committed sentinel/template artifact is created only after a separate explicit
+  approval to create it**, and contains **no real household values** (sentinels only);
+- the **value-filled execution copy remains local** (external backup dir / gitignored
+  `exports/`), never committed;
+- a **value-only diff** confirms the execution copy differs from the template by the
+  intended numeric literals only (no logic/guard/structure change);
+- the **local execution artifact is hashed** (SHA-256 recorded in metadata);
+- a **standalone read-only preflight is run first** (row exists, current value, nearest
+  preceding/following effective values, production identity);
+- the write is **one single execution block**:
+  `BEGIN` → guarded `DO`/validation → `UPDATE` (natural-key upsert with existing-row
+  assertion) → postflight assertions (row count, single row, nearest-existing bounds,
+  resulting value = intended) → `COMMIT`;
+- **no split write sequence** (never a preflight-then-separate-write with the transaction
+  reopened);
+- **rollback remains a separately approved break-glass action** (§2 principle 1; never
+  bundled into the correction approval).
 
 ---
 
@@ -701,7 +981,11 @@ All failures **default to no unauthorized mutation and no silent continuation.**
 | Ambiguous response | Re-read the natural-key row; only proceed if the persisted value matches intent; never blind-retry a value change. |
 | Partial client evidence | HALT the close-out record — evidence (§11) is mandatory and must be complete before the operation is considered done. |
 | Concurrent correction attempts | Serialize; the natural-key upsert is atomic, but two operators must not both hold correction approval — one approval, one operator (§12). A second concurrent write that changes the value is a stop condition. |
-| Validation mismatch after write | The post-write assertion (row count, single row, bounds, resulting value = intended) failing → the guarded transaction rolls back (Option A `BEGIN/COMMIT`; Option B raise); nothing persists. |
+| Validation mismatch after write | The post-write assertion (row count, single row, nearest-existing bounds §7.0, resulting value = intended) failing → the guarded transaction rolls back (Option A `BEGIN/COMMIT`; Option B raise); nothing persists. |
+| Unauthorized or unapproved `repair_commitments_for_week` use | HALT — any invocation affecting a closed/reconciled/anchored/historical week without explicit Adam approval, by Wendy, via the UI/retry path, or silently outside the §3.1 gate, is prohibited; no commitment/`balance_basis` mutation proceeds. |
+| Interim-window anchored-week reconciliation/commitment change without approval | HALT — during the E2→activation window (§3.2), an ordinary UI resave or a repair-RPC change to an anchored week requires explicit Adam approval + full evidence; Wendy may not perform it. |
+| Unreloaded browser used as post-write evidence | HALT the close-out record — post-write verification requires a hard reload + fresh loader read (§6.1); an unreloaded session is not acceptable evidence. |
+| Missing pre-write export | HALT — the mandatory full local pre-write export + hash (§11.1) must exist before any exceptional write. |
 
 ---
 
@@ -742,6 +1026,31 @@ no name-prefix filtering; full mode is the release gate — 5G-1D plan §8):
 - **Unchanged E1 snapshot RPC definition** (contract non-regression).
 - **Unchanged reconciliation RPC definition** (contract non-regression).
 
+Added by F-8:
+
+- **Correction target row does not exist → hard stop, no INSERT** (F-5; no backfill).
+- **The deployed snapshot RPC upsert cannot be used to backfill under a correction
+  approval** (a missing natural key is rejected before any write).
+- **Week-5 anchor amendment preserves `source='opening_anchor'`** (§8.0).
+- **All nine Week-5 anchor rows remain `source='opening_anchor'`** after an amendment.
+- **The future §5.6-style anchor-completeness check still passes after an amendment**
+  (nine rows, one anchor week, all `opening_anchor`).
+- **`repair_commitments_for_week` cannot be used by Wendy for an anchored/closed-week
+  amendment under the approved design** (§3.1; procedural today, DB-enforced after the
+  §17 activation grant decision).
+- **Repair-RPC activation posture is validated** (its `authenticated` EXECUTE grant is
+  reviewed and its retain/wrap/restrict/revoke decision is recorded — §17).
+- **Interim-window ordinary reconciliation resave of an anchored week requires exceptional
+  approval** (§3.2) — not treated as routine.
+- **Hard reload is required before UI verification** (§6.1); **an unreloaded browser state
+  is not accepted as evidence.**
+- **A full pre-write export exists and is hashed** before every exceptional write (§11.1).
+- **Option B rejects a missing target row** (existing-row assertion).
+- **Option B enforces nearest-existing lower and higher bounds** (§7.0), not `week ± 1`.
+- **Option B calls the deployed `save_goal_funding_snapshots` RPC** rather than writing the
+  table directly or reproducing its logic.
+- **Option A retires for post-anchor corrections once Option B is deployed** (§4.2).
+
 For every forced failure, assert **no unauthorized or partial state persisted**, and that
 golden-master identity still holds for zero-snapshot runs.
 
@@ -755,10 +1064,18 @@ At minimum, all must exist:
 - **Owner-only enforcement** (operational for Option A; `is_owner()` for Option B/reopen —
   with Finding-8 identity confirmed in production).
 - **Pre/post validation** (guard block or RPC assertions, run every time).
-- **Adjacent-week monotonicity checks** (§7) enforced by the mechanism.
+- **Existing-row validation** — every correction/single-week-amendment mechanism proves the
+  target natural-key row exists before writing; a missing row hard-stops (F-5; §4/§9).
+- **Adjacent-week monotonicity checks** using nearest-existing neighbors (§7.0) enforced by
+  the mechanism.
+- **Post-write hard-reload live verification** (§6.1) — success is confirmed against a
+  fresh loader read, never an unreloaded session.
+- **Mandatory pre-write full export + hash** before every exceptional write (§11.1).
 - **Evidence template** (§11) instantiated and used.
 - **Tested execution path** (§15 matrix green for the chosen mechanism).
 - **Explicit rollback boundary** (rollback ≠ correction; break-glass only; §2 principle 1).
+- **`repair_commitments_for_week` activation posture resolved** (retain / wrap / restrict /
+  revoke its `authenticated` EXECUTE — §17 handoff).
 - **No dependency on undocumented session memory** — every rule is in this doc, the 5G-1D
   plan, or the DDL; nothing relies on "we remember that…".
 
@@ -788,6 +1105,27 @@ acceptance criteria** to the later 5G-1D implementation-readiness package to abs
    owner-only path.
 9. **Contract non-regression:** the deployed reconciliation RPC and E1 snapshot RPC/table
    remain byte-unchanged (§2 principles 5/6; §15).
+10. **`repair_commitments_for_week` activation-posture decision (F-1).** At the 5G-1D
+    activation gate, an **explicit decision must be made and recorded to retain, wrap,
+    restrict, or revoke the `authenticated` EXECUTE grant** on
+    `repair_commitments_for_week` (signature `(INT, INT, TEXT, JSONB, JSONB)`), so that a
+    closed/anchored-week commitment or `balance_basis` mutation cannot be performed by
+    `household_admin` (Wendy) or via an unapproved path once 5G-1D is active. Options to
+    evaluate: leave as-is (procedural control only), wrap behind an owner-only wrapper
+    like the reconciliation reopen, restrict to owner via an in-body `is_owner()` gate (a
+    body edit — separately approved, out of this spec's scope), or revoke the direct
+    grant. **This spec does not choose or execute any of these — it requires the decision
+    be made in the readiness package.**
+
+### 17.1 Subordinate-artifact boundary (item 11)
+
+This document is a **companion** to, not a replacement for, the cleared 5G-1D plan. It
+**may**: identify activation-posture decisions; define correction/remediation
+requirements; and hand exact acceptance criteria to the implementation-readiness package.
+It **must not**: rewrite the master slice sequence; silently alter the cleared wrapper
+modes (`normal_closeout` / `approved_reopen`); modify the Week-5 anchor contract; or
+authorize any SQL or implementation. Where it surfaces a contradiction with a cleared
+artifact (§18), it **reports** it for Adam rather than overriding the cleared plan.
 
 ---
 
@@ -814,6 +1152,20 @@ Hard stop — do not proceed, report instead — if the design would require any
 - implementing any of this before E2 has seeded and validated the Week-5 anchor;
 - **shipping any `is_owner()`-gated path before the read-only production preflight confirms
   `is_owner()` returns true for Adam's real session** (Fable anchor D / Finding 8);
+- **invoking `repair_commitments_for_week` against a closed/reconciled/anchored/historical
+  week without explicit Adam approval and the §11 evidence package, or by Wendy, or through
+  the ordinary UI/retry path** (F-1 / §3.1);
+- **leaving `repair_commitments_for_week` outside the activation-posture review** — 5G-1D
+  must not activate without an explicit retain/wrap/restrict/revoke decision on its
+  `authenticated` EXECUTE grant (F-1 / §17 item 10);
+- **an unapproved anchored-week reconciliation, commitment, or `balance_basis` change during
+  the E2→activation interim window** (F-2 / §3.2);
+- **creating a missing snapshot natural-key row through the correction or single-week
+  amendment path** (row creation is §10/reviewed-backfill only — F-5 / §4/§9/§10);
+- **accepting an unreloaded browser session as post-write verification evidence** (F-6 /
+  §6.1);
+- **executing an exceptional write without the mandatory pre-write full export + hash**
+  (F-7 / §11.1);
 - editing the cleared E2 runbook or the cleared 5G-1D plan to hide a contradiction.
 
 **Contradiction check 1 — owner-only mechanism (reported, not silently overridden).** The
@@ -841,12 +1193,18 @@ post-anchor (`reconciliation`) rows.** The cleared E2 runbook and 5G-1D plan fil
 
 ## 19. Unresolved Adam decisions
 
-1. **Correction mechanism:** Option A (supervised guarded SQL, operational owner-only) as
-   the initial mechanism with Option B (`is_owner()` correction RPC) as the durable
-   upgrade — **recommended** — versus building Option B now. (§4.2)
-2. **`is_owner()` production identity (Finding 8):** confirm `is_owner()` returns true for
-   the real Adam login (`aherndon6@gmail.com`) before any `is_owner()`-gated path
-   (reopen, Option B) is trusted. This is a required preflight, not optional.
+1. **Correction mechanism:** Option A as the **bridge** path with **Option B planned into
+   5G-1D Slice-2** and **activation gated on Option B** (or an explicitly documented,
+   dated, controlled deferral) — **recommended** — versus building Option B now. (§4.2)
+2. **`is_owner()` production identity (Finding 8):** run the read-only preflight proving
+   exactly one active owner row, its `auth_user_id` maps to Adam's real login, Adam's
+   session returns `is_owner()=true` and Wendy's returns `false`, with no role-data change
+   — before any `is_owner()`-gated path (reopen, Option B) is trusted. Required, not
+   optional.
+2b. **`repair_commitments_for_week` activation posture (F-1):** decide and record whether
+   to retain / wrap / restrict / revoke its `authenticated` EXECUTE at 5G-1D activation so
+   an anchored/closed-week commitment or `balance_basis` change cannot be made by Wendy or
+   an unapproved path (§17 item 10).
 3. **Sequencing:** whether this correction/remediation procedure is finalized *before*
    5G-1D implementation begins, or folded into the 5G-1D readiness package as an
    acceptance-criteria annex (§17).
