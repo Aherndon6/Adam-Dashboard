@@ -859,7 +859,7 @@ button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-vis
 // ── Constants (unchanged) ──────────────────────────────────────────────────
 // Simplified architecture — $8,250 total from LC · $6,500 operating floor · no legacy mechanics
 // Real-world moves: keep $2,250 in chk, move $2,750 sav→chk, move $1,000 LC→chk, move $2,250 LC→chk (Option 1 correction)
-const BUILD_TS='2026-07-09T08:51:21'; // updated each push — local time string
+const BUILD_TS='2026-07-10T16:35:43'; // updated each push — local time string
 const START_CHK=18037.73,START_SAV=3772.77,START_AMX=103.64,START_TAX=0,START_LC=13488.88;
 const EF_AMT=13488.88; // LC/EF balance — static this model year (no transfers in or out)
 const BASE_TAX=521.36,RET_SAV_XFR=3772.74;
@@ -5576,6 +5576,33 @@ function _computeLedgerBalances(rows, startBal){
   });
 }
 
+// Wendy CL-balance model: recompute a running balance in the CURRENT visible order, anchored by
+// startBal at the anchor end, writing to entry[field] (default 'bal'). For the canonical reconcile
+// (CL) order this makes the cleared group accumulate up to the posted balance and the uncleared
+// group layer on top to the projected balance, so an older uncleared row can never move a
+// cleared-section balance. anchorAtBottom=true accumulates bottom->top (reconcile + date desc:
+// starting-balance anchor at the bottom, oldest end); false accumulates top->bottom (date asc).
+// Values are rounded to cents. Mutates and returns the passed array; balance-calc order == the
+// order of the passed array by construction. Given rows in date order this reproduces the plain
+// chronological running balance, so it is a superset of _computeLedgerBalances' math.
+function _applyDisplayOrderBalances(displayRows, startBal, anchorAtBottom, field){
+  var key=field||'bal';
+  var run=(typeof startBal==='number'&&isFinite(startBal))?startBal:0;
+  var rows=displayRows||[];
+  if(anchorAtBottom){
+    for(var i=rows.length-1;i>=0;i--){
+      run+=(parseFloat(rows[i].tx.amount)||0);
+      rows[i][key]=Math.round(run*100)/100;
+    }
+  }else{
+    for(var j=0;j<rows.length;j++){
+      run+=(parseFloat(rows[j].tx.amount)||0);
+      rows[j][key]=Math.round(run*100)/100;
+    }
+  }
+  return rows;
+}
+
 // Phase 5F-1.5 A6: pure display-sort over the chronological rowsWithBalance array
 // (each entry {tx,bal,chronIdx,catDisplay}). Returns a new sorted array; `bal` is
 // never recomputed, so Balance stays the as-of-transaction-date running balance.
@@ -6509,16 +6536,28 @@ function _renderTxRegister(){
         +'title="Sort by '+label+'" style="'+_thBase+';cursor:pointer;user-select:none'
         +(align?';text-align:'+align:'')+'">'+label+_sortInd(col)+'</th>';
     };
-    // A6/A9 pipeline: compute the full chronological ledger balance first (pass 1), then
-    // filter, then sort. Balance (bal) is attached during the chronological pass and NEVER
-    // recomputed after filter/sort, so filtered/sorted views still show each row's full-ledger
-    // as-of-transaction-date balance.
+    // Register balance pipeline (Wendy CL-balance model — SINGLE canonical balance per transaction).
+    // Pass 1: chronological build over the FULL account — assigns chronIdx (the deterministic
+    // created_at,id tie-break) + catDisplay (entry.bal here is transient, overwritten in pass 2).
+    // Pass 2: order the FULL account into the canonical reconcile (CL) sequence and accumulate
+    // bottom-up into entry.bal — the ONE canonical reconciliation balance (cleared group -> posted
+    // balance, uncleared layered on top -> projected balance). Every transaction carries exactly one
+    // balance, used unchanged in EVERY sort (CL, Date asc/desc, Payee, Category, Outflow, Inflow):
+    // sorting only rearranges rows, it never re-computes a balance. Pass 3: sort into the active view,
+    // then filter — balances are computed over the full account BEFORE filtering, so a filtered subset
+    // still shows each row's full-account canonical balance (never a subset recompute).
     var rows=_txLedgerCache||[];
     var _startBal=runBal; // opening ledger anchor (accounts.starting_balance, or 0 when unset)
-    var rowsWithBalance=_computeLedgerBalances(rows,_startBal);
-    var filteredRows=_filterTxRows(rowsWithBalance,_getTxFilterState());
-    var displayRows=_sortTxRows(filteredRows,_txLedgerSortCol,_txLedgerSortDir);
     var _filtersOn=_txFiltersActive();
+    var rowsWithBalance=_computeLedgerBalances(rows,_startBal);
+    // The reconcile comparator is direction-independent, so 'desc' matches the displayed CL order.
+    // _applyDisplayOrderBalances writes the canonical balance into entry.bal (default field) for every
+    // row, so there is exactly one user-visible balance model.
+    var _reconOrder=_sortTxRows(rowsWithBalance,'reconcile','desc');
+    _applyDisplayOrderBalances(_reconOrder,_startBal,true);
+    var fullOrder=_sortTxRows(rowsWithBalance,_txLedgerSortCol,_txLedgerSortDir);
+    var filteredRows=_filterTxRows(fullOrder,_getTxFilterState());
+    var displayRows=filteredRows;
 
     // A9a: filter row (search + type + status + Clear), with a Showing X of Y count.
     var _selV=function(cur,v){return cur===v?' selected':'';};
@@ -6554,15 +6593,15 @@ function _renderTxRegister(){
     // UX-0.5 (R1): the reconcile-view helper is shown as a cleaner, non-italic helper bar rather
     // than a long italic paragraph. Same class (tx-bal-caption) so existing selectors still resolve.
     var _barStyle='font-size:11px;color:var(--muted2);background:var(--surface2);border:1px solid var(--line);border-radius:7px;padding:7px 12px;margin:2px 0 6px;line-height:1.5';
-    // Date asc AND date desc are both valid ledger orders (Balance reads as a running
-    // sequence), so the sort caption is shown only for NON-date sorts. The filter caption
-    // is the stronger warning and wins whenever a filter is active.
+    // Caption precedence: an active filter warning wins (full-account balances, not a subset). The
+    // default reconcile (CL) view explains grouping + the posted-balance meaning of the top cleared
+    // row (adjacent rows foot). EVERY other sort — Date included — shows the same canonical CL balances
+    // rearranged, so adjacent displayed rows may not foot; a single conditional caption covers them all.
     var _balCaption=_filtersOn
-      ?'<div class="tx-bal-caption" style="'+_capStyle+'">Balance reflects the full ledger as of each transaction date, not the filtered subset.</div>'
+      ?'<div class="tx-bal-caption" style="'+_capStyle+'">Balance reflects the full account ledger, not the filtered subset.</div>'
       :(_txLedgerSortCol==='reconcile'
-        ?'<div class="tx-bal-caption" style="'+_barStyle+'">Uncleared transactions appear first. Balance reflects the full account ledger, not just visible rows. The newest cleared row should match your bank balance.</div>'
-        :((_txLedgerSortCol==='date')?''
-          :'<div class="tx-bal-caption" style="'+_capStyle+'">Balance is shown as of each transaction date, not recalculated in sorted order.</div>'));
+        ?'<div class="tx-bal-caption" style="'+_barStyle+'">Uncleared transactions appear first, then cleared. Balances accumulate up from the bottom: the newest cleared row should match your posted account balance when transactions and statuses are current, and uncleared activity layers on top to the projected balance.</div>'
+        :'<div class="tx-bal-caption" style="'+_capStyle+'">Each row keeps its canonical cleared/uncleared reconciliation balance. This view is outside the CL reconciliation sequence, so adjacent displayed rows may not foot.</div>');
 
     // A9b: display-only selected-account context label (reads existing selAcct; no state change).
     var _acctLabel=selAcct?'<div style="padding:8px 16px 0;font-size:12px;color:var(--muted)">Selected account: <strong style="color:var(--ink)">'+_esc(selAcct.label)+'</strong></div>':'';

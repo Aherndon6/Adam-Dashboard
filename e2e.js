@@ -2574,9 +2574,9 @@ async function clickNav(page, id) {
   await test('RG-12 (Phase 5F-1.5, ex-5E-10): uncleared review uses the Status filter, preserving date order and full-ledger balances', async () => {
     const { page, context } = await openApp(browser);
     // The default view is the reconcile CL view; here we explicitly pin date/desc to isolate the
-    // Status = Uncleared filter, which keeps date order and shows each row's full-ledger balance
-    // (Fandango -150.00, not a subset -50.00).
-    // Chronological (start 0): Kroger -100 -> -100 ; Fandango -50 -> -150 ; Paycheck +2000 -> 1850.
+    // Status = Uncleared filter, which keeps date order and shows each row's full-account CANONICAL
+    // CL balance (Fandango 1850.00 — posted 1900 + its -50 — not a subset -50.00).
+    // Canonical CL (start 0): cleared Kroger -100, Paycheck 1900 (posted); uncleared Fandango layers -> 1850.
     const sortTxns = [
       { id: 'rg12-1', account_key: 'truist_checking', transaction_date: '2026-06-01',
         payee: 'Kroger', memo: '', amount: -100.00, category_key: null,
@@ -2604,12 +2604,12 @@ async function clickNav(page, id) {
       var h = document.getElementById('transactions-content').innerHTML;
       return {
         hasFandango: h.indexOf('Fandango') !== -1, hasKroger: h.indexOf('Kroger') !== -1, hasPaycheck: h.indexOf('Paycheck') !== -1,
-        fandangoFullBal: h.indexOf('$-150.00') !== -1, fandangoSubsetBal: h.indexOf('$-50.00') !== -1,
-        filterCaption: h.indexOf('Balance reflects the full ledger') !== -1
+        fandangoFullBal: h.indexOf('$1850.00') !== -1, fandangoSubsetBal: h.indexOf('$-50.00') !== -1,
+        filterCaption: h.indexOf('Balance reflects the full account ledger') !== -1
       };
     });
     assert(result.hasFandango && !result.hasKroger && !result.hasPaycheck, 'Status = Uncleared shows only the uncleared row (Fandango)');
-    assert(result.fandangoFullBal && !result.fandangoSubsetBal, 'the uncleared row keeps its full-ledger balance -150.00, not a subset -50.00');
+    assert(result.fandangoFullBal && !result.fandangoSubsetBal, 'the uncleared row keeps its full-account canonical CL balance 1850.00, not a subset -50.00');
     assert(result.filterCaption, 'a filtered view shows the full-ledger caption');
     await page.evaluate(() => { _txFilterStatus = 'all'; _txLedgerCache = null; _txLedgerLoadStatus = 'not_loaded'; });
     await context.close();
@@ -2643,7 +2643,7 @@ async function clickNav(page, id) {
         balUB: h.indexOf('$-200.00') !== -1, balUA: h.indexOf('$-170.00') !== -1,
         balCB: h.indexOf('$-150.00') !== -1, balCA: h.indexOf('$-100.00') !== -1,
         startZero: h.indexOf('$0.00') !== -1,
-        reconcileCaption: h.indexOf('Uncleared transactions appear first. Balance reflects the full account ledger') !== -1,
+        reconcileCaption: h.indexOf('Uncleared transactions appear first, then cleared.') !== -1,
         clrActivatesReconcile: h.indexOf('data-sort-col="reconcile"') !== -1,
         hasCheckbox: h.indexOf('_toggleTxCleared') !== -1
       };
@@ -2688,10 +2688,11 @@ async function clickNav(page, id) {
     await context.close();
   });
 
-  await test('LEDGER-2 (Phase 5F-1.5 A10): a stale older uncleared row still groups on top; balances stay full-ledger (intentionally non-monotonic); caption does not overpromise; Budget still renders', async () => {
+  await test('LEDGER-2 (Wendy CL-balance model): a stale older uncleared row groups on top AND its balance layers on the posted balance (not its chronological spot); an older uncleared row never moves a cleared-section balance; caption does not overpromise; Budget still renders', async () => {
     const { page, context } = await openApp(browser);
-    // start 0. Chronological: Stale Uncleared 5/01 -500 => -500 ; Cleared One 7/01 -100 => -600 ;
-    // Cleared Two 7/02 -50 => -650 ; Fresh Uncleared 7/06 -30 => -680.
+    // start 0. Cleared group bottom-up: Cleared One 7/01 -100 => -100 ; Cleared Two 7/02 -50 => -150 (posted).
+    // Uncleared layered on posted: Stale Uncleared 5/01 -500 => -650 ; Fresh Uncleared 7/06 -30 => -680 (projected).
+    // The stale row reads -650 (posted -150 + its -500), NOT the old chronological -500; cleared rows read -100/-150.
     const txns = [
       { id:'l2-su', account_key:'truist_checking', transaction_date:'2026-05-01', payee:'Stale Uncleared', memo:'', amount:-500.00, category_key:null, cleared:false, source:'manual', created_at:'2026-05-01T10:00:00Z' },
       { id:'l2-c1', account_key:'truist_checking', transaction_date:'2026-07-01', payee:'Cleared One',     memo:'', amount:-100.00, category_key:null, cleared:true,  source:'manual', created_at:'2026-07-01T10:00:00Z' },
@@ -2707,24 +2708,25 @@ async function clickNav(page, id) {
       _txFilterSearch=''; _txFilterType='all'; _txFilterStatus='all'; _txFilterDateFrom=''; _txFilterDateTo='';
       setSection('transactions'); setTxSubNav('register'); renderApp();
       var h = document.getElementById('transactions-content').innerHTML;
-      var capStart = h.indexOf('Uncleared transactions appear first.');
+      var capStart = h.indexOf('Uncleared transactions appear first');
       var capText = capStart > -1 ? h.slice(capStart, capStart + 340) : '';
       return {
         iFresh: h.indexOf('Fresh Uncleared'), iStale: h.indexOf('Stale Uncleared'),
         iC2: h.indexOf('Cleared Two'), iC1: h.indexOf('Cleared One'),
-        staleBal: h.indexOf('$-500.00') !== -1, freshBal: h.indexOf('$-680.00') !== -1,
-        c2Bal: h.indexOf('$-650.00') !== -1, c1Bal: h.indexOf('$-600.00') !== -1,
+        staleBal: h.indexOf('$-650.00') !== -1, freshBal: h.indexOf('$-680.00') !== -1,
+        c2Bal: h.indexOf('$-150.00') !== -1, c1Bal: h.indexOf('$-100.00') !== -1,
         overpromiseInCaption: /always/i.test(capText),
-        conditionalCaption: capText.indexOf('newest cleared row should match your bank balance') !== -1
+        conditionalCaption: capText.indexOf('newest cleared row should match your posted account balance') !== -1
       };
     }, [acct, txns]);
     assert(r.iFresh > -1 && r.iStale > -1 && r.iC2 > -1 && r.iC1 > -1, 'all four rows render');
     assert(r.iFresh < r.iStale, 'uncleared group is newest-first (Fresh 7/06 above Stale 5/01)');
     assert(r.iStale < r.iC2 && r.iStale < r.iC1, 'the stale older uncleared row still groups ABOVE both cleared rows (group dominates date)');
     assert(r.iC2 < r.iC1, 'cleared group is newest-first (Cleared Two 7/02 above Cleared One 7/01)');
-    assert(r.staleBal && r.freshBal && r.c2Bal && r.c1Bal, 'balances stay full-ledger historical (-500/-680/-650/-600), intentionally non-monotonic down the page');
+    assert(r.staleBal && r.freshBal && r.c2Bal && r.c1Bal, 'CL-model balances: cleared read -100/-150 (posted), uncleared layer on top to -650/-680 — the stale row is -650, not its chronological -500');
+    assert(r.c1Bal && r.c2Bal, 'the older uncleared row never moved a cleared-section balance (cleared rows still -100 and -150)');
     assert(!r.overpromiseInCaption, 'the reconcile caption must not claim the checkpoint "always" equals the online balance');
-    assert(r.conditionalCaption, 'the reconcile helper bar uses conditional (non-overpromising) household wording ("should match your bank balance")');
+    assert(r.conditionalCaption, 'the reconcile helper bar uses conditional wording ("newest cleared row should match your posted account balance")');
     // Budget still renders (guardrail: no Budget changes).
     const budgetOk = await page.evaluate(() => {
       setSection('budget'); renderApp();
@@ -2736,7 +2738,7 @@ async function clickNav(page, id) {
     await context.close();
   });
 
-  await test('A6-1 (Phase 5F-1.5 A10): Register columns are user-sortable under the reconcile default; Date entry is uniform desc (newest-first) then toggles asc; Balance stays chronological; caption hides for date sorts', async () => {
+  await test('A6-1 (Wendy CL-balance model): Register columns are user-sortable under the reconcile default; Date entry is uniform desc then toggles asc; the SINGLE canonical balance is identical in every sort; the may-not-foot caption shows for every non-CL sort (Date included)', async () => {
     const { page, context } = await openApp(browser);
     const txns = [
       { id: 'a6-1', account_key: 'truist_checking', transaction_date: '2026-06-01',
@@ -2766,15 +2768,16 @@ async function clickNav(page, id) {
         var h = document.getElementById('transactions-content')?.innerHTML || '';
         return {
           fandango: h.indexOf('Fandango'), kroger: h.indexOf('Kroger'), paycheck: h.indexOf('Paycheck'),
-          hasFandangoBal: h.indexOf('$-150.00') !== -1,
-          hasCaption: h.indexOf('Balance is shown as of each transaction date') !== -1,
-          hasReconcileCaption: h.indexOf('Uncleared transactions appear first. Balance reflects the full account ledger') !== -1
+          fandangoCanonBal: h.indexOf('$1850.00') !== -1,  // the ONE canonical CL balance (posted 1900 + uncleared -50)
+          fandangoChronBal: h.indexOf('$-150.00') !== -1,  // the OLD chronological balance — must never appear now
+          hasCaption: h.indexOf('This view is outside the CL reconciliation sequence') !== -1,
+          hasReconcileCaption: h.indexOf('Uncleared transactions appear first, then cleared.') !== -1
         };
       }
       var def = snap();                                  // app default = reconcile CL view
-      setTxLedgerSort('payee'); var payeeSort = snap();  // non-date sort (payee asc)
+      setTxLedgerSort('payee'); var payeeSort = snap();  // noncanonical sort (payee asc)
       setTxLedgerSort('date');  var dateDesc = snap();   // uniform rule: Date enters desc (newest-first)
-      setTxLedgerSort('date');  var dateAsc  = snap();   // second Date click toggles to asc (chronological)
+      setTxLedgerSort('date');  var dateAsc  = snap();   // second Date click toggles to asc
       // Restore the real app default (reconcile CL view)
       _txLedgerSortCol = 'reconcile'; _txLedgerSortDir = 'desc';
       _txLedgerCache = null; _txLedgerLoadStatus = 'not_loaded';
@@ -2782,19 +2785,21 @@ async function clickNav(page, id) {
     }, [TX_MOCK_ACCOUNTS, txns]);
     // Default = reconcile: uncleared Fandango (6/5) on top, then cleared newest-first (Paycheck 6/10, Kroger 6/1)
     assert(r.def.fandango < r.def.paycheck && r.def.paycheck < r.def.kroger, 'default reconcile view: uncleared on top, then cleared newest-first');
-    assert(r.def.hasReconcileCaption && !r.def.hasCaption, 'reconcile default shows the reconciliation caption, not the generic non-date warning');
-    // Payee sort (a remaining sortable column): alphabetical, generic caption shown, balances preserved
+    assert(r.def.hasReconcileCaption && !r.def.hasCaption, 'reconcile default shows the reconciliation caption, not the noncanonical warning');
+    // Payee sort: alphabetical; noncanonical "may not foot" caption shown; balances preserved
     assert(r.payeeSort.fandango < r.payeeSort.kroger && r.payeeSort.kroger < r.payeeSort.paycheck, 'clicking Payee sorts alphabetically');
-    assert(r.payeeSort.hasCaption, 'a non-date sort shows the Balance caption');
-    // Date entry (uniform rule): first Date click lands on desc / newest-first; caption hidden
+    assert(r.payeeSort.hasCaption, 'a Payee sort shows the may-not-foot caption');
+    // Date entry (uniform rule): first Date click lands on desc / newest-first; caption NOW shown (single balance)
     assert(r.dateDesc.paycheck < r.dateDesc.fandango && r.dateDesc.fandango < r.dateDesc.kroger, 'first Date click enters desc (newest-first: Paycheck 6/10, Fandango 6/5, Kroger 6/1)');
-    assert(!r.dateDesc.hasCaption, 'a date sort hides the Balance caption');
-    // Second Date click toggles to asc (chronological); caption still hidden
-    assert(r.dateAsc.kroger < r.dateAsc.fandango && r.dateAsc.fandango < r.dateAsc.paycheck, 'second Date click toggles to asc (chronological)');
-    assert(!r.dateAsc.hasCaption, 'a date sort hides the Balance caption in both directions');
-    // Balance invariance: Fandango always shows its chronological $-150.00 across every view
-    assert(r.def.hasFandangoBal && r.payeeSort.hasFandangoBal && r.dateDesc.hasFandangoBal && r.dateAsc.hasFandangoBal,
-      "Fandango's chronological balance $-150.00 must be identical across reconcile, payee, and both date sorts");
+    assert(r.dateDesc.hasCaption, 'a Date sort now shows the may-not-foot caption (single canonical balance, Date is outside the CL sequence)');
+    // Second Date click toggles to asc; caption still shown
+    assert(r.dateAsc.kroger < r.dateAsc.fandango && r.dateAsc.fandango < r.dateAsc.paycheck, 'second Date click toggles to asc');
+    assert(r.dateAsc.hasCaption, 'a Date sort shows the may-not-foot caption in both directions');
+    // Single canonical balance: Fandango shows $1850.00 in EVERY view; the old chronological $-150.00 never appears.
+    assert(r.def.fandangoCanonBal && r.payeeSort.fandangoCanonBal && r.dateDesc.fandangoCanonBal && r.dateAsc.fandangoCanonBal,
+      "Fandango shows its single canonical CL balance $1850.00 identically across reconcile, Payee, and both Date sorts");
+    assert(!r.def.fandangoChronBal && !r.payeeSort.fandangoChronBal && !r.dateDesc.fandangoChronBal && !r.dateAsc.fandangoChronBal,
+      "the old chronological balance $-150.00 must never appear in any sort (no competing second balance)");
     await context.close();
   });
 
@@ -2824,7 +2829,7 @@ async function clickNav(page, id) {
           count4of4: h.indexOf('Showing 4 of 4') !== -1,
           shellFullBal: h.indexOf('$1810.00') !== -1, shellSubsetBal: h.indexOf('$-40.00') !== -1,
           filteredEmpty: h.indexOf('No transactions match the current filters') !== -1,
-          filterCaption: h.indexOf('Balance reflects the full ledger') !== -1
+          filterCaption: h.indexOf('Balance reflects the full account ledger') !== -1
         };
       });
     }

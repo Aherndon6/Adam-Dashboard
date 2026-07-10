@@ -7979,10 +7979,14 @@ test('5E10-08: Register payee input is marked required in the UI (label + placeh
   assertIncludes(registerFnSrc,"inp('payee','Required'",'Payee input placeholder must read Required, not Optional');
 });
 
-test('5E10-09: Register pipeline is chronological-ledger -> filter -> sort; default is the Quicken CL reconciliation view; generic cleared sort removed',()=>{
-  assertIncludes(registerFnSrc,'rowsWithBalance','Register must compute a chronological balance-attached array before any display sort');
-  assertIncludes(registerFnSrc,'filteredRows=_filterTxRows(rowsWithBalance','Register must filter the chronological array before sorting (A9a)');
-  assertIncludes(registerFnSrc,'displayRows=_sortTxRows(filteredRows','Register must produce the display order via _sortTxRows over the filtered chronological array');
+test('5E10-09: Register pipeline is compute -> canonical CL balance -> sort -> filter; default is the Quicken CL reconciliation view; generic cleared sort removed',()=>{
+  // Wendy CL-balance model: balances follow the canonical reconcile (CL) display order. The full
+  // account is ordered into the CL sequence and accumulated bottom-up into reconBal BEFORE filtering,
+  // then the active view is sorted and finally filtered (so a filtered subset keeps full-account balances).
+  assertIncludes(registerFnSrc,'rowsWithBalance=_computeLedgerBalances(rows','Register must build the chronIdx/catDisplay array first');
+  assertIncludes(registerFnSrc,"_reconOrder=_sortTxRows(rowsWithBalance,'reconcile'",'Register must order the FULL account into the canonical reconcile sequence for the CL balance');
+  assertIncludes(registerFnSrc,'_applyDisplayOrderBalances(_reconOrder,_startBal,true)','Register must accumulate the ONE canonical CL balance bottom-up into entry.bal');
+  assertIncludes(registerFnSrc,'filteredRows=_filterTxRows(fullOrder','Register must filter AFTER sorting the full ordered/balanced array (full-account balances, not a subset recompute)');
   // A10: default is the Quicken CL/reconciliation view (uncleared on top, cleared below,
   // newest-first within each group). The Clr header activates reconcile mode; the old generic
   // cleared comparator has been removed from _sortTxRows.
@@ -7994,19 +7998,19 @@ test('5E10-09: Register pipeline is chronological-ledger -> filter -> sort; defa
   assert(sBlock.indexOf('(a.tx.cleared?1:0)-(b.tx.cleared?1:0)')===-1,'the old generic cleared comparator must be removed from _sortTxRows');
 });
 
-test('5E10-10: running balance is precomputed in original chronological order and never recomputed after the display sort',()=>{
-  // Ledger pass extracted into the _computeLedgerBalances row-builder (behavior-preserving). Renderer
-  // order: compute (helper) -> filter -> sort -> render; entry.bal is never recomputed.
+test('5E10-10: ONE canonical CL balance per transaction, used unchanged in every sort; computed before filtering; no competing second balance field',()=>{
+  // Renderer order: compute(chronIdx) -> canonical CL balance into entry.bal -> sort -> filter -> render.
   var mapIdx=registerFnSrc.indexOf('rowsWithBalance=_computeLedgerBalances(rows');
-  var filterIdx=registerFnSrc.indexOf('filteredRows=_filterTxRows(rowsWithBalance');
-  var sortIdx=registerFnSrc.indexOf('displayRows=_sortTxRows(filteredRows');
+  var reconIdx=registerFnSrc.indexOf('_applyDisplayOrderBalances(_reconOrder,_startBal,true)');
+  var sortIdx=registerFnSrc.indexOf('fullOrder=_sortTxRows(rowsWithBalance');
+  var filterIdx=registerFnSrc.indexOf('filteredRows=_filterTxRows(fullOrder');
   var forEachIdx=registerFnSrc.indexOf('displayRows.forEach(function(entry){');
-  assert(mapIdx>-1&&filterIdx>-1&&sortIdx>-1&&forEachIdx>-1,'Could not locate the compute->filter->sort->render sequence');
-  assert(mapIdx<filterIdx&&filterIdx<sortIdx&&sortIdx<forEachIdx,'Balance computed, then filtered, then sorted, then rendered, in that order');
-  // The accumulation lives in the pure helper, not in the renderer or the render pass.
-  var lIdx=html.indexOf('function _computeLedgerBalances');
-  var lBlock=html.slice(lIdx,lIdx+700);
-  assertIncludes(lBlock,'run+=amt','_computeLedgerBalances accumulates the running balance in chronological order');
+  assert(mapIdx>-1&&reconIdx>-1&&sortIdx>-1&&filterIdx>-1&&forEachIdx>-1,'Could not locate the compute->CLbalance->sort->filter->render sequence');
+  assert(mapIdx<reconIdx&&reconIdx<sortIdx&&sortIdx<filterIdx&&filterIdx<forEachIdx,'Balance computed, CL-balanced, sorted, filtered, then rendered, in that order');
+  // Single canonical balance: no per-view branch, and no second user-visible balance field.
+  assert(registerFnSrc.indexOf("if(_txLedgerSortCol!=='date')")===-1,'there must be no Date-specific balance branch (one canonical balance for all sorts)');
+  assert(registerFnSrc.indexOf('reconBal')===-1,'no competing reconBal field — the canonical balance lives in entry.bal only');
+  // The accumulation lives in the pure helpers, not in the render pass.
   assert(!/displayRows\.forEach\(function\(entry\)\{[\s\S]{0,3000}?(run|runBal)\+=amt/.test(registerFnSrc),
     'balance must not be re-accumulated inside the display/render pass; only the precomputed entry.bal is used');
   assertIncludes(registerFnSrc,"entry.bal.toFixed(2)",'Balance column must render the precomputed entry.bal, not a live accumulator');
@@ -8089,16 +8093,232 @@ console.log('\n── Section 5F-1.5 A10: Register CL reconciliation default ─
     assertIncludes(reg,'data-sort-col="reconcile"','Clr header must activate reconcile mode');
     assertIncludes(reg,"setTxLedgerSort(\\'reconcile\\')",'Clr header onclick must call setTxLedgerSort(reconcile)');
     assertIncludes(reg,"_txLedgerSortCol==='reconcile'?' ▼'",'Clr header must show an active indicator in reconcile mode');
-    // UX-0.5 (R1): reconcile helper is now a cleaner helper bar (same tx-bal-caption class).
-    assertIncludes(reg,'Uncleared transactions appear first. Balance reflects the full account ledger, not just visible rows.','reconcile helper-bar copy must exist');
-    assertIncludes(reg,'The newest cleared row should match your bank balance.','reconcile helper bar keeps the trimmed reconcile-against-bank hint (non-overpromising)');
+    // Wendy CL-balance model: reconcile helper bar explains grouping + the posted-balance meaning
+    // of the newest cleared row, and the uncleared-layers-on-top projection.
+    assertIncludes(reg,'Uncleared transactions appear first, then cleared.','reconcile helper-bar grouping copy must exist');
+    assertIncludes(reg,'the newest cleared row should match your posted account balance when transactions and statuses are current','reconcile helper bar states the posted-balance meaning of the top cleared row');
+    assertIncludes(reg,'uncleared activity layers on top to the projected balance','reconcile helper bar explains uncleared layering');
     assertIncludes(reg,"_startAtBottom=(_txLedgerSortCol==='reconcile')",'starting-balance-at-bottom must include reconcile mode');
   });
-  test('A10-10: reconcile caption takes precedence over the generic non-date warning (which stays for Payee/Category/Outflow/Inflow)',()=>{
+  test('A10-10: reconcile caption takes precedence over the noncanonical-sort warning (Date/Payee/Category/Outflow/Inflow)',()=>{
     var reg=html.slice(html.indexOf('function _renderTxRegister()'),html.indexOf('function renderTransactions()'));
     var capIdx=reg.indexOf("_txLedgerSortCol==='reconcile'");
-    var warnIdx=reg.indexOf('Balance is shown as of each transaction date, not recalculated in sorted order');
-    assert(capIdx>-1&&warnIdx>-1&&capIdx<warnIdx,'reconcile caption branch must precede the generic non-date warning');
+    var warnIdx=reg.indexOf('This view is outside the CL reconciliation sequence, so adjacent displayed rows may not foot');
+    assert(capIdx>-1&&warnIdx>-1&&capIdx<warnIdx,'reconcile caption branch must precede the noncanonical-sort warning');
+  });
+})();
+
+// ═══════════════════════════════════════════════════════════════════════════
+// CL-BAL (Wendy CL-balance model): row balances follow the canonical reconcile
+// (CL) display order. Cleared group accumulates bottom-up to the posted balance;
+// uncleared layers on top to the projected balance. An older uncleared row must
+// never move a cleared-section balance. Exercises the real _computeLedgerBalances
+// + _sortTxRows + _applyDisplayOrderBalances (eval'd from index.html).
+// ═══════════════════════════════════════════════════════════════════════════
+console.log('\n── Section CL-BAL: Wendy cleared/uncleared grouped balance ──');
+(function(){
+  function mk(id,date,created,amount,cleared,payee){
+    return {id:id,transaction_date:date,created_at:created,amount:amount,cleared:cleared,payee:payee||id,category_key:''};
+  }
+  // Fetch order = transaction_date asc, created_at asc, id asc (the loader's ORDER BY).
+  function fetchSort(txs){
+    return txs.slice().sort(function(a,b){
+      return (a.transaction_date<b.transaction_date?-1:a.transaction_date>b.transaction_date?1:0)
+        ||(a.created_at<b.created_at?-1:a.created_at>b.created_at?1:0)
+        ||(a.id<b.id?-1:a.id>b.id?1:0);
+    });
+  }
+  // Reproduce the Register pipeline: compute -> ONE canonical CL balance into entry.bal -> sort.
+  // Every sort (CL, Date, Payee, Category, amount) reuses that single balance; sorting only reorders.
+  function pipeline(txs,startBal,col,dir){
+    var rwb=_computeLedgerBalances(fetchSort(txs),startBal);
+    var recon=_sortTxRows(rwb,'reconcile','desc');
+    _applyDisplayOrderBalances(recon,startBal,true); // writes the canonical balance into entry.bal for every row
+    return _sortTxRows(rwb,col||'reconcile',dir||'desc');
+  }
+  function balById(rows){var m={};rows.forEach(function(e){m[e.tx.id]=e.bal;});return m;}
+  function ids(rows){return rows.map(function(e){return e.tx.id;});}
+  function js(a){return JSON.stringify(a);}
+
+  // AMEX-shaped fixture: posted -12784.89 (cleared), uncleared -722.80, projected -13507.69.
+  // Includes an OLDER uncleared row (Y, 7/6) sitting before newer cleared rows (A 7/8, B 7/7).
+  var START=-8248.50;
+  function fx(){return [
+    mk('A','2026-07-08','2026-07-08T10:00:00Z',-4000.00,true ,'clearedA'),
+    mk('B','2026-07-07','2026-07-07T10:00:00Z', -536.39,true ,'clearedB'),
+    mk('X','2026-07-09','2026-07-09T10:00:00Z', -700.00,false,'unclearedX'),
+    mk('Y','2026-07-06','2026-07-06T10:00:00Z',  -22.80,false,'unclearedY')
+  ];}
+
+  test('CL-BAL-1: default view groups uncleared first, cleared second, date desc within each group',()=>{
+    var r=pipeline(fx(),START,'reconcile','desc');
+    assert(js(ids(r))===js(['X','Y','A','B']),'order must be uncleared[X(7/9),Y(7/6)] then cleared[A(7/8),B(7/7)], got '+js(ids(r)));
+  });
+
+  test('CL-BAL-2: older-dated uncleared row + newer cleared rows — uncleared balance layers on the posted balance, not its chronological spot',()=>{
+    var b=balById(pipeline(fx(),START,'reconcile','desc'));
+    // Y is 7/6 (older than A 7/8, B 7/7). Chronologically it would read START-22.80=-8271.30.
+    // Under the CL model it sits just above the cleared boundary: posted + Y = -12784.89 - 22.80.
+    assertApprox(b.Y,-12807.69,'older uncleared Y layers on the posted balance (-12807.69), not its chronological -8271.30');
+    assert(Math.abs(b.Y-(-8271.30))>1,'CL balance must NOT equal the old chronological value for Y');
+  });
+
+  test('CL-BAL-3: cleared and uncleared sharing the same date are split across the boundary',()=>{
+    var f=fx();
+    f.push(mk('C','2026-07-09','2026-07-09T09:00:00Z',-10.00,true ,'clearedC_sameDayAsX')); // cleared, same date as uncleared X
+    var r=pipeline(f,START,'reconcile','desc');
+    var pos=ids(r);
+    assert(pos.indexOf('X')<pos.indexOf('C'),'uncleared X (7/9) must appear above cleared C (7/9): '+js(pos));
+    // Both 7/9 rows exist but on opposite sides of the boundary: X in the uncleared group (top),
+    // C in the cleared group. Every uncleared row must precede every cleared row.
+    var lastUnc=Math.max.apply(null,r.map(function(e,i){return e.tx.cleared!==true?i:-1;}));
+    var firstClr=r.map(function(e){return e.tx.cleared===true;}).indexOf(true);
+    assert(lastUnc<firstClr,'same-date rows are split by status: all uncleared above all cleared: '+js(pos));
+    var b=balById(r);
+    // Top cleared row is the newest cleared (C, 7/9) = cleared ledger total START-4000-536.39-10.
+    assertApprox(b.C,-12794.89,'top cleared row (C) = cleared ledger total incl. same-day cleared C');
+  });
+
+  test('CL-BAL-4: uncleared -> cleared toggle moves the row into the cleared section; posted rises by its amount; top overall unchanged',()=>{
+    var before=balById(pipeline(fx(),START,'reconcile','desc'));
+    var postedBefore=before.A; // top cleared
+    var f=fx(); f.forEach(function(t){if(t.id==='Y')t.cleared=true;}); // clear Y
+    var r=pipeline(f,START,'reconcile','desc');
+    var b=balById(r);
+    // Cleared now A,B,Y. Newest cleared is A (7/8). posted = START -4000 -536.39 -22.80 = -12807.69.
+    assertApprox(b.A,-12807.69,'posted rises by Y after clearing (was -12784.89, now -12807.69)');
+    assert(Math.abs(postedBefore-(-12784.89))<0.005,'sanity: posted was -12784.89 before the toggle');
+    // top overall (newest uncleared X) still projects to -13507.69.
+    assertApprox(b.X,-13507.69,'top overall unchanged by a status toggle (-13507.69)');
+  });
+
+  test('CL-BAL-5: cleared -> uncleared toggle moves the row into the uncleared section; posted falls; top overall unchanged',()=>{
+    var f=fx(); f.forEach(function(t){if(t.id==='A')t.cleared=false;}); // un-clear A (7/8, -4000)
+    var r=pipeline(f,START,'reconcile','desc');
+    var b=balById(r);
+    var pos=ids(r);
+    // Cleared now only B. posted = START -536.39 = -8784.89 (top cleared = B).
+    assertApprox(b.B,-8784.89,'posted falls to just the remaining cleared total (-8784.89)');
+    // Uncleared now X(7/9),A(7/8),Y(7/6); top overall (X) still -13507.69.
+    assertApprox(b.X,-13507.69,'top overall unchanged by a status toggle (-13507.69)');
+    assert(pos.indexOf('A')<pos.indexOf('B'),'A now sits in the uncleared group, above cleared B');
+  });
+
+  test('CL-BAL-6: balances are computed over the full account BEFORE filtering (a filtered subset keeps full-account balances)',()=>{
+    var full=balById(pipeline(fx(),START,'reconcile','desc'));
+    // Emulate the render pipeline exactly: build reconBal on the full set, then filter to uncleared only.
+    var rwb=_computeLedgerBalances(fetchSort(fx()),START);
+    var recon=_sortTxRows(rwb,'reconcile','desc');
+    _applyDisplayOrderBalances(recon,START,true,'reconBal');
+    rwb.forEach(function(e){e.bal=e.reconBal;});
+    var ordered=_sortTxRows(rwb,'reconcile','desc');
+    var subset=_filterTxRows(ordered,{status:'uncleared'});
+    var sb=balById(subset);
+    assertApprox(sb.X,full.X,'X keeps its full-account balance under the uncleared filter');
+    assertApprox(sb.Y,full.Y,'Y keeps its full-account balance under the uncleared filter (-12807.69), not a subset recompute');
+    assert(subset.every(function(e){return e.tx.cleared!==true;}),'uncleared filter returns only uncleared rows');
+  });
+
+  test('CL-BAL-7: Date, Payee, Category, and amount(outflow/inflow) sorts do NOT recompute balances — each row keeps its ONE canonical CL balance',()=>{
+    var canon=balById(pipeline(fx(),START,'reconcile','desc'));
+    ['date','payee','category','outflow','inflow'].forEach(function(col){
+      ['asc','desc'].forEach(function(dir){
+        var b=balById(pipeline(fx(),START,col,dir));
+        Object.keys(canon).forEach(function(id){
+          assertApprox(b[id],canon[id],col+'/'+dir+' sort must retain the canonical CL balance for '+id);
+        });
+      });
+    });
+  });
+
+  test('CL-BAL-8: same-date ordering + balances are stable across a refresh (re-run of the pipeline)',()=>{
+    var r1=pipeline(fx(),START,'reconcile','desc');
+    var r2=pipeline(fx(),START,'reconcile','desc');
+    assert(js(ids(r1))===js(ids(r2)),'row order identical across refresh');
+    assert(js(balById(r1))===js(balById(r2)),'row balances identical across refresh');
+  });
+
+  test('CL-BAL-9: starting-balance anchor sits at the bottom; the oldest cleared row = startBal + its own amount',()=>{
+    var b=balById(pipeline(fx(),START,'reconcile','desc'));
+    // Bottom-most row is the oldest cleared (B, 7/7). Anchor below it is startBal.
+    assertApprox(b.B,START-536.39,'oldest cleared row (bottom) = startBal + its amount = -8784.89');
+  });
+
+  test('CL-BAL-10: top cleared row equals the cleared ledger total (posted balance -12784.89)',()=>{
+    var b=balById(pipeline(fx(),START,'reconcile','desc'));
+    var clearedTotal=START+(-4000.00)+(-536.39);
+    assertApprox(b.A,clearedTotal,'top cleared row = startBal + sum(cleared)');
+    assertApprox(b.A,-12784.89,'posted balance = -12784.89 (AMEX Gold validation)');
+  });
+
+  test('CL-BAL-11: top overall row equals cleared balance plus all uncleared activity (-13507.69); uncleared activity = -722.80',()=>{
+    var b=balById(pipeline(fx(),START,'reconcile','desc'));
+    var uncleared=(-700.00)+(-22.80);
+    assertApprox(uncleared,-722.80,'uncleared activity = -722.80 (AMEX Gold validation)');
+    assertApprox(b.X,-12784.89+uncleared,'top overall = posted + uncleared activity');
+    assertApprox(b.X,-13507.69,'top overall balance = -13507.69 (AMEX Gold validation)');
+  });
+
+  test('CL-BAL-12: adjacent rows foot in the default CL view (row above = row below + amount above), across the cleared boundary',()=>{
+    var r=pipeline(fx(),START,'reconcile','desc'); // X,Y,A,B top->bottom
+    for(var i=0;i<r.length-1;i++){
+      var above=r[i], below=r[i+1];
+      var amtAbove=parseFloat(above.tx.amount)||0;
+      assertApprox(above.bal, below.bal+amtAbove, 'row '+above.tx.id+' must foot onto '+below.tx.id+' (+ its amount)');
+    }
+    // And the bottom row foots onto the starting balance anchor.
+    assertApprox(r[r.length-1].bal, START+(parseFloat(r[r.length-1].tx.amount)||0), 'bottom row foots onto the starting-balance anchor');
+  });
+
+  test('CL-BAL-13: Date sort shows the SAME canonical CL balance (single balance model) — NOT a separate chronological balance',()=>{
+    var canon=balById(pipeline(fx(),START,'reconcile','desc'));
+    var d=balById(pipeline(fx(),START,'date','desc'));
+    // Y (older uncleared) shows its canonical CL balance in Date view too (-12807.69), NOT chronological -8271.30.
+    assertApprox(d.Y,canon.Y,'Date view shows the canonical CL balance for Y, identical to the CL view');
+    assertApprox(d.Y,-12807.69,'Date view Y = canonical -12807.69, not the old chronological -8271.30');
+    assert(Math.abs(d.Y-(START-22.80))>1,'Date view must NOT show the chronological as-of balance for Y');
+  });
+
+  test('CL-BAL-14: single canonical balance — a transaction keeps the SAME balance across CL, Date asc/desc, Payee, Category, Outflow; switching sorts never alters any balance',()=>{
+    var views=[['reconcile','desc'],['date','asc'],['date','desc'],['payee','asc'],['category','asc'],['outflow','asc'],['inflow','desc']];
+    var canon=balById(pipeline(fx(),START,'reconcile','desc'));
+    views.forEach(function(v){
+      var b=balById(pipeline(fx(),START,v[0],v[1]));
+      assert(js(Object.keys(canon).sort().map(function(id){return [id,canon[id]];}))
+            ===js(Object.keys(b).sort().map(function(id){return [id,b[id]];})),
+        v[0]+'/'+v[1]+' must assign every transaction the exact same balance as the CL view');
+    });
+    // Returning to CL restores the canonical footing sequence (adjacent rows foot).
+    var back=pipeline(fx(),START,'reconcile','desc');
+    for(var i=0;i<back.length-1;i++){
+      assertApprox(back[i].bal, back[i+1].bal+(parseFloat(back[i].tx.amount)||0),'CL view foots after returning from other sorts');
+    }
+  });
+
+  test('CL-BAL-15: the reconcile footing caption is shown ONLY in the canonical footing order — CL is non-reversible (always desc) and direction-independent, so it can never present rows out of the footing sequence',()=>{
+    // (a) Non-reversible: setTxLedgerSort('reconcile') always lands in reconcile/desc, from any prior state,
+    //     and a repeat click never flips direction — there is no user path to a reversed CL sort.
+    var o=renderApp; renderApp=function(){};
+    try{
+      _txLedgerSortCol='payee'; _txLedgerSortDir='asc'; setTxLedgerSort('reconcile');
+      assert(_txLedgerSortCol==='reconcile'&&_txLedgerSortDir==='desc','reconcile entry always lands desc, never reversed');
+      setTxLedgerSort('reconcile');
+      assert(_txLedgerSortCol==='reconcile'&&_txLedgerSortDir==='desc','a repeat Clr click does not reverse CL direction');
+    } finally { renderApp=o; _txLedgerSortCol='reconcile'; _txLedgerSortDir='desc'; }
+    // (b) Direction-independent: even a forced 'asc' yields the identical canonical order AND balances,
+    //     so a reversed direction can never un-canonicalize the footing view.
+    var desc=pipeline(fx(),START,'reconcile','desc'), asc=pipeline(fx(),START,'reconcile','asc');
+    assert(js(ids(desc))===js(ids(asc)),'reconcile row order is identical for asc and desc');
+    assert(js(balById(desc))===js(balById(asc)),'reconcile balances are identical for asc and desc');
+    // (c) Source: the footing (reconcile) caption is gated on reconcile mode; the non-footing "may not
+    //     foot" caption covers every other sort (Date/Payee/Category/Outflow/Inflow). So the footing
+    //     caption can only appear when rows are actually in the canonical footing order.
+    var capIdx=html.indexOf('var _balCaption=');
+    var capBlock=html.slice(capIdx,capIdx+1200);
+    var footPos=capBlock.indexOf('the newest cleared row should match your posted account balance');
+    var mayNotPos=capBlock.indexOf('This view is outside the CL reconciliation sequence, so adjacent displayed rows may not foot.');
+    assert(capBlock.indexOf("_txLedgerSortCol==='reconcile'")>-1,'footing caption is gated on reconcile mode');
+    assert(footPos>-1&&mayNotPos>-1&&footPos<mayNotPos,'footing caption lives only in the reconcile branch; every other view shows the may-not-foot caption');
   });
 })();
 
@@ -10772,7 +10992,7 @@ test('UX0.5-R1: Register reconcile helper is a cleaner helper bar (new copy, tri
   assertIncludes(reg,'var _barStyle=','helper-bar style must be defined');
   assertIncludes(reg,'background:var(--surface2);border:1px solid var(--line);border-radius:7px','helper bar border must use the defined --line token, not --border');
   assert(reg.indexOf('font-style:italic')===-1||reg.indexOf('_barStyle')>-1,'helper bar exists');
-  assertIncludes(reg,'Uncleared transactions appear first. Balance reflects the full account ledger, not just visible rows. The newest cleared row should match your bank balance.','new helper-bar copy incl. trimmed reconcile hint');
+  assertIncludes(reg,'Uncleared transactions appear first, then cleared. Balances accumulate up from the bottom: the newest cleared row should match your posted account balance when transactions and statuses are current, and uncleared activity layers on top to the projected balance.','helper-bar copy = Wendy CL-balance model');
   assert(reg.indexOf('Reconciliation view: uncleared transactions are shown above cleared')===-1,'old long italic reconcile paragraph must be gone');
   assertIncludes(reg,'class="tx-bal-caption"','helper bar keeps the tx-bal-caption class (selectors resolve)');
 });
@@ -10950,12 +11170,12 @@ test('5F15-A6-09: column sort controls are Date/Payee/Category/Outflow/Inflow (t
   assertIncludes(fnBlock,"th('Balance','right')","Balance header must be a plain (non-sortable) th");
   assert(fnBlock.indexOf("setTxLedgerSort('balance')")===-1,'Balance must never be wired to setTxLedgerSort');
 });
-test('5F15-A6-10: balance caption shows only for non-date sorts (date asc AND date desc are both valid ledger orders)',()=>{
+test('5F15-A6-10: single canonical balance — the "may not foot" caption shows for EVERY non-reconcile sort, Date included (Date is no longer caption-free)',()=>{
   var fnIdx=html.indexOf('function _renderTxRegister');
   var fnBlock=html.slice(fnIdx,html.indexOf('function renderTransactions()'));
-  assertIncludes(fnBlock,"(_txLedgerSortCol==='date')?''","caption is hidden for any date sort (asc or desc), shown for non-date sorts");
-  assert(fnBlock.indexOf("_txLedgerSortCol==='date'&&_txLedgerSortDir==='asc'")===-1,'caption must no longer be gated on date-ascending only');
-  assertIncludes(fnBlock,'Balance is shown as of each transaction date, not recalculated in sorted order.','non-date caption copy present');
+  // The old date-hide branch is gone: Date now shows the noncanonical "may not foot" caption like every other non-CL sort.
+  assert(fnBlock.indexOf("(_txLedgerSortCol==='date')?''")===-1,'the Date caption-hide branch must be removed (Date shows the may-not-foot caption)');
+  assertIncludes(fnBlock,'This view is outside the CL reconciliation sequence, so adjacent displayed rows may not foot.','noncanonical-sort caption copy present');
 });
 })();
 
@@ -11027,17 +11247,17 @@ test('5F15-LEDGER-07: Clr activates the reconcile CL view; the generic cleared c
   assertIncludes(fnBlock,'if(!_startAtBottom)tbl+=_startRowHtml','starting-balance row anchors the top for asc/non-bottom views');
   assertIncludes(fnBlock,'if(_startAtBottom)tbl+=_startRowHtml','starting-balance row moves to the bottom (oldest end) for reconcile and date desc');
 });
-test('5F15-LEDGER-08: filter caption wins over the date sort (filter-active is the outer ternary), so a filtered date/desc view still warns full-ledger',()=>{
+test('5F15-LEDGER-08: filter caption wins (outer ternary), then the reconcile branch, then the single noncanonical "may not foot" branch (covers Date too)',()=>{
   var fnIdx=html.indexOf('function _renderTxRegister');
   var fnBlock=html.slice(fnIdx,html.indexOf('function renderTransactions()'));
   var capIdx=fnBlock.indexOf('var _balCaption=');
   var capBlock=fnBlock.slice(capIdx,capIdx+900);
   assertIncludes(capBlock,'_balCaption=_filtersOn','filter-active is the OUTER ternary condition, so it wins under any sort including reconcile and date/desc');
-  var filterCapPos=capBlock.indexOf('Balance reflects the full ledger as of each transaction date, not the filtered subset.');
+  var filterCapPos=capBlock.indexOf('Balance reflects the full account ledger, not the filtered subset.');
   var reconcilePos=capBlock.indexOf("_txLedgerSortCol==='reconcile'");
-  var dateBranchPos=capBlock.indexOf("(_txLedgerSortCol==='date')?''");
-  assert(filterCapPos>-1&&reconcilePos>-1&&dateBranchPos>-1,'the filter caption, the reconcile caption branch, and the date-hide branch must all exist');
-  assert(filterCapPos<reconcilePos&&reconcilePos<dateBranchPos,'order of precedence: filter caption, then reconcile branch, then date-hide branch');
+  var noncanonPos=capBlock.indexOf('This view is outside the CL reconciliation sequence, so adjacent displayed rows may not foot.');
+  assert(filterCapPos>-1&&reconcilePos>-1&&noncanonPos>-1,'the filter caption, the reconcile caption branch, and the noncanonical branch must all exist');
+  assert(filterCapPos<reconcilePos&&reconcilePos<noncanonPos,'order of precedence: filter caption, then reconcile branch, then the single noncanonical branch');
 });
 })();
 
@@ -11136,8 +11356,8 @@ test('5F15-A9a-12: filtered-empty state is distinct from the account-empty state
 test('5F15-A9a-13: caption has a filter-active branch (stronger) and a sort-off-date branch',()=>{
   var fnIdx=html.indexOf('function _renderTxRegister');
   var fnBlock=html.slice(fnIdx,html.indexOf('function renderTransactions()'));
-  assertIncludes(fnBlock,'Balance reflects the full ledger as of each transaction date, not the filtered subset.','filter-active caption present');
-  assertIncludes(fnBlock,'Balance is shown as of each transaction date, not recalculated in sorted order.','sort-off-date caption present');
+  assertIncludes(fnBlock,'Balance reflects the full account ledger, not the filtered subset.','filter-active caption present');
+  assertIncludes(fnBlock,'This view is outside the CL reconciliation sequence, so adjacent displayed rows may not foot.','noncanonical-sort caption present');
   assertIncludes(fnBlock,'_filtersOn','caption branch is gated on the filters-active flag');
 });
 })();
