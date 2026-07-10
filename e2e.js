@@ -57,9 +57,45 @@ const URL = process.env.HFOS_URL ||
 //   node e2e.js                 → full (permanent default)
 //   node e2e.js --smoke         → smoke
 //   E2E_MODE=smoke node e2e.js  → smoke
-const SMOKE_MODE = process.argv.includes('--smoke') || process.env.E2E_MODE === 'smoke';
+//   E2E_MODE=full  node e2e.js  → full (explicit)
+// Parsing is STRICT (5G-QA-1 hardening): unknown CLI flags, unknown E2E_MODE
+// values, and conflicting CLI/env modes are rejected before any browser launches
+// or any test runs (nonzero exit). Malformed input never silently falls back to
+// full mode.
+const ACCEPTED_INVOCATIONS = [
+  'node e2e.js                 → full mode (default)',
+  'node e2e.js --smoke         → smoke mode',
+  'E2E_MODE=smoke node e2e.js  → smoke mode',
+  'E2E_MODE=full node e2e.js   → full mode (explicit)',
+];
+function _rejectInvocation(reason) {
+  console.error('\n✗ E2E invocation error: ' + reason);
+  console.error('  Accepted invocations:');
+  ACCEPTED_INVOCATIONS.forEach(l => console.error('    ' + l));
+  console.error('  (no browser launched, no tests executed)');
+  process.exit(2);
+}
+// CLI: the only recognized script argument is --smoke. Node/Playwright flags are
+// passed before the script name (node --flag e2e.js) and never appear in
+// argv.slice(2), so rejecting unknown script args does not catch ordinary
+// runtime flags.
+const _cliArgs = process.argv.slice(2);
+const _unknownCli = _cliArgs.filter(a => a !== '--smoke');
+if (_unknownCli.length) _rejectInvocation('unknown argument(s): ' + _unknownCli.join(' '));
+const _cliSmoke = _cliArgs.includes('--smoke');
+// Env: E2E_MODE may be unset/empty, 'smoke', or 'full'. Any other value rejects.
+const _envRaw = process.env.E2E_MODE;
+const _envMode = (_envRaw === undefined || _envRaw === '') ? null : _envRaw;
+if (_envMode !== null && _envMode !== 'smoke' && _envMode !== 'full') {
+  _rejectInvocation('unknown E2E_MODE value: "' + _envRaw + '" (expected "smoke" or "full")');
+}
+// Conflict: CLI requests smoke while env explicitly requests full.
+if (_cliSmoke && _envMode === 'full') {
+  _rejectInvocation('conflicting mode: --smoke (CLI) vs E2E_MODE=full (env)');
+}
+const SMOKE_MODE = _cliSmoke || _envMode === 'smoke';
 
-let pass = 0, fail = 0, skipped = 0;
+let pass = 0, fail = 0, skipped = 0, registered = 0;
 const failures = [];
 
 // Slice B (5G-QA-1): deterministic readiness waits replace the old fixed sleeps
@@ -73,6 +109,7 @@ const readinessFallbackHits = { openApp: 0, clickNav: 0 };
 // In smoke mode a test with no 'smoke' tag is skipped (no browser opened, not
 // counted pass/fail). In full mode tags are ignored and every test runs.
 function test(name, fn, opts = {}) {
+  registered++;
   const tags = opts.tags || [];
   if (SMOKE_MODE && !tags.includes('smoke')) {
     skipped++;
@@ -150,7 +187,19 @@ async function clickNav(page, id) {
     : '  ▶ FULL MODE (default) — running the complete suite');
   console.log('');
 
-  const browser = await chromium.launch({ headless: true });
+  // Lazy Chromium (5G-QA-1 hardening): launch on first actual use (newContext)
+  // so an empty smoke selection — guarded below — launches no browser at all.
+  // Every browser use in this suite is browser.newContext()/browser.close(), so
+  // this two-method wrapper is a complete substitute and leaves all call sites
+  // unchanged. Timing of the readiness waits inside openApp is untouched.
+  let _realBrowser = null;
+  const browser = {
+    async newContext(opts) {
+      if (!_realBrowser) _realBrowser = await chromium.launch({ headless: true });
+      return _realBrowser.newContext(opts);
+    },
+    async close() { if (_realBrowser) await _realBrowser.close(); },
+  };
 
   // ── Section A: Tab smoke test ──────────────────────────────────────────
   console.log('── Section A: Tab smoke test ──');
@@ -3933,6 +3982,19 @@ async function clickNav(page, id) {
       '"Date is required" error must not appear when date field was not touched');
     await context.close();
   });
+
+  // Empty smoke-selection guard (5G-QA-1 hardening): if smoke mode matched zero
+  // tests, that is a configuration failure, not a pass. With the lazy browser
+  // above, reaching here in the empty case means no Chromium was launched and no
+  // test executed — fail loudly and exit nonzero before the normal results block.
+  const _selected = registered - skipped;
+  if (SMOKE_MODE && _selected === 0) {
+    console.error('\n✗ E2E smoke selection is empty: 0 of ' + registered
+      + ' registered tests are tagged "smoke".');
+    console.error('  Smoke mode must select at least one test.'
+      + ' No browser was launched and no test executed.');
+    process.exit(2);
+  }
 
   await browser.close();
 
