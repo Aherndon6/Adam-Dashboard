@@ -24,7 +24,7 @@ any of them):**
    reopen / remediation companion spec (merged to `main` at `f005263`); its §15 test
    matrix and §17 acceptance criteria are absorbed below.
 
-**Hierarchy rule (§17 of the correction spec / this §17 below).** This package may
+**Hierarchy rule (§17 of the correction spec / §10 below).** This package may
 consolidate and operationalize the three cleared artifacts' requirements; it may **not**
 override them. Where consolidation surfaced a divergence, it is **flagged in-line**, never
 resolved silently. (One re-grouping note is flagged in §4.0.)
@@ -81,7 +81,7 @@ Unchanged from the prior readiness draft; not weakened or reinterpreted.
 Each is an explicit gate with a trigger point. **Gate 0 is new (B-2) and BLOCKING.**
 Gates A–E are preserved and expanded.
 
-### Gate 0 — E2 completion (NEW; BLOCKING) — B-2
+### Gate 0 — E2 completion (BLOCKING; Fable finding B-2)
 - **Decision:** E2 production first-anchor seed must be **complete and validated before any
   5G-1D implementation begins.**
 - **Status:** OPEN / BLOCKING.
@@ -396,6 +396,8 @@ section.
 - **Exact scope:** `index.html` closeout path only — a **narrow** change, **no broad UI
   refactor.**
 - **Dependencies:** Slice 1 wrapper (+ Slice 2 controls deployed inertly).
+- **Entry criteria:** Slice 1 wrapper on staging; Slice 2 controls deployed inertly; Slice 0
+  baseline held.
 - **Exact repository touchpoints [CURRENT], verified this pass:**
   - existing reconciliation save function — `saveRecon(n)` (`index.html:2729`);
   - reload — `reloadReconAndCommitments()` (`index.html:2716`);
@@ -406,8 +408,10 @@ section.
   - **[PROPOSED]** wrapper invocation point inside/next to `saveRecon`; the confirmation
     view; the closeout-complete predicate helper (Slice 4).
 - **Confirmation view must show:** target week; reconciliation actuals + commitments; the
-  exact nine goal IDs; prior and proposed funded values; unchanged values; the
-  **joint-commit warning** (reconciliation + snapshots commit together).
+  exact nine goal IDs; **the expected snapshot row count — exactly nine** (shown alongside
+  the nine goal IDs and funded amounts, per the cleared plan §2.2); prior and proposed
+  funded values; unchanged values; the **joint-commit warning** (reconciliation + snapshots
+  commit together).
 - **Client state machine:** disable the action while in flight; **no premature
   reconciliation-success state**; **timeout treated as ambiguous** (not failed); **re-read
   both halves before retry**; route changed same-week values to reopen/correction; preserve
@@ -426,8 +430,11 @@ section.
 - **Security/grant checks:** real authenticated writer only; no anon path; no direct table
   write from the app.
 - **Required evidence:** static + e2e green; golden-master identity for zero-snapshot runs.
-- **Exit criteria:** browser closeout drives the wrapper; both states (reconciled vs fully
-  closed) distinct; no loader/overlay regression.
+- **Exit criteria:** browser closeout drives the wrapper; the confirmation view, in-flight,
+  and ambiguous UI states are implemented and **ready to consume the Slice-4
+  closeout-complete predicate**; no loader/overlay regression. (The "reconciled vs fully
+  closed" distinct-state requirement is Slice 4's exit gate — the predicate that decides it
+  is implemented there.)
 - **Hard stop conditions:** premature reconciliation-success; a timeout treated as failed;
   changed value auto-retried; any broad UI refactor.
 - **Fable-style review checklist:** ☐ single wrapper call ☐ confirmation contents complete ☐ in-flight disable ☐ ambiguous handling ☐ re-read both halves ☐ loader/overlay untouched ☐ narrow diff.
@@ -443,6 +450,8 @@ section.
 - **Exact scope:** a read-only predicate + state rendering + the half-close repair rule; no
   new write path beyond the wrapper.
 - **Dependencies:** Slice 1/3.
+- **Entry criteria:** Slice 3 browser wiring + UI states implemented and ready to consume
+  this slice's closeout-complete predicate.
 - **States to define:** **complete week** (reconciled ∧ nine-row snapshot set);
   **reconciliation-only half-close** (reconciled, no complete snapshot);
   **snapshots-without-reconciliation** (impossible/corrupt → hard stop); **exact retry**
@@ -464,7 +473,9 @@ section.
 - **Security/grant checks:** none new (read-only predicate + wrapper write).
 - **Required evidence:** state-transition tests green; the distinct badge visible for a
   half-closed anomaly.
-- **Exit criteria:** all states rendered and gated; no advancement past an incomplete prior
+- **Exit criteria:** all states rendered and gated; **the reconciled vs fully-closed states
+  are distinct** (the closeout-complete predicate this slice implements makes them so — the
+  joint Slice-3/Slice-4 UI gate before Slice 5); no advancement past an incomplete prior
   week.
 - **Hard stop conditions:** advancing past an incomplete prior week; auto-"repairing" a
   snapshots-without-reconciliation corrupt state.
@@ -479,6 +490,8 @@ section.
   plan Slice 5.)*
 - **Exact scope:** staging-only integration; both smoke and full gates.
 - **Dependencies:** Slices 1–4 on staging.
+- **Entry criteria:** Slices 1–4 green on staging, including the joint Slice-3/Slice-4 UI
+  gate (distinct reconciled vs fully-closed states).
 - **Complete staging test program:** success path; forced reconciliation failure; forced
   snapshot failure; post-call assertion failure; missing anchor; goal-set mismatch;
   duplicate goal; skipped week; past week; future jump; monotonic decrease; exact retry;
@@ -558,6 +571,17 @@ section.
   **`repair_commitments_for_week` posture action** (per Gate C) → stale-browser verification
   → fresh-browser verification → **first supervised live closeout** (Week-6) → evidence +
   closeout.
+- **Week-6 interpretation by Gate-D path (preserving the cleared plan's Week-6 requirement,
+  not generalizing it away):**
+  - **Pre-freeze activation:** the "Week-6 supervised smoke" **is the ordinary Week-6
+    combined closeout** (reconciliation + nine `reconciliation` snapshots) through the
+    wrapper — the plan's Week-6 writer smoke as written.
+  - **Post-freeze activation:** the "Week-6 supervised smoke" **is the first supervised
+    Week-6 gap-repair write through the wrapper**, followed by **sequential repair of the
+    later gap weeks** (§6.3 one-at-a-time, §6.1 no-advance-past-incomplete) **before ordinary
+    automated closeout resumes.** The plan's Week-6 requirement is still satisfied — Week 6
+    is still the first wrapper-driven write and is still supervised — it is executed as a
+    gap-repair rather than a same-week closeout.
 - **Hard gates before activation:** Option B deployed (unless a **documented dated Adam
   deferral** exists, Gate B); **Gate A `is_owner()` verification closed**; **Gate C
   repair-RPC posture decided**; **Gate D activation timing decided**; **staging fully
@@ -674,9 +698,14 @@ activation.
 | E1 + reconciliation RPC **byte-unchanged** | 0/1/6 | DB | unchanged | – | Y |
 | Exact-signature old-RPC grant before/after activation | 7 | DB | revoked after | – | Y |
 | `repair_commitments_for_week` posture validated | 2/7 | DB | posture enforced | – | Y |
-| First supervised Week-6 live closeout smoke | 7 | E | 9 rows, overlay agrees | – | Y |
+| First supervised Week-6 live closeout smoke (pre-freeze: ordinary Week-6 closeout; post-freeze: first Week-6 gap-repair write, then sequential later gap weeks — §4 Slice 7) | 7 | E | 9 rows, overlay agrees | – | Y |
 | 5G-QA-1 smoke gate green | 0/5 | E | green | – | N |
 | 5G-QA-1 full gate green (release gate) | 0/5 | E | green | – | Y |
+
+*SQL-editor `auth.uid()`-null behavior is validated through the Option-A correction
+runbook (correction spec §5/§11.2), not through an implementation slice — it is an
+execution-environment fact about the guarded-SQL bridge path, so it is not a slice-owned
+test row above.*
 
 ---
 
