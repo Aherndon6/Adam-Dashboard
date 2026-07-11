@@ -1,22 +1,25 @@
-# Phase 5G-1D Slice 2 — Proposed Implementation Package (PLAN/SPEC-FIRST, rev 6)
+# Phase 5G-1D Slice 2 — Proposed Implementation Package (PLAN/SPEC-FIRST, rev 7)
 
 **Status:** PROPOSED — NOT IMPLEMENTED, NOT EXECUTED, NOT COMMITTED. No SQL run, no grant
-changed, no browser wired, no staging/production action. Revision 6 fixes two more issues:
-(1) **`approved_reopen` retry/adjudication** — reopen no longer re-calls the recon RPC blindly;
-it applies the same commit-then-lost-response identity/adjudication semantics as normal closeout
-(empty-array idempotent success; non-empty ambiguous → `GFA01`; genuine change → apply once,
-preserving `recorded_at`); (2) **strict commitment-array input validation** — both
-`p_new_commitments` and `p_patched` must be actual non-null JSON arrays (`jsonb_typeof='array'`);
-SQL NULL / JSON null / object / string / number / boolean are rejected, never coerced to `[]`.
-Rev 3–5 decisions stand. **Authoring committed staging `.sql` files and any execution is the
-NEXT step, gated on Adam's explicit authorization after review.**
+changed, no browser wired, no staging/production action. **Revision 7 corrects a grounding
+error:** the deployed `save_reconciliation_with_commitments` RPC **ignores `p_recorded_at` and
+always stamps `recorded_at = NOW()`** (`docs/phase-5f-1-migration.sql` L520/L537/L544/L552), so
+the Rev-6 claim that a genuine `approved_reopen` **preserves** `recorded_at` by passing the
+persisted value is **infeasible** and is removed. New contract (Companion Amendment 3): a genuine
+reopen **re-stamps `recorded_at = NOW()`**; only the no-op/identity/repair/adjudication paths
+(which never call the RPC) leave it unchanged; the original is retained in the supervised
+before/after reopen evidence. `p_recorded_at` is a **required compatibility/signal parameter
+whose supplied value the deployed RPC discards**; the public wrapper still does **not** expose it.
+Rev 3–6 decisions otherwise stand. **Authoring committed staging `.sql` files and any execution
+is the NEXT step, gated on Adam's explicit authorization after review.**
 **Date:** 2026-07-11
 **Author:** Claude (session under Adam)
 
 **Controls in force:** cleared plan (`6de4614`), correction spec (`f005263`), readiness
-(`a55d899`), the committed amendment (`0c10784`), and the **companion amendment 2**
-(`docs/phase-5g-1d-amendment-2-2026-07-11.md`) that narrows §B.1 to the empty-array
-automatic-identity rule. Slice-1 builder committed inert (`57bc9c1`). **Gate A CLOSED.**
+(`a55d899`), the committed first amendment (`0c10784`), **companion amendment 2**
+(`docs/phase-5g-1d-amendment-2-2026-07-11.md`, empty-array automatic-identity narrowing of §B.1),
+and **companion amendment 3** (`docs/phase-5g-1d-amendment-3-2026-07-11.md`, genuine-reopen
+`recorded_at` re-stamp). Slice-1 builder committed inert (`57bc9c1`). **Gate A CLOSED.**
 Gates B–E open.
 
 **PRIVACY: balance-free.** No household balances, funded amounts, goal targets, or custodian
@@ -456,15 +459,20 @@ both shared locks held (advisory + per-goal `goal_registry FOR UPDATE`, §4/§4.
     no-op without reproducing the recon RPC's mutation logic).
 - **E. Persisted reconciliation DIFFERS from the submitted reopened result** (a genuine reopen):
   - **call `save_reconciliation_with_commitments(...)` exactly once** with the corrected recon
-    values and the submitted commitment arrays, **passing the PERSISTED `recorded_at`** (decision
-    2 — never `now()`);
+    values and the submitted commitment arrays. **The deployed RPC re-stamps
+    `recorded_at = NOW()`** (it ignores its `p_recorded_at` argument, §8.3 / Companion Amendment
+    3). The wrapper passes a **non-null server value (`now()`) for signature compatibility only**;
+    it does **not** claim to preserve the original timestamp. The **original `recorded_at` is
+    captured in the mandatory supervised before/after reopen evidence, before execution.**
   - **do NOT call the snapshot RPC** (snapshots unchanged, per B);
   - perform **post-call reconciliation read-back assertions**; atomic (roll back on any error).
 - **F.** A non-identical request that is **not valid** under these approved-reopen rules (e.g.
   snapshot amounts differ from persisted, or preconditions unmet) → **hard-stop.**
 
 The wrapper **may** return a **non-persisted** `reopened_at = clock_timestamp()` field for
-operator feedback only — never written to any row, not durable audit history.
+operator feedback only — never written to any row, not durable audit history. The post-reopen
+persisted `recorded_at` represents the **latest successful reconciliation write, NOT the original
+closeout time**.
 
 **Companion Amendment 2 governs this too:** its empty-array automatic-identity and non-empty
 supervised-adjudication rules apply to ambiguous retries of **both** `normal_closeout` and
@@ -520,27 +528,33 @@ comparisons come after all locks are held.**
 11. read-back assert **exactly one** natural-key row now has the corrected amount,
     `source='correction'`, and the note; return JSONB.
 
-### 8.3 `p_recorded_at` decision (correction 8)
-**Semantic purpose:** the deployed recon RPC's `p_recorded_at TIMESTAMPTZ` is stored as the
-reconciliation's audit "when actuals were recorded" timestamp (today the client sends
-`now.toISOString()`).
+### 8.3 `p_recorded_at` decision (Rev-7 grounding correction; Companion Amendment 3)
+**Grounding fact.** The deployed recon RPC's `p_recorded_at TIMESTAMPTZ` is a **required
+compatibility/signal parameter whose supplied VALUE the deployed RPC discards**: it validates
+`p_recorded_at IS NOT NULL` (else RAISE) but then hardcodes `recorded_at = NOW()` on both the
+INSERT and the `ON CONFLICT … UPDATE` (`docs/phase-5f-1-migration.sql` L520/L537/L544/L552).
+`recorded_at` is **server-owned**; whenever the RPC runs, it becomes `NOW()`.
 
-**Decision: REMOVE `p_recorded_at` from the wrapper signature** (§1.1). The wrapper supplies a
-**server-controlled or preserved** value to the inner RPC. No client-supplied recorded_at
-anywhere → **no client backdating** possible. Per-branch (decision 2 — **preserve on reopen**):
-- **New closeout (E):** wrapper passes **server `now()`** (transaction timestamp) to the recon
-  RPC — the only branch that mints a new timestamp.
-- **Identity retry (F):** recon RPC not called → recorded_at **PRESERVED** (unchanged).
-- **Half-close repair (G):** recon RPC not called → recorded_at **PRESERVED** (unchanged).
-- **Approved reopen (D):** wrapper reads the **persisted** `recorded_at` and passes **that same
-  value** to the recon RPC → recorded_at **PRESERVED**. Until 5J adds formal historical event
-  logging, overwriting the single stored closeout timestamp would destroy the original audit
-  fact, so it is never replaced with `now()`. A non-persisted `reopened_at=clock_timestamp()`
-  MAY be returned for operator feedback (not durable audit — §8.1).
-- **No client clock is accepted;** there is no client-supplied range because the parameter is
-  removed. A future need returns it as an explicit, validated, approved parameter — not now.
+**Decision:** the public wrapper **does not expose `p_recorded_at`** (removed since Rev 4 — no
+client backdating). When the wrapper calls the deployed RPC, it passes a **non-null
+server-controlled compatibility value — prefer `now()` for clarity** — while documenting that the
+**inner RPC owns and independently writes `recorded_at = NOW()`.** **Per-branch effect (correct):**
 
-Slice-3 client drops `p_recorded_at` from the POST body accordingly.
+| Branch | Recon RPC called? | Effect on `recorded_at` |
+|---|---|---|
+| **New closeout (E)** | **yes** | RPC stamps **`NOW()`** — the intended initial closeout timestamp |
+| **Normal-closeout identity retry (F)** | **no** | **UNCHANGED** (preserved) |
+| **Half-close repair (G)** | **no** | **UNCHANGED** (preserved) |
+| **Approved-reopen identity retry, empty arrays (D)** | **no** | **UNCHANGED** (preserved) |
+| **Approved-reopen ambiguous retry, non-empty arrays** | **no** (GFA01 pre-call) | **UNCHANGED** (preserved) |
+| **Genuine approved reopen (E)** | **yes** | RPC **re-stamps `NOW()`** — the latest reconciliation write, **NOT** the original closeout time; the original is captured in the mandatory supervised before/after evidence **before** execution |
+
+**We do NOT claim that passing the persisted timestamp preserves it** — the deployed RPC ignores
+the argument value. Preserving the original on a genuine reopen is infeasible without modifying
+the deployed RPC or writing `weekly_reconciliations` directly, both prohibited (Companion
+Amendment 3). Durable historical event logging is deferred to 5J.
+
+Slice-3 client sends no `p_recorded_at` in the POST body.
 
 ### 8.4 Canonical NUMERIC finiteness predicate (Rev-4 defect fix; applies to EVERY amount)
 **Grounding.** PostgreSQL `numeric` supports the special values `NaN`, `Infinity`, and
@@ -658,14 +672,20 @@ server-side).
   signal (not a generic error); (d) a harness assert that this result is **distinguishable from
   a definite failure** (different `code`); (e) **ordinary automatic retry is NOT attempted** —
   the path terminates in the adjudication signal;
-- **approved_reopen retry/adjudication (Rev-6, §8.1):** (i) **first execution, empty commitments**
-  → applies once (recon RPC called with persisted `recorded_at`, snapshot RPC NOT called);
-  (ii) **committed-response-lost retry, empty commitments** (persisted == submitted) → **idempotent
-  reopen success, NO inner call**, `recorded_at` + audit unchanged; (iii) **committed-response-lost
-  retry, non-empty commitments** → **`GFA01`, NO inner call, no state change**; (iv) **changed
-  reopen request** (persisted ≠ submitted) → treated as a genuine new reopen (recon RPC once), **not
-  mistaken for identity**; (v) **`recorded_at` unchanged** in every retry/adjudication/apply case
-  (never `now()` on reopen); (vi) **snapshot `source`/`note` unchanged** in all reopen paths;
+- **approved_reopen retry/adjudication (§8.1):** (i) **first genuine reopen, empty commitments**
+  → applies once (recon RPC called, snapshot RPC NOT called); (ii) **committed-response-lost retry,
+  empty commitments** (persisted == submitted) → **idempotent reopen success, NO inner call**,
+  `recorded_at` + audit unchanged; (iii) **committed-response-lost retry, non-empty commitments** →
+  **`GFA01`, NO inner call, no state change**; (iv) **changed reopen request** (persisted ≠
+  submitted) → treated as a genuine new reopen (recon RPC once), **not mistaken for identity**;
+  (v) **snapshot `source`/`note` unchanged** in all reopen paths;
+- **timestamp behaviour by branch (Rev-7, §8.3 / Companion Amendment 3) — must prove:** new
+  closeout receives a **server-generated `recorded_at` (`NOW()`)**; a **genuine reopen produces a
+  LATER server-generated `recorded_at`** (re-stamped `NOW()`, strictly greater than the original);
+  the **original `recorded_at` is captured in the supervised pre-reopen evidence**; **empty-array
+  identity retry, half-close repair, and GFA01 adjudication each leave `recorded_at` UNCHANGED**
+  (no recon RPC call); and the suite **never claims or tests that passing the old timestamp
+  controls the inner RPC** (the deployed RPC ignores the argument value);
 - **strict commitment-array validation (Rev-6, §8.5) — for BOTH `p_new_commitments` and
   `p_patched`:** SQL `NULL` → reject; JSON `null` → reject; `{}` → reject; string → reject; number
   → reject; boolean → reject; `[]` → **accepted**; a valid **non-empty array** → **accepted on
@@ -702,9 +722,10 @@ server-side).
   reject; -Infinity → reject;** **negative →** reject for funded/Option-B amounts, **accept for
   balances** (a balance may be negative); **excess fractional precision → normalized to cents**
   (e.g. round-half behavior asserted) before compare/write;
-- **recorded_at (decision 2):** new closeout stamps server `now()`; **reopen preserves** the
-  persisted `recorded_at` (passed through, not `now()`); identity + repair leave it unchanged;
-  a returned `reopened_at` (if present) is never written to any row;
+- **recorded_at (Rev-7, §8.3):** new closeout stamps server `NOW()`; a **genuine reopen re-stamps
+  `NOW()`** (deployed RPC ignores the argument); **identity retry, half-close repair, and GFA01
+  adjudication leave it unchanged** (RPC not called); a returned `reopened_at` (if present) is
+  never written to any row;
 - **grant lifecycle:** inert state (no authenticated EXECUTE) after migration; staging
   temp-grant enables the matrix; post-ungrant state == intended inert; anon/unauth reject;
 - **atomicity:** for every forced failure, assert **neither half persists**.
@@ -719,9 +740,10 @@ server-side).
    `GFA01`/`REQUIRES_SUPERVISED_ADJUDICATION` signal; no inner RPC replayed automatically;
    atomicity intact. Recorded in **companion amendment 2** (narrows §B.1; the cleared amendment
    is not edited in place).
-2. **Reopen `recorded_at` (§8.1/§8.3): PRESERVE.** Read the persisted value and pass it through;
-   never `now()`; identity + repair also preserve; new closeout alone stamps server `now()`. A
-   non-persisted `reopened_at` may be returned for feedback only.
+2. **Reopen `recorded_at` (§8.1/§8.3): superseded by decision 9 (Rev-7).** The deployed RPC
+   ignores `p_recorded_at` and always stamps `NOW()`, so a genuine reopen **re-stamps `NOW()`**;
+   only no-op/identity/repair/GFA01 paths (no RPC call) leave it unchanged. A non-persisted
+   `reopened_at` may be returned for feedback only. See decision 9 + Companion Amendment 3.
 3. **Advisory-lock namespace `1734501000`: REGISTERED** (repo scan clean, §4). Both functions
    call `pg_advisory_xact_lock(1734501000, p_model_year*100 + p_week_num)` before any
    state-dependent read; row locks ascending `week_num`.
@@ -732,19 +754,26 @@ server-side).
    wrapper locks all nine `ORDER BY id`, Option B locks its one; closes the cross-week phantom.
 6. **Finiteness predicate INLINED in both functions (Rev-5)** — no helper; migration creates
    exactly two functions; rollback drops exactly two; validation proves the rejection in each.
-7. **`approved_reopen` retry/adjudication (Rev-6, §8.1):** reopen does not blindly re-call the
+7. **`approved_reopen` retry/adjudication (§8.1):** reopen does not blindly re-call the
    recon RPC — empty-array identical retry → idempotent success (no inner call); non-empty
-   ambiguous retry → `GFA01`; genuine change → apply once with the persisted `recorded_at`;
-   snapshots never changed. CA2 clarified to cover both `normal_closeout` and `approved_reopen`.
+   ambiguous retry → `GFA01`; genuine change → apply once; snapshots never changed. CA2 clarified
+   to cover both `normal_closeout` and `approved_reopen`.
 8. **Strict commitment-array input guard (Rev-6, §8.5):** `p_new_commitments`/`p_patched` must be
    real non-null JSON arrays (`jsonb_typeof='array'`); no coercion of NULL/`null`/`{}`/scalars.
+9. **Timestamp grounding correction (Rev-7, §8.3 / Companion Amendment 3):** the deployed recon
+   RPC **ignores `p_recorded_at` and always stamps `recorded_at = NOW()`**; `p_recorded_at` is a
+   **required compatibility/signal parameter whose supplied value is discarded**. The public
+   wrapper does **not** expose it; it passes `now()` for signature compatibility only. A **genuine
+   reopen RE-STAMPS `NOW()`** (original kept in supervised evidence); no-op/identity/repair/GFA01
+   paths preserve `recorded_at` because the RPC is not called. The earlier "preserve on genuine
+   reopen" requirement is narrowed accordingly.
 
 ---
 
 ## 14. Non-execution / stop
 Executes nothing. No committed `.sql` files created; no SQL run; no grant changed; no browser
 wiring; no push; no staging/production action. §13 decisions are resolved. **Next step (gated
-on Adam clearing Rev 6 + companion amendment 2):** author the committed staging
+on Adam clearing Rev 7 + companion amendments 2 & 3):** author the committed staging
 `docs/phase-5g-1d-*.sql` from this package, then a staging rehearsal — each under explicit
 authorization. E1 DDL immutable. Gates B–E open. The two local commits (`57bc9c1`, `0c10784`)
 remain unpushed and unmodified.
