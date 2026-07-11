@@ -1,9 +1,11 @@
 # Phase 5G-1C-2.1 — Post-Anchor Model Coherence Hotfix
 
 **Emergency hotfix** for a post-E2 planning regression exposed when the Week-5 opening anchor went
-live. **Two legs.** **Leg 1 (code) implemented here; Leg 2 (Week-5 holding correction) is
-planning-only** (sentinel SQL + revised validation; not drafted/executed). No production SQL, no
-schema change, no change to the nine validated E2 opening_anchor values.
+live. **Two legs, both COMPLETE + GREEN in production (2026-07-11).** **Leg 1 (code)** restored
+post-anchor IRA seed coherence (`c0a3476`). **Leg 2 (Week-5 holding correction)** added two guarded
+`correction` snapshots, executed **once** in production against Adam-Dashboard (`usayoldrawwmjsmretin`)
+by Adam in the Supabase SQL Editor; Claude ran no SQL. No schema change; the nine validated E2
+`opening_anchor` values are unchanged (proven row-by-row before the correction insert).
 
 > **Privacy:** this record is **balance-free**. Exact household balances (custodian figures,
 > projected savings, screenshots) are retained **local** to Adam's machine, not committed.
@@ -68,11 +70,35 @@ balance-free.
 - Static regression: **1442/0** (Section 5G-1C-2.1: 11 cases; C3 suite green incl. retargeted C3-08).
 - Smoke / full e2e / browser console: recorded at commit time.
 
-## Leg 2 — planning only (not drafted/executed)
+## Leg 2 — Week-5 holding correction (COMPLETE + GREEN in production, 2026-07-11)
 
-Committed **sentinel** correction (`-1`) + revised **sentinel** validation, two-row Value Card,
-plain guarded INSERT with hard-stop preconditions (whole-table count = 9, no wk5 RCCL/DCL, nine
-opening_anchor unchanged, week 5 reconciled, production fingerprint), assert ROW_COUNT = 2, no
-`ON CONFLICT` (rerun fails on the unique key). Snapshot semantic: `funded_amount` = cumulative
-funded progress, not cash held; payout ≠ zeroing; releases are a later lifecycle layer (5G-1B).
-**5G-1D remains blocked until both legs are live and verified.**
+Two guarded Week-5 `correction` snapshots were added — **`wewe_rccl = 600`, `wewe_dcl = 500`** — via
+the committed sentinel templates (`docs/phase-5g-1c-2.1-prod-holding-correction.sql`,
+`docs/phase-5g-1c-2.1-prod-holding-correction-validation.sql` @ `b863266`), value-filled LOCAL-only
+and executed **once** by Adam in the Supabase SQL Editor. Snapshot semantic: `funded_amount` =
+cumulative funded PROGRESS, not cash held; payout ≠ zeroing; releases are a later lifecycle layer
+(5G-1B).
+
+- **Preflight (passed):** `current_user`/`session_user` = `postgres`; `system_identifier` =
+  `7632885393857617092`; `snapshots_total` before = 9; `latest_reconciled_week` = 5; Week-5 RCCL/DCL
+  rows before = 0; `wewe_rccl` target 600.00 / auto false, `wewe_dcl` target 500.00 / auto false.
+- **Correction (committed once):** exactly **11 Week-5 rows** = 9 `opening_anchor` + 2 `correction`
+  (RCCL 600.00, DCL 500.00). The **nine E2 `opening_anchor` rows were proven unchanged** (each
+  id/source/exact funded amount asserted against its pin pre-insert).
+- **Validation:** the read-only **REPEATABLE READ** SA-COR block PASSED and returned the same
+  11-row partition, no errors.
+- **UI smoke (hard refresh, passed, balance-free):** RCCL/DCL 100% complete; Alaska complete; the
+  Adam-IRA residual-to-target scheduled **exactly once** in Week 28, then Wendy IRA in Week 29; no
+  duplicate IRA seed; no Week-28/29 RCCL/DCL recommendation; Week 27 executed history retained; next
+  projected flight-path breach Week 35.
+
+**Execution discipline.** Plain INSERT, **no `ON CONFLICT`** — the correction was run **once and must
+never be rerun** (a rerun raises the `UNIQUE(model_year,week_num,goal_id)` violation and fails
+loudly). The committed templates remain **unfilled** (eleven `-1` pins each, **no household
+values**); the local value-filled copies remain **outside the repo** at
+`~/Herndon-FOS-DB-Backups/Adam-Dashboard/5G-1C-2.1/` (chmod 600), never committed.
+
+**Downstream.** 5G-1D is now **unblocked from the snapshot-anchor/correction dependency**; it remains
+**NOT STARTED** (its own implementation approval + Gates A–E, no approval inferred) and **writes
+subsequent weekly closeout snapshots without creating the opening anchor** (the Week-5
+`opening_anchor` remains E2's).
