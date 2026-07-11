@@ -1,6 +1,6 @@
 # Phase 5G-1D — Companion Amendment 3 (genuine-reopen recorded_at re-stamp)
 
-**Status:** DRAFT — PREPARED, NOT IMPLEMENTED. No code, SQL, schema, RPC, RLS, migration,
+**Status:** CLEARED AND COMMITTED — NOT IMPLEMENTED. No code, SQL, schema, RPC, RLS, migration,
 grant change, deployment, activation, or production action is authorized by this document.
 **Date:** 2026-07-11
 **Author:** Claude (session under Adam)
@@ -16,7 +16,7 @@ both the INSERT and the `ON CONFLICT … UPDATE` (`docs/phase-5f-1-migration.sql
 L544, L552). The parameter is **required non-null** but is a **compatibility/signal flag whose
 supplied value is discarded**; `recorded_at` is server-owned and always `NOW()` when the RPC runs.
 
-Therefore the earlier requirement (Companion Amendment 1 / Slice-2 decision 2) that a **genuine
+Therefore the earlier requirement (the first amendment and the superseded Slice-2 decision 2) that a **genuine
 approved reopen preserve the original `recorded_at`** by passing the persisted value to the RPC
 is **infeasible** — the deployed RPC ignores the value, and the wrapper may neither modify the
 deployed RPC nor write `weekly_reconciliations` directly nor reproduce its logic.

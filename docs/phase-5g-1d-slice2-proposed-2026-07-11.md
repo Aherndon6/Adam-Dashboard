@@ -1,7 +1,7 @@
 # Phase 5G-1D Slice 2 — Proposed Implementation Package (PLAN/SPEC-FIRST, rev 7)
 
-**Status:** PROPOSED — NOT IMPLEMENTED, NOT EXECUTED, NOT COMMITTED. No SQL run, no grant
-changed, no browser wired, no staging/production action. **Revision 7 corrects a grounding
+**Status:** CLEARED AND COMMITTED — NOT IMPLEMENTED, NOT EXECUTED, NOT DEPLOYED. No SQL run, no
+grant changed, no browser wired, no staging/production action. **Revision 7 corrects a grounding
 error:** the deployed `save_reconciliation_with_commitments` RPC **ignores `p_recorded_at` and
 always stamps `recorded_at = NOW()`** (`docs/phase-5f-1-migration.sql` L520/L537/L544/L552), so
 the Rev-6 claim that a genuine `approved_reopen` **preserves** `recorded_at` by passing the
@@ -437,7 +437,7 @@ else RAISE. **Half-close repair (branch G), ordered:**
 
 ## 8. approved_reopen, Option B, and `p_recorded_at` (corrections 5, 7, 8)
 
-### 8.1 `approved_reopen` (wrapper) — retry/adjudication state machine (Rev-6)
+### 8.1 `approved_reopen` (wrapper) — retry/adjudication state machine (Rev-7)
 **Owner boundary already enforced at STEP 1b** (is_owner() before any state read — correction 5);
 both shared locks held (advisory + per-goal `goal_registry FOR UPDATE`, §4/§4.1). Then, in order:
 
@@ -479,9 +479,14 @@ supervised-adjudication rules apply to ambiguous retries of **both** `normal_clo
 `approved_reopen` (CA2 clarification added this pass).
 
 ### 8.2 Option B `correct_goal_funding_snapshot` — COMPLETE validation (deadlock-safe lock order)
-In order, in one transaction. **Steps 1–7 are pure input checks + the advisory lock (no
-state-dependent read). Step 8 is the SINGLE deterministic multi-row lock. All bound/prior
-comparisons come after all locks are held.**
+In order, in one transaction, with an exact lock sequence:
+- **Steps 1–6:** authorization and pure-input validation (no state-dependent read);
+- **Step 7:** acquire the year/week advisory lock;
+- **Step 7b:** acquire the per-goal `goal_registry FOR UPDATE` mutex;
+- **Step 8:** identify and lock the snapshot neighbourhood in deterministic ascending `week_num`
+  order;
+- **Step 9 onward:** perform the expected-prior / bound comparisons and writes only after **all**
+  locks are held.
 1. `public.is_owner()` else RAISE (Wendy/`household_admin` rejected);
 2. `p_model_year = 2026` else RAISE;
 3. `p_week_num` **post-anchor** (`≥ 6`) and `≤ 31` else RAISE; **`p_week_num = 5` → RAISE**
