@@ -11861,15 +11861,20 @@ console.log('\n── Section 5G-1C-2/C3: Goal Funding Overlay ──');
     });
   });
 
-  // (8) goalVariance sign: modeled_before_anchor − observed
+  // (8) goalVariance sign: modeled_before_anchor − observed.
+  // Tested via ALASKA (goal-agnostic sign convention). Previously used adam_ira, but 5G-1C-2.1
+  // Leg 1 legitimately suppresses the IRA seed when an adam_ira anchor >= IRA_SEED_EMBEDDED_THRESHOLD
+  // is present (baseIra5 == threshold, so the old +100 case crossed it and changed the modeled value).
+  // That adam_ira behavior is covered by the "Section 5G-1C-2.1" tests; alaska is unaffected by the latch.
+  var baseAk5=wk(BASE,5).goalSaved['alaska'];
   test('C3-08 goalVariance sign convention (modeled − observed)',function(){
-    withSnap({5:{adam_ira:r(baseIra5-100)}},function(){
+    withSnap({5:{alaska:r(baseAk5-100)}},function(){
       var gv=wk(runModel(AK,RT),5).goalVariance;
-      assert(gv&&Math.abs(gv['adam_ira']-100)<0.01,'observed<modeled ⇒ positive (+100), got '+(gv&&gv['adam_ira']));
+      assert(gv&&Math.abs(gv['alaska']-100)<0.01,'observed<modeled ⇒ positive (+100), got '+(gv&&gv['alaska']));
     });
-    withSnap({5:{adam_ira:r(baseIra5+100)}},function(){
+    withSnap({5:{alaska:r(baseAk5+100)}},function(){
       var gv=wk(runModel(AK,RT),5).goalVariance;
-      assert(gv&&Math.abs(gv['adam_ira']+100)<0.01,'observed>modeled ⇒ negative (−100), got '+(gv&&gv['adam_ira']));
+      assert(gv&&Math.abs(gv['alaska']+100)<0.01,'observed>modeled ⇒ negative (−100), got '+(gv&&gv['alaska']));
     });
   });
   test('C3-08b goalVariance absent when no anchor applied (key-set identity)',function(){
@@ -12104,6 +12109,103 @@ console.log('\n── Section 5G-1C-2/C3: Goal Funding Overlay ──');
     var res=R(['A','B','C'],['goal_alaska','goal_wewe_rccl','goal_wewe_dcl'],rows);
     assert(res.doneCount===2&&res.currentRows[2].completed===false,'resolver doneCount 2, C unchecked');
     assert(res.executedCount===0,'no orphans when all completions concord with current');
+  });
+})();
+
+// ═══════════════════════════════════════════════════════════════════════════
+// Section 5G-1C-2.1: Post-Anchor Model Coherence Hotfix — Leg 1 (IRA seed latch)
+// ═══════════════════════════════════════════════════════════════════════════
+(function(){
+  console.log('\n── Section 5G-1C-2.1: Post-Anchor Model Coherence Hotfix (Leg 1) ──');
+  var AK=7000, RT=7694.87;
+  var IRA_TGT=(GOALS_REGISTRY.find(function(g){return g.id==='adam_ira';})||{}).target||7500;
+  var THRESH=IRA_SEED_EMBEDDED_THRESHOLD;                 // 3876.38 = r(START_AMX + RET_SAV_XFR)
+  function wk(W,n){return W.find(function(w){return w.num===n;});}
+  // Reconciled weeks 1-5 fixture (constrains checking so Alaska completes AFTER the overlay,
+  // which is what exposed the seed re-fire / RCCL-DCL re-funding in production).
+  function rec(chk,amx){return {chk:chk,sav:200,amx:amx,tax:1500,lc:13488.88,balance_basis:'posted_current_balance'};}
+  var RECON={1:rec(9000,104),2:rec(8000,104),3:rec(7200,104),4:rec(6800,104),5:rec(6700,8539.20)};
+  // wendy_sep omitted (complete goal: overlay skips it; the exact SEP balance is kept out of the repo).
+  // adam_ira 7438.94 and the 600/500/7000 targets are already committed (planning docs + goal_registry).
+  var NINE={adam_ira:7438.94,wendy_ira:0,alaska:7000,bailey_529:0,bryce_529:0,preston_529:0,bryce_vehicle:0,christmas_cruise:0};
+  var ELEVEN=Object.assign({},NINE,{wewe_rccl:600,wewe_dcl:500});
+  function runFix(snap,useRecon){
+    var _s=goalSnapData,_r=reconData;
+    goalSnapData=snap?{5:JSON.parse(JSON.stringify(snap))}:{};
+    reconData=useRecon?JSON.parse(JSON.stringify(RECON)):{};
+    try{
+      var W=runModel(AK,RT), seed=[], resid=[], rccl=[], dcl=[];
+      W.forEach(function(w){(w.realActs||[]).forEach(function(a){
+        if(a.indexOf('Adam IRA seed')>=0) seed.push(w.num);
+        else if(/\(Adam IRA\)/.test(a)) resid.push({wk:w.num,amt:parseFloat(((a.match(/\$([\d,\.]+)/)||[])[1]||'0').replace(/,/g,''))});
+        if(a.indexOf('Wewe RCCL')>=0) rccl.push(w.num);
+        if(a.indexOf('Wewe DCL')>=0)  dcl.push(w.num);
+      });});
+      return {seed:seed,resid:resid,rccl:rccl,dcl:dcl,ira5:wk(W,5).goalSaved['adam_ira'],finalIra:wk(W,31).goalSaved['adam_ira']};
+    } finally { goalSnapData=_s; reconData=_r; }
+  }
+
+  test('5G1C21-01: threshold = r(START_AMX + RET_SAV_XFR) via model rounding',function(){
+    assert(Math.abs(THRESH-(Math.round((START_AMX+RET_SAV_XFR)*100)/100))<1e-9,'threshold mismatch: '+THRESH);
+    assert(Math.abs(THRESH-3876.38)<0.001,'threshold expected 3876.38, got '+THRESH);
+  });
+  test('5G1C21-02: no snapshot -> Leg 1 inert (seed still fires; identity preserved)',function(){
+    assert(runFix(null,false).seed.length>=1,'seed must still fire with no snapshot');
+  });
+  test('5G1C21-03: anchor BELOW threshold -> seed still permitted',function(){
+    var s=Object.assign({},NINE,{adam_ira:Math.round((THRESH-1)*100)/100});
+    assert(runFix(s,false).seed.length>=1,'below-threshold anchor must NOT suppress the seed');
+  });
+  test('5G1C21-04: anchor EXACTLY AT threshold -> seed suppressed',function(){
+    var s=Object.assign({},NINE,{adam_ira:THRESH});
+    assert(runFix(s,false).seed.length===0,'at-threshold anchor must suppress the seed');
+  });
+  test('5G1C21-05: anchor ABOVE threshold -> seed suppressed',function(){
+    assert(runFix(NINE,false).seed.length===0,'above-threshold anchor must suppress the seed');
+  });
+  test('5G1C21-06: SAME-ANCHOR-WEEK (Alaska complete pre-overlay) -> zero seed emissions',function(){
+    // no-recon => Alaska completes at wk5 pre-overlay, so without Leg 1 the seed would fire in wk5.
+    var m=runFix(NINE,false);
+    assert(m.seed.length===0,'seed must emit 0 times even when Alaska is already complete at the anchor week; got '+JSON.stringify(m.seed));
+  });
+  test('5G1C21-07: reconciled fixture -> NO post-anchor seed re-fire',function(){
+    assert(runFix(NINE,true).seed.length===0,'seed must not re-fire under the anchor; got '+JSON.stringify(runFix(NINE,true).seed));
+  });
+  test('5G1C21-08: residual == (target - anchored funded), emitted EXACTLY once',function(){
+    var expected=Math.round((IRA_TGT-NINE.adam_ira)*100)/100;   // derived, not hardcoded
+    assert(Math.abs(expected-61.06)<0.001,'fixture residual should be 61.06, derived '+expected);
+    var m=runFix(NINE,true);
+    assert(m.resid.length===1,'exactly one Adam IRA residual action; got '+JSON.stringify(m.resid));
+    assert(Math.abs(m.resid[0].amt-expected)<0.01,'residual amount '+m.resid[0].amt+' != derived '+expected);
+  });
+  test('5G1C21-09: final Adam IRA == 7500.00 and never over target',function(){
+    var m=runFix(NINE,true);
+    assert(Math.abs(m.finalIra-IRA_TGT)<0.01,'final adam_ira must equal target 7500, got '+m.finalIra);
+    assert(m.finalIra<=IRA_TGT+0.01,'adam_ira must never exceed target');
+  });
+  test('5G1C21-10: detail basis — adam_ira at anchor week == 7438.94',function(){
+    assert(Math.abs(runFix(NINE,true).ira5-7438.94)<0.01,'anchor-week adam_ira must equal the anchor');
+  });
+  test('5G1C21-11: eleven-row anchor (Leg 2 preview) -> NO future RCCL/DCL funding actions',function(){
+    var m=runFix(ELEVEN,true);
+    assert(m.rccl.length===0,'no RCCL funding actions with the holding correction; got '+JSON.stringify(m.rccl));
+    assert(m.dcl.length===0,'no DCL funding actions with the holding correction; got '+JSON.stringify(m.dcl));
+    assert(m.seed.length===0&&Math.abs(m.finalIra-IRA_TGT)<0.01,'full-fix invariants (seed 0, IRA 7500) hold');
+  });
+  test('5G1C21-12: adam_ira goalVariance = corrected (seed-suppressed) modeled-before-overlay − observed',function(){
+    var A=4000;                                             // synthetic above-threshold anchor
+    var _s=goalSnapData,_r=reconData; goalSnapData={5:{adam_ira:A,alaska:7000}}; reconData={};
+    try{
+      var w5=wk(runModel(AK,RT),5);
+      var corrected=Math.round((START_AMX-A)*100)/100;                 // seed suppressed => modeled = base (no re-seed)
+      var obsolete =Math.round(((START_AMX+RET_SAV_XFR)-A)*100)/100;   // the pre-fix double-seed trajectory
+      assert(w5.goalVariance&&Math.abs(w5.goalVariance['adam_ira']-corrected)<0.01,
+        'goalVariance must equal corrected modeled−observed ('+corrected+'), got '+(w5.goalVariance&&w5.goalVariance['adam_ira']));
+      assert(Math.abs(w5.goalVariance['adam_ira']-obsolete)>=0.01,
+        'goalVariance must NOT reflect the obsolete double-seed trajectory ('+obsolete+')');
+      assert(Math.abs(w5.goalSaved['adam_ira']-A)<0.01,
+        'overlay still overwrites goalSaved to the anchor at the unchanged end-of-week seam');
+    } finally { goalSnapData=_s; reconData=_r; }
   });
 })();
 

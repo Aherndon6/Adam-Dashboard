@@ -859,10 +859,13 @@ button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-vis
 // ── Constants (unchanged) ──────────────────────────────────────────────────
 // Simplified architecture — $8,250 total from LC · $6,500 operating floor · no legacy mechanics
 // Real-world moves: keep $2,250 in chk, move $2,750 sav→chk, move $1,000 LC→chk, move $2,250 LC→chk (Option 1 correction)
-const BUILD_TS='2026-07-11T13:15:08'; // updated each push — local time string
+const BUILD_TS='2026-07-11T15:26:57'; // updated each push — local time string
 const START_CHK=18037.73,START_SAV=3772.77,START_AMX=103.64,START_TAX=0,START_LC=13488.88;
 const EF_AMT=13488.88; // LC/EF balance — static this model year (no transfers in or out)
 const BASE_TAX=521.36,RET_SAV_XFR=3772.74;
+// 5G-1C-2.1 Leg 1: an adam_ira snapshot >= this proves the one-time IRA seed ($3,772.74) is already
+// embedded in the anchored funded amount. Uses the model's r() rounding (no new convention).
+const IRA_SEED_EMBEDDED_THRESHOLD=r(START_AMX+RET_SAV_XFR); // = 3876.38
 const COMM_TAX=707.18,COMM_AK=1060.76;
 const OP_FL=6500,MIN_XFR=100,AK_START=5;
 // ── Phase 5F-1: Cash Availability Engine ────────────────────────────────────
@@ -2536,6 +2539,14 @@ function runModel(akGoal,rtGoal,flags){
     });
     // ── IRA seed sweep — fires once when Alaska completes; moves residual savings → AMEX ─
     // ── Seeds adam_ira in AMEX Savings (IRA Holding) — zero checking impact         ─
+    // 5G-1C-2.1 Leg 1: if THIS week's adam_ira snapshot proves the seed is embedded, latch the
+    // one-time seed flag BEFORE seed eligibility — suppresses goal_adam_ira_seed in this week AND
+    // all later weeks (no Truist Savings double-debit, no duplicate action). The end-of-week
+    // goalSaved snapshot overlay is unchanged, so goalVariance timing is unaffected.
+    if(goalSnapData[num]&&goalSnapData[num]['adam_ira']!==undefined){
+      var _iraSnap=Number(goalSnapData[num]['adam_ira']);
+      if(Number.isFinite(_iraSnap)&&r(_iraSnap)>=IRA_SEED_EMBEDDED_THRESHOLD-0.01)rtSavSwept=true;
+    }
     var akNowComplete=r(goalSaved['alaska']||0)>=r(akTarget-0.01);
     if(akNowComplete&&!rtSavSwept){
       const ms=mvS(RET_SAV_XFR,'amx');

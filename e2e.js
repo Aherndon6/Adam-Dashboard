@@ -1023,6 +1023,43 @@ async function clickNav(page, id) {
     await context.close();
   }, { tags: [] });
 
+  // 5G-1C-2.1 Leg 1: injected snapshot/reconciliation state -> real runModel -> real Weekly renderer.
+  // An above-threshold Adam IRA anchor + reconciled wk1-5 must NOT re-emit the IRA seed, must emit the
+  // derived (target - anchor) residual exactly once, and the rendered Weekly view must show that
+  // residual row and no seed row. (Exercises the real model + Weekly renderer; it does NOT route or
+  // reload the REST loader — it injects the loaded-state globals directly.)
+  await test('Weekly › Model: above-threshold anchor suppresses seed; derived residual once (5G-1C-2.1)', async () => {
+    const { page, context } = await openApp(browser);
+    await clickNav(page, 'weekly');
+    const res = await page.evaluate(() => {
+      const _s = goalSnapData, _r = reconData, anchor = 7438.94;
+      goalSnapData = { 5: { adam_ira: anchor, wendy_ira: 0, alaska: 7000, bailey_529: 0, bryce_529: 0, preston_529: 0, bryce_vehicle: 0, christmas_cruise: 0 } };
+      const rc = (chk, amx) => ({ chk, sav: 200, amx, tax: 1500, lc: 13488.88, balance_basis: 'posted_current_balance' });
+      reconData = { 1: rc(9000, 104), 2: rc(8000, 104), 3: rc(7200, 104), 4: rc(6800, 104), 5: rc(6700, 8539.20) };
+      try {
+        const g = getGoals(); const W = runModel(g.ak, g.rt);
+        const IRA_TGT = (GOALS_REGISTRY.find(x => x.id === 'adam_ira') || {}).target || 7500;
+        const derived = Math.round((IRA_TGT - anchor) * 100) / 100;
+        let seedCount = 0; const resid = [];
+        W.forEach(w => (w.realActs || []).forEach(a => {
+          if (a.indexOf('Adam IRA seed') >= 0) seedCount++;
+          else if (a.indexOf('(Adam IRA)') >= 0) resid.push({ wk: w.num, amt: parseFloat((((a.match(/\$([\d,\.]+)/) || [])[1]) || '0').replace(/,/g, '')) });
+        }));
+        const residWk = resid.length ? resid[0].wk : W[0].num;
+        activeW = residWk; setSection('weekly'); renderApp();
+        const html = document.getElementById('weekly-content').innerHTML || '';
+        return { threshold: IRA_SEED_EMBEDDED_THRESHOLD, seedCount, residCount: resid.length, residAmt: resid.length ? resid[0].amt : null,
+          derived, residWk, weeklyHasResidual: html.indexOf('(Adam IRA)') >= 0, weeklyHasSeed: html.indexOf('Adam IRA seed') >= 0 };
+      } finally { goalSnapData = _s; reconData = _r; renderApp(); }
+    });
+    assert(res.seedCount === 0, 'no post-anchor Adam IRA seed row anywhere in the model; got seedCount=' + res.seedCount);
+    assert(res.residCount === 1, 'derived residual must appear exactly once; got ' + res.residCount);
+    assert(Math.abs(res.residAmt - res.derived) < 0.01, 'residual amount ' + res.residAmt + ' != derived (target-anchor) ' + res.derived);
+    assert(res.weeklyHasResidual, 'rendered Weekly view (week ' + res.residWk + ') must show the Adam IRA residual row');
+    assert(!res.weeklyHasSeed, 'rendered Weekly view must NOT show an Adam IRA seed row');
+    await context.close();
+  }, { tags: [] });
+
   // ── Section J: Mobile viewport ─────────────────────────────────────────
   console.log('── Section J: Mobile viewport ──');
   await test('Mobile: all tabs reachable without horizontal overflow', async () => {
