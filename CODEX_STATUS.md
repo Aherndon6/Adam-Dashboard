@@ -13,17 +13,19 @@ Next major phase: 5G Cash Planning + Allocation (locked). 5G-0 (label/docs clean
 5G-1C-1 (Funding Plan Projection Semantics) is SHIPPED and pushed (commit `de4e3c0`, production-verified 2026-07-08) — display-only Funding Plan "When"-column labels that distinguish current-week funded from projected year-end funded (retires the misleading "Beyond 2026"). See "## 5G-1C-1 SHIPPED". The larger 5G-1C plan (week-anchored `goal_funding_snapshots`) split into two slices: 1C-1 shipped; **5G-1C-2 C2 (the staging SQL package for `goal_funding_snapshots`) is staging-validated and committed+pushed** (`5bbcab2`); **C3 (the app-side overlay) is SHIPPED + DEPLOYED** (`c6fbb32`, live on dashboard.herndons.us `BUILD_TS 2026-07-09T08:51:21`; inert until snapshot rows exist). See "## 5G-1C-2 C3 SHIPPED + DEPLOYED" and "## 5G-1C-2 C2 STAGING-VALIDATED". Plan + Fable review: `docs/phase-5g-1c-plan-2026-07-08.md`, `docs/phase-5g-1c-plan-review-2026-07-08.md`.
 5G-QA-1 (E2E Runner Speed / tag-based Smoke Gate) is COMPLETE and pushed — a test-infra-only, two-slice change to `e2e.js`: Slice A (opt-in tag-based smoke mode, `05a5558`) and Slice B (deterministic openApp/clickNav waits, `d8e21a0`). Full mode (`node e2e.js`) remains the permanent default and release gate at 133/0, Skipped 0; runtime 538.45s → 415.77s. Smoke is a developer accelerator only (19/0, Skipped 114, ~44–50s). `readinessFallbackHits` 0/0. No index.html/BUILD_TS, `push_to_github.sh`, `test_regression.js`, or SQL change. See "## 5G-QA-1 SHIPPED".
 5G-1C-2 PRODUCTION SQL PACKAGE is CREATED and pushed (commit `3061644`) — the six production-only SQL files for `goal_funding_snapshots`, scoped to **Adam-Dashboard (usayoldrawwmjsmretin)** and marked never-run in **herndon-fos-staging (pkwotgqivgaapwuqgwqb)**. Docs/SQL-only; no index.html/BUILD_TS/app/test/push change. See "## 5G-1C-2 PRODUCTION SQL PACKAGE COMMITTED".
-**5G-1C-2 E1 (production DDL) is COMPLETE and GREEN (2026-07-09)** — the E1 runbook `docs/phase-5g-1c-2-e1-runbook.md` (Fable-cleared @ `e1b9252`, Free-plan restore-point mechanism) was executed in one sitting against Adam-Dashboard (usayoldrawwmjsmretin): preflight PASS → migration PASS (M-table=1, M-rpc=1) → validation PASS (all V true, table empty, exact grants, RPC gate proven) → post-migration inert live check PASS. **Production now holds `public.goal_funding_snapshots` + `public.save_goal_funding_snapshots`, schema-only and EMPTY; app is behavior-inert (loader 404→200-empty only).** No seed, no rollback. **E2 (first-anchor seed) remains a separate explicit in-session approval gate and was NOT run; 5G-1D not started.** See "## 5G-1C-2 E1 COMPLETE". **UPDATE (2026-07-10):** the 5G-1D **planning stack is now CLEARED** (plan + correction/reopen/remediation companion spec + implementation-readiness package, all on `main`); **5G-1D IMPLEMENTATION remains NOT STARTED and is BLOCKED BY GATE 0 (E2 not executed)** — see "## 5G-1D READINESS CLEARED — E2 / GATE 0 BLOCKING (2026-07-10)".
+**5G-1C-2 E1 (production DDL) is COMPLETE and GREEN (2026-07-09)** — the E1 runbook `docs/phase-5g-1c-2-e1-runbook.md` (Fable-cleared @ `e1b9252`, Free-plan restore-point mechanism) was executed in one sitting against Adam-Dashboard (usayoldrawwmjsmretin): preflight PASS → migration PASS (M-table=1, M-rpc=1) → validation PASS (all V true, table empty, exact grants, RPC gate proven) → post-migration inert live check PASS. **Production now holds `public.goal_funding_snapshots` + `public.save_goal_funding_snapshots`, schema-only and EMPTY; app is behavior-inert (loader 404→200-empty only).** No seed, no rollback. **E2 (first-anchor seed) remains a separate explicit in-session approval gate and was NOT run; 5G-1D not started.** See "## 5G-1C-2 E1 COMPLETE". **UPDATE (2026-07-10):** the 5G-1D **planning stack is now CLEARED** (plan + correction/reopen/remediation companion spec + implementation-readiness package, all on `main`); **5G-1D IMPLEMENTATION remains NOT STARTED; Gate 0 (E2) is now SATISFIED — E2 COMPLETE + GREEN 2026-07-11 (see "## 5G-1C-2 E2 COMPLETE") — so 5G-1D may proceed under its own implementation approval + Gates A–E** — see "## 5G-1D READINESS CLEARED — E2 / GATE 0 BLOCKING (2026-07-10)".
 
 ## 5G-1D READINESS CLEARED — E2 / GATE 0 BLOCKING (2026-07-10)
 
-Docs-only handoff of the cleared 5G-1D planning stack into the frontier. **No implementation, SQL, Supabase, E2, or grant action occurred. E2 remains UNEXECUTED; `goal_funding_snapshots` is EMPTY; 5G-1D implementation has NOT started.** Full detail lives in the governing artifacts below — this section is the visible summary; it does not restate their designs.
+> **SUPERSEDED IN PART (2026-07-11): E2 is now COMPLETE + GREEN and Gate 0 is SATISFIED — see "## 5G-1C-2 E2 COMPLETE". The "E2 remains UNEXECUTED / Gate 0 OPEN/BLOCKING / 5G-1D blocked" statements in this dated 2026-07-10 section are historical.**
+
+Docs-only handoff of the cleared 5G-1D planning stack into the frontier. **No implementation, SQL, Supabase, E2, or grant action occurred. E2 remains UNEXECUTED; `goal_funding_snapshots` is EMPTY; 5G-1D implementation has NOT started.** *(As of 2026-07-10; superseded — see banner above.)* Full detail lives in the governing artifacts below — this section is the visible summary; it does not restate their designs.
 
 **Current phase state:**
 - 5G-QA-1: **COMPLETE**
 - E1 production DDL: **COMPLETE** (schema-only, EMPTY; immutable)
 - E2 runbook: **CLEARED**
-- E2 execution: **NOT RUN / BLOCKING**
+- E2 execution: **COMPLETE + GREEN (2026-07-11)** — see "## 5G-1C-2 E2 COMPLETE"
 - 5G-1D implementation plan: **CLEARED**
 - 5G-1D correction / reopen / remediation companion spec: **CLEARED**
 - 5G-1D implementation-readiness package: **CLEARED**
@@ -44,7 +46,7 @@ Docs-only handoff of the cleared 5G-1D planning stack into the frontier. **No im
 
 | Gate | Status | Trigger | Evidence (one-line) | Hard stop |
 |---|---|---|---|---|
-| 0 — E2 completion | **OPEN / BLOCKING** | before Slice 0 | completed Week-5 reconciliation, approved Value Card, successful E2 seed/validation, nine opening-anchor rows, live verification, closeout evidence | no 5G-1D implementation until closed; a missed Week-5 window requires a new Value Card + re-review |
+| 0 — E2 completion | **CLOSED / SATISFIED (2026-07-11)** | before Slice 0 | completed Week-5 reconciliation, approved Value Card, successful E2 seed/validation, nine opening-anchor rows, live verification, closeout evidence | no 5G-1D implementation until closed; a missed Week-5 window requires a new Value Card + re-review |
 | A — `public.is_owner()` identity | OPEN | before staging acceptance of owner-only functionality | exactly one active owner row; Adam true; Wendy false; real-login mapping verified | no owner-only reopen/correction acceptance until proven |
 | B — Option B activation gate | OPEN | before production activation | Option B deployed + validated, or an Adam-approved dated deferral (rationale, owner, expiry/review, interim controls) | no activation otherwise |
 | C — `repair_commitments_for_week` posture | OPEN | before activation grant changes | caller/dependency audit + explicit retain/wrap/restrict/revoke decision | no activation grant changes without disposition |
@@ -54,6 +56,18 @@ Docs-only handoff of the cleared 5G-1D planning stack into the frontier. **No im
 **Current sequencing (active):** (1) Week-5 reconciliation → (2) E2 Value Card → (3) E2 local execution artifacts → (4) fresh in-session E2 clearance → (5) explicit Adam seed approval → (6) E2 execution and validation → (7) E2 closeout → (8) separate 5G-1D implementation approval → (9) Slice 0 onward under the cleared readiness package. **Saturday is reserved for Week-5 reconciliation and E2.** **No 5G-1D implementation before Gate 0 closes. No 5G merge during the Alaska freeze (Jul 24–Aug 10).**
 
 **Non-authorization (explicit):** clearing and recording these artifacts **does not authorize implementation**. **E2 remains unexecuted.** All future implementation, deployment, activation, correction, reopen, remediation, grant change, rollback, and production actions **require their own gates and approvals**; no approval is inferred from another.
+
+## 5G-1C-2 E2 COMPLETE (2026-07-11): first opening_anchor seeded, C3 overlay live
+
+**E2 (first-anchor seed) is COMPLETE + GREEN.** Executed by Adam in the Supabase SQL Editor against PRODUCTION Adam-Dashboard (`usayoldrawwmjsmretin`), one authorized gate at a time; Claude ran no SQL. Independent review of the two local value-filled execution copies returned PASS before authorization.
+
+**Result:** nine `opening_anchor` rows at `model_year=2026, week_num=5`, `source=opening_anchor` (goals: adam_ira, wendy_ira, wendy_sep, alaska, bailey_529, bryce_529, preston_529, bryce_vehicle, christmas_cruise). No excluded goal seeded. The shipped C3 overlay is now **live** (loader HTTP 200, nine rows; funded values match the approved Value Card; excluded goals unchanged; Adam IRA still CPA-pending, Alaska complete, Adam 401(k) Auto·Payroll).
+
+**Gates (all PASS):** Gate 1 read-only precheck (recweeks {1–5}, latest reconciled 5, snapshots 0, sysid match); Gate 2 seed (9 rows, run once); Gate 3 validation (**SA-PROD PASS**; **SA8 advisory PASS — expected under-attribution from the excluded RCCL/DCL holdings + account interest, no over-attribution**; SA9 nine-row dump matches the card); Gate 4a live verification.
+
+**Privacy:** no household balances or SA8 dollar amounts are committed. The nine values live in the approved Value Card + local execution artifacts only; the committed sentinel templates retain their nine `-1` value sentinels. Full closeout evidence + local-artifact hashes: `docs/phase-5g-1c-2-e2-closeout-2026-07-11.md`.
+
+**Downstream: Gate 0 (E2 completion) for 5G-1D is SATISFIED (2026-07-11).** 5G-1D implementation may proceed under its own implementation approval + Gates A–E (no approval inferred). E1 DDL was not rerun or mutated.
 
 ## Current Goal
 
