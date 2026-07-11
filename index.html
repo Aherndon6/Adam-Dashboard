@@ -859,7 +859,7 @@ button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-vis
 // ── Constants (unchanged) ──────────────────────────────────────────────────
 // Simplified architecture — $8,250 total from LC · $6,500 operating floor · no legacy mechanics
 // Real-world moves: keep $2,250 in chk, move $2,750 sav→chk, move $1,000 LC→chk, move $2,250 LC→chk (Option 1 correction)
-const BUILD_TS='2026-07-10T16:35:43'; // updated each push — local time string
+const BUILD_TS='2026-07-11T13:15:08'; // updated each push — local time string
 const START_CHK=18037.73,START_SAV=3772.77,START_AMX=103.64,START_TAX=0,START_LC=13488.88;
 const EF_AMT=13488.88; // LC/EF balance — static this model year (no transfers in or out)
 const BASE_TAX=521.36,RET_SAV_XFR=3772.74;
@@ -2814,6 +2814,137 @@ async function deleteRecon(n){
 }
 
 // ── Tasks ──────────────────────────────────────────────────────────────────
+// ── 5G-1B: reconciled-transfer-history resolver + resolver-aware write ───────
+// Pure, deterministic (no DOM/Date/random). Resolves current model-transfer
+// recommendations (realActs/realActKeys) against persisted weekly_tasks
+// completions by IDENTITY (action_key / completed_label), never by array index,
+// so executed transfers stay visible and never remap after runModel re-derives.
+// See docs/5g-1b-defect-reconciled-transfer-history-2026-07-11.md.
+function _taskRowsForWeek(weekNum){
+  // Enumerate EVERY persisted taskData row for this week: exact "${weekNum}_" prefix,
+  // valid nonnegative-integer suffix only, sparse/high indices preserved, numeric sort.
+  // Includes INCOMPLETE rows — they occupy task_idx (a write must not overwrite them) but
+  // do NOT render as executed history. customTaskData is intentionally NOT scanned here.
+  var prefix=weekNum+'_';var rows=[];
+  Object.keys(taskData).forEach(function(k){
+    if(k.indexOf(prefix)!==0)return;                 // exact "${weekNum}_" prefix only
+    var suffix=k.slice(prefix.length);
+    if(!/^\d+$/.test(suffix))return;                 // malformed / non-integer suffix ignored
+    var idx=parseInt(suffix,10);
+    if(!(idx>=0))return;
+    var td=taskData[k]||{};
+    rows.push({taskIdx:idx,completed:!!td.completed,
+      actionKey:(td.actionKey!=null?td.actionKey:null),
+      completedLabel:(td.completedLabel!=null?td.completedLabel:null),
+      completedAmount:(td.completedAmount!=null?td.completedAmount:null),
+      completedAt:(td.completedAt!=null?td.completedAt:null)});
+  });
+  rows.sort(function(a,b){return a.taskIdx-b.taskIdx;});
+  return rows;
+}
+function _multisetEq(a,b){
+  if(a.length!==b.length)return false;
+  var m=Object.create(null),i,k;
+  for(i=0;i<a.length;i++){k='@'+a[i];m[k]=(m[k]||0)+1;}
+  for(i=0;i<b.length;i++){k='@'+b[i];if(!m[k])return false;m[k]--;}
+  return true;
+}
+function resolveWeekTransfers(inp){
+  var realActs=(inp&&inp.realActs)||[],realActKeys=(inp&&inp.realActKeys)||[],taskRows=(inp&&inp.taskRows)||[];
+  var occupiedTaskIdx=taskRows.map(function(r){return r.taskIdx;});          // ALL rows (incl incomplete)
+  var records=taskRows.filter(function(r){return r.completed;}).map(function(r){ // COMPLETED rows only match
+    return {taskIdx:r.taskIdx,actionKey:r.actionKey,completedLabel:r.completedLabel,completedAt:r.completedAt,consumed:false};
+  });
+  var currentRows=realActs.map(function(a,i){
+    return {i:i,label:a,actionKey:(realActKeys[i]!=null?realActKeys[i]:null),completed:false,matchTaskIdx:null,matchLabel:null};
+  });
+  function avail(pred){return records.filter(function(r){return!r.consumed&&pred(r);});}
+  function bind(cr,rec){cr.completed=true;cr.matchTaskIdx=rec.taskIdx;cr.matchLabel=rec.completedLabel;rec.consumed=true;}
+  // Tier 1 — exact action_key + exact completed_label (handles preserved commission_tax dup labels)
+  currentRows.forEach(function(cr){
+    if(cr.completed||cr.actionKey==null)return;
+    var c=avail(function(r){return r.actionKey===cr.actionKey&&r.completedLabel===cr.label;});
+    if(c.length){c.sort(function(a,b){return a.taskIdx-b.taskIdx;});bind(cr,c[0]);}
+  });
+  // Tier 2 — unique remaining key-to-key (exactly one unmatched current AND one record for K)
+  var seenK={};currentRows.forEach(function(cr){if(!cr.completed&&cr.actionKey!=null)seenK[cr.actionKey]=1;});
+  Object.keys(seenK).forEach(function(K){
+    var cur=currentRows.filter(function(cr){return!cr.completed&&cr.actionKey===K;});
+    var rec=avail(function(r){return r.actionKey===K;});
+    if(cur.length===1&&rec.length===1)bind(cur[0],rec[0]);
+  });
+  // Tier 3 — concordant occurrence ONLY (>=2 current & >=2 records for K; label multisets equal)
+  var seenM={};currentRows.forEach(function(cr){if(!cr.completed&&cr.actionKey!=null)seenM[cr.actionKey]=1;});
+  Object.keys(seenM).forEach(function(K){
+    var cur=currentRows.filter(function(cr){return!cr.completed&&cr.actionKey===K;});
+    var rec=avail(function(r){return r.actionKey===K;});
+    if(cur.length<2||rec.length<2)return;
+    if(!_multisetEq(cur.map(function(c){return c.label;}),rec.map(function(r){return r.completedLabel;})))return;
+    cur.sort(function(a,b){return a.i-b.i;});rec.sort(function(a,b){return a.taskIdx-b.taskIdx;});
+    var n=Math.min(cur.length,rec.length),j;for(j=0;j<n;j++)bind(cur[j],rec[j]);
+  });
+  // Tier 4 — legacy exact-label (null-key records), 1:1 unambiguous only; NO positional fallback
+  var seenL={};currentRows.forEach(function(cr){if(!cr.completed)seenL['@'+cr.label]=cr.label;});
+  Object.keys(seenL).forEach(function(kk){
+    var L=seenL[kk];
+    var cur=currentRows.filter(function(cr){return!cr.completed&&cr.label===L;});
+    var rec=avail(function(r){return r.actionKey==null&&r.completedLabel===L;});
+    if(cur.length===1&&rec.length===1)bind(cur[0],rec[0]);
+  });
+  var executedHistory=records.filter(function(r){return!r.consumed;})
+    .sort(function(a,b){return a.taskIdx-b.taskIdx;})
+    .map(function(r){return {actionKey:r.actionKey,completedLabel:r.completedLabel,completedAt:r.completedAt,taskIdx:r.taskIdx,
+      kind:(r.actionKey==null||r.completedLabel==null||r.completedLabel==='')?'legacy-executed':'executed'};});
+  var doneCount=currentRows.filter(function(c){return c.completed;}).length;
+  return {currentRows:currentRows,executedHistory:executedHistory,doneCount:doneCount,executedCount:executedHistory.length,occupiedTaskIdx:occupiedTaskIdx};
+}
+function _firstFreeIdx(taskRows){
+  var occ=Object.create(null);(taskRows||[]).forEach(function(r){occ[r.taskIdx]=1;});
+  var i=0;while(occ[i])i++;return i;
+}
+function _resolveWriteTarget(o){
+  o=o||{};
+  var checked=o.checked,actionKey=(o.actionKey!=null?o.actionKey:null),completedLabel=(o.completedLabel!=null?o.completedLabel:null),rows=o.taskRows||[];
+  if(!checked){
+    if(o.matchTaskIdx!=null)return {taskIdx:o.matchTaskIdx,reason:'off-matched'};
+    return {taskIdx:null,reason:'off-no-match'};                 // defensive: OFF with no match → no-op
+  }
+  if(actionKey!=null){
+    var exact=rows.filter(function(r){return r.actionKey===actionKey&&r.completedLabel===completedLabel;});
+    if(exact.length===1)return {taskIdx:exact[0].taskIdx,reason:'reuse-exact'};
+    if(exact.length>1)return {taskIdx:_firstFreeIdx(rows),reason:'alloc-ambiguous-exact'};
+    var legacy=rows.filter(function(r){return r.actionKey===actionKey&&r.completedLabel==null;});
+    if(legacy.length===1)return {taskIdx:legacy[0].taskIdx,reason:'reuse-legacy'};
+    if(legacy.length>1)return {taskIdx:_firstFreeIdx(rows),reason:'alloc-ambiguous-legacy'};
+  }
+  return {taskIdx:_firstFreeIdx(rows),reason:'alloc-fresh'};      // never overwrites a different action's row
+}
+function _buildWeeklyTaskPayload(week,taskIdx,checked,actionKey,completedLabel,amount,nowIso){
+  var now=nowIso||new Date().toISOString();
+  return {week_num:week,task_idx:taskIdx,completed:checked,
+    completed_at:checked?now:null,
+    completed_amount:(checked&&amount!=null)?amount:null,
+    action_key:(actionKey!=null?actionKey:null),
+    completed_label:(checked&&actionKey&&completedLabel!=null)?completedLabel:null};
+}
+var _xfrWriteCtx={};  // render-time transport: ctxKey -> {actionKey, completedLabel, amount, matchTaskIdx}
+async function toggleTransfer(weekNum,ctxKey,checked){
+  if(!canWriteFinancials())return;
+  var ctx=_xfrWriteCtx[ctxKey]||{};
+  var rows=_taskRowsForWeek(weekNum);
+  var tgt=_resolveWriteTarget({checked:checked,actionKey:ctx.actionKey,completedLabel:ctx.completedLabel,matchTaskIdx:ctx.matchTaskIdx,taskRows:rows});
+  if(tgt.taskIdx==null){renderApp();return;}
+  var payload=_buildWeeklyTaskPayload(weekNum,tgt.taskIdx,checked,ctx.actionKey,ctx.completedLabel,ctx.amount);
+  var key=weekNum+'_'+tgt.taskIdx;
+  var prevTask=taskData[key]?Object.assign({},taskData[key]):undefined;
+  taskData[key]={completed:checked,completedAt:payload.completed_at,completedAmount:payload.completed_amount,actionKey:payload.action_key,completedLabel:payload.completed_label};
+  try{
+    var h=await getAuthHeaders();
+    var r=await fetch(SUPA_URL+'/rest/v1/weekly_tasks',{method:'POST',headers:Object.assign({},h,{'Prefer':'resolution=merge-duplicates,return=minimal'}),body:JSON.stringify(payload)});
+    if(!r.ok){if(prevTask!==undefined){taskData[key]=prevTask;}else{delete taskData[key];}renderApp();console.error('toggleTransfer: upsert failed HTTP '+r.status);return;}
+  }catch(e){if(prevTask!==undefined){taskData[key]=prevTask;}else{delete taskData[key];}renderApp();console.error('toggleTransfer:',e);return;}
+  renderApp();
+}
 async function toggleTask(weekNum,taskIdx,checked,actionKey,amount){
   if(!canWriteFinancials())return;
   const key=weekNum+'_'+taskIdx;const now=new Date().toISOString();
@@ -4150,8 +4281,10 @@ function renderWeekDetail(w,weeks){
   var _allCT=customTaskData[w.num]||[];
   var _xfrCT=_allCT.filter(function(ct){var m=getTaskMeta(ct.id,ct.label);return m.type==='transfer'&&!m.dismissed;});
   var _actCT=_allCT.filter(function(ct){var m=getTaskMeta(ct.id,ct.label);return m.type==='action'&&!m.dismissed;});
-  // Progress counts: model transfers + transfer custom tasks + action custom tasks
-  var _doneModel=w.doneTasks;
+  // 5G-1B: identity-resolve model transfers against persisted completions (position-independent)
+  var _xfrRes=resolveWeekTransfers({realActs:w.realActs,realActKeys:w.realActKeys,taskRows:_taskRowsForWeek(w.num)});
+  // Progress counts: model transfers (resolver doneCount) + transfer custom tasks + action custom tasks
+  var _doneModel=_xfrRes.doneCount;
   var _doneXfr=_xfrCT.filter(function(ct){return ct.completed;}).length;
   var _doneAct=_actCT.filter(function(ct){return ct.completed;}).length;
   var _totalXfr=w.realActs.length+_xfrCT.length;
@@ -4171,9 +4304,9 @@ function renderWeekDetail(w,weeks){
       // 5G-1A readiness note: on paycheck weeks, transfers are funded by the paycheck and should not
       // be executed on the week-start date before it posts.
       (PAYCHECK_WKS.indexOf(w.num)>=0?'<div class="act-readiness-note" style="font-size:12px;color:var(--muted);margin:2px 0 8px;padding:6px 9px;background:var(--surface2);border-radius:6px">Paycheck-funded transfers should be executed after the paycheck clears.</div>':'')+
-      // Model-generated transfer actions
+      // Model-generated transfer actions (5G-1B: identity-resolved completion; no positional remap)
       (w.realActs.length?w.realActs.map(function(a,i){
-        var done=taskData[w.num+'_'+i]&&taskData[w.num+'_'+i].completed;
+        var _cr=_xfrRes.currentRows[i];var done=_cr.completed;
         var actionKey=w.realActKeys?w.realActKeys[i]:null;
         var isModelAct=!!actionKey;
         var isLocked=actionKey&&LOCKED_MODEL_ACTIONS.has(actionKey);
@@ -4191,19 +4324,31 @@ function renderWeekDetail(w,weeks){
             (hasOv?'<button class="task-edit-btn muted" onclick="deleteActionOverride(\''+actionKey+'\')">Reset</button>':'')+
           '</div>';
         }
-        var _akyStr=actionKey?'\''+actionKey+'\'':'null';
-        if(actionKey){_actionLabelCache[w.num+'_'+i]=a;}
         var _isGoalKey=actionKey&&actionKey.indexOf('goal_')===0;
         var _goalAmtM=_isGoalKey?(/\$([0-9,]+(?:\.[0-9]+)?)/.exec(a)):null;
         var _goalAmt=_goalAmtM?parseFloat(_goalAmtM[1].replace(/,/g,'')):null;
-        var _amtStr=(actionKey===ACTION_KEYS.COMMISSION_TAX)?w.ct:(_isGoalKey&&_goalAmt!=null?_goalAmt:'null');
+        var _amtVal=(actionKey===ACTION_KEYS.COMMISSION_TAX)?w.ct:(_isGoalKey&&_goalAmt!=null?_goalAmt:null);
+        var _ctxKey=w.num+'_'+i;
+        if(actionKey){_actionLabelCache[_ctxKey]=a;}
+        // Resolver-aware write context: identity + matched persisted task_idx (NOT the display index)
+        _xfrWriteCtx[_ctxKey]={actionKey:actionKey||null,completedLabel:a,amount:_amtVal,matchTaskIdx:_cr.matchTaskIdx};
         return'<div class="task-row'+(hasOv?' edited':'')+'">'+
-          '<input type="checkbox" class="task-check" '+(done?'checked':'')+(canWriteFinancials()?'':' disabled')+' onchange="toggleTask('+w.num+','+i+',this.checked,'+_akyStr+','+_amtStr+')">'+
+          '<input type="checkbox" class="task-check" '+(done?'checked':'')+(canWriteFinancials()?'':' disabled')+' onchange="toggleTransfer('+w.num+',\''+_ctxKey+'\',this.checked)">'+
           '<div class="task-text'+(done?' done':'')+'">'+badge+esc(a)+'<span class="task-date">'+getWeekDate(w.num)+'</span>'+noteHtml+'</div>'+
           controls+
         '</div>'+
         (actionKey?renderActionEditPanel(actionKey,a,w.num):'');
       }).join(''):'')+
+      // 5G-1B: executed-history rows — persisted completions no longer in the recommended set.
+      // Visible, read-only, checked, disabled, non-collapsible; NO write handler (never overwritten).
+      (_xfrRes.executedCount?
+        '<div class="act-exec-hdr" style="font-size:12px;color:var(--muted);margin:8px 0 4px;font-weight:600">Executed earlier: '+_xfrRes.executedCount+'</div>'+
+        _xfrRes.executedHistory.map(function(_eh){
+          return'<div class="task-row exec-history" style="opacity:.72">'+
+            '<input type="checkbox" class="task-check" checked disabled>'+
+            '<div class="task-text done">'+esc(_eh.completedLabel||'Executed (legacy)')+'<span class="task-date">Executed</span></div>'+
+          '</div>';
+        }).join(''):'')+
       // Transfer-type custom tasks
       (_xfrCT.length?_xfrCT.map(function(ct){
         var meta=getTaskMeta(ct.id,ct.label);
@@ -5291,9 +5436,10 @@ function renderHistory(weeksArg){
     var _hXfrCT=_hAllCT.filter(function(ct){var m=getTaskMeta(ct.id,ct.label);return m.type==='transfer'&&!m.dismissed;});
     // Action counting includes dismissed — dismissed=resolved counts toward the badge (Option B)
     var _hActCTCount=_hAllCT.filter(function(ct){var m=getTaskMeta(ct.id,ct.label);return m.type==='action';});
-    // Transfer count: model tasks + transfer custom tasks
-    var _hTotalXfr=wx.realActs.length+_hXfrCT.length;
-    var _hDoneXfr=wx.doneTasks+_hXfrCT.filter(function(ct){return ct.completed;}).length;
+    // Transfer count: model tasks + executed-history + transfer custom tasks (5G-1B resolver)
+    var _hRes=resolveWeekTransfers({realActs:wx.realActs,realActKeys:wx.realActKeys,taskRows:_taskRowsForWeek(wx.num)});
+    var _hTotalXfr=wx.realActs.length+_hRes.executedCount+_hXfrCT.length;
+    var _hDoneXfr=_hRes.doneCount+_hRes.executedCount+_hXfrCT.filter(function(ct){return ct.completed;}).length;
     // Action count: all action tasks; dismissed counts as done (Option B)
     var _hTotalAct=_hActCTCount.length;
     var _hDoneAct=_hActCTCount.filter(function(ct){var m=getTaskMeta(ct.id,ct.label);return ct.completed||m.dismissed;}).length;
@@ -9793,15 +9939,15 @@ function _buildModelContext(){
     if(w.evs&&w.evs.length){
       w.evs.forEach(function(e){lines.push('  '+(e.t==='in'?'IN ':'OUT')+' '+e.l+': '+f(Math.abs(e.a)));});
     }else{lines.push('  No events');}
-    // Actions with completion status
-    if(w.ac&&w.ac.length){
-      var realActs=w.ac.filter(function(a){return!a.includes('No transfers');});
-      if(realActs.length){
-        realActs.forEach(function(a,i){
-          var done=taskData[w.num+'_'+i]&&taskData[w.num+'_'+i].completed;
-          lines.push('  ACTION ['+(done?'DONE':'TODO')+']: '+a);
-        });
-      }
+    // Actions with completion status (5G-1B: identity-resolved; executed history preserved)
+    if(w.realActs&&w.realActs.length){
+      var _exRes=resolveWeekTransfers({realActs:w.realActs,realActKeys:w.realActKeys,taskRows:_taskRowsForWeek(w.num)});
+      _exRes.currentRows.forEach(function(_cr){
+        lines.push('  ACTION ['+(_cr.completed?'DONE':'TODO')+']: '+_cr.label);
+      });
+      _exRes.executedHistory.forEach(function(_eh){
+        lines.push('  ACTION [EXECUTED]: '+(_eh.completedLabel||'Executed (legacy)'));
+      });
     }
     // End balances
     lines.push('  End balances: Chk='+f(w.chk)+' | Sav='+f(w.sav)+' | AMEX='+f(w.amx)+' | Tax='+f(w.tax)+' | LC='+f(w.lc));

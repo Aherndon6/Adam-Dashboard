@@ -11935,6 +11935,178 @@ console.log('\n── Section 5G-1C-2/C3: Goal Funding Overlay ──');
   });
 })();
 
+// ═══════════════════════════════════════════════════════════════════════════
+// Section 5G-1B: reconciled-transfer-history resolver + resolver-aware write
+// ═══════════════════════════════════════════════════════════════════════════
+(function(){
+  console.log('\n── Section 5G-1B: reconciled-transfer-history resolver ──');
+  function tr(taskIdx,completed,actionKey,label){return {taskIdx:taskIdx,completed:completed,actionKey:actionKey,completedLabel:label,completedAmount:null,completedAt:null};}
+  function R(realActs,realActKeys,taskRows){return resolveWeekTransfers({realActs:realActs,realActKeys:realActKeys,taskRows:taskRows});}
+
+  // R1 — unique key match at a DIFFERENT task_idx (position-independent)
+  test('5G1B-R1: unique key matches regardless of task_idx position',function(){
+    var res=R(['RCCL $600'],['goal_wewe_rccl'],[tr(3,true,'goal_wewe_rccl','RCCL $600 (old label)')]);
+    assert(res.currentRows[0].completed===true,'current row should be completed by key');
+    assert(res.currentRows[0].matchTaskIdx===3,'matchTaskIdx should be persisted idx 3, got '+res.currentRows[0].matchTaskIdx);
+    assert(res.executedCount===0,'no executed history');
+  });
+  // R2 — absent keys become executed history (the reported defect: RCCL/DCL/IRA/IRA-seed)
+  test('5G1B-R2: absent keys render as executed history',function(){
+    var rows=[tr(0,true,'goal_alaska','Alaska $7,000'),tr(1,true,'goal_wewe_rccl','RCCL $600'),
+              tr(2,true,'goal_wewe_dcl','DCL $500'),tr(3,true,'goal_adam_ira','IRA $3,562.56'),
+              tr(4,true,'goal_adam_ira_seed','IRA seed $3,772.74')];
+    var res=R(['Alaska $7,000'],['goal_alaska'],rows);
+    assert(res.doneCount===1&&res.currentRows[0].completed,'alaska done');
+    assert(res.executedCount===4,'four executed-history rows, got '+res.executedCount);
+    var keys=res.executedHistory.map(function(e){return e.actionKey;});
+    ['goal_wewe_rccl','goal_wewe_dcl','goal_adam_ira','goal_adam_ira_seed'].forEach(function(k){
+      assert(keys.indexOf(k)>=0,'executed history should include '+k);
+    });
+    assert(res.executedHistory[0].taskIdx<res.executedHistory[3].taskIdx,'executed history ascending taskIdx');
+  });
+  // R3 — no remap: a persisted completion never attaches to a different action
+  test('5G1B-R3: mismatched key does not remap onto a different current action',function(){
+    var res=R(['Bryce 529 $0'],['goal_bryce_529'],[tr(0,true,'goal_wewe_rccl','RCCL $600')]);
+    assert(res.currentRows[0].completed===false,'current bryce row NOT completed');
+    assert(res.executedCount===1&&res.executedHistory[0].actionKey==='goal_wewe_rccl','rccl -> executed history');
+  });
+  // R4 — commission_tax exact key+label x2 both match (tier 1)
+  test('5G1B-R4: duplicate commission_tax exact key+label both match',function(){
+    var res=R(['Comm 40% (commission 40%)','Comm 40% (deferred commission 40%)'],['commission_tax','commission_tax'],
+      [tr(0,true,'commission_tax','Comm 40% (commission 40%)'),tr(1,true,'commission_tax','Comm 40% (deferred commission 40%)')]);
+    assert(res.doneCount===2,'both commission rows matched');
+    assert(res.executedCount===0,'no executed');
+  });
+  // R5 — reversed duplicate labels still match by exact key+label, not by order
+  test('5G1B-R5: reversed duplicate commission_tax labels match by identity not order',function(){
+    var res=R(['Comm A','Comm B'],['commission_tax','commission_tax'],
+      [tr(0,true,'commission_tax','Comm B'),tr(1,true,'commission_tax','Comm A')]);
+    assert(res.currentRows[0].completed&&res.currentRows[0].matchTaskIdx===1,'current "Comm A" -> record at idx1');
+    assert(res.currentRows[1].completed&&res.currentRows[1].matchTaskIdx===0,'current "Comm B" -> record at idx0');
+    assert(res.executedCount===0,'no executed');
+  });
+  // R6 — one-of-two duplicate-key: 2 current distinct labels, 1 completed record -> exactly one matches
+  test('5G1B-R6: one-of-two duplicate-key matches only the concordant row',function(){
+    var res=R(['Comm A','Comm B'],['commission_tax','commission_tax'],[tr(0,true,'commission_tax','Comm A')]);
+    assert(res.currentRows[0].completed===true,'Comm A matched');
+    assert(res.currentRows[1].completed===false,'Comm B not matched (false negative preferred)');
+    assert(res.executedCount===0,'record consumed, none orphaned');
+  });
+  // R7 — ambiguous duplicate labels produce NO unsafe completion
+  test('5G1B-R7: ambiguous duplicate labels do not mark the wrong transfer executed',function(){
+    var res=R(['Same','Same'],['commission_tax','commission_tax'],[tr(0,true,'commission_tax','Different')]);
+    assert(res.doneCount===0,'no current row falsely marked done');
+    assert(res.executedCount===1&&res.executedHistory[0].completedLabel==='Different','record surfaced as executed');
+  });
+  // R8 — legacy null-key, label differs -> unmatched + legacy executed history
+  test('5G1B-R8: legacy null-key with differing label does not positionally remap',function(){
+    var res=R(['Alaska new label'],['goal_alaska'],[tr(0,true,null,'Alaska OLD label')]);
+    assert(res.currentRows[0].completed===false,'current not matched by null-key positional');
+    assert(res.executedCount===1&&res.executedHistory[0].kind==='legacy-executed','legacy executed history');
+  });
+  // R9 — legacy null-key, byte-exact label -> matched (tier 4)
+  test('5G1B-R9: legacy null-key byte-exact label matches',function(){
+    var res=R(['Exact label'],['goal_alaska'],[tr(0,true,null,'Exact label')]);
+    assert(res.currentRows[0].completed===true,'matched by exact label');
+    assert(res.executedCount===0,'no executed');
+  });
+  // R10 — unmatched current recommendation stays unchecked
+  test('5G1B-R10: current recommendation with no completion stays unchecked',function(){
+    var res=R(['RCCL $600'],['goal_wewe_rccl'],[]);
+    assert(res.currentRows[0].completed===false&&res.doneCount===0,'unchecked');
+    assert(res.executedCount===0,'no executed');
+  });
+  // R12 — denominator: executed excluded from doneCount; executedCount separate
+  test('5G1B-R12: executed history excluded from doneCount',function(){
+    var res=R(['Alaska'],['goal_alaska'],[tr(0,true,'goal_alaska','Alaska'),tr(1,true,'goal_wewe_rccl','RCCL')]);
+    assert(res.doneCount===1,'doneCount current-only');
+    assert(res.executedCount===1,'executedCount separate');
+  });
+  // R13 — History count = doneCount + executedCount
+  test('5G1B-R13: history transfer done = doneCount + executedCount',function(){
+    var res=R(['Alaska'],['goal_alaska'],[tr(0,true,'goal_alaska','Alaska'),tr(1,true,'goal_wewe_rccl','RCCL'),tr(2,true,'goal_wewe_dcl','DCL')]);
+    var hDone=res.doneCount+res.executedCount, hTotal=1+res.executedCount; // + custom (none here)
+    assert(hDone===3&&hTotal===3,'history counts include executed: '+hDone+'/'+hTotal);
+  });
+  // _taskRowsForWeek enumeration (amendments 2 & 3)
+  test('5G1B-TR: enumerate all rows; sparse/high preserved; malformed ignored; incomplete kept',function(){
+    var saved={};Object.keys(taskData).forEach(function(k){if(k.indexOf('900_')===0){saved[k]=taskData[k];delete taskData[k];}});
+    try{
+      taskData['900_0']={completed:true,actionKey:'goal_alaska',completedLabel:'Alaska'};
+      taskData['900_2']={completed:false,actionKey:'goal_wewe_rccl',completedLabel:null};   // incomplete, sparse
+      taskData['900_37']={completed:true,actionKey:'goal_wewe_dcl',completedLabel:'DCL'};    // sparse high index
+      taskData['900_x']={completed:true,actionKey:'bad'};                                    // malformed suffix -> ignored
+      taskData['9000_1']={completed:true,actionKey:'other'};                                 // different week -> ignored
+      var rows=_taskRowsForWeek(900);var idxs=rows.map(function(r){return r.taskIdx;});
+      assert(idxs.length===3,'exactly 3 valid rows, got '+idxs.length+' ['+idxs.join(',')+']');
+      assert(idxs[0]===0&&idxs[1]===2&&idxs[2]===37,'numeric sort + sparse/high preserved: '+idxs.join(','));
+      assert(rows[1].completed===false,'incomplete row enumerated (occupies index)');
+    } finally {
+      ['900_0','900_2','900_37','900_x','9000_1'].forEach(function(k){delete taskData[k];});
+      Object.keys(saved).forEach(function(k){taskData[k]=saved[k];});
+    }
+  });
+  // Completed-only matching vs all-row occupancy (amendment 3)
+  test('5G1B-OCC: incomplete rows occupy task_idx but never render as executed history',function(){
+    var res=R(['Alaska'],['goal_alaska'],[tr(0,true,'goal_alaska','Alaska'),tr(1,false,'goal_wewe_rccl',null)]);
+    assert(res.occupiedTaskIdx.indexOf(1)>=0,'incomplete idx1 is occupied');
+    assert(res.executedCount===0,'incomplete row is NOT executed history');
+  });
+  // Write-target allocation contract (amendment 1)
+  test('5G1B-W1: OFF (moved) targets the matched persisted task_idx',function(){
+    var t=_resolveWriteTarget({checked:false,actionKey:'goal_wewe_rccl',completedLabel:'RCCL',matchTaskIdx:5,taskRows:[tr(5,true,'goal_wewe_rccl','RCCL')]});
+    assert(t.taskIdx===5&&t.reason==='off-matched','OFF -> matchTaskIdx 5, got '+JSON.stringify(t));
+  });
+  test('5G1B-W2: ON unmatched allocates smallest free idx',function(){
+    var rows=[tr(0,true,'goal_alaska','Alaska'),tr(1,true,'goal_wewe_rccl','RCCL')];
+    var t=_resolveWriteTarget({checked:true,actionKey:'goal_wewe_dcl',completedLabel:'DCL',matchTaskIdx:null,taskRows:rows});
+    assert(t.reason==='alloc-fresh'&&t.taskIdx===2,'fresh alloc idx2, got '+JSON.stringify(t));
+    assert(rows.map(function(r){return r.taskIdx;}).indexOf(t.taskIdx)<0,'allocated idx not occupied');
+  });
+  test('5G1B-W3: ON reuse of same-key null-label prior row (unambiguous)',function(){
+    var t=_resolveWriteTarget({checked:true,actionKey:'goal_wewe_rccl',completedLabel:'RCCL $600',matchTaskIdx:null,taskRows:[tr(0,false,'goal_wewe_rccl',null)]});
+    assert(t.taskIdx===0&&t.reason==='reuse-legacy','reuse legacy idx0, got '+JSON.stringify(t));
+  });
+  test('5G1B-W3b: ON exact key+label reuse (unambiguous single candidate)',function(){
+    var t=_resolveWriteTarget({checked:true,actionKey:'goal_wewe_rccl',completedLabel:'RCCL $600',matchTaskIdx:null,taskRows:[tr(7,true,'goal_wewe_rccl','RCCL $600')]});
+    assert(t.taskIdx===7&&t.reason==='reuse-exact','reuse exact idx7');
+  });
+  test('5G1B-W4: ambiguous same-key+label reuse allocates a free index',function(){
+    var t=_resolveWriteTarget({checked:true,actionKey:'commission_tax',completedLabel:'Comm',matchTaskIdx:null,taskRows:[tr(0,true,'commission_tax','Comm'),tr(1,true,'commission_tax','Comm')]});
+    assert(t.reason==='alloc-ambiguous-exact'&&t.taskIdx===2,'ambiguous exact -> free idx2, got '+JSON.stringify(t));
+  });
+  test('5G1B-W4b: ambiguous same-key null-label reuse allocates a free index',function(){
+    var t=_resolveWriteTarget({checked:true,actionKey:'goal_x',completedLabel:'X',matchTaskIdx:null,taskRows:[tr(0,false,'goal_x',null),tr(1,false,'goal_x',null)]});
+    assert(t.reason==='alloc-ambiguous-legacy'&&t.taskIdx===2,'ambiguous legacy -> free idx2');
+  });
+  test('5G1B-W5: allocator never overwrites a DIFFERENT action row (no-overwrite invariant)',function(){
+    var rows=[tr(0,true,'goal_alaska','Alaska'),tr(2,true,'goal_wewe_rccl','RCCL')];
+    var t=_resolveWriteTarget({checked:true,actionKey:'goal_wewe_dcl',completedLabel:'DCL',matchTaskIdx:null,taskRows:rows});
+    assert([0,2].indexOf(t.taskIdx)<0,'target not a different-action idx: '+t.taskIdx);
+    assert(t.taskIdx===1,'smallest free (0,2 occupied) is 1, got '+t.taskIdx);
+  });
+  test('5G1B-W6: outbound upsert payload has correct task_idx/action_key/completed_label',function(){
+    var t=_resolveWriteTarget({checked:true,actionKey:'goal_wewe_rccl',completedLabel:'RCCL $600',matchTaskIdx:null,taskRows:[tr(0,true,'goal_alaska','Alaska')]});
+    var p=_buildWeeklyTaskPayload(5,t.taskIdx,true,'goal_wewe_rccl','RCCL $600',600,'2026-07-11T00:00:00Z');
+    assert(p.week_num===5&&p.task_idx===t.taskIdx&&p.task_idx===1,'task_idx = allocated 1');
+    assert(p.action_key==='goal_wewe_rccl','action_key explicit');
+    assert(p.completed_label==='RCCL $600','completed_label explicit (not from position cache)');
+    assert(p.completed===true&&p.completed_amount===600,'completed + amount');
+  });
+  test('5G1B-W7: OFF payload nulls label/amount but keeps action_key + task_idx',function(){
+    var p=_buildWeeklyTaskPayload(5,3,false,'goal_wewe_rccl','RCCL $600',600,'2026-07-11T00:00:00Z');
+    assert(p.task_idx===3&&p.action_key==='goal_wewe_rccl','idx + key retained');
+    assert(p.completed===false&&p.completed_label===null&&p.completed_amount===null&&p.completed_at===null,'off nulls');
+  });
+  // Unreconciled-unchanged guard: concordant positional completions == resolver display
+  test('5G1B-UNRECON: concordant positional completions match resolver doneCount',function(){
+    var rows=[tr(0,true,'goal_alaska','A'),tr(1,true,'goal_wewe_rccl','B')]; // 0,1 done; 2 absent
+    var res=R(['A','B','C'],['goal_alaska','goal_wewe_rccl','goal_wewe_dcl'],rows);
+    assert(res.doneCount===2&&res.currentRows[2].completed===false,'resolver doneCount 2, C unchecked');
+    assert(res.executedCount===0,'no orphans when all completions concord with current');
+  });
+})();
+
 // ─────────────────────────────────────────────────────────────────────────
 console.log('\n╔══════════════════════════════════════════════════════════════╗');
 console.log('║                       RESULTS                               ║');

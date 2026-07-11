@@ -915,6 +915,114 @@ async function clickNav(page, id) {
     await context.close();
   }, { tags: ['smoke','funding'] });
 
+  // 5G-1B: an executed model transfer whose action_key is no longer in the recommended set
+  // must stay VISIBLE as a read-only "Executed earlier" row (checked, disabled, no write
+  // handler), must be EXCLUDED from the Weekly X/Y, must show "Executed earlier: 1", and the
+  // History card completed-transfer count must INCLUDE it (delta of +1 vs no injection).
+  await test('Weekly › Transfers: executed history — visible, X/Y-excluded, History-counted (5G-1B)', async () => {
+    const { page, context } = await openApp(browser);
+    await clickNav(page, 'weekly');
+    const res = await page.evaluate(() => {
+      const g = getGoals();
+      const weeks = runModel(g.ak, g.rt);
+      const wk = (weeks.find(w => w.realActs.length > 0) || weeks[0]).num;
+      const key = wk + '_99';                              // sparse high idx; absent action_key
+      const savedKeys = {};
+      Object.keys(taskData).forEach(k => { if (k.indexOf(wk + '_') === 0) { savedKeys[k] = taskData[k]; delete taskData[k]; } });
+      function weeklyProg() {
+        activeW = wk; setSection('weekly'); renderApp();
+        var el = document.querySelector('#weekly-content .act-progress');
+        var m = el ? (el.textContent || '').match(/(\d+)\s*\/\s*(\d+)/) : null;
+        return { num: m ? +m[1] : null, denom: m ? +m[2] : null,
+                 html: (document.getElementById('weekly-content').innerHTML || '') };
+      }
+      function histCount() {
+        setSection('history'); renderApp();
+        var cards = Array.prototype.slice.call(document.querySelectorAll('#historyContent .hcard'));
+        var card = cards.find(c => (c.innerHTML || '').indexOf('activeW=' + wk + ';') >= 0) || null;
+        var t = card ? card.querySelector('.hcard-tasks') : null;
+        var m = t ? (t.textContent || '').match(/(\d+)\s*\/\s*(\d+)/) : null;
+        return m ? { done: +m[1], total: +m[2] } : null;
+      }
+      // Baseline (no executed row)
+      var wk0 = weeklyProg(); var h0 = histCount();
+      // Inject one completed record whose action_key is NOT in the recommended set
+      taskData[key] = { completed:true, completedAt:'2026-07-11T00:00:00Z', completedAmount:99,
+        actionKey:'goal_absent_test', completedLabel:'ABSENT-EXEC-TEST $99 to AMEX Savings (holding)' };
+      var wk1 = weeklyProg();
+      var execRows = Array.prototype.slice.call(document.querySelectorAll('#weekly-content .task-row.exec-history'));
+      var target = execRows.find(r => (r.textContent || '').indexOf('ABSENT-EXEC-TEST') >= 0) || null;
+      var cb = target ? target.querySelector('input.task-check') : null;
+      var h1 = histCount();
+      // Restore
+      delete taskData[key];
+      Object.keys(savedKeys).forEach(k => { taskData[k] = savedKeys[k]; });
+      return {
+        rowFound: !!target,
+        hasLabel: wk1.html.indexOf('ABSENT-EXEC-TEST') >= 0,
+        execHdr1: wk1.html.indexOf('Executed earlier: 1') >= 0,
+        cbChecked: cb ? cb.checked === true : false,
+        cbDisabled: cb ? cb.disabled === true : false,
+        cbNoHandler: target ? (target.innerHTML.indexOf('toggleTransfer') < 0) : false,
+        denom0: wk0.denom, denom1: wk1.denom, num0: wk0.num, num1: wk1.num,
+        h0: h0, h1: h1,
+      };
+    });
+    assert(res.rowFound && res.hasLabel, 'executed-history row not rendered from completed_label');
+    assert(res.cbChecked, 'executed-history checkbox must be checked');
+    assert(res.cbDisabled, 'executed-history checkbox must be disabled');
+    assert(res.cbNoHandler, 'executed-history row must have NO write handler (no toggleTransfer)');
+    assert(res.execHdr1, '"Executed earlier: 1" must be visible');
+    assert(res.denom1 !== null && res.denom1 === res.denom0, 'Weekly X/Y denominator must EXCLUDE executed history (' + res.denom0 + ' -> ' + res.denom1 + ')');
+    assert(res.num1 === res.num0, 'Weekly X/Y numerator must be unchanged by executed history');
+    assert(res.h0 && res.h1, 'History card for the week must render a count');
+    assert(res.h1.done === res.h0.done + 1 && res.h1.total === res.h0.total + 1,
+      'History card count must INCLUDE the executed transfer (done ' + res.h0.done + '->' + res.h1.done + ', total ' + res.h0.total + '->' + res.h1.total + ')');
+    await context.close();
+  }, { tags: [] });
+
+  // 5G-1B: write-wiring — a completion persisted at task_idx 5 but matched to the current
+  // action rendered at display index 0 must, on UNCHECK, write to task_idx 5 (the matched
+  // persisted row) and NEVER to display index 0. Intercepts the real weekly_tasks upsert.
+  await test('Weekly › Transfers: uncheck a moved completion writes matched task_idx=5, never idx 0 (5G-1B)', async () => {
+    const { page, context } = await openApp(browser);
+    await clickNav(page, 'weekly');
+    const setup = await page.evaluate(() => {
+      const g = getGoals();
+      const weeks = runModel(g.ak, g.rt);
+      const wkObj = weeks.find(w => w.realActs.length > 0) || weeks[0];
+      const wk = wkObj.num, key0 = wkObj.realActKeys[0], lbl0 = wkObj.realActs[0];
+      Object.keys(taskData).forEach(k => { if (k.indexOf(wk + '_') === 0) delete taskData[k]; });
+      // matched completion for display row 0, stored at a MOVED task_idx 5
+      taskData[wk + '_5'] = { completed:true, completedAt:'2026-07-11T00:00:00Z', completedAmount:null,
+        actionKey:key0, completedLabel:lbl0 };
+      activeW = wk; setSection('weekly'); renderApp();
+      const ctx = _xfrWriteCtx[wk + '_0'] || {};
+      const firstCb = document.querySelector('#weekly-content .task-row:not(.exec-history) input.task-check');
+      return { wk, key0, ctxMatch: ctx.matchTaskIdx, row0Checked: firstCb ? firstCb.checked === true : false };
+    });
+    assert(setup.ctxMatch === 5, 'display row 0 write-context must point at matched task_idx 5, got ' + setup.ctxMatch);
+    assert(setup.row0Checked, 'display row 0 must render checked (matched completion)');
+    // Intercept every weekly_tasks upsert
+    const posts = [];
+    await page.route('**/rest/v1/weekly_tasks**', route => {
+      const req = route.request();
+      if (req.method() === 'POST') { try { posts.push(JSON.parse(req.postData() || '{}')); } catch (e) { posts.push({ parseError: true }); } }
+      route.fulfill({ status: 200, contentType: 'application/json', body: '' });
+    });
+    // Uncheck display row 0 → toggleTransfer must target the matched task_idx 5
+    await page.locator('#weekly-content .task-row:not(.exec-history) input.task-check').first().click();
+    for (let t = 0; t < 30 && posts.length === 0; t++) { await page.waitForTimeout(50); }
+    assert(posts.length >= 1, 'no weekly_tasks POST captured on uncheck');
+    const p = posts[0];
+    assert(p.task_idx === 5, 'outbound task_idx must be the matched 5, got ' + p.task_idx);
+    assert(p.action_key === setup.key0, 'outbound action_key must be the row-0 key, got ' + p.action_key);
+    assert(p.completed === false, 'uncheck writes completed=false');
+    assert(p.completed_label === null, 'uncheck nulls completed_label (identity carried by action_key)');
+    assert(posts.every(x => x.task_idx !== 0), 'NO request may write task_idx 0');
+    await context.close();
+  }, { tags: [] });
+
   // ── Section J: Mobile viewport ─────────────────────────────────────────
   console.log('── Section J: Mobile viewport ──');
   await test('Mobile: all tabs reachable without horizontal overflow', async () => {
