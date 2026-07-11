@@ -1,8 +1,30 @@
 # Defect — Executed transfer history disappears after reconciliation because transfer rows are re-derived and keyed positionally
 
-**Logged:** 2026-07-11 · **Status:** OPEN — documentation only, no fix implemented ·
+**Logged:** 2026-07-11 · **Status:** RESOLVED 2026-07-11 (adapter/UI fix, commit `db2704f`) ·
 **Classification:** 5G-1B rider — stable executed-transfer identity and history preservation
 (display/audit-history defect — NOT data loss, NOT an E2 blocker) ·
+
+## Resolution (2026-07-11) — RESOLVED
+
+Fixed in commit `db2704f` — **adapter/UI only; no runModel/reconciliation/snapshot/schema/SQL
+change** (verified: `.sql` files changed = 0; runModel/waterfall/recon/C3 markers intact). A pure,
+deterministic resolver (`resolveWeekTransfers`) matches current model-transfer recommendations to
+persisted `weekly_tasks` completions by **identity** (`action_key` / `completed_label`),
+**position-independent**, with tiered duplicate-key handling (exact key+label → unique key →
+concordant occurrence → legacy exact-label; ambiguity prefers a false negative). Completions no
+longer in the recommended set render as read-only **"Executed earlier"** rows (checked, disabled,
+no write handler). The write path is **resolver-aware** (`_resolveWriteTarget` → matched `task_idx`
+on uncheck, an unused index on a fresh check, and never overwrites a different action's row). Weekly
+X/Y stays current-only with a separate **"Executed earlier: N"**; the History count and text export
+reuse the resolver. No `(week_num, action_key)` uniqueness assumed; no schema/migration.
+
+**Verification (final):** static regression **1431/0** (Section 5G-1B, 29 cases); full e2e **135/0**
+(incl. two browser tests — executed-history visibility / Weekly-X-Y-exclusion / History-count, and
+uncheck-writes-matched-`task_idx`-5-never-idx-0); e2e smoke **19/0**; browser console **clean**.
+
+**Deferred (unchanged, future characterization):** durable immutable action identity, write-path
+re-keying, and any unique constraint remain future work — not required for this fix.
+
 **Owner:** 5G-1B owns the immediate correction; the identity/render adapter applies to **all**
 model-generated transfer actions (not only holding goals) · **Fix timing:** post-E2 (E2 COMPLETE
 2026-07-11), pre-Alaska-freeze.
