@@ -28,9 +28,11 @@
 -- Anchor (basis-coherence, RC-1): the anchor is the LATEST reconciled week at
 -- seed time. Guard A HARD-STOPS unless v_anchor_week = max(week_num) from
 -- weekly_reconciliations (fresh-value/stale-week seeding is prohibited). Set
--- v_anchor_week to the latest reconciled model week (wk 5 is clean only in the
--- Jul 12–17 window; if execution is Jul 19–22, re-anchor to wk 6 / Jul 18 basis
--- and REGENERATE the Value Card; if missed, defer past the Alaska freeze).
+-- v_anchor_week to the latest reconciled model week. HISTORICAL NOTE (2026-07-11):
+-- Week 5 reconciled 2026-07-11 and E2 executed the same day on the wk-5 basis (Guard A
+-- confirmed max(week_num)=5). The earlier "Jul 12–17 window" language was a planning
+-- estimate, not a technical guard; the wk-6 re-anchor / Alaska-freeze-deferral paths did
+-- not fire. Guard A remains the mechanical basis-coherence check for any future re-run.
 -- week_num-only (weekly_reconciliations has no model_year; inherited from 5F-1;
 -- safe under the single 31-week 2026 model).
 --
@@ -115,7 +117,7 @@ DO $$
 DECLARE
   -- ══ ANCHOR (RC-1 basis-coherence: set to the LATEST reconciled model week) ══
   v_model_year INT := 2026;
-  v_anchor_week INT := 5;                       -- SET to max(week_num): wk 5 (Jul 12–17) or wk 6 (Jul 18). Guard A enforces = max.
+  v_anchor_week INT := 5;                       -- SET to max(week_num). E2 executed on the wk-5 basis 2026-07-11 (Guard A enforces = max).
   v_latest_rec  INT;                            -- latest reconciled week (Guard A single-source)
 
   -- ══ CAPTURE-AT-SEED-TIME (TODO: fill from custodian/bank reality; -1 = UNSET) ══

@@ -203,11 +203,15 @@ UI/Flow Review v2 completed 2026-07-07 (`docs/reviews/ui-flow-review-triage-2026
 - **E1 — production DDL execution gate:** confirm **Adam-Dashboard (usayoldrawwmjsmretin)** → pg_dump schema-only baseline → `scripts/export-ai-review-pack.sh` → PITR/backup check → preflight → migration → validation → post-migration inert live check (behavior-inert but security-surface-live). **Explicit in-session approval required.**
 - **E2 — first-anchor seed gate:** latest-reconciled-week basis → First-Anchor Value Card approval → fill all nine values in seed + seed-validation → value-only diff → commit final seed SQL → seed → seed-validation → REST/console + display verification. **Separate explicit in-session approval required.**
 
-**Timing.** wk-5 anchor is valid only in the **Jul 12–17** window; **Jul 19–22** likely requires re-anchor to **wk 6 / Jul 18** basis (regenerate the Value Card); if missed, **defer past the Alaska freeze (Jul 24–Aug 10) or re-plan after Aug 10**.
+**Timing (RESOLVED 2026-07-11).** Week 5 reconciled **2026-07-11**; E2 executed the same day on the wk-5 basis (Guard A confirmed `max(week_num)=5`). The earlier "**Jul 12–17** window" was a planning estimate, not a technical guard, and is now moot (E2 COMPLETE). The wk-6 re-anchor / Alaska-freeze-deferral paths did not fire.
 
 **Deferred follow-up.** The C3 overlay **auto/holding exclusion guard** remains a named follow-up (5G-1D rider or post-freeze wishlist) — the overlay does not itself guard auto goals; the prod seed-validation table-wide exclusion assertions are the DDL-gate defense. NOT part of the production DDL gate; no `index.html` edit.
 
 Plan + Fable review: `docs/phase-5g-1c-plan-2026-07-08.md`, `docs/phase-5g-1c-plan-review-2026-07-08.md`.
+
+## Known defect (logged 2026-07-11): reconciled-week transfer history — 5G-1B rider
+
+Docs-only log. After Week-5 reconciliation, executed transfer rows (Alaska, Wewe RCCL, Wewe DCL, and both Adam IRA actions) disappear from "Transfers to execute" — rows are re-derived from `runModel`; completion persists in `public.weekly_tasks` keyed positionally by `(week_num, task_idx)` (orphaned, overwrite-vulnerable). **No financial/reconciliation/completion-row loss; Week-5 reconciliation valid; NOT an E2 blocker** (E2 uses observed balances; nine eligible goals exclude RCCL/DCL). Classification: **5G-1B rider — stable executed-transfer identity and history preservation**, applying to all model-generated transfers; cross-refs 5G-1D / 5G-1E / reconcile→re-render test coverage. **Controlling sequence (2026-07-11): E2 COMPLETE + GREEN on the wk-5 basis → commit E2 closeout → commit this defect doc + stale timing-comment correction → minimum safe transfer-history fix → full verification → begin 5G-1D.** 5G-1D Gate 0 (E2 completion) SATISFIED 2026-07-11. No committed household amounts, timestamps, populated results, or evidence hashes. Full record: `docs/5g-1b-defect-reconciled-transfer-history-2026-07-11.md`.
 
 ## 5G-1C-2 E1 COMPLETE (2026-07-09): production DDL executed, schema-only + EMPTY
 
