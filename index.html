@@ -859,7 +859,7 @@ button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-vis
 // ── Constants (unchanged) ──────────────────────────────────────────────────
 // Simplified architecture — $8,250 total from LC · $6,500 operating floor · no legacy mechanics
 // Real-world moves: keep $2,250 in chk, move $2,750 sav→chk, move $1,000 LC→chk, move $2,250 LC→chk (Option 1 correction)
-const BUILD_TS='2026-07-11T15:26:57'; // updated each push — local time string
+const BUILD_TS='2026-07-11T17:26:14'; // updated each push — local time string
 const START_CHK=18037.73,START_SAV=3772.77,START_AMX=103.64,START_TAX=0,START_LC=13488.88;
 const EF_AMT=13488.88; // LC/EF balance — static this model year (no transfers in or out)
 const BASE_TAX=521.36,RET_SAV_XFR=3772.74;
@@ -2822,6 +2822,57 @@ async function deleteRecon(n){
     else console.error('deleteRecon: HTTP '+r.status);
   }catch(e){console.error('deleteRecon:',e);}
   reconOpen=null;renderApp();
+}
+
+// ── 5G-1D Slice 1 — pure closeout snapshot payload builder (INERT) ───────────
+// Turns operator-confirmed per-goal observed funded amounts into the exact nine-row
+// snapshot payload for the additive combined-closeout wrapper
+// (save_weekly_closeout_with_snapshots — plan §5.2). NOT wired into saveRecon yet; the
+// wiring + confirmation view + in-flight/ambiguous state machine is Slice 3. Spec:
+// docs/phase-5g-1d-plan-2026-07-09.md (§3.1/§3.4/§3.6/§4/§5.5).
+//
+// The exact nine E2-approved eligible goals — identical to the Week-5 opening anchor
+// (plan §4). This client list is a UI/payload convenience and fail-fast cross-check ONLY;
+// the wrapper RE-DERIVES the eligible set server-side and THAT server set is the sole
+// integrity control (plan §4/§5.5). Excluded by the deployed RPC and never listed here:
+// adam_401k (auto), wewe_rccl / wewe_dcl / taxable_etf (holding/deferred).
+const SNAPSHOT_ELIGIBLE_GOAL_IDS=['adam_ira','wendy_ira','wendy_sep','alaska','bailey_529','bryce_529','preston_529','bryce_vehicle','christmas_cruise'];
+
+// Pure (no DOM/Date/random/network/global reads). Given funded = {goalId:number} of
+// operator-confirmed observed CUMULATIVE funded amounts (plan §3.1/§3.6 — reconciled
+// reality, never a runModel projection), returns the canonical-order nine-row payload
+// [{goal_id, funded_amount}, ...] for the wrapper's p_snapshot_rows:
+//   • NO `source` field — the wrapper pins source='reconciliation'; supplying one is
+//     rejected server-side (plan §3.4). An unexpected key (incl. 'source') hard-stops here.
+//   • Mirrors the server hard-stops for fail-fast UX (plan §4/§5.5): rejects any missing,
+//     extra, or duplicate goal, a non-nine set, and a negative amount. It is NOT the
+//     integrity control (the server is) — it just fails fast so a drifting client never
+//     submits.
+//   • Each amount MUST already be a FINITE PRIMITIVE NUMBER. Strings (including numeric
+//     strings like '7000' and empty/whitespace strings), booleans, null/undefined, arrays,
+//     objects, NaN, Infinity, and -Infinity are all rejected. Parsing/coercion belongs at
+//     the UI boundary (the confirmation view), NOT in this builder (Fable 5G-1D red-team).
+//   • Does NOT decide the values (operator-confirmed via the Slice-3 confirmation view)
+//     and does NOT call anything.
+function buildCloseoutSnapshotRows(funded){
+  if(!funded||typeof funded!=='object'||Array.isArray(funded))throw new Error('closeout snapshot payload: a funded-amount map is required');
+  var provided=Object.keys(funded);
+  for(var i=0;i<provided.length;i++){
+    if(SNAPSHOT_ELIGIBLE_GOAL_IDS.indexOf(provided[i])<0)throw new Error('closeout snapshot payload: unexpected goal id "'+provided[i]+'" (eligible set is the approved nine)');
+  }
+  var rows=[];
+  for(var j=0;j<SNAPSHOT_ELIGIBLE_GOAL_IDS.length;j++){
+    var id=SNAPSHOT_ELIGIBLE_GOAL_IDS[j];
+    if(!Object.prototype.hasOwnProperty.call(funded,id))throw new Error('closeout snapshot payload: missing eligible goal "'+id+'"');
+    var amt=funded[id];
+    // Strict: a finite primitive number only. typeof rejects strings/booleans/null/
+    // undefined/arrays/objects; Number.isFinite rejects NaN/Infinity/-Infinity. No coercion.
+    if(typeof amt!=='number'||!Number.isFinite(amt))throw new Error('closeout snapshot payload: funded amount for "'+id+'" must be a finite number (parse at the UI boundary, not here)');
+    if(amt<0)throw new Error('closeout snapshot payload: negative funded amount for "'+id+'"');
+    rows.push({goal_id:id,funded_amount:Math.round(amt*100)/100}); // cents; matches goalSnapData load rounding; source pinned by the wrapper
+  }
+  if(rows.length!==9)throw new Error('closeout snapshot payload: expected exactly 9 rows, got '+rows.length);
+  return rows;
 }
 
 // ── Tasks ──────────────────────────────────────────────────────────────────

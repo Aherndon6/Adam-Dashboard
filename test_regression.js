@@ -12209,6 +12209,109 @@ console.log('\n── Section 5G-1C-2/C3: Goal Funding Overlay ──');
   });
 })();
 
+// ═══════════════════════════════════════════════════════════════════════════
+// Section 5G-1D / Slice 1 — pure closeout snapshot payload builder
+// buildCloseoutSnapshotRows + SNAPSHOT_ELIGIBLE_GOAL_IDS (INERT; wired in Slice 3).
+// Plan: docs/phase-5g-1d-plan-2026-07-09.md §3.1/§3.4/§3.6/§4/§5.5.
+// ═══════════════════════════════════════════════════════════════════════════
+console.log('\n── Section 5G-1D Slice 1: closeout snapshot payload builder ──');
+(function(){
+  var NINE=['adam_ira','wendy_ira','wendy_sep','alaska','bailey_529','bryce_529','preston_529','bryce_vehicle','christmas_cruise'];
+  function fullMap(over){var m={};NINE.forEach(function(id){m[id]=0;});if(over)Object.assign(m,over);return m;}
+  function threw(fn,frag){try{fn();return false;}catch(e){return frag?String(e.message).indexOf(frag)>=0:true;}}
+
+  test('5G1D-01: SNAPSHOT_ELIGIBLE_GOAL_IDS is exactly the approved nine, canonical order',function(){
+    assert(Array.isArray(SNAPSHOT_ELIGIBLE_GOAL_IDS),'must be an array');
+    assert(SNAPSHOT_ELIGIBLE_GOAL_IDS.length===9,'expected 9, got '+SNAPSHOT_ELIGIBLE_GOAL_IDS.length);
+    assert(SNAPSHOT_ELIGIBLE_GOAL_IDS.join(',')===NINE.join(','),'order/membership mismatch');
+  });
+  test('5G1D-02: excluded goals (auto/holding/deferred) are NOT eligible',function(){
+    ['adam_401k','wewe_rccl','wewe_dcl','taxable_etf'].forEach(function(id){
+      assert(SNAPSHOT_ELIGIBLE_GOAL_IDS.indexOf(id)<0,id+' must be excluded');
+    });
+  });
+  test('5G1D-03: happy path — nine rows, canonical order, keys exactly {goal_id,funded_amount}',function(){
+    var rows=buildCloseoutSnapshotRows(fullMap({adam_ira:7438.94,wendy_sep:17859.21,alaska:7000}));
+    assert(rows.length===9,'expected 9 rows');
+    assert(rows.map(function(r){return r.goal_id;}).join(',')===NINE.join(','),'canonical order');
+    rows.forEach(function(r){
+      var ks=Object.keys(r).sort();
+      assert(ks.length===2&&ks[0]==='funded_amount'&&ks[1]==='goal_id','row keys must be exactly goal_id+funded_amount, got '+ks.join('+'));
+    });
+  });
+  test('5G1D-04: NO source field is ever emitted (wrapper pins source)',function(){
+    buildCloseoutSnapshotRows(fullMap()).forEach(function(r){assert(!('source' in r),'row must not carry source');});
+  });
+  test('5G1D-05: amounts rounded to cents (matches goalSnapData load rounding)',function(){
+    var rows=buildCloseoutSnapshotRows(fullMap({adam_ira:123.456,alaska:6999.994}));
+    var byId={};rows.forEach(function(r){byId[r.goal_id]=r.funded_amount;});
+    assert(byId.adam_ira===Math.round(123.456*100)/100,'adam_ira rounded to cents');
+    assert(byId.alaska===Math.round(6999.994*100)/100,'alaska rounded to cents');
+    assert(byId.adam_ira!==123.456,'raw value was actually rounded');
+  });
+  test('5G1D-06: a legitimate zero funded amount is kept as a real value (not dropped)',function(){
+    var rows=buildCloseoutSnapshotRows(fullMap());
+    assert(rows.length===9,'nine rows incl. zeros');
+    rows.forEach(function(r){assert(r.funded_amount===0,'all zero here');});
+  });
+  test('5G1D-07: finite primitive numbers are accepted (0, decimal, large)',function(){
+    var rows=buildCloseoutSnapshotRows(fullMap({adam_ira:7438.94,wendy_sep:17859.21,alaska:7000,bailey_529:0}));
+    var byId={};rows.forEach(function(r){byId[r.goal_id]=r.funded_amount;});
+    assert(byId.adam_ira===7438.94&&byId.wendy_sep===17859.21&&byId.alaska===7000&&byId.bailey_529===0,'finite numbers passed through (rounded)');
+  });
+  // ── Strict amount typing (Fable 5G-1D red-team): finite primitive number ONLY ──
+  test('5G1D-08: non-number amount types → reject (null/undefined/boolean/array/object)',function(){
+    [null,undefined,true,false,[],[5],{},{v:1}].forEach(function(v){
+      assert(threw(function(){buildCloseoutSnapshotRows(fullMap({alaska:v}));},'finite number'),
+        'amount '+String(v)+' (typeof '+typeof v+') must be rejected');
+    });
+  });
+  test('5G1D-09: string amounts → reject (numeric, empty, whitespace, non-numeric)',function(){
+    ['7000','0','','   ','  \t ','abc'].forEach(function(v){
+      assert(threw(function(){buildCloseoutSnapshotRows(fullMap({alaska:v}));},'finite number'),
+        'string amount '+JSON.stringify(v)+' must be rejected (no coercion)');
+    });
+  });
+  test('5G1D-10: non-finite number amounts → reject (NaN, Infinity, -Infinity)',function(){
+    [NaN,Infinity,-Infinity].forEach(function(v){
+      assert(threw(function(){buildCloseoutSnapshotRows(fullMap({alaska:v}));},'finite number'),
+        'amount '+String(v)+' must be rejected');
+    });
+  });
+  test('5G1D-11: negative finite amount → hard stop (distinct from type error)',function(){
+    assert(threw(function(){buildCloseoutSnapshotRows(fullMap({alaska:-1}));},'negative'),'must reject negative');
+    assert(threw(function(){buildCloseoutSnapshotRows(fullMap({alaska:-0.01}));},'negative'),'must reject small negative');
+  });
+  test('5G1D-12: missing an eligible goal → hard stop',function(){
+    var m=fullMap();delete m.christmas_cruise;
+    assert(threw(function(){buildCloseoutSnapshotRows(m);},'missing eligible goal'),'must reject missing goal');
+  });
+  test('5G1D-13: an unexpected/extra goal → hard stop (drift)',function(){
+    assert(threw(function(){buildCloseoutSnapshotRows(fullMap({adam_401k:100}));},'unexpected goal id'),'must reject extra goal');
+  });
+  test('5G1D-14: a client-supplied source key → hard stop (rejected as unexpected)',function(){
+    assert(threw(function(){buildCloseoutSnapshotRows(fullMap({source:'reconciliation'}));},'unexpected goal id'),'must reject a source field');
+  });
+  test('5G1D-15: non-object input (null / array / number / string / boolean) → hard stop',function(){
+    [null,undefined,[],[1],5,'x',true].forEach(function(v){
+      assert(threw(function(){buildCloseoutSnapshotRows(v);},'funded-amount map'),'input '+String(v)+' rejected');
+    });
+  });
+  test('5G1D-16: output goal_ids are unique (no duplicate rows)',function(){
+    var seen={};buildCloseoutSnapshotRows(fullMap()).forEach(function(r){assert(!seen[r.goal_id],'dup '+r.goal_id);seen[r.goal_id]=1;});
+  });
+  test('5G1D-17: pure — fresh equal arrays per call; no shared state; no global mutation',function(){
+    var snapBefore=JSON.stringify(typeof goalSnapData!=='undefined'?goalSnapData:{});
+    var a=buildCloseoutSnapshotRows(fullMap({alaska:7000}));
+    var b=buildCloseoutSnapshotRows(fullMap({alaska:7000}));
+    assert(a!==b,'fresh array each call');
+    assert(JSON.stringify(a)===JSON.stringify(b),'equal content');
+    a[0].funded_amount=999; // mutating a result must not leak into a later call
+    assert(buildCloseoutSnapshotRows(fullMap({alaska:7000}))[0].funded_amount!==999,'no shared state between calls');
+    assert(JSON.stringify(typeof goalSnapData!=='undefined'?goalSnapData:{})===snapBefore,'must not touch goalSnapData');
+  });
+})();
+
 // ─────────────────────────────────────────────────────────────────────────
 console.log('\n╔══════════════════════════════════════════════════════════════╗');
 console.log('║                       RESULTS                               ║');
