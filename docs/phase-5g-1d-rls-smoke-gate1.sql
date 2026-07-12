@@ -19,7 +19,14 @@ END $guard$;
 -- ── T1: non-owner (Wendy) cannot invoke approved_reopen (is_owner() rejects, before state reads) ──
 BEGIN;
   SET LOCAL role authenticated;
-  SET LOCAL request.jwt.claims = json_build_object('sub','<WENDY_UID>','role','authenticated')::text;
+  SELECT set_config(
+    'request.jwt.claims',
+    json_build_object(
+      'sub', '<WENDY_UID>',
+      'role', 'authenticated'
+    )::text,
+    true
+  );
   DO $$
   BEGIN
     PERFORM public.save_weekly_closeout_with_snapshots(6,2026,0,0,0,0,0,'cleared','[]'::jsonb,'[]'::jsonb,
@@ -34,7 +41,14 @@ ROLLBACK;
 -- ── T2: strict p_mode — NULL and unknown raise before any inner call ──
 BEGIN;
   SET LOCAL role authenticated;
-  SET LOCAL request.jwt.claims = json_build_object('sub','<ADAM_UID>','role','authenticated')::text;
+  SELECT set_config(
+    'request.jwt.claims',
+    json_build_object(
+      'sub', '<ADAM_UID>',
+      'role', 'authenticated'
+    )::text,
+    true
+  );
   DO $$
   BEGIN
     BEGIN
@@ -53,7 +67,14 @@ ROLLBACK;
 -- ── T3: strict commitment arrays — JSON null / object / string rejected (no coercion) ──
 BEGIN;
   SET LOCAL role authenticated;
-  SET LOCAL request.jwt.claims = json_build_object('sub','<ADAM_UID>','role','authenticated')::text;
+  SELECT set_config(
+    'request.jwt.claims',
+    json_build_object(
+      'sub', '<ADAM_UID>',
+      'role', 'authenticated'
+    )::text,
+    true
+  );
   DO $$
   DECLARE v_rows jsonb := (SELECT jsonb_agg(jsonb_build_object('goal_id',g,'funded_amount',0))
       FROM unnest(ARRAY['adam_ira','wendy_ira','wendy_sep','alaska','bailey_529','bryce_529','preston_529','bryce_vehicle','christmas_cruise']) g);
@@ -70,7 +91,14 @@ ROLLBACK;
 -- ── T4: Option B owner-only + core validation (missing row / wk5 / non-eligible / bad note) ──
 BEGIN;
   SET LOCAL role authenticated;
-  SET LOCAL request.jwt.claims = json_build_object('sub','<WENDY_UID>','role','authenticated')::text;
+  SELECT set_config(
+    'request.jwt.claims',
+    json_build_object(
+      'sub', '<WENDY_UID>',
+      'role', 'authenticated'
+    )::text,
+    true
+  );
   DO $$
   BEGIN
     BEGIN PERFORM public.correct_goal_funding_snapshot(2026,6,'adam_ira',100,50,'x');
@@ -80,7 +108,14 @@ BEGIN;
 ROLLBACK;
 BEGIN;
   SET LOCAL role authenticated;
-  SET LOCAL request.jwt.claims = json_build_object('sub','<ADAM_UID>','role','authenticated')::text;
+  SELECT set_config(
+    'request.jwt.claims',
+    json_build_object(
+      'sub', '<ADAM_UID>',
+      'role', 'authenticated'
+    )::text,
+    true
+  );
   DO $$
   BEGIN
     BEGIN PERFORM public.correct_goal_funding_snapshot(2026,5,'adam_ira',100,50,'x');
@@ -101,7 +136,14 @@ ROLLBACK;
 -- ── T5: p_expected_count is ENFORCED (must equal 9) — stateless pure-input reject ──
 BEGIN;
   SET LOCAL role authenticated;
-  SET LOCAL request.jwt.claims = json_build_object('sub','<ADAM_UID>','role','authenticated')::text;
+  SELECT set_config(
+    'request.jwt.claims',
+    json_build_object(
+      'sub', '<ADAM_UID>',
+      'role', 'authenticated'
+    )::text,
+    true
+  );
   DO $$
   DECLARE v_rows jsonb := (SELECT jsonb_agg(jsonb_build_object('goal_id',g,'funded_amount',0))
       FROM unnest(ARRAY['adam_ira','wendy_ira','wendy_sep','alaska','bailey_529','bryce_529','preston_529','bryce_vehicle','christmas_cruise']) g);
