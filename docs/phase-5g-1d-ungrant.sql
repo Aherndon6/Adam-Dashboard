@@ -10,11 +10,23 @@ BEGIN;
 SET LOCAL search_path TO public;
 
 DO $$
-DECLARE v_sysid BIGINT;
+DECLARE
+  v_sysid BIGINT; v_appenv_total INT; v_appenv_staging INT;
+  c_prod_sysid    CONSTANT BIGINT := 7632885393857617092;
+  c_staging_sysid CONSTANT BIGINT := 7656985631720456337;
 BEGIN
+  -- EXACT staging fingerprint — production and any unknown/ambiguous environment hard-stop.
   SELECT system_identifier INTO v_sysid FROM pg_control_system();
-  IF v_sysid = 7632885393857617092 THEN
+  IF v_sysid = c_prod_sysid THEN
     RAISE EXCEPTION 'HARD STOP: this is PRODUCTION — ungrant script is staging-only. Aborting.'; END IF;
+  IF to_regclass('public.app_environment') IS NULL THEN
+    RAISE EXCEPTION 'HARD STOP: app_environment sentinel absent — not the expected staging env. Aborting.'; END IF;
+  SELECT count(*),
+         count(*) FILTER (WHERE env='staging')
+    INTO v_appenv_total, v_appenv_staging
+    FROM public.app_environment;
+  IF NOT (v_sysid = c_staging_sysid AND v_appenv_total = 1 AND v_appenv_staging = 1) THEN
+    RAISE EXCEPTION 'HARD STOP: not the approved staging fingerprint (sysid=%, appenv total=%, staging=%). Aborting.', v_sysid, v_appenv_total, v_appenv_staging; END IF;
 END $$;
 
 REVOKE ALL ON FUNCTION public.save_weekly_closeout_with_snapshots(
