@@ -1,17 +1,31 @@
-# Phase 5G-1D Slice 2 — Proposed Implementation Package (PLAN/SPEC-FIRST, rev 7)
+# Phase 5G-1D Slice 2 — Proposed Implementation Package (PLAN/SPEC-FIRST, rev 8)
 
-**Status:** CLEARED AND COMMITTED — NOT IMPLEMENTED, NOT EXECUTED, NOT DEPLOYED. No SQL run, no
-grant changed, no browser wired, no staging/production action. **Revision 7 corrects a grounding
-error:** the deployed `save_reconciliation_with_commitments` RPC **ignores `p_recorded_at` and
-always stamps `recorded_at = NOW()`** (`docs/phase-5f-1-migration.sql` L520/L537/L544/L552), so
-the Rev-6 claim that a genuine `approved_reopen` **preserves** `recorded_at` by passing the
-persisted value is **infeasible** and is removed. New contract (Companion Amendment 3): a genuine
-reopen **re-stamps `recorded_at = NOW()`**; only the no-op/identity/repair/adjudication paths
-(which never call the RPC) leave it unchanged; the original is retained in the supervised
-before/after reopen evidence. `p_recorded_at` is a **required compatibility/signal parameter
-whose supplied value the deployed RPC discards**; the public wrapper still does **not** expose it.
-Rev 3–6 decisions otherwise stand. **Authoring committed staging `.sql` files and any execution
-is the NEXT step, gated on Adam's explicit authorization after review.**
+> **Rev 8 — SQL-authoring corrections (ChatGPT + own analysis; uncommitted, pending Fable):**
+> (1) **Staging deployability** — the migration/rollback/preflight now use a **dual-environment
+> guard** (production sysid + no `app_environment`, OR staging sysid + `app_environment`; unknown
+> hard-stops). Single-file body ⇒ staging and production bodies are identical by construction.
+> (2) **Monotonic non-decrease is now enforced IN THE WRAPPER** (the deployed snapshot RPC does
+> not enforce it) — each submitted `funded_amount ≥ the latest effective prior (any source)`;
+> a decrease hard-stops → correction path (branches E and G, under the locks).
+> (3) **`p_expected_count` is now ENFORCED** (`IS DISTINCT FROM 9 → raise`) — no longer an ignored
+> integrity-looking param; the server-derived nine-set still governs which goals/values.
+> (4) **`approved_reopen` requires EMPTY commitment arrays** — a genuine reopen corrects
+> reconciliation actuals only; commitment ops route to a separate supervised commitment-repair
+> path (re-applying commitment creates through the deployed RPC is not duplicate-safe). Branch G
+> half-close repair now explicitly covers the **0-snapshot** legacy state. These narrow §8.1/§8.3
+> and the `p_expected_count` framing; recorded elsewhere in this doc + the SQL package.
+
+**Status:** Rev 7 is **committed** (`c858205`/`6959bab`); **Rev 8 corrections are UNCOMMITTED and
+PENDING FABLE REVIEW**. The **eight Slice-2 SQL/supporting artifacts are AUTHORED but UNEXECUTED**
+(untracked; no SQL run, no grant changed, no browser wired, no staging/production action). The
+grounding contract stands: the deployed `save_reconciliation_with_commitments` RPC **ignores
+`p_recorded_at` and always stamps `recorded_at = NOW()`** (`docs/phase-5f-1-migration.sql`
+L520/L537/L544/L552), so a genuine `approved_reopen` **re-stamps `recorded_at = NOW()`** (Companion
+Amendment 3); only the no-op/identity/repair/adjudication paths (which never call the RPC) leave it
+unchanged; the original is retained in the supervised before/after reopen evidence. `p_recorded_at`
+is a **required compatibility/signal parameter whose supplied value the deployed RPC discards**;
+the public wrapper does **not** expose it. **Next step: Fable review of the Rev-8 package + the
+authored SQL, then staging execution under separate approval.**
 **Date:** 2026-07-11
 **Author:** Claude (session under Adam)
 
@@ -93,12 +107,22 @@ rule; the committed amendment file is unchanged).
 Staging-first; loud PRODUCTION/STAGING headers; **non-financial** production fingerprint;
 exact-signature grants; byte-unchanged proofs for the two deployed RPCs.
 
-### 2.1 `phase-5g-1d-preflight.sql` (read-only) — NON-FINANCIAL fingerprint (correction 2)
-Distinguishes production from staging using **structural, non-financial** signals only:
-- **`system_identifier = 7632885393857617092`** (cluster-unique control-file id — not a balance);
-- **`public.app_environment` ABSENT** (its presence marks staging);
-- **transaction-count floor** (structural volume gate; a count, not an amount);
-- **13 canonical goal *ids* present** in `goal_registry` (ids, not targets/amounts);
+### 2.1 `phase-5g-1d-preflight.sql` (read-only) — NON-FINANCIAL fingerprint (Rev 8)
+Resolves the environment to **exactly one of two known clusters** (else hard-stop), using
+**structural, non-financial** signals only, and applies **environment-specific** checks:
+- **PRODUCTION** requires: **`system_identifier = 7632885393857617092` AND `public.app_environment`
+  ABSENT** — plus the **production-only transaction-count floor** (`>= 40`; a structural volume gate,
+  a count, not an amount).
+- **STAGING** requires: **`system_identifier = c_staging_sysid` (pinned via the read-only query in
+  the header — sentinel `0` until filled) AND `public.app_environment` present with EXACTLY one row,
+  `env='staging'`, no other rows/values** — plus the **staging synthetic Week-5 fixture** (the
+  eligible-nine `opening_anchor` set, every row carrying the `[STAGING-FIXTURE]` note marker, with
+  **no** eligible wk5 `opening_anchor` row left unmarked). Staging does **NOT** require production
+  transaction volume.
+- **Any other state (ambiguous sysid/marker) hard-stops.** `public.app_environment` is only queried
+  inside an explicit `IF v_has_appenv THEN` guard (never a bare `EXISTS` under a boolean AND, which
+  errors on production where the table is absent).
+- **13 canonical goal *ids* present** in `goal_registry` (ids, not targets/amounts; both environments);
 - **both deployed RPCs exist** with the exact signatures §1 lists; capture their
   `pg_get_functiondef` hashes for the byte-unchanged proof;
 - **`public.is_owner()` / `public.can_write_financials()` exist** (Gate A closed);
@@ -309,8 +333,11 @@ Straight-line, **no `EXCEPTION` handler** (any error aborts the single implicit 
     p_snapshot_rows well-formed AND contains NO 'source' key AND goal_id set == the
     **function-local canonical eligible-nine CONSTANT array `c_eligible9`** (a literal in the
     function body — **NOT** a `goal_registry` query; assertion 1) AND **each funded_amount passes
-    §8.4 AND is ≥ 0, rounded to cents** else RAISE; p_expected_count (if non-null) is a
-    cross-check only.
+    §8.4 AND is ≥ 0, rounded to cents** else RAISE; **`p_expected_count` is MANDATORY and must
+    equal 9 — any NULL or non-9 value hard-stops (`p_expected_count IS DISTINCT FROM 9 → raise`).
+    The server-derived exact eligible-nine set (`c_eligible9`) remains authoritative for row
+    identity/content; `p_expected_count` is an additional mandatory count cross-check, not the
+    integrity control.**
 
 -- STEP 2  Serialize (both locks BEFORE any state-dependent read; §4)
 2a. PERFORM pg_advisory_xact_lock(1734501000, p_model_year*100 + p_week_num).                -- year/week advisory
@@ -458,8 +485,12 @@ both shared locks held (advisory + per-goal `goal_registry FOR UPDATE`, §4/§4.
     change no state** (same fallback as §6 — the reopen's commitment effect cannot be proven a
     no-op without reproducing the recon RPC's mutation logic).
 - **E. Persisted reconciliation DIFFERS from the submitted reopened result** (a genuine reopen):
+  - **reopen requires EMPTY commitment arrays** (Rev-8 / item A) — a reopen corrects reconciliation
+    actuals only; if `p_new_commitments` or `p_patched` is non-empty → **hard-stop** (route to the
+    separate supervised commitment-repair path; re-applying commitment creates through the deployed
+    RPC is not duplicate-safe).
   - **call `save_reconciliation_with_commitments(...)` exactly once** with the corrected recon
-    values and the submitted commitment arrays. **The deployed RPC re-stamps
+    values and **empty commitment arrays**. **The deployed RPC re-stamps
     `recorded_at = NOW()`** (it ignores its `p_recorded_at` argument, §8.3 / Companion Amendment
     3). The wrapper passes a **non-null server value (`now()`) for signature compatibility only**;
     it does **not** claim to preserve the original timestamp. The **original `recorded_at` is
@@ -776,9 +807,10 @@ server-side).
 ---
 
 ## 14. Non-execution / stop
-Executes nothing. No committed `.sql` files created; no SQL run; no grant changed; no browser
-wiring; no push; no staging/production action. §13 decisions are resolved. **Next step (gated
-on Adam clearing Rev 7 + companion amendments 2 & 3):** author the committed staging
-`docs/phase-5g-1d-*.sql` from this package, then a staging rehearsal — each under explicit
-authorization. E1 DDL immutable. Gates B–E open. The two local commits (`57bc9c1`, `0c10784`)
-remain unpushed and unmodified.
+Executes nothing. The eight `docs/phase-5g-1d-*.sql` / `.md` artifacts are **AUTHORED but
+UNEXECUTED and UNTRACKED** (Rev-8 corrections uncommitted, pending Fable); no SQL run, no grant
+changed, no browser wiring, no push, no staging/production action. **Next step (gated on Adam
+after Fable review):** pin the staging `system_identifier`, then the staging execution sequence
+(§3.1) under separate approval; then the production inert deploy (Slice 6). E1 DDL immutable.
+Gates B–E open. Prior commits `57bc9c1`/`0c10784`/`fbf37d3`/`c858205`/`6959bab` remain unpushed
+and unmodified.
