@@ -84,17 +84,19 @@ BEGIN
   -- ── (e) EXACT DEPLOYED CONSTRAINTS — PK(id) + CHECK priority>=0 + CHECK target>=0 + CHECK status IN(6) ──
   SELECT count(*) INTO v_pk FROM pg_constraint WHERE conrelid='public.goal_registry'::regclass AND contype='p';
   IF v_pk <> 1 THEN RAISE EXCEPTION 'HARD STOP: expected exactly 1 primary key, found %. Aborting.', v_pk; END IF;
-  SELECT pg_get_constraintdef(oid) INTO v_pkdef FROM pg_constraint WHERE conrelid='public.goal_registry'::regclass AND contype='p';
+  SELECT pg_get_constraintdef(oid, true) INTO v_pkdef FROM pg_constraint WHERE conrelid='public.goal_registry'::regclass AND contype='p';
   IF v_pkdef <> 'PRIMARY KEY (id)' THEN RAISE EXCEPTION 'HARD STOP: primary key is "%", expected "PRIMARY KEY (id)". Aborting.', v_pkdef; END IF;
 
   SELECT count(*) INTO v_chk FROM pg_constraint WHERE conrelid='public.goal_registry'::regclass AND contype='c';
   IF v_chk <> 3 THEN RAISE EXCEPTION 'HARD STOP: expected exactly 3 CHECK constraints, found %. Aborting.', v_chk; END IF;
-  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conrelid='public.goal_registry'::regclass AND contype='c' AND pg_get_constraintdef(oid) ILIKE '%priority >= 0%') THEN
+  -- Use the PRETTY form (pg_get_constraintdef(oid, true)) so matches are normalization-resistant:
+  -- raw is "CHECK ((target >= (0)::numeric))" but pretty is "CHECK (target >= 0::numeric)".
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conrelid='public.goal_registry'::regclass AND contype='c' AND pg_get_constraintdef(oid, true) ILIKE '%priority >= 0%') THEN
     RAISE EXCEPTION 'HARD STOP: CHECK (priority >= 0) absent. Aborting.'; END IF;
-  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conrelid='public.goal_registry'::regclass AND contype='c' AND pg_get_constraintdef(oid) ILIKE '%target >= 0%') THEN
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conrelid='public.goal_registry'::regclass AND contype='c' AND pg_get_constraintdef(oid, true) ILIKE '%target >= 0%') THEN
     RAISE EXCEPTION 'HARD STOP: CHECK (target >= 0) absent. Aborting.'; END IF;
-  SELECT pg_get_constraintdef(oid) INTO v_statusdef FROM pg_constraint
-    WHERE conrelid='public.goal_registry'::regclass AND contype='c' AND pg_get_constraintdef(oid) ILIKE '%status%';
+  SELECT pg_get_constraintdef(oid, true) INTO v_statusdef FROM pg_constraint
+    WHERE conrelid='public.goal_registry'::regclass AND contype='c' AND pg_get_constraintdef(oid, true) ILIKE '%status%';
   IF v_statusdef IS NULL
      OR v_statusdef NOT ILIKE '%planned%' OR v_statusdef NOT ILIKE '%funding%' OR v_statusdef NOT ILIKE '%funded%'
      OR v_statusdef NOT ILIKE '%executed%' OR v_statusdef NOT ILIKE '%paused%' OR v_statusdef NOT ILIKE '%archived%' THEN
