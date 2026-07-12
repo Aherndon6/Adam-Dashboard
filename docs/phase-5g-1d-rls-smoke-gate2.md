@@ -7,6 +7,12 @@ bypasses RLS). Requires the staging temporary grant (`phase-5g-1d-staging-grant.
 and reverted (`phase-5g-1d-ungrant.sql`) afterward. **Balance-free** — no household amounts are
 recorded here; use clearly-synthetic staging values.
 
+## Execution package (authored, not executed)
+The staging execution package that runs this cleared matrix is `docs/phase-5g-1d-gate2-runbook.md`
+(orchestrator) plus `docs/phase-5g-1d-gate2-*.sql` (per-sub-phase capture/assert/mutation artifacts) and
+`docs/phase-5g-1d-gate2-exec-template.sh` (the PostgREST call bodies, placeholder-only). The matrix below
+is authoritative and unchanged; the runbook maps every row to its artifact, caller, week, and stop point.
+
 ## Preconditions
 - Staging has a seeded, clearly-synthetic reconciled **Week-5 opening anchor** (nine eligible
   `opening_anchor` rows) — mirrors E2 structure with fake values.
