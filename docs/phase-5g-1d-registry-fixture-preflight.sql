@@ -109,10 +109,19 @@ BEGIN
     WHERE contype='f' AND (conrelid='public.goal_registry'::regclass OR confrelid='public.goal_registry'::regclass);
   IF v_fk <> 0 THEN RAISE EXCEPTION 'HARD STOP: % FK constraint(s) touch goal_registry — deployed contract expects none pre-E1. Aborting.', v_fk; END IF;
 
-  -- (g) no goal_registry-dependent staging fixture data already exists (E1 not yet deployed)
-  IF to_regclass('public.goal_funding_snapshots') IS NOT NULL
-     AND (SELECT count(*) FROM public.goal_funding_snapshots) <> 0 THEN
-    RAISE EXCEPTION 'HARD STOP: goal_funding_snapshots already has rows — resolve dependent fixture data first. Aborting.'; END IF;
+  -- (g) no goal_registry-dependent staging fixture data already exists (E1 not yet deployed).
+  -- Explicit nested branch: never reference goal_funding_snapshots in a statement that could be
+  -- planned when the table is absent (staging currently has no such table).
+  IF to_regclass('public.goal_funding_snapshots') IS NOT NULL THEN
+    SELECT count(*) INTO v_cnt
+    FROM public.goal_funding_snapshots;
+
+    IF v_cnt <> 0 THEN
+      RAISE EXCEPTION
+        'HARD STOP: goal_funding_snapshots already has % rows — resolve dependent fixture data first. Aborting.',
+        v_cnt;
+    END IF;
+  END IF;
 
   RAISE NOTICE 'REGISTRY FIXTURE PREFLIGHT PASS: staging fingerprint OK; goal_registry present + empty; 19-column deployed contract, PK(id) + 3 CHECKs verified; no FK dependencies; no dependent fixture rows.';
 END $$;
