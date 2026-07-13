@@ -4133,6 +4133,154 @@ async function clickNav(page, id) {
     await context.close();
   });
 
+  // ── 5G-1D Slice 3/5: combined weekly closeout — browser wiring (mocked wrapper) ──
+  // Drives submitCloseout() against a mocked save_weekly_closeout_with_snapshots endpoint.
+  // canWriteFinancials()/getAuthHeaders() are satisfied by setting USER_ROLE='owner' and
+  // overriding getAuthHeaders in the page context (file:// has no real session). The live
+  // round-trip is the post-deploy Supabase smoke; this proves the client call shape + the
+  // in-flight / GFA01 / domain-reject / ambiguous state machine end-to-end in a real browser.
+  {
+    const NINE = ['adam_ira','wendy_ira','wendy_sep','alaska','bailey_529','bryce_529','preston_529','bryce_vehicle','christmas_cruise'];
+
+    await test('5G1D-CO-1: closeout POSTs the wrapper payload (9 rows, normal_closeout, expected 9, no p_recorded_at) and closes on success', async () => {
+      const { page, context } = await openApp(browser);
+      let body = null, posts = 0;
+      await page.route('**/rest/v1/rpc/save_weekly_closeout_with_snapshots**', route => {
+        posts++; body = JSON.parse(route.request().postData() || '{}');
+        route.fulfill({ status:200, contentType:'application/json', body: JSON.stringify({ ok:true, mode:'normal_closeout', week_num:6, snapshot_count:9 }) });
+      });
+      await page.route('**/rest/v1/weekly_reconciliations**', route => route.fulfill({ status:200, contentType:'application/json', body:'[]' }));
+      await page.route('**/rest/v1/cash_commitments**', route => route.fulfill({ status:200, contentType:'application/json', body:'[]' }));
+      await page.route('**/rest/v1/goal_funding_snapshots**', route => route.fulfill({ status:200, contentType:'application/json', body:'[]' }));
+      const r = await page.evaluate(async (nine) => {
+        USER_ROLE='owner'; getAuthHeaders=async()=>({apikey:'t',Authorization:'Bearer t','Content-Type':'application/json'});
+        _reconBasis = 'posted_current_balance'; _reconBalances = { chk:100, sav:200, amx:300, tax:0, lc:400 }; reconOpen = 6;
+        var funded = {}, priors = {}; nine.forEach(function(id){ funded[id]=100; priors[id]=100; });
+        _closeout = { week:6, phase:'confirm', funded:funded, priors:priors, newCommitments:[], patched:[], error:'' };
+        await submitCloseout();
+        return { closeout:_closeout, reconOpen:reconOpen };
+      }, NINE);
+      await page.waitForTimeout(50);
+      assert(posts === 1, 'exactly one wrapper POST, got ' + posts);
+      assert(body && body.p_mode === 'normal_closeout', 'p_mode normal_closeout');
+      assert(body.p_expected_count === 9, 'p_expected_count 9');
+      assert(body.p_model_year !== undefined && !('p_recorded_at' in body), 'PLAN_YEAR present, no p_recorded_at');
+      assert(Array.isArray(body.p_snapshot_rows) && body.p_snapshot_rows.length === 9, 'nine snapshot rows');
+      assert(body.p_snapshot_rows.every(x => !('source' in x)), 'no client source key on rows');
+      assert('p_new_commitments' in body && 'p_patched' in body, 'commitment arrays present');
+      assert(r.closeout === null, '_closeout cleared on success');
+      assert(r.reconOpen === null, 'form closed on success');
+      await context.close();
+    }, { tags: ['smoke'] });
+
+    await test('5G1D-CO-2: an in-flight closeout ignores a second submit (no double POST)', async () => {
+      const { page, context } = await openApp(browser);
+      let posts = 0;
+      await page.route('**/rest/v1/rpc/save_weekly_closeout_with_snapshots**', route => {
+        posts++; route.fulfill({ status:200, contentType:'application/json', body: JSON.stringify({ ok:true, mode:'normal_closeout', week_num:6, snapshot_count:9 }) });
+      });
+      await page.route('**/rest/v1/weekly_reconciliations**', route => route.fulfill({ status:200, contentType:'application/json', body:'[]' }));
+      await page.route('**/rest/v1/cash_commitments**', route => route.fulfill({ status:200, contentType:'application/json', body:'[]' }));
+      await page.route('**/rest/v1/goal_funding_snapshots**', route => route.fulfill({ status:200, contentType:'application/json', body:'[]' }));
+      const r = await page.evaluate(async (nine) => {
+        USER_ROLE='owner'; getAuthHeaders=async()=>({apikey:'t',Authorization:'Bearer t','Content-Type':'application/json'});
+        _reconBasis='posted_current_balance'; _reconBalances={chk:1,sav:2,amx:3,tax:0,lc:4}; reconOpen=6;
+        var funded={},priors={}; nine.forEach(function(id){funded[id]=100;priors[id]=100;});
+        _closeout={ week:6, phase:'confirm', funded:funded, priors:priors, newCommitments:[], patched:[], error:'' };
+        var p1 = submitCloseout();                 // runs synchronously to the first await → phase in_flight
+        var midPhase = _closeout && _closeout.phase;
+        await submitCloseout();                    // guarded early-return
+        await p1;
+        return { midPhase };
+      }, NINE);
+      await page.waitForTimeout(50);
+      assert(r.midPhase === 'in_flight', 'phase was in_flight between calls, got ' + r.midPhase);
+      assert(posts === 1, 'only one POST despite the double submit, got ' + posts);
+      await context.close();
+    });
+
+    await test('5G1D-CO-3: GFA01 response routes to supervised adjudication (never an auto-retry)', async () => {
+      const { page, context } = await openApp(browser);
+      await page.route('**/rest/v1/rpc/save_weekly_closeout_with_snapshots**', route =>
+        route.fulfill({ status:400, contentType:'application/json', body: JSON.stringify({ code:'GFA01', message:'fully closed week 6: non-empty commitment resubmission', hint:'REQUIRES_SUPERVISED_ADJUDICATION' }) }));
+      const r = await page.evaluate(async (nine) => {
+        USER_ROLE='owner'; getAuthHeaders=async()=>({apikey:'t',Authorization:'Bearer t','Content-Type':'application/json'});
+        _reconBasis='posted_current_balance'; _reconBalances={chk:1,sav:2,amx:3,tax:0,lc:4}; reconOpen=6;
+        var funded={},priors={}; nine.forEach(function(id){funded[id]=100;priors[id]=100;});
+        _closeout={ week:6, phase:'confirm', funded:funded, priors:priors, newCommitments:[{}], patched:[], error:'' };
+        await submitCloseout();
+        return { phase: _closeout && _closeout.phase, retained: !!_closeout };
+      }, NINE);
+      assert(r.retained === true, '_closeout must be retained (not cleared) on GFA01');
+      assert(r.phase === 'adjudication', 'phase must be adjudication, got ' + r.phase);
+      await context.close();
+    });
+
+    await test('5G1D-CO-4: a domain reject (monotonic) keeps the confirmation open with the server message', async () => {
+      const { page, context } = await openApp(browser);
+      await page.route('**/rest/v1/rpc/save_weekly_closeout_with_snapshots**', route =>
+        route.fulfill({ status:400, contentType:'application/json', body: JSON.stringify({ message:'monotonic violation: adam_ira submitted 50 < prior effective 100 (use the correction path)' }) }));
+      const r = await page.evaluate(async (nine) => {
+        USER_ROLE='owner'; getAuthHeaders=async()=>({apikey:'t',Authorization:'Bearer t','Content-Type':'application/json'});
+        _reconBasis='posted_current_balance'; _reconBalances={chk:1,sav:2,amx:3,tax:0,lc:4}; reconOpen=6;
+        var funded={},priors={}; nine.forEach(function(id){funded[id]=100;priors[id]=100;});
+        _closeout={ week:6, phase:'confirm', funded:funded, priors:priors, newCommitments:[], patched:[], error:'' };
+        await submitCloseout();
+        return { phase: _closeout && _closeout.phase, error: _closeout && _closeout.error, reconOpen: reconOpen };
+      }, NINE);
+      assert(r.phase === 'confirm', 'stays on the confirmation, got ' + r.phase);
+      assert(/monotonic/.test(r.error || ''), 'server message surfaced, got: ' + r.error);
+      assert(r.reconOpen === 6, 'form stays open on a domain reject');
+      await context.close();
+    });
+
+    await test('5G1D-CO-5: an ambiguous transport failure re-reads both halves; a complete+matching week is idempotent success', async () => {
+      const { page, context } = await openApp(browser);
+      await page.route('**/rest/v1/rpc/save_weekly_closeout_with_snapshots**', route => route.abort());
+      await page.route('**/rest/v1/weekly_reconciliations**', route => route.fulfill({ status:200, contentType:'application/json',
+        body: JSON.stringify([{ week_num:6, chk:100, sav:200, amx:300, tax:0, lc:400, balance_basis:'posted_current_balance', recorded_at:'2026-07-13T00:00:00Z' }]) }));
+      await page.route('**/rest/v1/cash_commitments**', route => route.fulfill({ status:200, contentType:'application/json', body:'[]' }));
+      await page.route('**/rest/v1/goal_funding_snapshots**', route => route.fulfill({ status:200, contentType:'application/json',
+        body: JSON.stringify(NINE.map(id => ({ week_num:6, goal_id:id, funded_amount:100 }))) }));
+      const r = await page.evaluate(async (nine) => {
+        USER_ROLE='owner'; getAuthHeaders=async()=>({apikey:'t',Authorization:'Bearer t','Content-Type':'application/json'});
+        _reconBasis='posted_current_balance'; _reconBalances={chk:100,sav:200,amx:300,tax:0,lc:400}; reconOpen=6;
+        var funded={},priors={}; nine.forEach(function(id){funded[id]=100;priors[id]=100;});
+        _closeout={ week:6, phase:'confirm', funded:funded, priors:priors, newCommitments:[], patched:[], error:'' };
+        await submitCloseout();  // abort → ambiguous → re-read → complete+match → success
+        return { closeout: _closeout, reconOpen: reconOpen };
+      }, NINE);
+      await page.waitForTimeout(50);
+      assert(r.closeout === null, 'idempotent-match on re-read clears _closeout (success), got ' + JSON.stringify(r.closeout));
+      assert(r.reconOpen === null, 'form closed after idempotent-match success');
+      await context.close();
+    });
+
+    await test('5G1D-CO-6: a half-close repair POSTs empty commitment arrays with the nine snapshot rows (branch G shape)', async () => {
+      const { page, context } = await openApp(browser);
+      let body = null;
+      await page.route('**/rest/v1/rpc/save_weekly_closeout_with_snapshots**', route => {
+        body = JSON.parse(route.request().postData() || '{}');
+        route.fulfill({ status:200, contentType:'application/json', body: JSON.stringify({ ok:true, mode:'normal_closeout', repaired:true, week_num:7, snapshot_count:9 }) });
+      });
+      await page.route('**/rest/v1/weekly_reconciliations**', route => route.fulfill({ status:200, contentType:'application/json', body:'[]' }));
+      await page.route('**/rest/v1/cash_commitments**', route => route.fulfill({ status:200, contentType:'application/json', body:'[]' }));
+      await page.route('**/rest/v1/goal_funding_snapshots**', route => route.fulfill({ status:200, contentType:'application/json', body:'[]' }));
+      await page.evaluate(async (nine) => {
+        USER_ROLE='owner'; getAuthHeaders=async()=>({apikey:'t',Authorization:'Bearer t','Content-Type':'application/json'});
+        _reconBasis='posted_current_balance'; _reconBalances={chk:1,sav:2,amx:3,tax:0,lc:4}; reconOpen=7;
+        var funded={},priors={},present={}; nine.forEach(function(id,i){ funded[id]=100; priors[id]=100; present[id]=(i<3); });
+        _closeout={ week:7, phase:'confirm', repair:true, funded:funded, priors:priors, present:present, newCommitments:[], patched:[], error:'' };
+        await submitCloseout();
+      }, NINE);
+      await page.waitForTimeout(50);
+      assert(body && Array.isArray(body.p_new_commitments) && body.p_new_commitments.length === 0, 'repair posts empty p_new_commitments');
+      assert(Array.isArray(body.p_patched) && body.p_patched.length === 0, 'repair posts empty p_patched');
+      assert(Array.isArray(body.p_snapshot_rows) && body.p_snapshot_rows.length === 9, 'nine snapshot rows in a repair');
+      await context.close();
+    });
+  }
+
   // Empty smoke-selection guard (5G-QA-1 hardening): if smoke mode matched zero
   // tests, that is a configuration failure, not a pass. With the lazy browser
   // above, reaching here in the empty case means no Chromium was launched and no

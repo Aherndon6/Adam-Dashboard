@@ -10138,9 +10138,9 @@ test('P3-5: conflict/error routing preserved — conflict reloads + routes to Ph
   assert((catchBody.match(/reloadReconAndCommitments/g)||[]).length===1,'exactly one direct reload in the catch (conflict branch only; ambiguous reloads via _reconcileAmbiguousCloseout)');
   assert(/toLowerCase\(\)\.indexOf\('commitment already exists'\)/.test(catchBody),'conflict detected case-insensitively');
   assertIncludes(catchBody,'Prior Commitments (Phase 1)');
-  // the generic branch is last and writes via _writeCloseoutError(e.message ...), after the conflict branch's return
+  // the generic branch is last and surfaces the server text via _closeout.error=e.message, after the conflict branch's return
   var condIdx=catchBody.indexOf('commitment already exists');
-  var genericIdx=catchBody.indexOf('_writeCloseoutError(e.message');
+  var genericIdx=catchBody.indexOf('_closeout.error=e.message');
   assert(genericIdx>condIdx,'generic error handling follows the conflict branch (generic path never reloads/refreshes)');
 });
 })();

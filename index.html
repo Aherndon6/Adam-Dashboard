@@ -2853,7 +2853,7 @@ async function submitCloseout(){
   // UI boundary; the wrapper pins source). A bad value hard-stops here, before any POST.
   var rows;
   try{rows=buildCloseoutSnapshotRows(_closeout.funded);}
-  catch(e){_closeout.phase='confirm';_closeout.error=e.message;renderApp();_writeCloseoutError();return;}
+  catch(e){_closeout.phase='confirm';_closeout.error=e.message;renderApp();return;}
   var b=_reconBalances||{chk:0,sav:0,amx:0,tax:0,lc:0};
   _closeout.phase='in_flight';_closeout.error='';reconSaving=true;renderApp();
   try{
@@ -2875,8 +2875,8 @@ async function submitCloseout(){
       // GFA01 — a fully-closed week resubmitted with commitment changes: supervised
       // adjudication, NEVER an automatic retry (amendment 2).
       if(code==='GFA01'||errMsg.indexOf('REQUIRES_SUPERVISED_ADJUDICATION')>=0){
-        _closeout.phase='adjudication';reconSaving=false;renderApp();
-        _writeCloseoutError('This week is already closed and your resubmission changes commitments. Re-read the week and use the supervised adjudication path — do not retry here.');
+        // The adjudication banner (phase-driven) carries the instruction; no error text needed.
+        _closeout.phase='adjudication';_closeout.error='';reconSaving=false;renderApp();
         return;
       }
       throw new Error(errMsg||('HTTP '+r.status));
@@ -2900,18 +2900,16 @@ async function submitCloseout(){
     }
     // Conflict: a Phase 2 new commitment collided with an existing cash_commitments row (the
     // inner reconciliation RPC's error propagates through the wrapper). Route to Phase 1, keep
-    // the confirmation + staged answers. renderApp() runs BEFORE the message so it isn't wiped.
+    // the confirmation + staged answers. The message lives in _closeout.error (state-driven).
     if(_errMsg.toLowerCase().indexOf('commitment already exists')>=0){
       await reloadReconAndCommitments();
-      _closeout.phase='confirm';renderApp();
-      _writeCloseoutError('This obligation is already tracked. Go Back and resolve it under Prior Commitments (Phase 1) instead. Reloaded; your entries are kept.');
+      _closeout.phase='confirm';_closeout.error='This obligation is already tracked. Go Back and resolve it under Prior Commitments (Phase 1) instead. Reloaded; your entries are kept.';renderApp();
       return;
     }
     // Generic domain/auth error (42501, 22023, monotonic, sequence, anchor, …): keep the
-    // confirmation open with staged input, do NOT refresh reconData/commitmentData; render
-    // first, then write the message so the re-render cannot wipe it.
-    _closeout.phase='confirm';renderApp();
-    _writeCloseoutError(e.message||'Closeout failed — check your connection and try again.');
+    // confirmation open with staged input, do NOT refresh reconData/commitmentData; the server
+    // message is surfaced via _closeout.error and rendered by renderCloseoutConfirm.
+    _closeout.phase='confirm';_closeout.error=e.message||'Closeout failed — check your connection and try again.';renderApp();
   }
 }
 // Ambiguous = a transport/network failure with no HTTP status (fetch rejects with a TypeError).
@@ -2927,8 +2925,8 @@ async function _reconcileAmbiguousCloseout(n){
     _closeout=null;reconOpen=null;_reconBalances=null;_reconBasis=null;_reconPhase1Answers={};_reconPhase2Answers={};_reconPhase3Items=[];
     renderApp();return;
   }
-  if(_closeout){_closeout.phase='confirm';renderApp();
-    _writeCloseoutError('The connection dropped and the outcome is uncertain. Reloaded from the server — check the week state above. If it shows "Closeout complete", you are done; otherwise review before retrying.');}
+  if(_closeout){_closeout.phase='confirm';
+    _closeout.error='The connection dropped and the outcome is uncertain. Reloaded from the server — check the week state above. If it shows "Closeout complete", you are done; otherwise review before retrying.';renderApp();}
 }
 // True iff every eligible goal's persisted snapshot at week n equals the confirmed funded map (cents).
 function _persistedSnapshotsMatch(n,funded){
@@ -2950,11 +2948,6 @@ async function reloadGoalSnapshots(){
     var fresh={};(await r.json()).forEach(function(row){var wn=row.week_num;if(wn==null||row.goal_id==null)return;if(!fresh[wn])fresh[wn]={};fresh[wn][row.goal_id]=Math.round(parseFloat(row.funded_amount)*100)/100;});
     goalSnapData=fresh;
   }catch(e){/* non-blocking; overlay stays as-is until next loadAll */}
-}
-// Write into the confirmation view's .recon-error node AFTER renderApp so the re-render can't wipe it.
-function _writeCloseoutError(msg){
-  var el=document.querySelector('.closeout-confirm .recon-error');
-  if(el){if(msg!==undefined&&msg!=='')el.textContent=msg;el.style.display='block';}
 }
 async function deleteRecon(n){
   if(!canWriteFinancials())return;
