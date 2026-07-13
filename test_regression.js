@@ -9305,10 +9305,12 @@ test('Phase 2 state: openRecon and cancelRecon reset _reconPhase2Answers (source
   assert(/_reconPhase2Answers=\{\}/.test(cancelRecon.toString()),'cancelRecon must reset _reconPhase2Answers');
 });
 
-test('Phase 2 state: saveRecon clears staged answers only on success, preserves them on failure (retry-safe)',()=>{
-  var parts=saveRecon.toString().split('catch(e)');
-  assert(parts.length>=2,'saveRecon must have a main catch(e) block');
-  var successHalf=parts[0],catchHalf=parts.slice(1).join('catch(e)');
+test('Phase 2 state: submitCloseout clears staged answers only on success, preserves them on failure (retry-safe)',()=>{
+  // submitCloseout has an EARLIER try/catch (the payload-freeze validation) before the POST
+  // try/catch, so slice at the MAIN '}catch(e){' (the freeze catch is '}\n  catch(e){').
+  var s=submitCloseout.toString();var ci=s.indexOf('}catch(e){');
+  assert(ci>=0,'submitCloseout must have a main }catch(e){ block');
+  var successHalf=s.slice(0,ci),catchHalf=s.slice(ci);
   assert(/_reconPhase2Answers=\{\}/.test(successHalf),'success path must clear _reconPhase2Answers');
   assert(!/_reconPhase2Answers=\{\}/.test(catchHalf),'failure/catch path must NOT reset _reconPhase2Answers (preserve for retry)');
 });
@@ -9781,15 +9783,15 @@ test('AC-108: wd_mismatch requires notes client-side and stages a voided/voided 
   assert(mm.status==='voided'&&mm.resolution_type==='voided'&&mm.resolution_notes==='due next week','stages an auditable voided row with notes (server-side enforced by validate_commitment_state per docs/phase-5f-1-migration.sql)');
 });
 
-test('AC-101: generic RPC error keeps the form open with staged input and does not refresh reconData/commitmentData',()=>{
-  var cb=saveRecon.toString();cb=cb.slice(cb.indexOf('}catch(e)'));
-  assert((cb.match(/reloadReconAndCommitments/g)||[]).length===1,'only the conflict branch reloads; the generic path does not');
+test('AC-101: generic closeout error keeps the form open with staged input and does not refresh reconData/commitmentData',()=>{
+  var cb=submitCloseout.toString();cb=cb.slice(cb.indexOf('}catch(e)'));
+  assert((cb.match(/reloadReconAndCommitments/g)||[]).length===1,'in the catch only the conflict branch reloads directly (the ambiguous branch reloads via _reconcileAmbiguousCloseout)');
   assert(!/_reconBasis=null|_reconPhase1Answers=\{\}|_reconPhase2Answers=\{\}/.test(cb),'catch must not clear staged answers');
   assert(!/reconOpen=null/.test(cb),'catch must not close the form');
 });
 
 test('AC-28: conflict error refreshes commitmentData and routes the user to Phase 1',()=>{
-  var cb=saveRecon.toString();cb=cb.slice(cb.indexOf('}catch(e)'));
+  var cb=submitCloseout.toString();cb=cb.slice(cb.indexOf('}catch(e)'));
   assert(/toLowerCase\(\)\.indexOf\('commitment already exists'\)/.test(cb),'conflict detected case-insensitively');
   var condIdx=cb.indexOf('commitment already exists');
   var reloadIdx=cb.indexOf('reloadReconAndCommitments');
@@ -9870,10 +9872,10 @@ test('P3-1: openRecon and cancelRecon reset _reconPhase3Items (source check)',()
   assert(/_reconPhase3Items=\[\]/.test(cancelRecon.toString()),'cancelRecon must reset _reconPhase3Items');
 });
 
-test('P3-1: saveRecon clears Phase 3 items only on success, preserves them on failure (retry-safe)',()=>{
-  var parts=saveRecon.toString().split('catch(e)');
-  assert(parts.length>=2,'saveRecon has a main catch(e) block');
-  var successHalf=parts[0],catchHalf=parts.slice(1).join('catch(e)');
+test('P3-1: submitCloseout clears Phase 3 items only on success, preserves them on failure (retry-safe)',()=>{
+  var s=submitCloseout.toString();var ci=s.indexOf('}catch(e){'); // main POST catch (see Phase 2 state note)
+  assert(ci>=0,'submitCloseout has a main }catch(e){ block');
+  var successHalf=s.slice(0,ci),catchHalf=s.slice(ci);
   assert(/_reconPhase3Items=\[\]/.test(successHalf),'success path clears _reconPhase3Items');
   assert(!/_reconPhase3Items=\[\]/.test(catchHalf),'catch/failure path must NOT reset _reconPhase3Items (preserve for retry)');
 });
@@ -10090,20 +10092,24 @@ test('P3-4: the existing Phase 2 section still renders alongside Phase 3',()=>{
 
 console.log('\n── Section 5F1-P3-5: Phase 3 saveRecon payload wiring ──');
 (function(){
-var save=saveRecon.toString();
-var catchBody=save.slice(save.indexOf('}catch(e)'));
-var tryBody=save.slice(save.indexOf('try{'),save.indexOf('}catch(e)'));
+// 5G-1D Slice 3: commitment arrays are built in beginCloseout (before the payload is frozen
+// into _closeout); the wrapper POST + staged-answer lifecycle is in submitCloseout.
+var save=beginCloseout.toString();
+var submit=submitCloseout.toString();
+var catchBody=submit.slice(submit.indexOf('}catch(e)'));
+var tryBody=submit.slice(submit.indexOf('try{'),submit.indexOf('}catch(e)'));
 
-test('P3-5: saveRecon computes Phase 3 rows via buildPhase3NewCommitments before mutation and concatenates them into p_new_commitments',()=>{
+test('P3-5: beginCloseout computes Phase 3 rows via buildPhase3NewCommitments before the payload is frozen and concatenates them; submitCloseout sends them as p_new_commitments',()=>{
   assertIncludes(save,'var newCommitmentsAll=newCommitments.concat(buildPhase3NewCommitments(_reconPhase3Items,_reconBasis,n))');
-  assertIncludes(save,'p_new_commitments:newCommitmentsAll');
+  assertIncludes(save,'newCommitments:newCommitmentsAll'); // frozen into _closeout
+  assertIncludes(submit,'p_new_commitments:_closeout.newCommitments');
   var allIdx=save.indexOf('var newCommitmentsAll=');
-  var mutateIdx=save.indexOf('reconData[n]={...data');
-  assert(allIdx>=0&&mutateIdx>allIdx,'Phase 3 rows must be computed before the reconData[n] mutation');
+  var freezeIdx=save.indexOf('_closeout={');
+  assert(allIdx>=0&&freezeIdx>allIdx,'Phase 3 rows must be computed before the payload is frozen into _closeout');
 });
 
 test('P3-5: p_patched is unchanged (still buildPhase1PatchArray output)',()=>{
-  assertIncludes(save,'p_patched:patched');
+  assertIncludes(submit,'p_patched:_closeout.patched');
   assertIncludes(save,'var patched=buildPhase1PatchArray(commitmentData,_reconPhase1Answers,_reconBasis,n)');
 });
 
@@ -10128,13 +10134,14 @@ test('P3-5: successful save clears _reconPhase3Items; the catch preserves them',
   assert(!/_reconPhase3Items=\[\]/.test(catchBody),'catch/failure path must NOT reset _reconPhase3Items (preserve for retry)');
 });
 
-test('P3-5: conflict/error routing unchanged — conflict reloads + routes to Phase 1; generic error does not refresh',()=>{
-  assert((catchBody.match(/reloadReconAndCommitments/g)||[]).length===1,'exactly one reload in the catch (conflict branch only)');
+test('P3-5: conflict/error routing preserved — conflict reloads + routes to Phase 1; generic error does not refresh',()=>{
+  assert((catchBody.match(/reloadReconAndCommitments/g)||[]).length===1,'exactly one direct reload in the catch (conflict branch only; ambiguous reloads via _reconcileAmbiguousCloseout)');
   assert(/toLowerCase\(\)\.indexOf\('commitment already exists'\)/.test(catchBody),'conflict detected case-insensitively');
   assertIncludes(catchBody,'Prior Commitments (Phase 1)');
-  var returnIdx=catchBody.indexOf('return;');
-  var genericErrIdx=catchBody.indexOf('errEl.textContent=e.message');
-  assert(genericErrIdx>returnIdx,'generic error handling follows the conflict return (generic path never reloads/refreshes)');
+  // the generic branch is last and writes via _writeCloseoutError(e.message ...), after the conflict branch's return
+  var condIdx=catchBody.indexOf('commitment already exists');
+  var genericIdx=catchBody.indexOf('_writeCloseoutError(e.message');
+  assert(genericIdx>condIdx,'generic error handling follows the conflict branch (generic path never reloads/refreshes)');
 });
 })();
 
@@ -10155,7 +10162,7 @@ test('P3-6 [happy path]: complete item -> gate passes -> builder emits one row -
   assert(canCompleteReconPhase3([it],'posted_current_balance')===true,'gate passes');
   var rows=buildPhase3NewCommitments([it],'posted_current_balance',4);
   assert(rows.length===1&&rows[0].commitment_source==='manual_reconciliation'&&rows[0].expected_item_id==='manual_ac','builder emits one manual row');
-  assert(/var newCommitmentsAll=newCommitments\.concat\(buildPhase3NewCommitments/.test(saveRecon.toString()),'saveRecon concatenates Phase 3 rows into the payload');
+  assert(/var newCommitmentsAll=newCommitments\.concat\(buildPhase3NewCommitments/.test(beginCloseout.toString()),'beginCloseout concatenates Phase 3 rows into the payload');
 });
 
 test('P3-6 [blank section]: no items -> gate does not block and builder adds no rows',()=>{
@@ -10211,8 +10218,8 @@ test('P3-6 [coexist]: Phase 2 and Phase 3 rows both appear in the concatenated p
   assert(all.some(function(r){return r.commitment_source==='wd_reconciliation';})&&all.some(function(r){return r.commitment_source==='manual_reconciliation';}),'both commitment_sources present');
 });
 
-test('P3-6 [error routing]: generic error preserves Phase 3 items; successful save clears them',()=>{
-  var save=saveRecon.toString();
+test('P3-6 [error routing]: generic error preserves Phase 3 items; successful closeout clears them',()=>{
+  var save=submitCloseout.toString();
   var catchBody=save.slice(save.indexOf('}catch(e)'));
   var tryBody=save.slice(save.indexOf('try{'),save.indexOf('}catch(e)'));
   assert(!/_reconPhase3Items=\[\]/.test(catchBody),'catch preserves _reconPhase3Items');
@@ -10525,158 +10532,130 @@ test('Deferred: "amount_changed" is not offered as a Phase 1 response option (pa
 });
 })();
 
-console.log('\n── Section 5F1-RPC-BRIDGE: saveRecon() → save_reconciliation_with_commitments wiring (source-pattern) ──');
+console.log('\n── Section 5G-1D-BRIDGE: closeout → save_weekly_closeout_with_snapshots wiring (source-pattern) ──');
 (function(){
-// Prior to this slice, AC-77,78,79,80,88,89,90,91,92 were tracked PARTIAL:
-// their Phase 1 state-machine logic (computePhase1Step1Patch/
-// applyPhase1Step2/isReservedAsOf) was proven correct with real runtime
-// assertions (Section 5F1-M), but saveRecon() never sent those patches
-// anywhere, so "logic is correct" was not the same claim as "this AC's
-// end-to-end behavior works." This section proves the send path now exists:
-// saveRecon() calls save_reconciliation_with_commitments with p_patched built
-// from the exact same functions Section 5F1-M already validated, using the
-// live source of index.html (not a mock), consistent with how the DB/RPC
-// layer elsewhere in this file (Sections 5F1-A through 5F1-L) is verified
-// against the live migration SQL text rather than a real database call. Static
-// regression cannot open a real network connection, so this is source-pattern
-// verification of the call shape, not a live round-trip — the live round-trip
-// is the manual Supabase smoke test run after deploy.
-var start=sc.indexOf('async function reloadReconAndCommitments()');
-var saveStart=sc.indexOf('async function saveRecon(n)');
-var deleteStart=sc.indexOf('async function deleteRecon(n)');
-assert(start>=0&&saveStart>start&&deleteStart>saveStart,'could not locate reloadReconAndCommitments()/saveRecon()/deleteRecon() in the expected order in source');
-var reloadBody=sc.slice(start,saveStart);
-var saveBody=sc.slice(saveStart,deleteStart);
-var tryIdx=saveBody.indexOf('try{');
-var catchIdx=saveBody.indexOf('}catch(e){');
-var tryBody=saveBody.slice(tryIdx,catchIdx);
-var catchBody=saveBody.slice(catchIdx);
+// 5G-1D Slice 3 re-points the weekly closeout from the direct
+// save_reconciliation_with_commitments call to the atomic wrapper
+// save_weekly_closeout_with_snapshots (reconciliation + the nine goal-funding snapshots in ONE
+// transaction). beginCloseout() builds the commitment arrays + funded prefill and freezes
+// _closeout; submitCloseout() POSTs the wrapper and owns the success / GFA01-adjudication /
+// conflict / generic / ambiguous state machine. Source-pattern verification of the call shape
+// (static regression opens no network) — the live round-trip is the post-deploy Supabase +
+// browser smoke. AC-77..92 (formerly PARTIAL) still flow their p_patched shape, now through the
+// wrapper's inner reconciliation call.
+var reloadStart=sc.indexOf('async function reloadReconAndCommitments()');
+var beginStart=sc.indexOf('function beginCloseout(n)');
+var submitStart=sc.indexOf('async function submitCloseout()');
+assert(reloadStart>=0&&beginStart>reloadStart&&submitStart>beginStart,'could not locate reloadReconAndCommitments()/beginCloseout()/submitCloseout() in the expected order in source');
+var reloadBody=sc.slice(reloadStart,beginStart);
+var beginBody=sc.slice(beginStart,sc.indexOf('function setCloseoutFunded(id,val)'));
+var submitBody=sc.slice(submitStart,sc.indexOf('function _isAmbiguousCloseoutError'));
+var tryIdx=submitBody.indexOf('try{');
+var catchIdx=submitBody.indexOf('}catch(e){');
+var tryBody=submitBody.slice(tryIdx,catchIdx);
+var catchBody=submitBody.slice(catchIdx);
 
-test('saveRecon() posts to /rpc/save_reconciliation_with_commitments and no longer POSTs directly to weekly_reconciliations',()=>{
-  assertIncludes(saveBody,"/rest/v1/rpc/save_reconciliation_with_commitments");
-  assert(!/fetch\(SUPA_URL\+'\/rest\/v1\/weekly_reconciliations'/.test(saveBody),'saveRecon() must no longer POST directly to weekly_reconciliations');
+test('submitCloseout() posts to /rpc/save_weekly_closeout_with_snapshots and NOT the old recon RPC or the table',()=>{
+  assertIncludes(submitBody,"/rest/v1/rpc/save_weekly_closeout_with_snapshots");
+  assert(!/save_reconciliation_with_commitments/.test(submitBody),'submitCloseout() must not call the old direct reconciliation RPC (the wrapper calls it internally as the definer owner)');
+  assert(!/fetch\(SUPA_URL\+'\/rest\/v1\/weekly_reconciliations'/.test(submitBody),'must not POST directly to weekly_reconciliations');
 });
 
-test('saveRecon() RPC payload: p_week_num, p_model_year uses PLAN_YEAR (not hardcoded 2026), p_balance_basis, p_recorded_at, p_new_commitments (Phase 2 builder), p_patched',()=>{
-  assertIncludes(saveBody,'p_week_num:n');
-  assertIncludes(saveBody,'p_model_year:PLAN_YEAR');
-  assert(!/p_model_year\s*:\s*2026/.test(saveBody),'p_model_year must not be hardcoded to 2026 — must reference PLAN_YEAR');
-  assertIncludes(saveBody,'p_chk:data.chk');
-  assertIncludes(saveBody,'p_sav:data.sav');
-  assertIncludes(saveBody,'p_amx:data.amx');
-  assertIncludes(saveBody,'p_tax:data.tax');
-  assertIncludes(saveBody,'p_lc:data.lc');
-  assertIncludes(saveBody,'p_balance_basis:_reconBasis');
-  assertIncludes(saveBody,'p_recorded_at:now.toISOString()');
-  assertIncludes(saveBody,'p_new_commitments:newCommitmentsAll');
-  assert(!/p_new_commitments:\[\]/.test(saveBody),'p_new_commitments must no longer be a hardcoded [] (it is now the Phase 2 builder output)');
-  assert(!/p_new_commitments:\s*null/.test(saveBody),'p_new_commitments must reference the builder output (an array), never null; the RPC validates jsonb_typeof for array specifically');
-  assertIncludes(saveBody,'p_patched:patched');
+test('submitCloseout() wrapper payload: 13 keys incl. p_snapshot_rows/p_mode/p_expected_count:9, PLAN_YEAR, and NO p_recorded_at',()=>{
+  assertIncludes(submitBody,'p_week_num:n');
+  assertIncludes(submitBody,'p_model_year:PLAN_YEAR');
+  assert(!/p_model_year\s*:\s*2026/.test(submitBody),'p_model_year must reference PLAN_YEAR, not a literal 2026');
+  ['p_chk:b.chk','p_sav:b.sav','p_amx:b.amx','p_tax:b.tax','p_lc:b.lc'].forEach(function(k){assertIncludes(submitBody,k);});
+  assertIncludes(submitBody,'p_balance_basis:_reconBasis');
+  assertIncludes(submitBody,'p_new_commitments:_closeout.newCommitments');
+  assertIncludes(submitBody,'p_patched:_closeout.patched');
+  assertIncludes(submitBody,'p_snapshot_rows:rows');
+  assertIncludes(submitBody,"p_mode:'normal_closeout'");
+  assertIncludes(submitBody,'p_expected_count:9');
+  assert(!/p_recorded_at/.test(submitBody),'the wrapper takes no p_recorded_at (removed Rev 4 / Companion Amendment 3) — it must not appear');
 });
 
-test('saveRecon() builds p_patched via buildPhase1PatchArray(commitmentData,_reconPhase1Answers,_reconBasis,n) — the real signature, computed before any local state mutation',()=>{
-  assertIncludes(saveBody,'buildPhase1PatchArray(commitmentData,_reconPhase1Answers,_reconBasis,n)');
-  var patchedIdx=saveBody.indexOf('var patched=buildPhase1PatchArray');
-  var mutateIdx=saveBody.indexOf('reconData[n]={...data');
-  assert(patchedIdx>=0&&mutateIdx>patchedIdx,'p_patched must be computed from staged answers before reconData[n] is optimistically mutated');
+test('submitCloseout() freezes the nine-row payload via buildCloseoutSnapshotRows(_closeout.funded) BEFORE the POST (no re-derivation at click)',()=>{
+  assertIncludes(submitBody,'buildCloseoutSnapshotRows(_closeout.funded)');
+  var buildIdx=submitBody.indexOf('buildCloseoutSnapshotRows(_closeout.funded)');
+  var postIdx=submitBody.indexOf('save_weekly_closeout_with_snapshots');
+  assert(buildIdx>=0&&postIdx>buildIdx,'the payload must be frozen before the POST');
 });
 
-test('saveRecon() uses getAuthHeaders() directly with no custom Prefer/merge-duplicates header — that directive is table-upsert-specific, not applicable to an RPC call',()=>{
-  assertIncludes(saveBody,'var h=await getAuthHeaders();');
-  assert(!/resolution=merge-duplicates/.test(saveBody),'merge-duplicates Prefer header must not appear in the RPC call path');
+test('submitCloseout() does NOT optimistically write reconData (amendment §F)',()=>{
+  assert(!/reconData\[n\]=/.test(submitBody),'no optimistic reconData write in the closeout submit path');
 });
 
-test('saveRecon() catch block preserves _reconBasis/_reconPhase1Answers/reconOpen — only the success path clears staging',()=>{
-  assert(catchIdx>tryIdx,'expected a catch block after the try block in saveRecon()');
-  assert(!/_reconBasis=null/.test(catchBody),'catch block must not clear _reconBasis — staged answers must survive a failed save for retry');
-  assert(!/_reconPhase1Answers=\{\}/.test(catchBody),'catch block must not clear _reconPhase1Answers — staged answers must survive a failed save for retry');
-  assert(!/reconOpen=null/.test(catchBody),'catch block must not close the recon form on failure');
-  assertIncludes(catchBody,'e.message'); // surfaces the RPC/Postgres error text when available
+test('beginCloseout() builds p_patched + p_new_commitments (Phase 1/2/3) BEFORE freezing _closeout',()=>{
+  assertIncludes(beginBody,'var patched=buildPhase1PatchArray(commitmentData,_reconPhase1Answers,_reconBasis,n)');
+  assertIncludes(beginBody,'var newCommitments=buildPhase2NewCommitments(getPhase2WDCandidates(reconEffectiveWD(),n,commitmentData),_reconPhase2Answers,_reconBasis,n)');
+  assertIncludes(beginBody,'var newCommitmentsAll=newCommitments.concat(buildPhase3NewCommitments(_reconPhase3Items,_reconBasis,n))');
+  var allIdx=beginBody.indexOf('var newCommitmentsAll=');
+  var freezeIdx=beginBody.indexOf('_closeout={');
+  assert(allIdx>=0&&freezeIdx>allIdx,'commitment arrays must be built before _closeout is frozen');
 });
 
-test('saveRecon() success path clears staging, closes the form, and reloads server-owned data rather than faking commitmentData locally',()=>{
+test('submitCloseout() uses getAuthHeaders() with no merge-duplicates Prefer header (RPC call)',()=>{
+  assertIncludes(submitBody,'var h=await getAuthHeaders();');
+  assert(!/resolution=merge-duplicates/.test(submitBody),'merge-duplicates Prefer header must not appear in the RPC path');
+});
+
+test('submitCloseout() maps GFA01 → supervised adjudication, never an automatic retry (amendment 2)',()=>{
+  assert(/code===.GFA01.|REQUIRES_SUPERVISED_ADJUDICATION/.test(submitBody),'must detect the GFA01 adjudication signal');
+  assertIncludes(submitBody,"_closeout.phase='adjudication'");
+});
+
+test('submitCloseout() catch preserves staged answers and does not close the form',()=>{
+  assert(catchIdx>tryIdx,'expected a catch after the try block');
+  assert(!/_reconBasis=null/.test(catchBody),'catch must not clear _reconBasis');
+  assert(!/_reconPhase1Answers=\{\}/.test(catchBody),'catch must not clear _reconPhase1Answers');
+  assert(!/_reconPhase2Answers=\{\}/.test(catchBody),'catch must not clear _reconPhase2Answers');
+  assert(!/reconOpen=null/.test(catchBody),'catch must not close the form');
+  assertIncludes(catchBody,'e.message'); // surfaces the Postgres error text when available
+});
+
+test('submitCloseout() success clears staging, closes the form, and reloads BOTH halves (recon + snapshots)',()=>{
   assertIncludes(tryBody,'_reconBasis=null;_reconPhase1Answers={}');
   assertIncludes(tryBody,'reconOpen=null');
   assertIncludes(tryBody,'await reloadReconAndCommitments()');
-  assert(!/commitmentData\s*=/.test(tryBody),'saveRecon() must not directly assign commitmentData — reloadReconAndCommitments() owns that');
+  assertIncludes(tryBody,'await reloadGoalSnapshots()');
+  assert(!/commitmentData\s*=/.test(tryBody),'success must not assign commitmentData — reloadReconAndCommitments() owns it');
 });
 
-test('reloadReconAndCommitments() fetches weekly_reconciliations and cash_commitments scoped to PLAN_YEAR',()=>{
+test('submitCloseout() conflict path (commitment already exists) reloads, routes to Phase 1, preserves answers',()=>{
+  assertIncludes(catchBody,"toLowerCase().indexOf('commitment already exists')");
+  var condIdx=catchBody.indexOf('commitment already exists');
+  var reloadIdx=catchBody.indexOf('await reloadReconAndCommitments()');
+  assert(condIdx>=0&&reloadIdx>condIdx,'conflict branch reloads before routing');
+  assertIncludes(catchBody,'Prior Commitments (Phase 1)');
+  assert(!/_reconPhase2Answers=\{\}/.test(catchBody),'conflict/catch must not clear _reconPhase2Answers');
+});
+
+test('submitCloseout() ambiguous transport failure re-reads BOTH halves before any retry (plan §2.3)',()=>{
+  assertIncludes(catchBody,'_isAmbiguousCloseoutError(e)');
+  assertIncludes(catchBody,"_closeout.phase='ambiguous'");
+  assertIncludes(catchBody,'_reconcileAmbiguousCloseout(n)');
+});
+
+test('reloadReconAndCommitments() fetches weekly_reconciliations + cash_commitments scoped to PLAN_YEAR',()=>{
   assertIncludes(reloadBody,"/rest/v1/weekly_reconciliations?select=*");
   assertIncludes(reloadBody,"/rest/v1/cash_commitments?model_year=eq.'+PLAN_YEAR");
 });
 
-// ── Step 8: p_new_commitments write path + conflict/error routing ──
-test('Step 8: saveRecon() sends p_new_commitments from buildPhase2NewCommitments(...), computed before mutation, not a hardcoded []',()=>{
-  assertIncludes(saveBody,'p_new_commitments:newCommitmentsAll');
-  assert(!/p_new_commitments:\[\]/.test(saveBody),'p_new_commitments must no longer be a hardcoded []');
-  assertIncludes(saveBody,'var newCommitments=buildPhase2NewCommitments(getPhase2WDCandidates(reconEffectiveWD(),n,commitmentData),_reconPhase2Answers,_reconBasis,n)');
-  var ncIdx=saveBody.indexOf('var newCommitments=buildPhase2NewCommitments');
-  var mutateIdx=saveBody.indexOf('reconData[n]={...data');
-  assert(ncIdx>=0&&mutateIdx>ncIdx,'newCommitments must be computed before reconData[n] is optimistically mutated');
-});
-
-test('Step 8: empty Phase 2 answers build an empty p_new_commitments array (preserves existing behavior)',()=>{
+test('empty Phase 2 answers build an empty commitment array (unchanged builder behavior)',()=>{
   var cands=getPhase2WDCandidates(WD,4,[]);
   assertGt(cands.length,0,'week 4 has candidates');
   var rows=buildPhase2NewCommitments(cands,{},'posted_current_balance',4);
   assert(Array.isArray(rows)&&rows.length===0,'no staged answers -> [] payload, got '+JSON.stringify(rows));
 });
 
-test('Step 8: conflict path (commitment already exists) reloads commitments, routes to Phase 1, and does not clear staged answers',()=>{
-  assertIncludes(catchBody,"toLowerCase().indexOf('commitment already exists')");
-  var condIdx=catchBody.indexOf('commitment already exists');
-  var reloadIdx=catchBody.indexOf('await reloadReconAndCommitments()');
-  var returnIdx=catchBody.indexOf('return;');
-  assert(condIdx>=0&&reloadIdx>condIdx&&returnIdx>reloadIdx,'conflict branch must reload commitments then return');
-  assertIncludes(catchBody,'Prior Commitments (Phase 1)'); // route-to-Phase-1 message
-  assert(!/_reconPhase2Answers=\{\}/.test(catchBody),'conflict/catch must not clear _reconPhase2Answers');
-});
-
-test('Step 8: generic RPC error does not refresh reconData/commitmentData and preserves staged answers',()=>{
-  var reloadCount=(catchBody.match(/reloadReconAndCommitments/g)||[]).length;
-  assert(reloadCount===1,'catch must call reloadReconAndCommitments exactly once (conflict branch only), got '+reloadCount);
-  var returnIdx=catchBody.indexOf('return;');
-  var genericErrIdx=catchBody.indexOf('errEl.textContent=e.message');
-  assert(genericErrIdx>returnIdx,'generic error handling must follow the conflict branch return, so the generic path never reloads');
-  assert(!/_reconBasis=null|_reconPhase1Answers=\{\}|_reconPhase2Answers=\{\}/.test(catchBody),'catch must not clear any staged state (Phase 0/1/2)');
-});
-
-test('Step 8: successful save clears _reconPhase2Answers only in the success path, not in the catch',()=>{
-  assertIncludes(tryBody,'_reconPhase2Answers={}');
-  assert(!/_reconPhase2Answers=\{\}/.test(catchBody),'catch (conflict + generic) must never clear _reconPhase2Answers');
-});
-
-test('Step 8: conflict path renders BEFORE writing the .recon-error message (renderApp must not wipe it)',()=>{
-  var condIdx=catchBody.indexOf("indexOf('commitment already exists')");
-  var branch=catchBody.slice(condIdx);
-  var renderIdx=branch.indexOf('renderApp()');
-  var msgIdx=branch.indexOf('conflictEl.textContent');
-  assert(renderIdx>=0&&msgIdx>renderIdx,'renderApp() must run before the conflict message is written, got render@'+renderIdx+' msg@'+msgIdx);
-});
-
-test('Step 8: generic error path renders BEFORE writing the .recon-error message',()=>{
-  var returnIdx=catchBody.indexOf('return;');
-  var generic=catchBody.slice(returnIdx);
-  var renderIdx=generic.indexOf('renderApp()');
-  var msgIdx=generic.indexOf('errEl.textContent=e.message');
-  assert(renderIdx>=0&&msgIdx>renderIdx,'renderApp() must run before the generic message is written, got render@'+renderIdx+' msg@'+msgIdx);
-});
-
-test('Step 8: conflict detection is case-insensitive (lower-cases before comparing)',()=>{
-  assert(/_errMsg\.toLowerCase\(\)\.indexOf\('commitment already exists'\)/.test(catchBody),'conflict detection must lower-case _errMsg before comparing');
-});
-
-// AC-77,78,79,80,88,89,90,91,92 move from PARTIAL to fully unblocked as of
-// this slice: Section 5F1-M proves the patch-shape logic is correct, and the
-// tests above prove saveRecon() sends exactly that shape to
-// save_reconciliation_with_commitments as p_patched with no gate blocking a
-// fully-answered Phase 1 row. 0 ACs remain in the PARTIAL state.
+// AC-77..92 still flow their p_patched shape (now through the wrapper's inner reconciliation call).
 var formerlyPartialACs=[77,78,79,80,88,89,90,91,92];
-test('5F1-RPC-BRIDGE: the 9 formerly-PARTIAL ACs are now fully unblocked — 0 remain PARTIAL',()=>{
-  assert(formerlyPartialACs.length===9,'expected 9 ACs to have moved, found '+formerlyPartialACs.length);
+test('5G-1D-BRIDGE: the 9 formerly-PARTIAL ACs still flow their p_patched shape (now via the atomic wrapper)',()=>{
+  assert(formerlyPartialACs.length===9,'expected 9 ACs');
+  assertIncludes(beginBody,'buildPhase1PatchArray(commitmentData,_reconPhase1Answers,_reconBasis,n)');
 });
-console.log('  ✓ AC-'+formerlyPartialACs.join(', AC-')+' — moved PARTIAL → UNBLOCKED (Phase 1 state-machine logic + RPC persistence path both confirmed)');
+console.log('  ✓ AC-'+formerlyPartialACs.join(', AC-')+' — p_patched shape preserved through the atomic wrapper');
 })();
 
 console.log('\n── Section 5F1-NOTSTARTED: JS-engine-layer ACs still blocked pending dashboard verdict-text rendering / historical repair mode (both deferred; NOT required for forward weekly closeout) ──');
@@ -12399,6 +12378,63 @@ console.log('\n── Section 5G-1D Slice 4b: closeout-state badge ──');
       recon(6);assert(_closeoutStateBadge(8)==='','blocked empty');
     });
   }finally{reconData=_rd;goalSnapData=_gs;}
+})();
+
+// ── Section 5G-1D Slice 3: confirmation view + funded-edit (behavior) ──
+console.log('\n── Section 5G-1D Slice 3: confirmation view + funded-edit ──');
+(function(){
+  var NINE=SNAPSHOT_ELIGIBLE_GOAL_IDS;
+  var _c=_closeout,_rb=_reconBalances;
+  function mkCloseout(fundedOver){
+    var funded={},priors={};NINE.forEach(function(id){funded[id]=100;priors[id]=100;});
+    if(fundedOver)Object.assign(funded,fundedOver);
+    return {week:6,phase:'confirm',funded:funded,priors:priors,newCommitments:[],patched:[],error:''};
+  }
+  var mockW={num:6,dates:'Jul 13 – Jul 19'};
+  try{
+    test('5G1D-S3-01: setCloseoutFunded parses at the UI boundary; valid stored, invalid -> NaN',function(){
+      _closeout=mkCloseout();
+      setCloseoutFunded('alaska','7000');assert(_closeout.funded.alaska===7000,'valid parsed');
+      setCloseoutFunded('adam_ira','abc');assert(Number.isNaN(_closeout.funded.adam_ira),'invalid -> NaN');
+    });
+    test('5G1D-S3-02: confirmation view shows 9 goal inputs, the expected-9 count, and the joint-commit warning',function(){
+      _closeout=mkCloseout();_reconBalances={chk:1,sav:2,amx:3,tax:4,lc:5};
+      var h=renderCloseoutConfirm(mockW);
+      assert(/expected rows: 9/i.test(h),'shows expected 9 count');
+      assert(/one atomic closeout/i.test(h),'joint-commit warning present');
+      var inputs=(h.match(/class="closeout-input"/g)||[]).length;
+      assert(inputs===9,'nine goal inputs, got '+inputs);
+      assert(/Confirm &amp; close week/.test(h),'confirm button present');
+    });
+    test('5G1D-S3-03: a funded value below prior is flagged (closeout-below) in the view',function(){
+      _closeout=mkCloseout({alaska:50});_reconBalances={chk:0,sav:0,amx:0,tax:0,lc:0};
+      assert(/closeout-below/.test(renderCloseoutConfirm(mockW)),'below-prior row flagged');
+    });
+    test('5G1D-S3-04: an invalid (NaN) funded value disables Confirm',function(){
+      _closeout=mkCloseout();_closeout.funded.alaska=NaN;_reconBalances={chk:0,sav:0,amx:0,tax:0,lc:0};
+      assert(/submitCloseout\(\)"[^>]*disabled/.test(renderCloseoutConfirm(mockW)),'confirm disabled on invalid input');
+    });
+    test('5G1D-S3-05: in_flight phase disables inputs and shows Closing…',function(){
+      _closeout=mkCloseout();_closeout.phase='in_flight';_reconBalances={chk:0,sav:0,amx:0,tax:0,lc:0};
+      var h=renderCloseoutConfirm(mockW);
+      assert(/Closing…/.test(h),'shows Closing…');
+      assert(/closeout-input"[^>]*disabled/.test(h),'inputs disabled in flight');
+    });
+    test('5G1D-S3-06: adjudication phase shows the supervised-adjudication banner',function(){
+      _closeout=mkCloseout();_closeout.phase='adjudication';_reconBalances={chk:0,sav:0,amx:0,tax:0,lc:0};
+      var h=renderCloseoutConfirm(mockW);
+      assert(/closeout-adjudicate/.test(h)&&/supervised adjudication/i.test(h),'adjudication banner');
+    });
+    test('5G1D-S3-07: _persistedSnapshotsMatch true only when every eligible snapshot equals the confirmed map (cents)',function(){
+      var _gs=goalSnapData;
+      try{
+        goalSnapData={6:{}};NINE.forEach(function(id){goalSnapData[6][id]=100;});
+        var funded={};NINE.forEach(function(id){funded[id]=100;});
+        assert(_persistedSnapshotsMatch(6,funded)===true,'all match');
+        funded.alaska=100.01;assert(_persistedSnapshotsMatch(6,funded)===false,'one differs -> false');
+      }finally{goalSnapData=_gs;}
+    });
+  }finally{_closeout=_c;_reconBalances=_rb;}
 })();
 
 // ─────────────────────────────────────────────────────────────────────────

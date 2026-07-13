@@ -334,6 +334,26 @@ body{background:var(--bg);color:var(--ink);font-family:Inter,ui-sans-serif,syste
 .closeout-state.complete{color:var(--green);background:var(--greenSoft);border:1px solid #86efac}
 .closeout-state.pending{color:var(--amber);background:var(--amberSoft);border:1px solid var(--amber)}
 .closeout-state.corrupt{color:var(--red);background:var(--redSoft);border:1px solid #fca5a5}
+/* 5G-1D Slice 3 — closeout confirmation view */
+.closeout-confirm{border-color:var(--blue)}
+.closeout-warn{font-size:12px;color:var(--amber);background:var(--amberSoft);border:1px solid var(--amber);border-radius:8px;padding:8px 11px;margin-bottom:10px}
+.closeout-sec{margin:10px 0}
+.closeout-sec-t{font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;margin-bottom:6px}
+.closeout-count{color:var(--blue);font-weight:700}
+.closeout-bal{font-size:12px}
+.closeout-basis{font-size:11px;color:var(--muted);margin-top:3px}
+.closeout-tip{font-size:11px;color:var(--muted);margin:4px 0 8px}
+.closeout-goals{width:100%;border-collapse:collapse;font-size:12px}
+.closeout-goals th{text-align:left;color:var(--muted);font-weight:600;font-size:11px;padding:3px 6px;border-bottom:1px solid var(--line2)}
+.closeout-goals td{padding:3px 6px;border-bottom:1px solid var(--line)}
+.closeout-prior{color:var(--muted)}
+.closeout-input{width:110px;padding:4px 6px;border:1px solid var(--line2);border-radius:6px;font-family:inherit;font-size:12px}
+.closeout-delta{color:var(--muted)}
+.closeout-delta.up{color:var(--green)}
+.closeout-delta.down{color:var(--red)}
+.closeout-below .closeout-input{border-color:var(--red)}
+.closeout-adjudicate{font-size:12px;color:var(--red);background:var(--redSoft);border:1px solid #fca5a5;border-radius:8px;padding:8px 11px;margin-top:8px}
+.closeout-ambiguous{font-size:12px;color:var(--muted);margin-top:8px}
 .recon-guidance-note{font-size:11px;color:var(--muted);line-height:1.5;background:var(--surface3);border:1px solid var(--line2);border-radius:7px;padding:8px 10px;margin-bottom:11px}
 .recon-inputs{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:11px}
 .recon-field label{font-size:10px;color:var(--muted2);text-transform:uppercase;letter-spacing:.04em;display:block;margin-bottom:3px}
@@ -930,6 +950,14 @@ var taskData={};
 var noteData={};
 var overrideData={};
 var reconOpen=null;
+// 5G-1D Slice 3 — combined-closeout state. _reconBalances holds the operator's entered
+// end-of-week balances for the open week (survives the confirmation Back / re-render, and
+// is the closeout payload — no optimistic reconData write). _closeout holds the frozen
+// confirmation state: {week, phase:'confirm'|'in_flight'|'adjudication'|'ambiguous',
+// funded:{gid:amt}, priors:{gid:amt}, newCommitments, patched, error}. Both reset on
+// openRecon()/cancelRecon()/successful closeout. null => ordinary balance-entry form.
+var _reconBalances=null;
+var _closeout=null;
 // Phase 5F-1 reconciliation form Phase 0/1 staging state — always reset on
 // openRecon()/cancelRecon(), never persisted to cash_commitments or sent to
 // any RPC in this step. See computePhase1Step1Patch()/applyPhase1Step2().
@@ -2710,6 +2738,7 @@ function goWeek(dir){
 function openRecon(n){
   if(!canWriteFinancials())return;
   reconOpen=n;
+  _closeout=null;_reconBalances=null; // 5G-1D: fresh open — no stale confirmation/entered balances
   // Phase 5F-1: fresh Phase 0/1 staging state per open — pre-fill basis from
   // a prior save if this week was already reconciled (edit flow), otherwise
   // start unselected so the required-selection gate is meaningful.
@@ -2719,7 +2748,7 @@ function openRecon(n){
   _reconPhase3Items=[];   // Phase 3 manual items reset per open (no cross-week leak)
   renderApp();setTimeout(function(){var el=document.querySelector('.recon-form');if(el)el.scrollIntoView({behavior:'smooth',block:'nearest'});},80);
 }
-function cancelRecon(){reconOpen=null;_reconBasis=null;_reconPhase1Answers={};_reconPhase2Answers={};_reconPhase3Items=[];renderApp();}
+function cancelRecon(){reconOpen=null;_closeout=null;_reconBalances=null;_reconBasis=null;_reconPhase1Answers={};_reconPhase2Answers={};_reconPhase3Items=[];renderApp();}
 function confirmReconDelete(n){if(!canWriteFinancials())return;reconDeleteConfirm=n;renderApp();}
 function cancelReconDelete(){reconDeleteConfirm=false;renderApp();}
 // 5F-1 RPC persistence bridge: reload weekly_reconciliations + cash_commitments
@@ -2742,81 +2771,168 @@ async function reloadReconAndCommitments(){
   }
   if(cashCommitmentsR.ok){commitmentData=await cashCommitmentsR.json();}
 }
-async function saveRecon(n){
+// ── 5G-1D Slice 3 — combined weekly closeout (confirmation view + atomic wrapper call) ──
+// The closeout is a TWO-STEP operator action. "Save actuals" opens a confirmation view
+// (beginCloseout) that freezes the exact combined payload; "Confirm & close week" submits it
+// (submitCloseout) as ONE atomic call to save_weekly_closeout_with_snapshots — reconciliation
+// AND the nine goal-funding snapshots commit together or not at all. This replaces the direct
+// save_reconciliation_with_commitments call, which the wrapper now makes internally as the
+// SECURITY DEFINER owner. Plan §2.2/§2.3; amendment §F (no optimistic reconData write; freeze
+// the payload at render; re-read both halves on an ambiguous outcome). The old direct-RPC
+// authenticated grant is revoked at the Slice-7 activation gate, not here.
+// STEP 1 — open the confirmation view: capture balances, build commitment arrays, prefill the
+// nine funded amounts. No write, no reconData mutation.
+function beginCloseout(n){
   if(!canWriteFinancials())return;
-  // Phase 5F-1 Phase 0/1 gate — client-side re-check (defense in depth; the
-  // Save button is also disabled in the DOM via canSaveRecon()/canPersistReconNow()).
-  // 5F-1 RPC persistence bridge: this now calls save_reconciliation_with_commitments,
-  // sending staged Phase 1 answers as p_patched — see buildPhase1PatchArray().
+  // Defense-in-depth gate re-check (the button is also disabled via canSaveRecon()).
   if(!canSaveRecon(n)){
     var gateErrEl=document.querySelector('.recon-error');
     if(gateErrEl){gateErrEl.textContent=reconSaveBlockedReason(n)||'Save is blocked — resolve the items above before saving.';gateErrEl.style.display='block';}
     return;
   }
   function gv(id){return parseFloat(document.getElementById(id).value)||0;}
-  const data={chk:gv('ri_chk'),sav:gv('ri_sav'),amx:gv('ri_amx'),tax:gv('ri_tax'),lc:gv('ri_lc')};
-  const now=new Date();
-  var prevRecon=reconData[n]?Object.assign({},reconData[n]):undefined; // snapshot
-  // Computed before any local mutation, from the staged answers as they exist
-  // right now — buildPhase1PatchArray(commitments, answers, basis, currentWeek).
+  // Capture entered balances into _reconBalances so they survive Back / re-render and become
+  // the closeout payload (no optimistic reconData write — amendment §F).
+  _reconBalances={chk:gv('ri_chk'),sav:gv('ri_sav'),amx:gv('ri_amx'),tax:gv('ri_tax'),lc:gv('ri_lc')};
+  // Commitment arrays — built ONCE here, before the confirmation renders, from the staged
+  // answers as they exist now (identical builders + signatures to the pre-1D path).
   var patched=buildPhase1PatchArray(commitmentData,_reconPhase1Answers,_reconBasis,n);
-  // Phase 2 (Step 8): staged new commitments, computed before any local mutation from the
-  // same override-aware candidates the gate used. Empty _reconPhase2Answers yields [].
   var newCommitments=buildPhase2NewCommitments(getPhase2WDCandidates(reconEffectiveWD(),n,commitmentData),_reconPhase2Answers,_reconBasis,n);
-  // Phase 3 (P3-5): manual catch-all rows, also computed before mutation. Empty
-  // _reconPhase3Items yields []. Concatenated with the Phase 2 rows into one p_new_commitments
-  // array (the P3-3 gate blocks a started-but-incomplete item before we reach here).
   var newCommitmentsAll=newCommitments.concat(buildPhase3NewCommitments(_reconPhase3Items,_reconBasis,n));
-  reconData[n]={...data,balance_basis:_reconBasis,date:now.toLocaleDateString('en-US',{month:'short',day:'numeric'})};
-  reconSaving=true;renderApp();
+  // Per-goal funded prefill (plan §2.4.7a): each eligible goal defaults to its prior effective
+  // snapshot amount (the monotonic floor); the operator confirms/increases observed reality.
+  // Values are NEVER derived from runModel's projected goalSaved (plan §3.1).
+  var priors={},funded={};
+  SNAPSHOT_ELIGIBLE_GOAL_IDS.forEach(function(id){
+    var p=_latestGoalSnapshot(id,n-1);
+    var pv=(typeof p==='number'&&isFinite(p))?Math.round(p*100)/100:0;
+    priors[id]=pv;funded[id]=pv;
+  });
+  _closeout={week:n,phase:'confirm',funded:funded,priors:priors,newCommitments:newCommitmentsAll,patched:patched,error:''};
+  renderApp();
+  setTimeout(function(){var el=document.querySelector('.closeout-confirm');if(el)el.scrollIntoView({behavior:'smooth',block:'nearest'});},60);
+}
+// Operator edits one goal's confirmed cumulative funded amount (parse at the UI boundary).
+function setCloseoutFunded(id,val){
+  if(!_closeout)return;
+  var num=parseFloat(val);
+  _closeout.funded[id]=Number.isFinite(num)?num:NaN; // NaN => buildCloseoutSnapshotRows rejects at confirm
+  _closeout.error='';renderApp();
+}
+// Return from the confirmation view to the balance form (entered balances preserved).
+function backToReconForm(){if(_closeout){_closeout=null;renderApp();}}
+// STEP 2 — submit the frozen combined closeout as one atomic wrapper call. No optimistic
+// reconData write: local reconciled state updates only after server success + reload.
+async function submitCloseout(){
+  if(!_closeout||_closeout.phase==='in_flight')return;
+  if(!canWriteFinancials())return;
+  var n=_closeout.week;
+  // Freeze the exact nine-row payload from the operator-confirmed values (parse/validate at the
+  // UI boundary; the wrapper pins source). A bad value hard-stops here, before any POST.
+  var rows;
+  try{rows=buildCloseoutSnapshotRows(_closeout.funded);}
+  catch(e){_closeout.phase='confirm';_closeout.error=e.message;renderApp();_writeCloseoutError();return;}
+  var b=_reconBalances||{chk:0,sav:0,amx:0,tax:0,lc:0};
+  _closeout.phase='in_flight';_closeout.error='';reconSaving=true;renderApp();
   try{
-    var h=await getAuthHeaders(); // no Prefer header — this is an RPC call, not a table upsert
-    var r=await fetch(SUPA_URL+'/rest/v1/rpc/save_reconciliation_with_commitments',{method:'POST',headers:h,body:JSON.stringify({
+    var h=await getAuthHeaders(); // no Prefer header — this is an RPC call
+    var r=await fetch(SUPA_URL+'/rest/v1/rpc/save_weekly_closeout_with_snapshots',{method:'POST',headers:h,body:JSON.stringify({
       p_week_num:n,
       p_model_year:PLAN_YEAR,
-      p_chk:data.chk,p_sav:data.sav,p_amx:data.amx,p_tax:data.tax,p_lc:data.lc,
+      p_chk:b.chk,p_sav:b.sav,p_amx:b.amx,p_tax:b.tax,p_lc:b.lc,
       p_balance_basis:_reconBasis,
-      p_recorded_at:now.toISOString(),
-      p_new_commitments:newCommitmentsAll,
-      p_patched:patched
+      p_new_commitments:_closeout.newCommitments,
+      p_patched:_closeout.patched,
+      p_snapshot_rows:rows,
+      p_mode:'normal_closeout',
+      p_expected_count:9
     })});
     if(!r.ok){
-      var errMsg='';
-      try{var errBody=await r.json();errMsg=(errBody&&(errBody.message||errBody.hint||errBody.details))||'';}catch(parseErr){}
+      var code='',errMsg='';
+      try{var errBody=await r.json();code=(errBody&&errBody.code)||'';errMsg=(errBody&&(errBody.message||errBody.hint||errBody.details))||'';}catch(parseErr){}
+      // GFA01 — a fully-closed week resubmitted with commitment changes: supervised
+      // adjudication, NEVER an automatic retry (amendment 2).
+      if(code==='GFA01'||errMsg.indexOf('REQUIRES_SUPERVISED_ADJUDICATION')>=0){
+        _closeout.phase='adjudication';reconSaving=false;renderApp();
+        _writeCloseoutError('This week is already closed and your resubmission changes commitments. Re-read the week and use the supervised adjudication path — do not retry here.');
+        return;
+      }
       throw new Error(errMsg||('HTTP '+r.status));
     }
-    reconSaving=false;reconOpen=null;_reconBasis=null;_reconPhase1Answers={};_reconPhase2Answers={};_reconPhase3Items=[];
+    // Success: clear staging, close the form, reload BOTH persisted halves (recon + snapshots).
+    _closeout=null;reconSaving=false;reconOpen=null;_reconBalances=null;_reconBasis=null;_reconPhase1Answers={};_reconPhase2Answers={};_reconPhase3Items=[];
     await reloadReconAndCommitments(); // server-owned fields — reload, don't fake locally
+    await reloadGoalSnapshots();       // refresh the overlay/badge with the just-written nine rows
     renderApp();
   }catch(e){
-    // Roll back local reconData so stale/optimistic data is not displayed. The RPC is a
-    // single transaction, so on ANY error nothing persisted (no partial write, no
-    // duplicate row). _reconBasis/_reconPhase1Answers/_reconPhase2Answers/_reconPhase3Items/
-    // reconOpen are deliberately left alone so the user's staged Phase 0/1/2 answers and
-    // Phase 3 items survive for retry.
-    if(prevRecon!==undefined){reconData[n]=prevRecon;}else{delete reconData[n];}
-    console.error('saveRecon:',e);
+    console.error('submitCloseout:',e);
     reconSaving=false;
     var _errMsg=(e&&e.message)||'';
-    // Conflict: a Phase 2 new commitment collided with an existing cash_commitments row
-    // (duplicate expected_item_id). Route updates through Phase 1, not a re-insert. Refresh
-    // commitmentData so the now-known row is reflected (AC-28), keep the form and all staged
-    // answers. Detected case-insensitively. The message is written AFTER renderApp() so the
-    // re-render (which rebuilds the .recon-error node from the form template) cannot wipe it.
-    if(_errMsg.toLowerCase().indexOf('commitment already exists')>=0){
-      await reloadReconAndCommitments();
-      renderApp();
-      var conflictEl=document.querySelector('.recon-error');
-      if(conflictEl){conflictEl.textContent='This obligation is already tracked. Resolve it under Prior Commitments (Phase 1) instead. Reloaded; your entries are kept.';conflictEl.style.display='block';}
+    // Ambiguous transport failure (dropped connection, no HTTP status): the outcome is UNKNOWN,
+    // not failed — re-read BOTH persisted halves before any retry (plan §2.3). The single wrapper
+    // transaction means the write either fully landed or not at all; the re-read decides which.
+    if(_isAmbiguousCloseoutError(e)){
+      _closeout.phase='ambiguous';renderApp();
+      await _reconcileAmbiguousCloseout(n);
       return;
     }
-    // Generic error: keep the form open with staged input and do NOT refresh
-    // reconData/commitmentData (AC-101). Render first, then write the message so the
-    // re-render cannot wipe it; the user retries against unchanged state.
-    renderApp();
-    var errEl=document.querySelector('.recon-error');
-    if(errEl){errEl.textContent=e.message||'Save failed — check your connection and try again.';errEl.style.display='block';}
+    // Conflict: a Phase 2 new commitment collided with an existing cash_commitments row (the
+    // inner reconciliation RPC's error propagates through the wrapper). Route to Phase 1, keep
+    // the confirmation + staged answers. renderApp() runs BEFORE the message so it isn't wiped.
+    if(_errMsg.toLowerCase().indexOf('commitment already exists')>=0){
+      await reloadReconAndCommitments();
+      _closeout.phase='confirm';renderApp();
+      _writeCloseoutError('This obligation is already tracked. Go Back and resolve it under Prior Commitments (Phase 1) instead. Reloaded; your entries are kept.');
+      return;
+    }
+    // Generic domain/auth error (42501, 22023, monotonic, sequence, anchor, …): keep the
+    // confirmation open with staged input, do NOT refresh reconData/commitmentData; render
+    // first, then write the message so the re-render cannot wipe it.
+    _closeout.phase='confirm';renderApp();
+    _writeCloseoutError(e.message||'Closeout failed — check your connection and try again.');
   }
+}
+// Ambiguous = a transport/network failure with no HTTP status (fetch rejects with a TypeError).
+// A server HTTP error is NOT ambiguous — a single transaction that returns an error did not commit.
+function _isAmbiguousCloseoutError(e){
+  return !!e && (e.name==='TypeError' || /networkerror|failed to fetch|load failed|network request failed/i.test(String((e&&e.message)||'')));
+}
+// Re-read both halves; if the week is now complete AND the persisted snapshots equal the frozen
+// payload, the write DID land — idempotent success. Otherwise stay put for operator review.
+async function _reconcileAmbiguousCloseout(n){
+  try{await reloadReconAndCommitments();await reloadGoalSnapshots();}catch(_){}
+  if(_closeout&&isWeekReconciled(n)&&closeoutState(n)==='complete'&&_persistedSnapshotsMatch(n,_closeout.funded)){
+    _closeout=null;reconOpen=null;_reconBalances=null;_reconBasis=null;_reconPhase1Answers={};_reconPhase2Answers={};_reconPhase3Items=[];
+    renderApp();return;
+  }
+  if(_closeout){_closeout.phase='confirm';renderApp();
+    _writeCloseoutError('The connection dropped and the outcome is uncertain. Reloaded from the server — check the week state above. If it shows "Closeout complete", you are done; otherwise review before retrying.');}
+}
+// True iff every eligible goal's persisted snapshot at week n equals the confirmed funded map (cents).
+function _persistedSnapshotsMatch(n,funded){
+  var snaps=goalSnapData[n];if(!snaps)return false;
+  for(var i=0;i<SNAPSHOT_ELIGIBLE_GOAL_IDS.length;i++){
+    var id=SNAPSHOT_ELIGIBLE_GOAL_IDS[i];
+    if(snaps[id]===undefined)return false;
+    if(Math.round(snaps[id]*100)!==Math.round((funded[id]||0)*100))return false;
+  }
+  return true;
+}
+// Narrow reload of goal_funding_snapshots after a successful closeout (reloadReconAndCommitments
+// does not fetch snapshots). Mirrors the loadAll loader; non-blocking on any failure.
+async function reloadGoalSnapshots(){
+  try{
+    var h=await getAuthHeaders();
+    var r=await fetch(SUPA_URL+'/rest/v1/goal_funding_snapshots?model_year=eq.'+PLAN_YEAR+'&select=week_num,goal_id,funded_amount',{headers:h});
+    if(!r.ok)return;
+    var fresh={};(await r.json()).forEach(function(row){var wn=row.week_num;if(wn==null||row.goal_id==null)return;if(!fresh[wn])fresh[wn]={};fresh[wn][row.goal_id]=Math.round(parseFloat(row.funded_amount)*100)/100;});
+    goalSnapData=fresh;
+  }catch(e){/* non-blocking; overlay stays as-is until next loadAll */}
+}
+// Write into the confirmation view's .recon-error node AFTER renderApp so the re-render can't wipe it.
+function _writeCloseoutError(msg){
+  var el=document.querySelector('.closeout-confirm .recon-error');
+  if(el){if(msg!==undefined&&msg!=='')el.textContent=msg;el.style.display='block';}
 }
 async function deleteRecon(n){
   if(!canWriteFinancials())return;
@@ -2920,6 +3036,47 @@ function _closeoutStateBadge(n){
   if(st==='half_closed')return'<div class="closeout-state pending">Closeout snapshot pending — goal funding not yet anchored for this week</div>';
   if(st==='corrupt')return'<div class="closeout-state corrupt">⚠ Snapshot present without a reconciliation — needs review</div>';
   return'';
+}
+// 5G-1D Slice 3 — the confirmation view. Renders from the frozen _closeout state: the week,
+// the balances + commitment summary about to persist, the exact nine goal IDs with prior and
+// confirmed funded values (+ Δ), the expected nine-row count, and the joint-commit warning
+// (plan §2.2). Submits the operator-confirmed values verbatim — no model re-derivation.
+function renderCloseoutConfirm(w){
+  var c=_closeout,n=w.num;var b=_reconBalances||{chk:0,sav:0,amx:0,tax:0,lc:0};
+  var busy=c.phase==='in_flight';
+  var pUpd=(c.patched||[]).length,pNew=(c.newCommitments||[]).length;
+  var buildErr='';try{buildCloseoutSnapshotRows(c.funded);}catch(e){buildErr=e.message;}
+  var h='<div class="recon-form closeout-confirm"><div class="recon-form-title">Confirm weekly closeout — Wk '+getCalWeek(n)+' \xb7 '+w.dates+'</div>';
+  h+='<div class="closeout-warn">Reconciliation and the nine goal-funding snapshots commit <strong>together</strong> as one atomic closeout — nothing is saved until you confirm.</div>';
+  h+='<div class="closeout-sec"><div class="closeout-sec-t">Balances to persist</div>'+
+     '<div class="closeout-bal">Truist Checking <b>'+fc(b.chk)+'</b> · Truist Savings <b>'+fc(b.sav)+'</b> · AMEX Savings <b>'+fc(b.amx)+'</b> · Vio Tax <b>'+fc(b.tax)+'</b> · Lending Club <b>'+fc(b.lc)+'</b></div>'+
+     '<div class="closeout-basis">Basis: '+esc(_reconBasis||'—')+' · Prior-commitment updates: '+pUpd+' · New commitments: '+pNew+'</div></div>';
+  h+='<div class="closeout-sec"><div class="closeout-sec-t">Goal funding — confirm the observed cumulative funded amount for each of the 9 eligible goals <span class="closeout-count">(expected rows: 9)</span></div>';
+  h+='<div class="closeout-tip">Prefilled with last week’s value. Cross-check each against the transfers executed this week (listed above); a value below last week is rejected here and handled through the supervised correction path.</div>';
+  h+='<table class="closeout-goals"><thead><tr><th>Goal</th><th>Last week</th><th>This week (cumulative)</th><th>Δ</th></tr></thead><tbody>';
+  SNAPSHOT_ELIGIBLE_GOAL_IDS.forEach(function(id){
+    var gd=GOALS_REGISTRY.find(function(x){return x.id===id;});
+    var label=gd?gd.name:id;
+    var prior=c.priors[id]||0;var cur=c.funded[id];
+    var curFin=Number.isFinite(cur);
+    var delta=curFin?Math.round((cur-prior)*100)/100:null;
+    var below=curFin&&Math.round(cur*100)<Math.round(prior*100);
+    h+='<tr'+(below?' class="closeout-below"':'')+'><td>'+esc(label)+'</td><td class="closeout-prior">'+fc(prior)+'</td>'+
+       '<td><input class="closeout-input" type="number" step="0.01" value="'+(curFin?cur:'')+'"'+(busy?' disabled':'')+' onchange="setCloseoutFunded(\''+id+'\',this.value)"></td>'+
+       '<td class="closeout-delta'+(delta&&delta>0?' up':'')+(below?' down':'')+'">'+(delta==null?'—':(delta>=0?'+':'')+fc(delta))+'</td></tr>';
+  });
+  h+='</tbody></table></div>';
+  if(c.phase==='adjudication')h+='<div class="closeout-adjudicate">This week is already closed. Your resubmission changes commitments, so it needs supervised adjudication — do not retry from here.</div>';
+  if(c.phase==='ambiguous')h+='<div class="closeout-ambiguous">Checking the server…</div>';
+  h+='<div class="recon-error" style="display:'+(c.error?'block':'none')+';color:var(--red);font-size:12px;background:var(--redSoft);border:1px solid #fca5a5;border-radius:6px;padding:8px 10px;margin-top:8px">'+(c.error?esc(c.error):'')+'</div>';
+  h+='<div class="recon-btn-row" style="margin-top:10px">'+
+     '<button class="recon-save" onclick="submitCloseout()"'+((busy||buildErr)?' disabled style="opacity:.5;cursor:not-allowed"':'')+'>Confirm &amp; close week</button>'+
+     '<button class="recon-cancel" onclick="backToReconForm()"'+(busy?' disabled':'')+'>Back to balances</button>'+
+     '<button class="recon-cancel" onclick="cancelRecon()"'+(busy?' disabled':'')+'>Cancel</button>'+
+     (busy?'<span class="save-status saving">Closing…</span>':'')+
+     (buildErr?'<span class="recon-hint" style="color:var(--red)">'+esc(buildErr)+'</span>':'')+
+     '</div></div>';
+  return h;
 }
 
 // ── Tasks ──────────────────────────────────────────────────────────────────
@@ -4515,8 +4672,13 @@ function renderWeekDetail(w,weeks){
     html+='<button class="recon-open-btn" onclick="openRecon('+w.num+')">Reconcile this week ✏️ — enter actual balances</button>';
     html+=_closeoutStateBadge(w.num); // 5G-1D Slice 4b: surfaces a corrupt snapshot-without-reconciliation anomaly ('' otherwise)
   }
-  if(reconOpen===w.num){
-    var pre=w.actualBals||{chk:w.mChk,sav:w.mSav,amx:w.mAmx,tax:w.mTax,lc:w.mLc};
+  if(reconOpen===w.num&&_closeout&&_closeout.week===w.num){
+    // 5G-1D Slice 3 — the combined-closeout confirmation view replaces the balance form.
+    html+=renderCloseoutConfirm(w);
+  }else if(reconOpen===w.num){
+    // 5G-1D: prefer the operator's entered balances (survive a Back from the confirmation)
+    // over the modeled/last-saved prefill.
+    var pre=_reconBalances||w.actualBals||{chk:w.mChk,sav:w.mSav,amx:w.mAmx,tax:w.mTax,lc:w.mLc};
     var _canSave=canSaveRecon(w.num);
     html+='<div class="recon-form"><div class="recon-form-title">Reconcile — Wk '+getCalWeek(w.num)+' \xb7 '+w.dates+'</div>'+
       renderReconPhase01(w)+
@@ -4529,7 +4691,7 @@ function renderWeekDetail(w,weeks){
       '<div class="recon-field"><label>Vio Bank - Tax Reserve</label><input class="recon-input" id="ri_tax" type="number" step="0.01" value="'+pre.tax+'"></div>'+
       '<div class="recon-field"><label>Lending Club (EF)</label><input class="recon-input" id="ri_lc" type="number" step="0.01" value="'+pre.lc+'"></div>'+
       '</div><div class="recon-btn-row">'+
-      '<button class="recon-save" onclick="saveRecon('+w.num+')"'+(_canSave?'':' disabled style="opacity:.5;cursor:not-allowed"')+'>Save actuals</button>'+
+      '<button class="recon-save" onclick="beginCloseout('+w.num+')"'+(_canSave?'':' disabled style="opacity:.5;cursor:not-allowed"')+'>Save actuals — review &amp; close</button>'+
       '<button class="recon-cancel" onclick="cancelRecon()">Cancel</button>'+
       (!_canSave?'<span class="recon-hint" style="color:var(--red)">'+esc(reconSaveBlockedReason(w.num))+'</span>':
         (!w.reconciled?'<span class="recon-hint">Pre-filled with modeled values — enter your actual end-of-week balances. These roll forward into all future weeks.</span>':
