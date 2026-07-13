@@ -413,10 +413,10 @@ All three are **non-code, parallel to 5G-1D, no freeze conflict, no approval inf
 
 ## 12. Source artifact index
 
-**The three reviews (advisory inputs; non-authoritative):**
-- `docs/reviews/roadmap-architecture-review-2026-07-12.md` — RM (sequencing/numbering/structure). Recommended disposition: keep under `reviews/`; supersede-with-synthesis, preserve for provenance.
-- `docs/architecture-review-cash-planning-goal-funding-2026-07-12.md` — AR (5–10 year architecture). Recommended disposition: move under `docs/reviews/`; supersede-with-synthesis, preserve.
-- `docs/operating-model-control-review-2026-07-12.md` — OM (close/audit/recovery/operating model). Recommended disposition: move under `docs/reviews/`; supersede-with-synthesis, preserve.
+**The three reviews (advisory inputs; non-authoritative). All three are now co-located under `docs/reviews/`, superseded for sequencing by this synthesis, and retained for provenance and architectural detail:**
+- `docs/reviews/roadmap-architecture-review-2026-07-12.md` — RM (sequencing/numbering/structure).
+- `docs/reviews/architecture-review-cash-planning-goal-funding-2026-07-12.md` — AR (5–10 year architecture).
+- `docs/reviews/operating-model-control-review-2026-07-12.md` — OM (close/audit/recovery/operating model).
 
 **Prior synthesis (superseded by this document):**
 - `docs/post-5g-1d-roadmap-synthesis-2026-07-12.md` — reached the correct operating conclusion that Quicken was canceled (Adam confirmed that operating state on 2026-07-13); superseded because its 5G-1D execution status and roadmap reconciliation are now outdated. Retained for provenance.
