@@ -946,6 +946,11 @@ var reconData={};
 // goalSnapData[week_num][goal_id]=funded_amount (model_year=PLAN_YEAR only).
 // Empty {} => the runModel goal overlay is inert => byte-identical to pre-C3.
 var goalSnapData={};
+// 5G-1D P0-4 (Gate-C row-9): the certainty of the goalSnapData load. Only 'loaded' (a real
+// 200 that parsed cleanly, incl. zero rows) proves the snapshot set for a week; 'unknown'
+// (never loaded), 'unavailable' (404 — table absent), and 'error' (non-404 / malformed) all
+// mean we CANNOT prove a week is snapshot-free, so canDeleteRecon() fails closed on them.
+var _goalSnapLoadStatus='unknown';
 var commitmentData=[]; // Phase 5F-1: cash_commitments rows for PLAN_YEAR (populated in loadAll())
 var taskData={};
 var noteData={};
@@ -1304,6 +1309,7 @@ var editOpen=null;
 var USER_ROLE='viewer'; // fail closed — set during checkAuthorization; 'owner'|'household_admin'|'viewer'
 // Phase 2 state
 var reconDeleteConfirm=false;
+var _reconDeleteError=null; // 5G-1D P0-4: {week,msg} operator message when a reconciliation delete is withheld/denied (week-scoped so it never leaks to another week's panel)
 var editDeleteConfirm=false;
 var historyFilter='all';
 var editSaving=false;
@@ -2750,8 +2756,8 @@ function openRecon(n){
   renderApp();setTimeout(function(){var el=document.querySelector('.recon-form');if(el)el.scrollIntoView({behavior:'smooth',block:'nearest'});},80);
 }
 function cancelRecon(){reconOpen=null;_closeout=null;_reconBalances=null;_reconBasis=null;_reconPhase1Answers={};_reconPhase2Answers={};_reconPhase3Items=[];renderApp();}
-function confirmReconDelete(n){if(!canWriteFinancials())return;reconDeleteConfirm=n;renderApp();}
-function cancelReconDelete(){reconDeleteConfirm=false;renderApp();}
+function confirmReconDelete(n){if(!canWriteFinancials())return;if(!canDeleteRecon(n)){renderApp();return;}_reconDeleteError=null;reconDeleteConfirm=n;renderApp();}
+function cancelReconDelete(){reconDeleteConfirm=false;_reconDeleteError=null;renderApp();}
 // 5F-1 RPC persistence bridge: reload weekly_reconciliations + cash_commitments
 // from Supabase after a successful save_reconciliation_with_commitments call.
 // Deliberately narrow (not a full loadAll()) — avoids re-running unrelated
@@ -2881,11 +2887,30 @@ async function submitCloseout(){
       }
       throw new Error(errMsg||('HTTP '+r.status));
     }
-    // Success: clear staging, close the form, reload BOTH persisted halves (recon + snapshots).
-    _closeout=null;reconSaving=false;reconOpen=null;_reconBalances=null;_reconBasis=null;_reconPhase1Answers={};_reconPhase2Answers={};_reconPhase3Items=[];
-    await reloadReconAndCommitments(); // server-owned fields — reload, don't fake locally
+    // 5G-1D P1-1: a 2xx is NOT proof of a complete closeout. Parse the wrapper's structured
+    // result and require the success contract (ok=true, mode=normal_closeout for THIS week,
+    // snapshot_count=9); THEN re-read BOTH persisted halves and require the durable end state to
+    // actually BE a complete closeout of this week's nine (recon present, closeoutState
+    // 'complete', persisted snapshots equal to the confirmed amounts at cents). Only when both
+    // the response contract AND the persisted state confirm is it reported as done. Anything
+    // short is treated as UNKNOWN — reloaded, kept open for review, staging preserved — never
+    // silently reported as success.
+    var res=null;try{res=await r.json();}catch(parseOk){res=null;}
+    var okShape=!!res&&res.ok===true&&res.mode==='normal_closeout'&&res.week_num===n&&res.snapshot_count===9;
+    await reloadReconAndCommitments(); // server-owned truth — reload, don't fake locally
     await reloadGoalSnapshots();       // refresh the overlay/badge with the just-written nine rows
-    renderApp();
+    var persistedComplete=isWeekReconciled(n)&&closeoutState(n)==='complete'&&_persistedSnapshotsMatch(n,_closeout.funded);
+    if(okShape&&persistedComplete){
+      // Verified success: clear staging, close the form.
+      _closeout=null;reconSaving=false;reconOpen=null;_reconBalances=null;_reconBasis=null;_reconPhase1Answers={};_reconPhase2Answers={};_reconPhase3Items=[];
+      renderApp();return;
+    }
+    // 2xx but the response contract or the persisted end state does not confirm completion:
+    // treat as UNKNOWN (not failed, not done). Keep the confirmation open with staging intact so
+    // the operator reads the reloaded week state before any retry.
+    reconSaving=false;_closeout.phase='confirm';
+    _closeout.error='The server accepted the request but the saved week could not be confirmed complete. Reloaded from the server — check the week state above. If it shows "Closeout complete", you are done; otherwise review before retrying.';
+    renderApp();return;
   }catch(e){
     console.error('submitCloseout:',e);
     reconSaving=false;
@@ -2946,18 +2971,57 @@ async function reloadGoalSnapshots(){
     var r=await fetch(SUPA_URL+'/rest/v1/goal_funding_snapshots?model_year=eq.'+PLAN_YEAR+'&select=week_num,goal_id,funded_amount',{headers:h});
     if(!r.ok)return;
     var fresh={};(await r.json()).forEach(function(row){var wn=row.week_num;if(wn==null||row.goal_id==null)return;if(!fresh[wn])fresh[wn]={};fresh[wn][row.goal_id]=Math.round(parseFloat(row.funded_amount)*100)/100;});
-    goalSnapData=fresh;
-  }catch(e){/* non-blocking; overlay stays as-is until next loadAll */}
+    goalSnapData=fresh;_goalSnapLoadStatus='loaded'; // a clean post-write reload re-establishes snapshot certainty
+  }catch(e){/* non-blocking; overlay + _goalSnapLoadStatus stay as-is (last known-good) until next loadAll */}
+}
+// 5G-1D P0-4 (Gate-C row-9) — is ANY goal_id snapshot present at week n? Counts eligible AND
+// non-eligible ids (a wewe_* row still makes the week snapshot-bearing, so removing its
+// reconciliation would strand that row). Pure read over goalSnapData; never throws.
+function _anySnapshotAt(n){
+  var s=goalSnapData[n];
+  if(!s||typeof s!=='object')return false;
+  for(var k in s){if(Object.prototype.hasOwnProperty.call(s,k)&&s[k]!==undefined)return true;}
+  return false;
+}
+// 5G-1D P0-4 (Gate-C row-9) — may this week's reconciliation be removed here? A post-anchor
+// closeout binds a reconciliation to nine goal-funding snapshots; deleting the reconciliation
+// while snapshots remain strands them (wrapper branch H 'corrupt'). So deletion is offered ONLY
+// for a legacy pre-anchor week (1-4) that bears NO snapshots, and ONLY when the snapshot loader
+// is known-good ('loaded') — if snapshot certainty is uncertain we cannot prove the week is
+// snapshot-free, so we FAIL CLOSED and refuse. Anchor (wk5), complete, half_closed, corrupt,
+// and any snapshot-bearing week are never deletable. Pure predicate; never throws.
+function canDeleteRecon(n){
+  if(!canWriteFinancials())return false;
+  if(!isWeekReconciled(n))return false;              // nothing to delete
+  if(_goalSnapLoadStatus!=='loaded')return false;    // fail closed on uncertain snapshot state
+  if(_anySnapshotAt(n))return false;                 // snapshot-bearing → would orphan rows
+  if(closeoutState(n)!=='legacy_pre_anchor')return false; // anchor/open/blocked/half_closed/complete/corrupt all blocked
+  return true;
+}
+// Operator-facing reason a reconciliation delete is withheld (empty string ⇒ nothing to say —
+// either it is deletable, or the operator cannot write at all). Used by the recon panel.
+function deleteReconBlockedReason(n){
+  if(!canWriteFinancials())return'';
+  if(!isWeekReconciled(n))return'';
+  if(_goalSnapLoadStatus!=='loaded')return'Snapshot state is still loading or unavailable — reconciliation removal is disabled until it can be confirmed.';
+  if(_anySnapshotAt(n)||closeoutState(n)!=='legacy_pre_anchor')return'This week is part of the closeout ledger (anchor or snapshot-bearing). Its reconciliation can no longer be removed here — use the supervised correction path.';
+  return'';
 }
 async function deleteRecon(n){
   if(!canWriteFinancials())return;
+  // Defense in depth (row-9): never delete a reconciliation the guard would not offer — a stale
+  // render, a queued click, or a console call must not bypass canDeleteRecon().
+  if(!canDeleteRecon(n)){reconDeleteConfirm=false;_reconDeleteError={week:n,msg:deleteReconBlockedReason(n)};renderApp();return;}
   try{
     var h=await getAuthHeaders();
     var r=await fetch(SUPA_URL+'/rest/v1/weekly_reconciliations?week_num=eq.'+n,{method:'DELETE',headers:h});
-    if(r.ok)delete reconData[n];
-    else console.error('deleteRecon: HTTP '+r.status);
-  }catch(e){console.error('deleteRecon:',e);}
-  reconOpen=null;renderApp();
+    if(r.ok){delete reconData[n];_reconDeleteError=null;}
+    // A denied/failed server DELETE (RLS, network, 4xx/5xx): the row is STILL persisted, so do
+    // NOT optimistically drop reconData[n] — keep local state agreeing with the server and tell
+    // the operator. (row-9: a blocked delete must never look like it succeeded.)
+    else{console.error('deleteRecon: HTTP '+r.status);_reconDeleteError={week:n,msg:'Could not remove this reconciliation — it is still saved on the server (HTTP '+r.status+').'};}
+  }catch(e){console.error('deleteRecon:',e);_reconDeleteError={week:n,msg:'Could not remove this reconciliation — the request failed. It is still saved on the server.'};}
+  reconDeleteConfirm=false;reconOpen=null;renderApp();
 }
 
 // ── 5G-1D Slice 1 — pure closeout snapshot payload builder (INERT) ───────────
@@ -4718,9 +4782,10 @@ function renderWeekDetail(w,weeks){
         (!w.reconciled?'<span class="recon-hint">Pre-filled with modeled values — enter your actual end-of-week balances. These roll forward into all future weeks.</span>':
         '<span class="recon-hint">Actuals saved '+w.actualBals.date+' — edits will update all following weeks.</span>'))+
       '<div class="recon-error" style="display:none;color:var(--red);font-size:12px;background:var(--redSoft);border:1px solid #fca5a5;border-radius:6px;padding:8px 10px;margin-top:8px">Save failed — check your connection and try again.</div>'+
-      (w.reconciled?(reconDeleteConfirm===w.num?
+      (w.reconciled&&canDeleteRecon(w.num)?(reconDeleteConfirm===w.num?
         '<div class="confirm-row"><span>Remove this reconciliation?</span><button class="confirm-no" onclick="cancelReconDelete()">Keep it</button><button class="confirm-yes" onclick="deleteRecon('+w.num+')">Yes, remove</button></div>':
         '<button class="recon-delete" onclick="confirmReconDelete('+w.num+')">Remove reconciliation</button>'):'')+
+      (_reconDeleteError&&_reconDeleteError.week===w.num?'<div class="recon-error" style="color:var(--red);font-size:12px;background:var(--redSoft);border:1px solid #fca5a5;border-radius:6px;padding:8px 10px;margin-top:8px">'+esc(_reconDeleteError.msg)+'</div>':'')+
       (reconSaving?'<span class="save-status saving">Saving…</span>':'')+
       '</div></div>';
   }
@@ -8326,15 +8391,17 @@ async function loadAll(){
     // QUIET when the table is absent (404, expected pre-DDL) or has zero rows: goalSnapData={},
     // no user-facing warning. A real error (non-404 status or malformed payload) leaves
     // goalSnapData={} and logs a non-blocking console diagnostic — never crashes loadAll.
-    goalSnapData={};
+    goalSnapData={};_goalSnapLoadStatus='unknown';
     if(goalSnapshotsR.ok){
       try{(await goalSnapshotsR.json()).forEach(function(row){
         var wn=row.week_num; if(wn==null||row.goal_id==null)return;
         if(!goalSnapData[wn])goalSnapData[wn]={};
         goalSnapData[wn][row.goal_id]=Math.round(parseFloat(row.funded_amount)*100)/100;
-      });}catch(e){goalSnapData={};console.warn('[GoalSnapshots] Malformed payload — treating as no anchors (non-blocking): '+e.message);}
-    }else if(goalSnapshotsR.status!==404){
-      console.warn('[GoalSnapshots] Load HTTP '+goalSnapshotsR.status+' — treating as no anchors (non-blocking).');
+      });_goalSnapLoadStatus='loaded';}catch(e){goalSnapData={};_goalSnapLoadStatus='error';console.warn('[GoalSnapshots] Malformed payload — treating as no anchors (non-blocking): '+e.message);}
+    }else if(goalSnapshotsR.status===404){
+      _goalSnapLoadStatus='unavailable'; // table absent (expected pre-DDL) — snapshot-free state NOT provable
+    }else{
+      _goalSnapLoadStatus='error';console.warn('[GoalSnapshots] Load HTTP '+goalSnapshotsR.status+' — treating as no anchors (non-blocking).');
     }
     // ── Phase 5F-1: cash_commitments load ─────────────────────────────────
     if(cashCommitmentsR.ok){commitmentData=await cashCommitmentsR.json();}

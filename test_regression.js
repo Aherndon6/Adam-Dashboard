@@ -10622,6 +10622,40 @@ test('submitCloseout() success clears staging, closes the form, and reloads BOTH
   assert(!/commitmentData\s*=/.test(tryBody),'success must not assign commitmentData — reloadReconAndCommitments() owns it');
 });
 
+// ── P1-1: a 2xx is not proof — validate the wrapper response contract AND the persisted end state ──
+test('P1-1a: submitCloseout parses the wrapper JSON and requires the success contract (ok/mode/week_num/snapshot_count===9)',()=>{
+  assertIncludes(tryBody,'res=await r.json()');
+  assert(/res\.ok===true/.test(tryBody),'requires ok===true');
+  assert(/res\.mode==='normal_closeout'/.test(tryBody),'requires mode normal_closeout');
+  assert(/res\.week_num===n/.test(tryBody),'requires week_num===n (this week)');
+  assert(/res\.snapshot_count===9/.test(tryBody),'requires snapshot_count===9');
+});
+test('P1-1b: success requires the persisted end state to BE complete (recon + closeoutState complete + snapshots match)',()=>{
+  assert(/isWeekReconciled\(n\)/.test(tryBody),'re-reads reconciliation');
+  assert(/closeoutState\(n\)==='complete'/.test(tryBody),'requires closeoutState complete');
+  assert(/_persistedSnapshotsMatch\(n,_closeout\.funded\)/.test(tryBody),'requires persisted snapshots equal the confirmed nine');
+});
+test('P1-1c: BOTH halves are re-read BEFORE the persisted-complete check (verify against server truth, not the response)',()=>{
+  var reIdx=tryBody.indexOf('await reloadReconAndCommitments()');
+  var snIdx=tryBody.indexOf('await reloadGoalSnapshots()');
+  var chkIdx=tryBody.indexOf('var persistedComplete=');
+  assert(reIdx>=0&&snIdx>reIdx&&chkIdx>snIdx,'reload recon, then snapshots, then compute persistedComplete');
+});
+test('P1-1d: staging is cleared ONLY inside the verified-success gate (okShape && persistedComplete)',()=>{
+  assert(/if\(okShape&&persistedComplete\)\{/.test(tryBody),'a single combined success gate');
+  assert((tryBody.match(/_closeout=null/g)||[]).length===1,'exactly one _closeout=null in the success region');
+  var gateIdx=tryBody.indexOf('if(okShape&&persistedComplete)');
+  var clearIdx=tryBody.indexOf('_closeout=null');
+  assert(gateIdx>=0&&clearIdx>gateIdx,'the clear must be inside/after the success gate, never before it');
+});
+test('P1-1e: an accepted-but-unconfirmed 2xx keeps _closeout, stays on the confirmation, and explains the uncertainty',()=>{
+  assert(/accepted the request but the saved week could not be confirmed/.test(tryBody),'operator message for the unconfirmed 2xx');
+  // the unconfirmed branch sets phase back to confirm (state-driven) and does NOT null _closeout
+  var msgIdx=tryBody.indexOf('accepted the request but the saved week');
+  var confirmBefore=tryBody.lastIndexOf("_closeout.phase='confirm'",msgIdx);
+  assert(confirmBefore>=0,"unconfirmed branch re-opens the confirmation via _closeout.phase='confirm'");
+});
+
 test('submitCloseout() conflict path (commitment already exists) reloads, routes to Phase 1, preserves answers',()=>{
   assertIncludes(catchBody,"toLowerCase().indexOf('commitment already exists')");
   var condIdx=catchBody.indexOf('commitment already exists');
@@ -12378,6 +12412,88 @@ console.log('\n── Section 5G-1D Slice 4b: closeout-state badge ──');
       recon(6);assert(_closeoutStateBadge(8)==='','blocked empty');
     });
   }finally{reconData=_rd;goalSnapData=_gs;}
+})();
+
+// ── Section 5G-1D P0-4: reconciliation-delete guard (Gate-C row-9) ──
+// canDeleteRecon(n)/_anySnapshotAt(n)/deleteReconBlockedReason(n) are pure predicates; the
+// fetch-path behaviors (denied-DELETE keeps state, unconfirmed 2xx) are proven live in e2e.js.
+// Deletion is offered ONLY for a legacy pre-anchor (wk1-4) snapshot-free week with a known-good
+// snapshot load; anchor/complete/half_closed/corrupt/snapshot-bearing/uncertain-load are blocked.
+console.log('\n── Section 5G-1D P0-4: reconciliation-delete guard (row-9) ──');
+(function(){
+  var NINE=SNAPSHOT_ELIGIBLE_GOAL_IDS;
+  var _rd=reconData,_gs=goalSnapData,_role=USER_ROLE,_ls=_goalSnapLoadStatus,_rde=_reconDeleteError,_rdc=reconDeleteConfirm,_render=renderApp;
+  function reset(){reconData={};goalSnapData={};USER_ROLE='owner';_goalSnapLoadStatus='loaded';_reconDeleteError=null;reconDeleteConfirm=false;}
+  function recon(n){reconData[n]={chk:0,sav:0,amx:0,tax:0,lc:0,balance_basis:'posted_current_balance'};}
+  function snap(n,ids){goalSnapData[n]=goalSnapData[n]||{};ids.forEach(function(id){goalSnapData[n][id]=100;});}
+  function full(n){snap(n,NINE);}
+  try{
+    test('5G1D-P04-01: a reconciled legacy pre-anchor week (1-4), snapshot-free, load=loaded IS deletable',function(){
+      reset();recon(3);assert(canDeleteRecon(3)===true,'wk3 recon + snapshot-free + loaded => deletable');
+      reset();recon(1);assert(canDeleteRecon(1)===true,'wk1 too');
+    });
+    test('5G1D-P04-02: the opening anchor (wk5) is NEVER deletable',function(){
+      reset();recon(5);assert(canDeleteRecon(5)===false,'anchor blocked');
+    });
+    test('5G1D-P04-03: a complete week (recon + nine) is NEVER deletable',function(){
+      reset();recon(6);full(6);assert(closeoutState(6)==='complete','precondition');assert(canDeleteRecon(6)===false,'complete blocked');
+    });
+    test('5G1D-P04-04: a half_closed week (recon + partial snapshots) is NEVER deletable',function(){
+      reset();recon(6);snap(6,NINE.slice(0,4));assert(closeoutState(6)==='half_closed','precondition');assert(canDeleteRecon(6)===false,'half_closed(partial) blocked');
+    });
+    test('5G1D-P04-05: a reconciled post-anchor week with ZERO snapshots (half_closed) is NEVER deletable',function(){
+      reset();recon(6);assert(closeoutState(6)==='half_closed','precondition');assert(canDeleteRecon(6)===false,'post-anchor recon is not legacy — blocked');
+    });
+    test('5G1D-P04-06: a snapshot-bearing pre-anchor week (an eligible snapshot at wk3) is NEVER deletable',function(){
+      reset();recon(3);snap(3,['adam_ira']);assert(_anySnapshotAt(3)===true,'precondition');assert(canDeleteRecon(3)===false,'snapshot-bearing blocked even pre-anchor');
+    });
+    test('5G1D-P04-07: a NON-eligible snapshot (wewe_rccl) still makes a week snapshot-bearing → blocked',function(){
+      reset();recon(3);goalSnapData[3]={wewe_rccl:600};assert(_anySnapshotAt(3)===true,'any id counts');assert(canDeleteRecon(3)===false,'non-eligible snapshot still blocks');
+    });
+    test('5G1D-P04-08: FAIL CLOSED — uncertain snapshot load blocks an otherwise-deletable week',function(){
+      reset();recon(3);
+      ['unknown','unavailable','error'].forEach(function(st){_goalSnapLoadStatus=st;assert(canDeleteRecon(3)===false,st+' must block (cannot prove snapshot-free)');});
+      _goalSnapLoadStatus='loaded';assert(canDeleteRecon(3)===true,'loaded re-enables');
+    });
+    test('5G1D-P04-09: a non-owner cannot delete (canWriteFinancials gate)',function(){
+      reset();recon(3);USER_ROLE='viewer';assert(canDeleteRecon(3)===false,'viewer blocked');
+    });
+    test('5G1D-P04-10: a non-reconciled week is not deletable (nothing to delete)',function(){
+      reset();assert(canDeleteRecon(3)===false,'no recon => not deletable');
+    });
+    test('5G1D-P04-11: deleteReconBlockedReason surfaces the uncertain-load message and the ledger message',function(){
+      reset();recon(3);_goalSnapLoadStatus='unavailable';assert(/loading or unavailable/i.test(deleteReconBlockedReason(3)),'uncertain-load reason');
+      reset();recon(6);full(6);assert(/closeout ledger/i.test(deleteReconBlockedReason(6)),'ledger reason for complete week');
+      reset();recon(3);assert(deleteReconBlockedReason(3)==='','deletable week has no blocked reason');
+    });
+    test('5G1D-P04-12: deleteRecon guard-fail (blocked week) drops NO local state and records a week-scoped reason',function(){
+      reset();recon(6);full(6);renderApp=function(){};
+      try{deleteRecon(6);}finally{renderApp=_render;}
+      assert(reconData[6]!==undefined,'reconData kept — a blocked delete must never drop local state');
+      assert(_reconDeleteError&&_reconDeleteError.week===6&&/closeout ledger/i.test(_reconDeleteError.msg),'week-scoped ledger reason recorded');
+      assert(reconDeleteConfirm===false,'confirm state cleared');
+    });
+    // ── Source invariants (formatting-pinned) ──
+    test('5G1D-P04-13: deleteRecon calls canDeleteRecon(n) BEFORE any fetch (defense in depth)',function(){
+      var s=html.slice(html.indexOf('async function deleteRecon('),html.indexOf('async function deleteRecon(')+900);
+      var g=s.indexOf('canDeleteRecon(n)'),f=s.indexOf('fetch(');
+      assert(g>-1,'guard present');assert(f>-1,'fetch present');assert(g<f,'guard must precede fetch');
+    });
+    test('5G1D-P04-14: deleteRecon deletes reconData[n] ONLY inside the r.ok branch (no optimistic drop)',function(){
+      var s=html.slice(html.indexOf('async function deleteRecon('),html.indexOf('async function deleteRecon(')+900);
+      assert(/if\(r\.ok\)\{delete reconData\[n\];/.test(s),'delete gated behind if(r.ok){');
+      assert((s.match(/delete reconData\[n\]/g)||[]).length===1,'exactly one delete reconData[n] in deleteRecon');
+    });
+    test('5G1D-P04-15: the "Remove reconciliation" control is gated on canDeleteRecon(w.num) in the recon panel',function(){
+      assert(/w\.reconciled&&canDeleteRecon\(w\.num\)\?/.test(html),'render must AND canDeleteRecon(w.num) with w.reconciled');
+    });
+    test('5G1D-P04-16: the snapshot loaders set _goalSnapLoadStatus (loaded on parse; unavailable on 404; error otherwise)',function(){
+      assert(/_goalSnapLoadStatus='loaded';\}catch/.test(html),'loadAll sets loaded after a clean parse');
+      assert(/_goalSnapLoadStatus='unavailable'/.test(html),'404 → unavailable');
+      assert(/_goalSnapLoadStatus='error'/.test(html),'non-404/malformed → error');
+      assert(/goalSnapData=fresh;_goalSnapLoadStatus='loaded'/.test(html),'reloadGoalSnapshots sets loaded after a clean reload');
+    });
+  }finally{reconData=_rd;goalSnapData=_gs;USER_ROLE=_role;_goalSnapLoadStatus=_ls;_reconDeleteError=_rde;reconDeleteConfirm=_rdc;renderApp=_render;}
 })();
 
 // ── Section 5G-1D Slice 3: confirmation view + funded-edit (behavior) ──

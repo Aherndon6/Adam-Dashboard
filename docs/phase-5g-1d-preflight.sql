@@ -25,6 +25,7 @@ DO $$
 DECLARE
   v_sysid BIGINT; v_tx BIGINT; v_reg_ids BIGINT; v_cnt INT; v_unmarked INT;
   v_has_appenv BOOLEAN; v_appenv_total INT; v_appenv_staging INT; v_staging_marker BOOLEAN; v_env TEXT;
+  v_recon_owner TEXT; v_snap_owner TEXT; v_isowner_owner TEXT; v_canwrite_owner TEXT;  -- P0-3 SECURITY DEFINER owner baseline
   c_prod_sysid    CONSTANT BIGINT := 7632885393857617092;
   c_staging_sysid CONSTANT BIGINT := 0;  -- <<FILL: exact staging system_identifier (same value in migration/rollback). 0 = UNSET.
   c_fixture_marker CONSTANT TEXT := '[STAGING-FIXTURE]';  -- required note marker on the synthetic staging anchor
@@ -91,6 +92,21 @@ BEGIN
   IF to_regprocedure('public.save_goal_funding_snapshots(INT,INT,JSONB)') IS NULL THEN
     RAISE EXCEPTION 'HARD STOP: deployed snapshot RPC signature not found. Aborting.'; END IF;
 
+  -- (d1) SECURITY DEFINER OWNER BASELINE (P0-3): capture the owner of every deployed function the
+  -- new wrapper/Option B will run AS (they are created owned by whoever runs the migration) or CALL
+  -- as the definer owner. That owner MUST be a single trusted role — never a client role — and the
+  -- migration pins the two new functions to exactly this owner, so the Gate-B lockdown can prove the
+  -- definer identity still executes the (soon-to-be-authenticated-revoked) inner RPCs.
+  v_recon_owner    := (SELECT pg_get_userbyid(proowner) FROM pg_proc WHERE oid = 'public.save_reconciliation_with_commitments(INT,INT,NUMERIC,NUMERIC,NUMERIC,NUMERIC,NUMERIC,TEXT,TIMESTAMPTZ,JSONB,JSONB)'::regprocedure);
+  v_snap_owner     := (SELECT pg_get_userbyid(proowner) FROM pg_proc WHERE oid = 'public.save_goal_funding_snapshots(INT,INT,JSONB)'::regprocedure);
+  v_isowner_owner  := (SELECT pg_get_userbyid(proowner) FROM pg_proc WHERE oid = 'public.is_owner()'::regprocedure);
+  v_canwrite_owner := (SELECT pg_get_userbyid(proowner) FROM pg_proc WHERE oid = 'public.can_write_financials()'::regprocedure);
+  RAISE NOTICE 'OWNER BASELINE: recon=%, snapshot=%, is_owner=%, can_write_financials=%', v_recon_owner, v_snap_owner, v_isowner_owner, v_canwrite_owner;
+  IF v_recon_owner IS NULL OR v_recon_owner <> v_snap_owner OR v_recon_owner <> v_isowner_owner OR v_recon_owner <> v_canwrite_owner THEN
+    RAISE EXCEPTION 'HARD STOP: deployed SECURITY DEFINER functions do not share one owner (recon=%, snapshot=%, is_owner=%, can_write=%). The new wrapper/Option B must be created by that same trusted owner. Aborting.', v_recon_owner, v_snap_owner, v_isowner_owner, v_canwrite_owner; END IF;
+  IF v_recon_owner IN ('anon','authenticated','public') THEN
+    RAISE EXCEPTION 'HARD STOP: deployed functions are owned by a client role (%) — never acceptable for SECURITY DEFINER. Aborting.', v_recon_owner; END IF;
+
   -- (e) the two NEW functions must NOT already exist (fresh deploy)
   IF to_regprocedure('public.save_weekly_closeout_with_snapshots(INT,INT,NUMERIC,NUMERIC,NUMERIC,NUMERIC,NUMERIC,TEXT,JSONB,JSONB,JSONB,TEXT,INT)') IS NOT NULL THEN
     RAISE EXCEPTION 'HARD STOP: wrapper already exists — not a fresh deploy. Aborting.'; END IF;
@@ -110,6 +126,14 @@ END $$;
 -- Byte-unchanged BASELINE hashes for the two deployed RPCs (compare in validation post-migration).
 SELECT 'baseline-recon-rpc'    AS check, md5(pg_get_functiondef('public.save_reconciliation_with_commitments(INT,INT,NUMERIC,NUMERIC,NUMERIC,NUMERIC,NUMERIC,TEXT,TIMESTAMPTZ,JSONB,JSONB)'::regprocedure)) AS def_md5;
 SELECT 'baseline-snapshot-rpc' AS check, md5(pg_get_functiondef('public.save_goal_funding_snapshots(INT,INT,JSONB)'::regprocedure)) AS def_md5;
+
+-- SECURITY DEFINER OWNER BASELINE (P0-3): committable evidence — the migration pins the two NEW
+-- functions to this exact owner; validation + the Gate-B lockdown re-assert it (owner never drifts).
+SELECT 'definer-owner-baseline' AS check, p.proname, pg_get_userbyid(p.proowner) AS owner, p.prosecdef AS security_definer
+FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
+WHERE n.nspname = 'public' AND p.proname IN
+  ('save_reconciliation_with_commitments','save_goal_funding_snapshots','is_owner','can_write_financials')
+ORDER BY p.proname;
 
 -- Reserved advisory namespace must be unused by any other object (documented invariant).
 SELECT 'advisory-namespace' AS check, 1734501000 AS reserved_ns_for_5g_1d_closeout_and_correction;

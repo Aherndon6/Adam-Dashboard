@@ -33,6 +33,11 @@ DECLARE
   v_sysid BIGINT; v_has_appenv BOOLEAN; v_appenv_total INT; v_appenv_staging INT; v_staging_marker BOOLEAN; v_env TEXT;
   c_prod_sysid    CONSTANT BIGINT := 7632885393857617092;
   c_staging_sysid CONSTANT BIGINT := 0;  -- <<FILL exact staging system_identifier for a staging rehearsal; 0 = staging hard-stops until pinned.
+  -- P1-3 RESUME MODE: default FALSE. A pre-existing authenticated EXECUTE on either new function is
+  -- UNEXPECTED (Phase 1 has not run, or grant state drifted) → HARD STOP. Set TRUE, LOCAL, ONLY to
+  -- deliberately re-run an interrupted Phase 1 (the GRANTs are idempotent) with Adam's approval.
+  c_resume        CONSTANT BOOLEAN := false;
+  v_wrap_granted  BOOLEAN; v_optb_granted BOOLEAN;
 BEGIN
   SELECT system_identifier INTO v_sysid FROM pg_control_system();
   v_has_appenv := to_regclass('public.app_environment') IS NOT NULL;
@@ -53,10 +58,27 @@ BEGIN
      OR to_regprocedure('public.correct_goal_funding_snapshot(INT,INT,TEXT,NUMERIC,NUMERIC,TEXT)') IS NULL THEN
     RAISE EXCEPTION 'HARD STOP: new functions not deployed (run Slice-6 inert migration first). Aborting.';
   END IF;
-  IF has_function_privilege('authenticated','public.save_weekly_closeout_with_snapshots(INT,INT,NUMERIC,NUMERIC,NUMERIC,NUMERIC,NUMERIC,TEXT,JSONB,JSONB,JSONB,TEXT,INT)','EXECUTE')
-     OR has_function_privilege('authenticated','public.correct_goal_funding_snapshot(INT,INT,TEXT,NUMERIC,NUMERIC,TEXT)','EXECUTE') THEN
-    RAISE NOTICE 'NOTE: a new function already has authenticated EXECUTE (already activated?). GRANT is idempotent.';
+  -- P1-3: a pre-existing authenticated EXECUTE is unexpected before Phase 1. Hard-stop unless the
+  -- operator explicitly set c_resume for a deliberate idempotent re-run.
+  v_wrap_granted := has_function_privilege('authenticated','public.save_weekly_closeout_with_snapshots(INT,INT,NUMERIC,NUMERIC,NUMERIC,NUMERIC,NUMERIC,TEXT,JSONB,JSONB,JSONB,TEXT,INT)','EXECUTE');
+  v_optb_granted := has_function_privilege('authenticated','public.correct_goal_funding_snapshot(INT,INT,TEXT,NUMERIC,NUMERIC,TEXT)','EXECUTE');
+  IF (v_wrap_granted OR v_optb_granted) AND NOT c_resume THEN
+    RAISE EXCEPTION 'HARD STOP: a new function already has authenticated EXECUTE (wrapper=%, optionB=%) before Phase 1 — grant state is not the expected pre-activation baseline. Investigate; set c_resume=TRUE (LOCAL, with approval) only for a deliberate re-run. Aborting.', v_wrap_granted, v_optb_granted;
+  ELSIF (v_wrap_granted OR v_optb_granted) AND c_resume THEN
+    RAISE NOTICE 'RESUME: a new function already had authenticated EXECUTE (wrapper=%, optionB=%); c_resume=TRUE — proceeding idempotently.', v_wrap_granted, v_optb_granted;
   END IF;
+
+  -- P0-3: pin ownership BEFORE granting. The wrapper/Option B must be owned by the same trusted
+  -- owner as the deployed recon RPC; granting EXECUTE on a wrongly-owned SECURITY DEFINER function
+  -- would activate the wrong definer identity.
+  DECLARE v_trusted text; v_wrap_owner text; v_optb_owner text;
+  BEGIN
+    v_trusted    := (SELECT pg_get_userbyid(proowner) FROM pg_proc WHERE oid='public.save_reconciliation_with_commitments(INT,INT,NUMERIC,NUMERIC,NUMERIC,NUMERIC,NUMERIC,TEXT,TIMESTAMPTZ,JSONB,JSONB)'::regprocedure);
+    v_wrap_owner := (SELECT pg_get_userbyid(proowner) FROM pg_proc WHERE oid='public.save_weekly_closeout_with_snapshots(INT,INT,NUMERIC,NUMERIC,NUMERIC,NUMERIC,NUMERIC,TEXT,JSONB,JSONB,JSONB,TEXT,INT)'::regprocedure);
+    v_optb_owner := (SELECT pg_get_userbyid(proowner) FROM pg_proc WHERE oid='public.correct_goal_funding_snapshot(INT,INT,TEXT,NUMERIC,NUMERIC,TEXT)'::regprocedure);
+    IF v_trusted IS NULL OR v_trusted IN ('anon','authenticated','public') OR v_wrap_owner <> v_trusted OR v_optb_owner <> v_trusted THEN
+      RAISE EXCEPTION 'HARD STOP: SECURITY DEFINER owner mismatch before activation (trusted=%, wrapper=%, optionB=%). Aborting.', v_trusted, v_wrap_owner, v_optb_owner; END IF;
+  END;
 END $$;
 
 -- ── G-10  ACTIVATE the closeout wrapper (exact 13-arg signature) ──

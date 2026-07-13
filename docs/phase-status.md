@@ -15,9 +15,15 @@
 > `docs/post-5g-1d-canonical-roadmap-synthesis-2026-07-13.md` (advisory; adopt per Adam approval —
 > see its §11). That synthesis reconciles the three 2026-07-12 Fable reviews against the operating
 > state above and the verified repository state — notably that 5G-1D is **staging-accepted
-> at the RPC layer but not production-activated** (Slice 3 / Slice 6 / Gate B production activation /
-> Slice 7 and Gates C/D/E remain; activation timing is the open **Gate D** owner decision, not
-> presumed pre- or post-freeze). The tables in **this** file remain authoritative for **completed-phase
+> at the RPC layer but not production-activated**. **UPDATE 2026-07-13:** **Slices 3/4/5 (browser
+> closeout) are COMPLETE** and branch-held; **Gate D is DECIDED = Option A (pre-freeze)**; **Gate C
+> dispositions are APPROVED (all 11), not executed**; an independent pre-production review's
+> corrections (P0-1…P2, incl. the row-9 `deleteRecon` guard + closeout response validation) are
+> applied on the feature branch — static **1507/0**, full e2e Adam-gated (expected 148/0). **Still
+> remaining: Slice 6 inert prod deploy / Gate B production activation / Slice 7; Gate E untriggered;
+> no production DDL, grant change, merge, or activation has occurred.** See
+> `CODEX_STATUS.md` "## 5G-1D INDEPENDENT PRE-PRODUCTION REVIEW CORRECTIONS". The tables in **this**
+> file remain authoritative for **completed-phase
 > status** and as the phase-map base; where forward sequencing here conflicts with the canonical
 > synthesis, the synthesis governs (pending Adam adoption). The legacy technical-gate fold-in flagged
 > OPEN below (calc-core extraction, set-aside gate, zero-outflow test, Budget-identity change,

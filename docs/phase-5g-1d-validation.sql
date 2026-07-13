@@ -20,10 +20,15 @@ DECLARE
   v_recon_md5 TEXT := '<<PASTE preflight baseline-recon-rpc md5 LOCAL>>';
   v_snap_md5  TEXT := '<<PASTE preflight baseline-snapshot-rpc md5 LOCAL>>';
   v_grants INT; r RECORD;
+  v_trusted TEXT;  -- P0-3: the trusted SECURITY DEFINER owner (== the deployed recon RPC's owner)
 BEGIN
   -- exactly two new functions exist; no third/helper
   IF v_wrapper IS NULL OR v_optb IS NULL THEN RAISE EXCEPTION 'V: wrapper/Option B not deployed'; END IF;
   IF to_regprocedure('public._gf_is_finite_amount(numeric)') IS NOT NULL THEN RAISE EXCEPTION 'V: unexpected _gf_is_finite_amount helper — must be inlined'; END IF;
+  -- P0-3: resolve the trusted owner from the deployed recon RPC; it must be a real (non-client) role.
+  v_trusted := pg_get_userbyid((SELECT proowner FROM pg_proc WHERE oid = v_recon::oid));
+  IF v_trusted IS NULL OR v_trusted IN ('anon','authenticated','public') THEN
+    RAISE EXCEPTION 'V: trusted definer owner is missing or a client role (%) — cannot validate owner pinning', v_trusted; END IF;
 
   -- INERT grant state: no EXECUTE for anon/authenticated on either new function.
   -- (anon/authenticated INHERIT PUBLIC grants, so a PUBLIC EXECUTE would surface here too;
@@ -44,9 +49,12 @@ BEGIN
   IF md5(pg_get_functiondef(v_snap))  IS DISTINCT FROM v_snap_md5  THEN RAISE EXCEPTION 'V: snapshot RPC definition CHANGED'; END IF;
 
   -- structural asserts on BOTH new functions
-  FOR r IN SELECT p.oid, p.proname, p.prosecdef, p.proconfig, pg_get_functiondef(p.oid) AS def
+  FOR r IN SELECT p.oid, p.proname, p.prosecdef, p.proconfig, pg_get_userbyid(p.proowner) AS owner, pg_get_functiondef(p.oid) AS def
              FROM pg_proc p WHERE p.oid IN (v_wrapper::oid, v_optb::oid) LOOP
     IF NOT r.prosecdef THEN RAISE EXCEPTION 'V: % is not SECURITY DEFINER', r.proname; END IF;
+    -- P0-3: owner pinned to the trusted definer owner (the deployed inner RPCs' owner). A drifted
+    -- owner would make the wrapper run as the wrong identity and break the closeout at Gate-B lockdown.
+    IF r.owner <> v_trusted THEN RAISE EXCEPTION 'V: % owner (%) != trusted definer owner (%) — owner pinning failed', r.proname, r.owner, v_trusted; END IF;
     IF NOT (r.proconfig @> ARRAY['search_path=public, pg_temp']) THEN RAISE EXCEPTION 'V: % search_path not pinned', r.proname; END IF;
     IF position('EXECUTE ' in r.def) > 0 AND position('EXECUTE FUNCTION' in r.def) = 0 THEN RAISE EXCEPTION 'V: % may contain dynamic EXECUTE', r.proname; END IF;
     -- straight-line: no EXCEPTION handler (checks the handler syntax 'EXCEPTION WHEN', NOT ordinary 'RAISE EXCEPTION')
@@ -70,7 +78,7 @@ BEGIN
   IF NOT has_function_privilege('authenticated', v_recon, 'EXECUTE') THEN
     RAISE EXCEPTION 'V: reconciliation RPC authenticated EXECUTE already revoked — that is a Slice-7 action, not Slice-2'; END IF;
 
-  RAISE NOTICE 'VALIDATION PASS: two functions inert; deployed RPCs byte-unchanged; structural + inline + mutex + namespace OK; old-RPC grant intact.';
+  RAISE NOTICE 'VALIDATION PASS: two functions inert; owner pinned to the trusted definer owner (%); deployed RPCs byte-unchanged; structural + inline + mutex + namespace OK; old-RPC grant intact.', v_trusted;
 END $$;
 
 -- Grant matrix snapshot (evidence). anon/authenticated only — they inherit any PUBLIC grant,
@@ -79,5 +87,14 @@ SELECT 'grant-matrix' AS check, n AS grantee,
        has_function_privilege(n,'public.save_weekly_closeout_with_snapshots(INT,INT,NUMERIC,NUMERIC,NUMERIC,NUMERIC,NUMERIC,TEXT,JSONB,JSONB,JSONB,TEXT,INT)','EXECUTE') AS wrapper_exec,
        has_function_privilege(n,'public.correct_goal_funding_snapshot(INT,INT,TEXT,NUMERIC,NUMERIC,TEXT)','EXECUTE') AS optionb_exec
 FROM (VALUES ('anon'),('authenticated')) AS g(n);
+
+-- P0-3 owner proof (evidence): the two NEW functions must share the deployed inner RPCs' owner,
+-- be SECURITY DEFINER, and pin search_path. Expect wrapper/Option B owner == recon/snapshot owner.
+SELECT 'definer-owner' AS check, p.proname, pg_get_userbyid(p.proowner) AS owner, p.prosecdef AS security_definer, p.proconfig AS config
+FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
+WHERE n.nspname = 'public' AND p.proname IN
+  ('save_reconciliation_with_commitments','save_goal_funding_snapshots',
+   'save_weekly_closeout_with_snapshots','correct_goal_funding_snapshot')
+ORDER BY p.proname;
 
 COMMIT;

@@ -1,10 +1,11 @@
-# Phase 5G-1D — Gate C Write-Surface Decision Register (FINAL)
+# Phase 5G-1D — Gate C Write-Surface Decision Register (FINAL — APPROVED)
 
-**Status:** DECISION-PREP — NOT EXECUTED, NOT APPROVED. This register records the current grant
-posture, the recommended disposition per write surface, the exact-signature SQL that would
-implement it, and the rollback. **No grant is changed and no SQL is executed by this document.**
-Every disposition is **Adam's decision per surface** at the Gate C trigger; nothing here modifies
-production grants or Supabase.
+**Status:** **DECISIONS APPROVED (Adam, 2026-07-13) — NOT EXECUTED.** All 11 write-surface
+dispositions are approved as recommended (see §7 for the approved decisions + clarifications).
+**Approval settles the posture; it does NOT authorize SQL execution, grant changes, deployment,
+merge, or activation.** Every approved change executes only through the Slice 6 / Gate B sequence,
+each with its own separate execution approval. **No grant is changed and no SQL is executed by this
+document; nothing here modifies production grants or Supabase.**
 **Date:** 2026-07-13
 **Author:** Claude (session under Adam)
 **Gate D:** **Option A (pre-freeze activation) — APPROVED (Adam, 2026-07-13).** Timing only; does
@@ -88,40 +89,53 @@ entry points, Option B owner-gated in-body.
 ## 4. Required SQL (authored, NOT executed)
 
 The grant changes are split into **two execution phases** so there is **no broken window**
-(activate the wrapper before deploying the browser; revoke the old surfaces only after the new
-browser is verified). All files carry the migration's production/staging environment guard
+(activate the wrapper before deploying the browser; **revoke the old surfaces only after the first
+Week-6 closeout is durably complete** — P0-1, so the first real write keeps the old RPC as a
+fallback). All files carry the migration's production/staging environment guard
 (`system_identifier` + `app_environment`) and are **exact-signature**.
 
 - **`docs/phase-5g-1d-activation-grants.sql`** — **Phase 1** (blocks **G-10, G-11**): GRANT
   `authenticated` EXECUTE on the wrapper + Option B (the activation grants). Run **before** the
-  browser deploy; the old browser keeps working via the old RPC.
+  browser deploy; the old browser keeps working via the old RPC. Owner-pinned; hard-stops on an
+  unexpected pre-grant unless `c_resume` (P1-3).
 - **`docs/phase-5g-1d-activation-revokes.sql`** — **Phase 2** (blocks **G-01…G-08**): the
-  write-surface lockdown (RPC-only). Run **only after** the new browser is deployed and the Week-6
-  smoke passed. Each block is **independently includable** — comment out any surface Adam did not
-  approve. Row 9 (the `deleteRecon` anchored-week UI guard) is an `index.html` change, not SQL.
-- **`docs/phase-5g-1d-activation-grants-rollback.sql`** — restores the **pre-activation** grant
-  state (revoke wrapper + Option B back to inert; re-grant old recon RPC, repair RPC, snapshot RPC,
-  and the two table grant sets). Separate Adam approval.
+  write-surface lockdown (RPC-only). **Run only after the first Week-6 closeout is durably complete**
+  — the script's pre-lockdown asserts hard-stop unless the wrapper is granted, the old RPC is still
+  granted, Week-6 is complete (recon + nine snapshots), and the owner is unchanged (P0-1/P1-3). Each
+  block is **independently includable** — comment out any surface Adam did not approve. Row 9 (the
+  `deleteRecon` anchored-week UI guard) is an `index.html` change, not SQL.
+- **`docs/phase-5g-1d-activation-grants-rollback.sql`** — **two clearly-scoped modes (P0-2):**
+  **(A) operational-continuity** (default) — revoke wrapper + Option B to inert and re-grant **only**
+  the old recon RPC to restore the ordinary closeout; **(B) exact-restore** (exceptional, separate
+  approval) — reproduce the exact captured pre-activation matrix, each re-grant checked against the
+  before-Phase-1 capture. Separate Adam approval.
 - **`docs/phase-5g-1d-activation-grants-validation.sql`** — read-only **before/after grant
   matrix** (`has_function_privilege` / `has_table_privilege`) + function-body md5 (byte-unchanged
-  proof). Run before Phase 1, after Phase 1, and after Phase 2.
+  proof) + the **owner invariant** (P0-3: wrapper/Option B owner == recon/snapshot owner, unchanged).
+  Run before Phase 1, after Phase 1, and after Phase 2.
 
 The **behavioral** proof pair — **wrapper still succeeds** (definer-owner path intact after
-revocation) and **bypass fails** (a direct/stale caller denied before any persistence) — is the
-Slice-7 real-caller smoke (JWT→PostgREST), not pure SQL. See the Gate B runbook §7.
+revocation) and **bypass fails** (a direct/stale caller denied, or rejected before any write) — is
+run **after the Phase-2 revoke** as two **NON-MUTATING** probes (Gate B runbook §4 steps 8–9): an
+idempotent branch-F re-submit that mutates nothing, and an invalid-input old-RPC probe rejected before
+any write. Not pure SQL.
 
 ---
 
 ## 5. Rollback boundary (Gate C surfaces)
 
-- Each posture change is reversible by its inverse grant in
-  `docs/phase-5g-1d-activation-grants-rollback.sql` (re-grant / re-revoke, exact-signature), under
-  **separate Adam approval**.
+- Each posture change is reversible in `docs/phase-5g-1d-activation-grants-rollback.sql`, under
+  **separate Adam approval**, in one of two scopes (P0-2): **(A) operational-continuity** restores a
+  *working* closeout (re-grant the old recon RPC only); **(B) exact-restore** reproduces the exact
+  captured pre-activation matrix. Apply the narrowest that resolves the problem.
 - **No data is ever touched** by any Gate C op — these are grant changes only; function bodies,
   RLS policies, and all rows are unchanged.
 - The `deleteRecon` client guard (row 9) rolls back by reverting its `index.html` commit.
-- **Boundary:** Gate C rollback restores the pre-activation grant posture exactly. It does **not**
-  undo the wrapper deployment (that is the Slice-6 rollback) or any reconciliation/snapshot data.
+- **Boundary:** an operational rollback restores a working write path (not necessarily the exact
+  pre-activation matrix — use exact-restore, or the Slice-6 restore-point dump, for that). It does
+  **not** undo the wrapper deployment (that is the Slice-6 rollback) or any reconciliation/snapshot
+  data. In steady state the old RPC is never used; a rollback is the one deliberate exception that
+  re-grants it.
 
 ---
 
@@ -139,5 +153,59 @@ Slice-7 real-caller smoke (JWT→PostgREST), not pure SQL. See the Gate B runboo
 5. **Separate approval to execute** `docs/phase-5g-1d-activation-grants.sql` (and its rollback) —
    this register prepares the decision; it does not authorize execution.
 
-**This register executes nothing.** Gate C is closed only when Adam records the per-surface
-dispositions; the SQL then runs at Slice 7 under its own approval.
+**This register executes nothing.** Gate C's per-surface dispositions are now **recorded and
+approved** (§7); the SQL still runs only at the Gate B / Slice-7 step under its own separate
+execution approval.
+
+---
+
+## 7. Owner decisions — APPROVED (Adam, 2026-07-13)
+
+All 11 dispositions approved **as recommended**, subject to execution **only** through the approved
+Slice 6 / Gate B sequence. Approved clarifications recorded verbatim below.
+
+| # | Surface | **Approved disposition** | Executes at |
+|---|---|---|---|
+| 1 | Old `save_reconciliation_with_commitments` EXECUTE | **REVOKE** `authenticated` EXECUTE **during Gate B Phase 2, after the new browser path is deployed and verified.** The wrapper retains internal call access under its approved definer contract. | Gate B Phase 2 (G-01) |
+| 2 | `repair_commitments_for_week` EXECUTE | **REVOKE** `authenticated` EXECUTE. Zero runtime callers; must not remain an externally callable closed-week mutation path. **The deferred 5F-1 historical-repair mode is FORMALLY RETIRED from the live API surface unless separately redesigned and reapproved later.** | Gate B Phase 2 (G-02) |
+| 3 | Direct `save_goal_funding_snapshots` EXECUTE | **REVOKE** during Gate B Phase 2. Snapshot writes occur **only** through the weekly-closeout wrapper or the owner-only correction wrapper. | Gate B Phase 2 (G-03) |
+| 4–5 | `goal_funding_snapshots` INSERT / UPDATE | **REVOKE** authenticated direct-write. Snapshot mutations become RPC-only. | Gate B Phase 2 (G-04/G-05) |
+| 6–8 | `weekly_reconciliations` INSERT / UPDATE / DELETE | **REVOKE** authenticated direct-write. Reconciliation writes become RPC-only. | Gate B Phase 2 (G-06/G-07/G-08) |
+| 9 | `deleteRecon` product behavior | **RESTRICT.** **Do not allow ordinary browser deletion of a reconciliation week that has opening-anchor, reconciliation, or correction snapshot state.** **Preserve a separately governed owner-only cleanup/remediation path for exceptional cases.** **Deletion is NOT a correction mechanism** (wrong values use Option B). | Gate B Phase 2 (G-08) + a browser guard shipped in the activation browser (see below) |
+| 10 | `save_weekly_closeout_with_snapshots` EXECUTE | **GRANT** `authenticated` EXECUTE during **Gate B Phase 1**. | Gate B Phase 1 (G-10) |
+| 11 | `correct_goal_funding_snapshot` EXECUTE | **GRANT** `authenticated` EXECUTE during **Gate B Phase 1**; **retain in-function owner-only enforcement — Wendy/household_admin remains rejected** via `public.is_owner()`. | Gate B Phase 1 (G-11) |
+
+### 7.1 Row-9 implementation note (deleteRecon)
+
+Two parts, both **before** the Gate B activation completes:
+- **Server (G-08):** `REVOKE DELETE ON public.weekly_reconciliations FROM authenticated` (Phase 2) —
+  after this, the current `deleteRecon` direct DELETE is denied for **every** week (fail-closed).
+- **Browser guard (activation branch — IMPLEMENTED, P0-4 2026-07-13):** `canDeleteRecon(n)` offers
+  reconciliation deletion **only** for a legacy pre-anchor week (1–4) that bears **no** snapshots and
+  only when the snapshot load is known-good (`_goalSnapLoadStatus==='loaded'`); it **fails closed** on
+  any uncertain snapshot state. Anchor (5), `complete`, `half_closed`, `corrupt`, and any
+  snapshot-bearing week are never deletable. `deleteRecon` re-checks the guard (defense in depth),
+  does **not** optimistically drop local state on a denied server DELETE, and surfaces a week-scoped
+  operator message. Covered by static tests (`5G1D-P04-01…16`) + e2e (`5G1D-DEL-1…3`). The
+  exceptional owner-only cleanup path (an owner-gated RPC or a supervised guarded-SQL runbook) is a
+  **separate design + approval** — deletion is never a correction.
+
+### 7.2 Execution constraints (approved, binding)
+
+- These decisions **do not authorize immediate SQL execution.**
+- **Phase 2 revokes are NOT applied until (P0-1):** Slice 6 inert deployment is complete + green;
+  Phase 1 grants are applied; the browser (incl. the row-9 guard + response validation) is deployed
+  and verified; **the first supervised Week-6 closeout is durably complete through the wrapper**
+  (recon row + nine snapshots) with the old RPC still granted as a fallback; rollback remains ready.
+- **No broken interval** in which neither the old nor the new production path works is permitted.
+- **Any failure before Phase 2 revokes is a HARD STOP** — and the old RPC is still granted, so the
+  ordinary path is intact.
+- **Any failure after Phase 2 revokes follows the approved rollback (P0-2):** the
+  operational-continuity rollback (re-grant the old recon RPC only) restores the ordinary closeout,
+  or exact-restore under its own approval; revert the browser deployment; **do not delete persisted
+  reconciliation or snapshot rows.**
+
+**SQL impact of these approvals:** none — the authored grant files already implement exactly the
+approved postures (`-activation-grants.sql` = G-10/G-11; `-activation-revokes.sql` = G-01…G-08;
+`-activation-grants-rollback.sql`; `-activation-grants-validation.sql`). No SQL file is edited by
+this approval. Row 9's browser guard is an `index.html` change (Gate B / Slice 7), not SQL.

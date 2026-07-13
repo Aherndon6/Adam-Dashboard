@@ -21,16 +21,59 @@
 
 - **Gate D — DECIDED: Option A (pre-freeze activation), Adam-approved 2026-07-13.** Timing decision only; it does **not** authorize production deployment, production SQL, grant changes, merge to `main`, or Gate B activation. Target: activation + first Week-6 closeout complete **before Jul 24** (freeze Jul 24–Aug 10); realistic go/no-go ≈ Jul 16–17; first supervised Week-6 closeout ≈ Sat Jul 18.
 - **Slices 3/4/5 — COMPLETE (browser closeout).** The weekly closeout now runs as a two-step atomic combined write through `save_weekly_closeout_with_snapshots` (confirmation view freezes the nine-row payload; drops the optimistic reconData write; state machine handles in-flight / GFA01-adjudication / domain-reject / ambiguous-re-read / half-close repair). Slice 4a/4b add `closeoutState(n)` + the reconciled-vs-fully-closed badges. Implemented in-place in `index.html` under the standing freeze exception; **branch-held on `claude/herndon-5g-1d-preactivation-j428vn` (pushed), NOT merged to `main` — `main` auto-deploys, and the wrapper has no production grant until Gate B.** `origin/main` holds docs only (`5bd6c69`).
-  - **Local verification (Adam machine):** full `node e2e.js` **142 passed / 0 failed / 0 skipped**; readiness fallbacks **openApp 0 / clickNav 0**; runtime ~5 min. Static regression **1486/0**. `BUILD_TS` intentionally unchanged (branch-held, not deployed).
+  - **Local verification (Adam machine):** full `node e2e.js` **142 passed / 0 failed / 0 skipped**; readiness fallbacks **openApp 0 / clickNav 0**; runtime ~5 min. Static regression **1486/0**. `BUILD_TS` intentionally unchanged (branch-held, not deployed). **⟶ SUPERSEDED 2026-07-13 by the independent pre-production corrections (P0-4 row-9 guard + P1-1 response validation added): static is now 1507/0; local full e2e expected 148/0 (Adam-run gate). See "## 5G-1D INDEPENDENT PRE-PRODUCTION REVIEW CORRECTIONS".**
   - The E2E run added six closeout tests (`5G1D-CO-1…6`, CO-1 smoke-tagged), consolidated onto one shared page. The earlier 4-failure run (LEDGER-1/A6-1/A9-1/A9-2) was root-caused to **pre-existing headless readiness/timing flakiness, not this branch** (all four run before the CO block; the index.html diff touches zero Register/auth/load symbols; load time is identical to `main`); the count 142 = 136 baseline (129 `await test(` source lines + the Section-A 8-tab loop) + 6.
 
 - **Remaining pre-activation planning — DELIVERED (2026-07-13, this session; PLANS ONLY, nothing executed):**
-  - **Gate C decision register:** `docs/phase-5g-1d-gatec-register-2026-07-13.md` — 11 write surfaces, current grant posture, recommended retain/wrap/restrict/revoke, required SQL, rollback, exact Adam approvals. **Decisions NOT made/executed — Adam's per surface.**
+  - **Gate C decision register:** `docs/phase-5g-1d-gatec-register-2026-07-13.md` — 11 write surfaces, current grant posture, recommended retain/wrap/restrict/revoke, required SQL, rollback, exact Adam approvals. **⟶ UPDATE 2026-07-13: all 11 dispositions APPROVED as recommended (Adam) — APPROVED, NOT EXECUTED; execution is Gate B.**
   - **Activation grant SQL package (authored, env-guarded, NOT executed):** `docs/phase-5g-1d-activation-grants.sql` (Phase 1 grants G-10/G-11), `-activation-revokes.sql` (Phase 2 lockdown G-01…G-08), `-activation-grants-rollback.sql`, `-activation-grants-validation.sql`.
   - **Slice 6 inert deploy runbook:** `docs/phase-5g-1d-slice6-deploy-runbook-2026-07-13.md` (preflight / restore point / deploy / validate / inert end state / rollback boundary / evidence). Uses the committed `docs/phase-5g-1d-{preflight,migration,validation,rollback}.sql`.
   - **Gate B activation runbook:** `docs/phase-5g-1d-gateb-activation-runbook-2026-07-13.md` (preflight / grants two-phase / merge timing / activation sequence / first Week-6 supervised closeout / old-RPC revoke / post-activation verification / rollback boundary).
 
 - **Still OUTSTANDING (all require their own explicit Adam approval; none executed):** Gate C per-surface dispositions; Slice 6 inert prod deploy; **Gate B production activation** (Phase-1 grants → BUILD_TS stamp + merge `main` → Phase-2 revokes/old-RPC revoke → first Week-6 supervised closeout); Gate E remains OPEN-when-triggered (never triggered). **No production DDL, grant change, merge, or activation has occurred.**
+
+## 5G-1D INDEPENDENT PRE-PRODUCTION REVIEW CORRECTIONS (2026-07-13)
+
+An independent pre-production review (ChatGPT) returned "core sound; Slice 6 conditional; Gate B not
+yet ready" with findings P0-1…P2. All are addressed on `claude/herndon-5g-1d-preactivation-j428vn`
+(correction/testing/planning only — **no SQL executed, no production/staging touched, no merge, no
+BUILD_TS stamp, Slice 6 and Gate B NOT begun**). Full closeout:
+`docs/phase-5g-1d-independent-preproduction-review-closeout-2026-07-13.md`.
+
+- **P0-4 (browser, IMPLEMENTED):** row-9 `deleteRecon` guard — `canDeleteRecon(n)` offers deletion
+  only for a legacy pre-anchor (wk1–4), snapshot-free week with a known-good snapshot load; fails
+  closed on uncertain load; anchor/complete/half_closed/corrupt/snapshot-bearing blocked; defense-in-
+  depth re-check in `deleteRecon`; no optimistic local removal on a denied DELETE; week-scoped
+  operator message. Tests `5G1D-P04-01…16` (static) + `5G1D-DEL-1…3` (e2e).
+- **P1-1 (browser, IMPLEMENTED):** `submitCloseout` no longer trusts a bare 2xx — it validates the
+  wrapper contract (`ok`/`mode`/`week_num`/`snapshot_count===9`), reloads BOTH halves, and requires
+  the persisted end-state to be `closeoutState==='complete'` with the nine snapshots matching, else
+  routes to the unknown/review path (staging preserved). Tests `P1-1a…e` (static) + `5G1D-CO-7/8/9`
+  (e2e).
+- **P0-1 (activation order):** the first supervised Week-6 closeout now runs **before** the Phase-2
+  revokes (old RPC retained as a fallback); "wrapper is the sole path" is proven **after** by two
+  NON-MUTATING post-revoke probes (idempotent branch-F re-submit; invalid-input old-RPC bypass probe).
+  Unified across the Gate B runbook, the Gate C register, and `-activation-revokes.sql` (pre-lockdown
+  asserts, incl. Week-6-durably-complete).
+- **P0-2 (rollback):** `-activation-grants-rollback.sql` split into (A) operational-continuity
+  (default — re-grant the old recon RPC only) and (B) exact-restore (exceptional, from the captured
+  matrix); "restores exactly" and the old-RPC-restore contradiction corrected.
+- **P0-3 (SECURITY DEFINER owner):** preflight captures the trusted owner; migration pins the two new
+  functions to it; validation + the activation-grant matrix prove owner==inner-RPC-owner (non-client),
+  unchanged across activation.
+- **P1-2 (Slice-6 restore point):** hardened to a custom-format restorable `pg_dump`
+  (`-Fc --no-owner --no-acl`, public-schema), SHA-256, `pg_restore --list` verify, chmod 600,
+  encrypted off-device copy, metadata-only committed, no credentials in evidence.
+- **P1-3 (activation preconditions):** grants hard-stop on an unexpected pre-grant (documented
+  `c_resume`); revokes assert wrapper-granted + old-RPC-still-granted + Week-6-complete + owner-
+  unchanged + a row-9-guard-build reminder.
+- **P2 (doc consistency):** this section + `docs/phase-status.md` reconciled to Gate C
+  approved-not-executed, Gate D Option A, the two browser corrections (superseding 1486/0 & 142/0 →
+  1507/0 static + 148/0 expected e2e), Slice 6 unexecuted, Gate B unapproved, Gate E untriggered.
+
+**Verification:** static regression **1507 / 0** (sandbox-run). Full `node e2e.js` is **Adam's
+gate** (the sandbox cannot initialize Supabase); expected **148 / 0**, readiness fallbacks 0/0.
+**Awaiting Adam review before Slice 6 authorization.**
 
 ## Current Phase
 

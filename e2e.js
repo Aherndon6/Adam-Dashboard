@@ -4154,7 +4154,10 @@ async function clickNav(page, id) {
       if (scn === 'abort') return route.abort();
       if (scn === 'gfa01') return route.fulfill({ status:400, contentType:'application/json', body: JSON.stringify({ code:'GFA01', message:'fully closed week 6: non-empty commitment resubmission', hint:'REQUIRES_SUPERVISED_ADJUDICATION' }) });
       if (scn === 'monotonic') return route.fulfill({ status:400, contentType:'application/json', body: JSON.stringify({ message:'monotonic violation: adam_ira submitted 50 < prior effective 100 (use the correction path)' }) });
-      return route.fulfill({ status:200, contentType:'application/json', body: JSON.stringify({ ok:true, mode:'normal_closeout', week_num:6, snapshot_count:9 }) });
+      // P1-1: a 2xx with a malformed success contract (snapshot_count≠9) — must NOT be trusted.
+      if (scn === 'badcontract') return route.fulfill({ status:200, contentType:'application/json', body: JSON.stringify({ ok:true, mode:'normal_closeout', week_num: coBody.p_week_num, snapshot_count:8 }) });
+      // Success: echo the posted week so res.week_num===n holds for any scenario's week.
+      return route.fulfill({ status:200, contentType:'application/json', body: JSON.stringify({ ok:true, mode:'normal_closeout', week_num: coBody.p_week_num, snapshot_count:9 }) });
     });
     await page.route('**/rest/v1/weekly_reconciliations**', route => route.fulfill({ status:200, contentType:'application/json', body: reloadRecon }));
     await page.route('**/rest/v1/cash_commitments**', route => route.fulfill({ status:200, contentType:'application/json', body:'[]' }));
@@ -4169,11 +4172,16 @@ async function clickNav(page, id) {
       }, cfg);
     };
 
-    await test('5G1D-CO-1: closeout POSTs the wrapper payload (9 rows, normal_closeout, expected 9, no p_recorded_at) and closes on success', async () => {
-      scn = 'success'; reloadRecon = '[]'; reloadSnaps = '[]';
+    await test('5G1D-CO-1: closeout POSTs the wrapper payload (9 rows, normal_closeout, expected 9, no p_recorded_at) and closes on a verified-complete success', async () => {
+      scn = 'success';
+      // P1-1: success is only trusted when the reloaded end-state IS a complete closeout of this
+      // week's nine — so the re-read must return a reconciled week 6 with the nine matching snaps.
+      reloadRecon = JSON.stringify([{ week_num:6, chk:100, sav:200, amx:300, tax:0, lc:400, balance_basis:'posted_current_balance', recorded_at:'2026-07-13T00:00:00Z' }]);
+      reloadSnaps = JSON.stringify(NINE.map(id => ({ week_num:6, goal_id:id, funded_amount:100 })));
       await resetCloseout({ nine:NINE, week:6, bal:{chk:100,sav:200,amx:300,tax:0,lc:400}, presentN:0 });
       const r = await page.evaluate(async () => { await submitCloseout(); return { closeout:_closeout, reconOpen:reconOpen }; });
       await page.waitForTimeout(30);
+      reloadRecon = '[]'; reloadSnaps = '[]';
       assert(coPosts === 1, 'exactly one wrapper POST, got ' + coPosts);
       assert(coBody && coBody.p_mode === 'normal_closeout', 'p_mode normal_closeout');
       assert(coBody.p_expected_count === 9, 'p_expected_count 9');
@@ -4181,7 +4189,7 @@ async function clickNav(page, id) {
       assert(Array.isArray(coBody.p_snapshot_rows) && coBody.p_snapshot_rows.length === 9, 'nine snapshot rows');
       assert(coBody.p_snapshot_rows.every(x => !('source' in x)), 'no client source key on rows');
       assert('p_new_commitments' in coBody && 'p_patched' in coBody, 'commitment arrays present');
-      assert(r.closeout === null, '_closeout cleared on success');
+      assert(r.closeout === null, '_closeout cleared on a verified-complete success');
       assert(r.reconOpen === null, 'form closed on success');
     }, { tags: ['smoke'] });
 
@@ -4230,13 +4238,99 @@ async function clickNav(page, id) {
     });
 
     await test('5G1D-CO-6: a half-close repair POSTs empty commitment arrays with the nine snapshot rows (branch G shape)', async () => {
-      scn = 'success'; reloadRecon = '[]'; reloadSnaps = '[]';
+      scn = 'success';
+      reloadRecon = JSON.stringify([{ week_num:7, chk:1, sav:2, amx:3, tax:0, lc:4, balance_basis:'posted_current_balance', recorded_at:'2026-07-13T00:00:00Z' }]);
+      reloadSnaps = JSON.stringify(NINE.map(id => ({ week_num:7, goal_id:id, funded_amount:100 })));
       await resetCloseout({ nine:NINE, week:7, bal:{chk:1,sav:2,amx:3,tax:0,lc:4}, presentN:3, repair:true });
-      await page.evaluate(async () => { await submitCloseout(); });
+      const r = await page.evaluate(async () => { await submitCloseout(); return { closeout:_closeout }; });
       await page.waitForTimeout(30);
+      reloadRecon = '[]'; reloadSnaps = '[]';
       assert(coBody && Array.isArray(coBody.p_new_commitments) && coBody.p_new_commitments.length === 0, 'repair posts empty p_new_commitments');
       assert(Array.isArray(coBody.p_patched) && coBody.p_patched.length === 0, 'repair posts empty p_patched');
       assert(Array.isArray(coBody.p_snapshot_rows) && coBody.p_snapshot_rows.length === 9, 'nine snapshot rows in a repair');
+      assert(r.closeout === null, 'a verified-complete repair clears _closeout');
+    });
+
+    // ── P1-1: a 2xx is not proof — the reloaded end-state must confirm a complete closeout ──
+    await test('5G1D-CO-7: a 2xx whose reloaded end-state is NOT complete stays on the confirmation (unknown, not success)', async () => {
+      scn = 'success'; reloadRecon = '[]'; reloadSnaps = '[]'; // server accepts, but nothing persisted on re-read
+      await resetCloseout({ nine:NINE, week:6, bal:{chk:1,sav:2,amx:3,tax:0,lc:4}, presentN:0 });
+      const r = await page.evaluate(async () => { await submitCloseout(); return { retained:!!_closeout, phase:_closeout&&_closeout.phase, error:_closeout&&_closeout.error, reconOpen:reconOpen }; });
+      await page.waitForTimeout(30);
+      assert(r.retained === true, '_closeout retained — a 2xx with no persisted completion is NOT success');
+      assert(r.phase === 'confirm', 'stays on the confirmation, got ' + r.phase);
+      assert(/could not be confirmed complete/.test(r.error || ''), 'explains the uncertainty, got: ' + r.error);
+      assert(r.reconOpen === 6, 'form stays open on an unconfirmed 2xx');
+    });
+
+    await test('5G1D-CO-8: a 2xx with a bad response contract (snapshot_count≠9) is not trusted even if the week reads complete', async () => {
+      scn = 'badcontract';
+      reloadRecon = JSON.stringify([{ week_num:6, chk:1, sav:2, amx:3, tax:0, lc:4, balance_basis:'posted_current_balance', recorded_at:'2026-07-13T00:00:00Z' }]);
+      reloadSnaps = JSON.stringify(NINE.map(id => ({ week_num:6, goal_id:id, funded_amount:100 })));
+      await resetCloseout({ nine:NINE, week:6, bal:{chk:1,sav:2,amx:3,tax:0,lc:4}, presentN:0 });
+      const r = await page.evaluate(async () => { await submitCloseout(); return { retained:!!_closeout, phase:_closeout&&_closeout.phase }; });
+      await page.waitForTimeout(30);
+      reloadRecon = '[]'; reloadSnaps = '[]';
+      assert(r.retained === true, '_closeout retained — a malformed success contract must not clear staging');
+      assert(r.phase === 'confirm', 'stays on the confirmation, got ' + r.phase);
+    });
+
+    await test('5G1D-CO-9: a 2xx whose persisted snapshots disagree with the confirmed amounts is not trusted', async () => {
+      scn = 'success';
+      reloadRecon = JSON.stringify([{ week_num:6, chk:1, sav:2, amx:3, tax:0, lc:4, balance_basis:'posted_current_balance', recorded_at:'2026-07-13T00:00:00Z' }]);
+      reloadSnaps = JSON.stringify(NINE.map(id => ({ week_num:6, goal_id:id, funded_amount:999 }))); // ≠ confirmed 100
+      await resetCloseout({ nine:NINE, week:6, bal:{chk:1,sav:2,amx:3,tax:0,lc:4}, presentN:0 });
+      const r = await page.evaluate(async () => { await submitCloseout(); return { retained:!!_closeout, phase:_closeout&&_closeout.phase }; });
+      await page.waitForTimeout(30);
+      reloadRecon = '[]'; reloadSnaps = '[]';
+      assert(r.retained === true, '_closeout retained — persisted≠confirmed must not report success');
+      assert(r.phase === 'confirm', 'stays on the confirmation, got ' + r.phase);
+    });
+
+    await context.close();
+  }
+
+  // ── 5G-1D P0-4: reconciliation-delete row-9 guard (real DELETE round-trip) ──
+  // Proves the guard end-to-end in a browser: a denied server DELETE must NOT drop local
+  // reconciliation state, and a legitimately-deletable legacy week still deletes. The pure
+  // predicate matrix (canDeleteRecon) is covered exhaustively in test_regression.js.
+  {
+    const { page, context } = await openApp(browser);
+    let delStatus = 200, delMethodSeen = '';
+    await page.route('**/rest/v1/weekly_reconciliations**', route => {
+      const m = route.request().method();
+      if (m === 'DELETE') { delMethodSeen = m; return route.fulfill({ status: delStatus, contentType:'application/json', body:'[]' }); }
+      return route.fulfill({ status:200, contentType:'application/json', body:'[]' });
+    });
+    const setupDel = (loadStatus) => page.evaluate((ls) => {
+      USER_ROLE='owner'; getAuthHeaders=async()=>({apikey:'t',Authorization:'Bearer t','Content-Type':'application/json'});
+      reconData={ 3:{chk:1,sav:2,amx:3,tax:0,lc:4,balance_basis:'posted_current_balance',date:'Jan 18'} };
+      goalSnapData={}; _goalSnapLoadStatus=ls; _reconDeleteError=null; reconDeleteConfirm=false; reconOpen=null;
+    }, loadStatus);
+
+    await test('5G1D-DEL-1: a DENIED server DELETE (403) keeps local reconData and records a week-scoped message', async () => {
+      delStatus = 403;
+      await setupDel('loaded'); // wk3 legacy + snapshot-free + loaded ⇒ canDeleteRecon true, so the guard allows the attempt
+      const r = await page.evaluate(async () => { await deleteRecon(3); return { present: reconData[3] !== undefined, err: _reconDeleteError }; });
+      assert(r.present === true, 'reconData[3] must survive a denied DELETE (no optimistic drop)');
+      assert(r.err && r.err.week === 3, 'a week-scoped delete error is recorded, got ' + JSON.stringify(r.err));
+    });
+
+    await test('5G1D-DEL-2: an ALLOWED legacy delete (200) removes local reconData and clears the error', async () => {
+      delStatus = 200;
+      await setupDel('loaded');
+      const r = await page.evaluate(async () => { await deleteRecon(3); return { present: reconData[3] !== undefined, err: _reconDeleteError }; });
+      assert(r.present === false, 'reconData[3] removed after a 200 DELETE');
+      assert(!r.err, 'no delete error after success, got ' + JSON.stringify(r.err));
+    });
+
+    await test('5G1D-DEL-3: an UNCERTAIN snapshot load blocks the delete entirely (fail closed — no DELETE issued)', async () => {
+      delStatus = 200; delMethodSeen = '';
+      await setupDel('unavailable'); // cannot prove snapshot-free ⇒ canDeleteRecon false ⇒ guard short-circuits before any fetch
+      const r = await page.evaluate(async () => { await deleteRecon(3); return { present: reconData[3] !== undefined, err: _reconDeleteError }; });
+      assert(r.present === true, 'reconData[3] kept — an uncertain snapshot load must not delete');
+      assert(delMethodSeen === '', 'no DELETE request was issued (guard short-circuited before fetch)');
+      assert(r.err && r.err.week === 3, 'operator told why it was withheld');
     });
 
     await context.close();

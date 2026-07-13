@@ -1,12 +1,14 @@
-# Phase 5G-1D — Slice 6 Inert Production Deployment Runbook
+# Phase 5G-1D — Slice 6 Inert Production Deployment — FINAL EXECUTION PACKAGE
 
-**Status:** RUNBOOK — NOT EXECUTED, NOT AUTHORIZED. Deploys the closeout wrapper + Option B to
-**production, INERT** (no grants, nothing calls them). **No activation, no browser change, no grant
-change.** Execution requires its own explicit in-session Adam approval **and** a separately
-pre-approved rollback. Nothing here is production-affecting until Adam runs it.
+**Status:** **FINAL — READY FOR EXECUTION APPROVAL; NOT EXECUTED, NOT AUTHORIZED.** Deploys the
+closeout wrapper + Option B to **production, INERT** (no grants, nothing calls them). **No
+activation, no browser change, no grant change** — Slice 6 is Gate-C-independent (all grant changes
+are Gate B). Execution requires its own explicit in-session Adam approval **and** the pre-approved
+rollback (§6.1). Nothing here is production-affecting until Adam runs it.
 **Date:** 2026-07-13
 **Author:** Claude (session under Adam)
-**Gate D:** Option A (pre-freeze) — APPROVED. Browser (Slices 3/4/5) COMPLETE; local E2E 142/0,
+**Gate D:** Option A (pre-freeze) — APPROVED. **Gate C:** all 11 dispositions APPROVED (Adam,
+2026-07-13) — executes at Gate B, **not here.** Browser (Slices 3/4/5) COMPLETE; local E2E 142/0,
 readiness fallbacks 0/0.
 **Target:** PRODUCTION Adam-Dashboard (`usayoldrawwmjsmretin`), `system_identifier`
 `7632885393857617092`.
@@ -48,20 +50,42 @@ unchanged.**
 
 ---
 
-## 2. Backup / restore-point requirements (Free-plan mechanism)
+## 2. Backup / restore-point requirements (Free-plan mechanism — P1-2 hardened)
 
-Supabase Free plan = no PITR, so the restore point is a manual full dump (E1 model):
+Supabase Free plan = no PITR, so the restore point is a manual dump captured **in the same sitting,
+immediately before the migration**. Requirements (all ☐ must hold):
 
-1. ☐ Full **public-schema `pg_dump` (schema + DATA)** of production, captured **in the same
-   sitting, immediately before the migration**.
-2. ☐ Stored **outside the repo** at `~/Herndon-FOS-DB-Backups/Adam-Dashboard/5G-1D-Slice6/`
-   (chmod 600) — **never committed**.
-3. ☐ Repo holds **metadata only**: file name, byte size, sha256, timestamp (a committable
-   `exports/db-restorepoint-5G-1D-slice6-metadata-<ts>.md`).
-4. ☐ This dump is the **disaster floor** beneath the SQL rollback: SQL rollback drops the two new
-   functions; the dump restores everything if a deeper problem appears.
-5. ☐ (Synthesis P1 recovery-floor tie-in) confirm the dump is also copied **off-device, encrypted**
-   — this is the immediate DR requirement for the sole live system of record.
+1. ☐ **Format — custom, restorable:** `pg_dump -Fc` (custom format), **schema + DATA**, with
+   `--no-owner --no-acl` (the restore target re-derives ownership/ACLs; this also keeps role names
+   out of the artifact). Example (run by Adam; **credentials never pasted into any committed file or
+   this runbook** — use `~/.pgpass` or an env var):
+   `pg_dump -Fc --no-owner --no-acl --schema=public -f 5G-1D-slice6-restorepoint-<ts>.dump "$PROD_DSN"`
+2. ☐ **Scope is explicit:** this is a **public-schema dump** — it captures the application tables,
+   functions, RLS policies, and data in `public`, **not** a full Supabase *platform* backup (it does
+   not include `auth`/`storage` schemas, Edge configs, or project settings). For this phase the
+   public schema is the system of record; note the scope in the metadata so no one mistakes it for a
+   whole-project restore.
+3. ☐ **Restorability verified before trusting it:** `pg_restore --list <dump>` succeeds and shows the
+   expected `public` objects (tables + the deployed RPCs). A dump that will not `--list` is not a
+   restore point.
+4. ☐ **Integrity + perms:** compute **SHA-256** of the `.dump`; store the file with restrictive perms
+   (`chmod 600`).
+5. ☐ **Location:** stored **outside the repo** at `~/Herndon-FOS-DB-Backups/Adam-Dashboard/5G-1D-Slice6/`
+   — **never committed** (it contains household data).
+6. ☐ **Off-device, encrypted copy:** a second copy encrypted at rest and off the primary device
+   (Synthesis P1 recovery-floor tie-in) — the immediate DR requirement for the sole live system of
+   record. Record only *that* it exists + its SHA-256 in the metadata; **no keys, no credentials**.
+7. ☐ **Committable metadata ONLY** (`exports/db-restorepoint-5G-1D-slice6-metadata-<ts>.md`): file
+   name, byte size, SHA-256, timestamp, scope (`public`-schema custom-format dump), `pg_restore
+   --list` object count, off-device-copy confirmation. **No connection strings, no credentials, no
+   household values.**
+8. ☐ This dump is the **disaster floor** beneath the SQL rollback: `-rollback.sql` drops the two new
+   functions; the dump restores the public schema if a deeper problem appears.
+
+**P0-3 owner capture (same sitting, from the preflight):** record the `definer-owner-baseline`
+(`current_user`/`session_user` + the owners of `save_reconciliation_with_commitments`,
+`save_goal_funding_snapshots`, `is_owner`, `can_write_financials`) in the Slice-6 evidence — this is
+the trusted owner the migration pins the two new functions to, and the Gate-B lockdown re-asserts.
 
 ---
 
@@ -73,8 +97,10 @@ Supabase Free plan = no PITR, so the restore point is a manual full dump (E1 mod
    deployed RPCs at exact signatures — **capture their `md5(pg_get_functiondef())`** (the
    byte-unchanged baseline for §4 and for the Gate-B/grant validation); `is_owner()` /
    `can_write_financials()` present; **both new functions ABSENT**; Week-5 anchor complete by
-   goal_id (nine eligible `opening_anchor`; the two `wewe_*` correction rows tolerated). Save
-   output verbatim.
+   goal_id (nine eligible `opening_anchor`; the two `wewe_*` correction rows tolerated). **Capture
+   the `definer-owner-baseline` (P0-3)** — `current_user`/`session_user` + the shared owner of the
+   deployed RPCs / `is_owner` / `can_write_financials`; the preflight hard-stops if they do not share
+   one non-client owner. Save output verbatim.
 3. ☐ **Restore point** — §2 dump captured; metadata recorded.
 4. ☐ **Migration** — run `docs/phase-5g-1d-migration.sql`: env guard resolves `production`; creates
    **exactly two** functions; ends with `REVOKE ALL … FROM PUBLIC, anon, authenticated` on both.
@@ -104,6 +130,9 @@ From `docs/phase-5g-1d-validation.sql` (one READ-ONLY transaction), all must pas
 - ☐ structural: SECURITY DEFINER + `search_path=public,pg_temp` on both; no dynamic SQL; no
   EXCEPTION handler; inlined finiteness rejection in both; per-goal `goal_registry FOR UPDATE`
   mutex in both; advisory-lock namespace `1734501000`;
+- ☐ **owner pinned (P0-3):** both new functions owned by the trusted definer owner (== the deployed
+  recon/snapshot RPC owner from the preflight baseline); owner is not a client role. The migration
+  hard-stops on owner drift; validation re-proves it (`definer-owner` row);
 - ☐ **old reconciliation RPC `authenticated` EXECUTE still PRESENT** (its revocation is Gate B /
   Slice 7, not now).
 
@@ -147,12 +176,29 @@ Manual inert checks (same sitting):
   browser deploy) carries its **own** rollback (`docs/phase-5g-1d-activation-grants-rollback.sql`,
   the browser-revert) — **outside this boundary.**
 
+### 6.1 Rollback pre-approval language (Adam signs this BEFORE the migration runs)
+
+> *I pre-approve the Slice-6 rollback: if the Slice-6 preflight, migration, or validation fails, or
+> any behavioral/rendered change is observed, execution stops immediately and
+> `docs/phase-5g-1d-rollback.sql` may be run in the same sitting to DROP exactly the two new
+> functions `save_weekly_closeout_with_snapshots` and `correct_goal_funding_snapshot`. This rollback
+> touches nothing else: the E1 table + `save_goal_funding_snapshots`, the reconciliation RPC, all
+> RLS, all grants, and all rows (incl. the 11 Week-5 snapshot rows) remain unchanged, and NO
+> reconciliation or snapshot data is deleted. If a deeper problem is found, the same-sitting
+> restore-point `pg_dump` (§2) is the disaster floor. No grant change, browser deploy, or activation
+> is authorized by this pre-approval — those remain Gate B.*
+
+This pre-approval is **required before step 4 (migration)**. It authorizes only the Slice-6 DROP
+rollback; it does not authorize any Gate B action.
+
 ---
 
 ## 7. Evidence to capture (balance-free, saved verbatim)
 
-- ☐ Preflight output incl. the two deployed-RPC md5 baselines.
-- ☐ Restore-point metadata (name, size, sha256, timestamp) — committable; the dump itself local-only.
+- ☐ Preflight output incl. the two deployed-RPC md5 baselines **and the `definer-owner-baseline`
+  (P0-3)** — the trusted owner + `current_user`/`session_user`.
+- ☐ Restore-point metadata (name, size, sha256, timestamp, scope, `pg_restore --list` count,
+  off-device-copy confirmation) — committable; the dump itself local-only, credentials never recorded.
 - ☐ Migration output (`M-*` notices; `COMMIT`).
 - ☐ Validation output (all asserts PASS; the byte-unchanged md5 comparisons).
 - ☐ Inert-check results: REST-probe status code; BUILD_TS; snapshot row count (11); console-clean

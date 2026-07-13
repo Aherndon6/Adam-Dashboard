@@ -451,4 +451,25 @@ REVOKE ALL ON FUNCTION public.correct_goal_funding_snapshot(
   INT,INT,TEXT,NUMERIC,NUMERIC,TEXT
 ) FROM PUBLIC, anon, authenticated;
 
+-- ██ SECURITY DEFINER owner consistency (P0-3) ██
+-- The two functions were just CREATEd owned by whoever ran this migration. They run AS their owner
+-- (SECURITY DEFINER) and CALL the deployed recon/snapshot RPCs (themselves SECURITY DEFINER, owned
+-- by the trusted role). Pin the new functions to that EXACT owner: otherwise the definer identity
+-- differs from the role that owns the inner RPCs, and — critically — the Gate-B lockdown proves that
+-- this pinned owner is the identity that still executes those inner RPCs after their authenticated
+-- EXECUTE is revoked. A drifted owner would break the closeout the instant Phase-2 runs.
+DO $$
+DECLARE
+  v_trusted text := (SELECT pg_get_userbyid(proowner) FROM pg_proc WHERE oid = 'public.save_reconciliation_with_commitments(INT,INT,NUMERIC,NUMERIC,NUMERIC,NUMERIC,NUMERIC,TEXT,TIMESTAMPTZ,JSONB,JSONB)'::regprocedure);
+  v_wrap    text := (SELECT pg_get_userbyid(proowner) FROM pg_proc WHERE oid = 'public.save_weekly_closeout_with_snapshots(INT,INT,NUMERIC,NUMERIC,NUMERIC,NUMERIC,NUMERIC,TEXT,JSONB,JSONB,JSONB,TEXT,INT)'::regprocedure);
+  v_optb    text := (SELECT pg_get_userbyid(proowner) FROM pg_proc WHERE oid = 'public.correct_goal_funding_snapshot(INT,INT,TEXT,NUMERIC,NUMERIC,TEXT)'::regprocedure);
+BEGIN
+  IF v_trusted IS NULL THEN RAISE EXCEPTION 'HARD STOP: could not resolve the trusted (recon RPC) owner. Aborting.'; END IF;
+  IF v_wrap <> v_trusted OR v_optb <> v_trusted THEN
+    RAISE EXCEPTION 'HARD STOP: new-function owner drift (wrapper=%, optionB=%, trusted=%). Recreate as the trusted owner. Aborting migration.', v_wrap, v_optb, v_trusted; END IF;
+  IF v_trusted IN ('anon','authenticated','public') THEN
+    RAISE EXCEPTION 'HARD STOP: trusted owner resolves to a client role (%) — never acceptable for SECURITY DEFINER. Aborting migration.', v_trusted; END IF;
+  RAISE NOTICE 'OWNER CONSISTENCY PASS: wrapper + Option B owned by the trusted definer owner (%); matches the deployed inner RPCs.', v_trusted;
+END $$;
+
 COMMIT;
