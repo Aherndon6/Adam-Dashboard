@@ -15,6 +15,23 @@
 
 **Canonical post-5G-1D roadmap:** `docs/post-5g-1d-canonical-roadmap-synthesis-2026-07-13.md` (advisory; adopt per Adam approval).
 
+## 5G-1D BROWSER COMPLETE + GATE D DECIDED — Option A pre-freeze (2026-07-13)
+
+**Supersedes the "remaining: Slice 3 … Gates C/D/E" line in the banner above for the browser and Gate D items.** Two owner-facing advances on 2026-07-13:
+
+- **Gate D — DECIDED: Option A (pre-freeze activation), Adam-approved 2026-07-13.** Timing decision only; it does **not** authorize production deployment, production SQL, grant changes, merge to `main`, or Gate B activation. Target: activation + first Week-6 closeout complete **before Jul 24** (freeze Jul 24–Aug 10); realistic go/no-go ≈ Jul 16–17; first supervised Week-6 closeout ≈ Sat Jul 18.
+- **Slices 3/4/5 — COMPLETE (browser closeout).** The weekly closeout now runs as a two-step atomic combined write through `save_weekly_closeout_with_snapshots` (confirmation view freezes the nine-row payload; drops the optimistic reconData write; state machine handles in-flight / GFA01-adjudication / domain-reject / ambiguous-re-read / half-close repair). Slice 4a/4b add `closeoutState(n)` + the reconciled-vs-fully-closed badges. Implemented in-place in `index.html` under the standing freeze exception; **branch-held on `claude/herndon-5g-1d-preactivation-j428vn` (pushed), NOT merged to `main` — `main` auto-deploys, and the wrapper has no production grant until Gate B.** `origin/main` holds docs only (`5bd6c69`).
+  - **Local verification (Adam machine):** full `node e2e.js` **142 passed / 0 failed / 0 skipped**; readiness fallbacks **openApp 0 / clickNav 0**; runtime ~5 min. Static regression **1486/0**. `BUILD_TS` intentionally unchanged (branch-held, not deployed).
+  - The E2E run added six closeout tests (`5G1D-CO-1…6`, CO-1 smoke-tagged), consolidated onto one shared page. The earlier 4-failure run (LEDGER-1/A6-1/A9-1/A9-2) was root-caused to **pre-existing headless readiness/timing flakiness, not this branch** (all four run before the CO block; the index.html diff touches zero Register/auth/load symbols; load time is identical to `main`); the count 142 = 136 baseline (129 `await test(` source lines + the Section-A 8-tab loop) + 6.
+
+- **Remaining pre-activation planning — DELIVERED (2026-07-13, this session; PLANS ONLY, nothing executed):**
+  - **Gate C decision register:** `docs/phase-5g-1d-gatec-register-2026-07-13.md` — 11 write surfaces, current grant posture, recommended retain/wrap/restrict/revoke, required SQL, rollback, exact Adam approvals. **Decisions NOT made/executed — Adam's per surface.**
+  - **Activation grant SQL package (authored, env-guarded, NOT executed):** `docs/phase-5g-1d-activation-grants.sql` (Phase 1 grants G-10/G-11), `-activation-revokes.sql` (Phase 2 lockdown G-01…G-08), `-activation-grants-rollback.sql`, `-activation-grants-validation.sql`.
+  - **Slice 6 inert deploy runbook:** `docs/phase-5g-1d-slice6-deploy-runbook-2026-07-13.md` (preflight / restore point / deploy / validate / inert end state / rollback boundary / evidence). Uses the committed `docs/phase-5g-1d-{preflight,migration,validation,rollback}.sql`.
+  - **Gate B activation runbook:** `docs/phase-5g-1d-gateb-activation-runbook-2026-07-13.md` (preflight / grants two-phase / merge timing / activation sequence / first Week-6 supervised closeout / old-RPC revoke / post-activation verification / rollback boundary).
+
+- **Still OUTSTANDING (all require their own explicit Adam approval; none executed):** Gate C per-surface dispositions; Slice 6 inert prod deploy; **Gate B production activation** (Phase-1 grants → BUILD_TS stamp + merge `main` → Phase-2 revokes/old-RPC revoke → first Week-6 supervised closeout); Gate E remains OPEN-when-triggered (never triggered). **No production DDL, grant change, merge, or activation has occurred.**
+
 ## Current Phase
 
 Phase 5B complete.

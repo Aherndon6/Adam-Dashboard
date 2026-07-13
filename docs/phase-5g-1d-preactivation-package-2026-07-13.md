@@ -10,6 +10,17 @@ work. This package ends at **"Ready for Gate B production activation"** and stop
 **not** perform production activation, change production grants, enable production behavior,
 perform supervised closeout, execute Gate B, execute SQL against production, modify E1, or rerun E2.
 
+> **UPDATE (2026-07-13, post-implementation):** The browser work this package planned is **DONE** —
+> Slices 3/4/5 complete; local full E2E **142/0**, readiness fallbacks **0/0**; static **1486/0**
+> (branch-held on `claude/herndon-5g-1d-preactivation-j428vn`, not merged). **Gate D is DECIDED:
+> Option A (pre-freeze), Adam-approved 2026-07-13.** The Gate C brief (§3), Slice 6 checklist (§5),
+> and execution plan (§7) below are **superseded for execution** by the finalized packages:
+> `docs/phase-5g-1d-gatec-register-2026-07-13.md` (Gate C register + grant SQL),
+> `docs/phase-5g-1d-slice6-deploy-runbook-2026-07-13.md` (Slice 6), and
+> `docs/phase-5g-1d-gateb-activation-runbook-2026-07-13.md` (Gate B). This document is retained as
+> the pre-activation analysis of record. **Still nothing executed:** Gate C decisions, Slice 6
+> deploy, and Gate B activation all remain unauthorized.
+
 **Subordinate to (all cleared; none edited by this document):**
 1. `docs/phase-5g-1c-2-e2-runbook.md` (`c439d68`) — E2 first-anchor seed gate (E2 is COMPLETE).
 2. `docs/phase-5g-1d-plan-2026-07-09.md` (`6de4614`) — cleared write-through plan.
