@@ -17,14 +17,24 @@
 --       This restores WRITE CAPABILITY for the ordinary closeout — it does NOT claim to restore the
 --       exact pre-activation grant matrix bit-for-bit. If you need that, use (B).
 --
---   (B) EXACT-RESTORE  ← the fenced, NON-EXECUTING template at the bottom. Separate approval.
+--   (B) EXACT ACL RESTORATION  ← the fenced, NON-EXECUTING template at the bottom. Separate approval.
 --       Goal: reproduce the EXACT captured pre-activation grant matrix (repair RPC, snapshot RPC,
---       snapshot INSERT/UPDATE, weekly_reconciliations INSERT/UPDATE/DELETE). It "restores exactly"
---       ONLY insofar as each re-grant is checked against the pre-activation capture from
---       -activation-grants-validation.sql (run BEFORE Phase 1/Phase 2). The TRUE bit-exact floor is
---       the Slice-6 pre-activation restore-point pg_dump, not this script.
+--       snapshot INSERT/UPDATE, weekly_reconciliations INSERT/UPDATE/DELETE) by generating narrow
+--       GRANT/REVOKE statements FROM the captured privilege matrix — each re-grant checked against
+--       the pre-activation capture from -activation-grants-validation.sql (run BEFORE Phase 1/Phase 2).
+--       This is a GRANT-ONLY operation.
 --
--- No function body, RLS, or data is touched by either. Env-guarded (prod or staging). Balance-free.
+--   ⚠ THE SLICE-6 DUMP IS NOT A GRANT-RESTORE TOOL. It is the catastrophic DISASTER-RECOVERY floor
+--       ONLY. It was captured BEFORE Slice 6 and BEFORE the supervised Week-6 closeout, so it predates
+--       the first production write. After ANY post-dump production write (the Week-6 reconciliation +
+--       nine snapshots, or later), restoring the dump would ALSO revert that data and is NOT a routine
+--       Gate B rollback. A dump restore is a deliberate DR action requiring: (1) separate DR approval;
+--       (2) explicit acknowledgement of the restore-point timestamp; (3) a plan to preserve/replay
+--       post-dump data or explicit acceptance of its loss; (4) verification that the restore scope
+--       will not unintentionally overwrite valid later reconciliation/snapshot state. NEVER use it to
+--       "restore grants" — that is (B)'s job, from the captured matrix.
+--
+-- No function body, RLS, or data is touched by (A) or (B). Env-guarded (prod or staging). Balance-free.
 -- NEVER deletes reconciliation or snapshot rows — wrong values use the correction path (Option B),
 -- never a drop (plan §9).
 -- ─────────────────────────────────────────────────────────────────────────
@@ -73,11 +83,13 @@ END $$;
 COMMIT;
 
 -- ╔═══════════════════════════════════════════════════════════════════════╗
--- ║ (B) EXACT-RESTORE TEMPLATE — NON-EXECUTING. Separate Adam approval.     ║
+-- ║ (B) EXACT ACL RESTORATION TEMPLATE — NON-EXECUTING. Separate approval.  ║
 -- ║ Uncomment ONLY the grants the captured pre-activation matrix shows were ║
 -- ║ TRUE, verify each against -activation-grants-validation.sql's before-   ║
--- ║ Phase-1 capture, then run. The Slice-6 restore-point dump is the true   ║
--- ║ bit-exact floor if anything below is uncertain.                          ║
+-- ║ Phase-1 capture, then run. This is GRANT-ONLY and reproduces the matrix ║
+-- ║ from the capture — do NOT reach for the Slice-6 dump to recreate grants ║
+-- ║ (it is the DR floor only; restoring it reverts post-dump production      ║
+-- ║ data — see the ⚠ note at the top of this file).                         ║
 -- ╚═══════════════════════════════════════════════════════════════════════╝
 -- BEGIN;
 -- SET LOCAL search_path TO public, pg_temp;
@@ -88,8 +100,9 @@ COMMIT;
 -- GRANT INSERT, UPDATE ON public.goal_funding_snapshots TO authenticated;                                             -- iff captured TRUE (E1: no DELETE)
 -- -- weekly_reconciliations pre-activation write was Supabase-DEFAULT role grants (RLS-gated), NOT an
 -- -- explicit repo grant. Re-granting INSERT/UPDATE/DELETE explicitly APPROXIMATES that effective
--- -- capability; it is NOT guaranteed bit-identical to the default aclitem. For bit-exact fidelity,
--- -- restore weekly_reconciliations from the Slice-6 restore-point dump instead.
+-- -- capability; it is NOT guaranteed bit-identical to the default aclitem. This residual grant-shape
+-- -- difference is accepted as a grant-only tradeoff — do NOT resort to a dump restore to erase it
+-- -- (that would revert post-dump production data; the dump is DR-only, see the ⚠ note at the top).
 -- GRANT INSERT, UPDATE, DELETE ON public.weekly_reconciliations TO authenticated;                                     -- ONLY if the captured matrix + row-9 posture call for DELETE
 -- -- Verify each grant equals the captured pre-activation value, then:
 -- COMMIT;

@@ -10,8 +10,10 @@ document; nothing here modifies production grants or Supabase.**
 **Author:** Claude (session under Adam)
 **Gate D:** **Option A (pre-freeze activation) — APPROVED (Adam, 2026-07-13).** Timing only; does
 not authorize any grant change, deployment, merge, or activation.
-**Browser implementation:** Slices 3/4/5 **COMPLETE** — local full E2E **142 passed / 0 failed /
-0 skipped**, readiness fallbacks **openApp 0 / clickNav 0**, runtime ~5 min (Adam-verified).
+**Browser implementation:** Slices 3/4/5 + the P0-4 row-9 guard + the P1-1 response validation
+**COMPLETE** — **Adam-verified at commit `114b080f411fe68bfe377c902668677dd99f1710`:** static
+**1507 passed / 0 failed**, full `node e2e.js` **148 passed / 0 failed / 0 skipped**, readiness
+fallbacks **openApp 0 / clickNav 0**. *(Supersedes the pre-correction 1486/0 and 142/0.)*
 
 **Authoritative sources (win on conflict):** `AGENTS.md`; `CODEX_STATUS.md`; the cleared 5G-1D
 plan (`docs/phase-5g-1d-plan-2026-07-09.md` §7/§9), readiness package
@@ -126,15 +128,20 @@ any write. Not pure SQL.
 
 - Each posture change is reversible in `docs/phase-5g-1d-activation-grants-rollback.sql`, under
   **separate Adam approval**, in one of two scopes (P0-2): **(A) operational-continuity** restores a
-  *working* closeout (re-grant the old recon RPC only); **(B) exact-restore** reproduces the exact
-  captured pre-activation matrix. Apply the narrowest that resolves the problem.
+  *working* closeout (re-grant the old recon RPC only); **(B) exact ACL restoration** reproduces the
+  exact captured pre-activation matrix **by generating narrow GRANT/REVOKE from the captured
+  privilege matrix — never a full schema/data restore**. Apply the narrowest that resolves the problem.
 - **No data is ever touched** by any Gate C op — these are grant changes only; function bodies,
   RLS policies, and all rows are unchanged.
 - The `deleteRecon` client guard (row 9) rolls back by reverting its `index.html` commit.
 - **Boundary:** an operational rollback restores a working write path (not necessarily the exact
-  pre-activation matrix — use exact-restore, or the Slice-6 restore-point dump, for that). It does
-  **not** undo the wrapper deployment (that is the Slice-6 rollback) or any reconciliation/snapshot
-  data. In steady state the old RPC is never used; a rollback is the one deliberate exception that
+  pre-activation matrix — use exact ACL restoration, generated from the captured privilege matrix,
+  for that). **The Slice-6 dump is NOT a grant-restore tool: it is the catastrophic disaster-recovery
+  floor only, captured before the Week-6 write, and after any post-dump production write its restore
+  is a separately-approved DR action (Gate B runbook §7), not a routine rollback.** An operational
+  rollback does **not** undo the wrapper deployment (that is the Slice-6 rollback) or any
+  reconciliation/snapshot data. In steady state the old RPC is never used; a rollback is the one
+  deliberate exception that
   re-grants it.
 
 ---

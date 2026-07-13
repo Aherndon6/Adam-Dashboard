@@ -21,7 +21,7 @@
 
 - **Gate D — DECIDED: Option A (pre-freeze activation), Adam-approved 2026-07-13.** Timing decision only; it does **not** authorize production deployment, production SQL, grant changes, merge to `main`, or Gate B activation. Target: activation + first Week-6 closeout complete **before Jul 24** (freeze Jul 24–Aug 10); realistic go/no-go ≈ Jul 16–17; first supervised Week-6 closeout ≈ Sat Jul 18.
 - **Slices 3/4/5 — COMPLETE (browser closeout).** The weekly closeout now runs as a two-step atomic combined write through `save_weekly_closeout_with_snapshots` (confirmation view freezes the nine-row payload; drops the optimistic reconData write; state machine handles in-flight / GFA01-adjudication / domain-reject / ambiguous-re-read / half-close repair). Slice 4a/4b add `closeoutState(n)` + the reconciled-vs-fully-closed badges. Implemented in-place in `index.html` under the standing freeze exception; **branch-held on `claude/herndon-5g-1d-preactivation-j428vn` (pushed), NOT merged to `main` — `main` auto-deploys, and the wrapper has no production grant until Gate B.** `origin/main` holds docs only (`5bd6c69`).
-  - **Local verification (Adam machine):** full `node e2e.js` **142 passed / 0 failed / 0 skipped**; readiness fallbacks **openApp 0 / clickNav 0**; runtime ~5 min. Static regression **1486/0**. `BUILD_TS` intentionally unchanged (branch-held, not deployed). **⟶ SUPERSEDED 2026-07-13 by the independent pre-production corrections (P0-4 row-9 guard + P1-1 response validation added): static is now 1507/0; local full e2e expected 148/0 (Adam-run gate). See "## 5G-1D INDEPENDENT PRE-PRODUCTION REVIEW CORRECTIONS".**
+  - **Local verification (Adam machine):** full `node e2e.js` **142 passed / 0 failed / 0 skipped**; readiness fallbacks **openApp 0 / clickNav 0**; runtime ~5 min. Static regression **1486/0**. `BUILD_TS` intentionally unchanged (branch-held, not deployed). **⟶ SUPERSEDED 2026-07-13 by the independent pre-production corrections (P0-4 row-9 guard + P1-1 response validation added): Adam-verified at commit `114b080` — static 1507/0; local full `node e2e.js` 148/0/0; readiness fallbacks openApp 0 / clickNav 0. See "## 5G-1D INDEPENDENT PRE-PRODUCTION REVIEW CORRECTIONS".**
   - The E2E run added six closeout tests (`5G1D-CO-1…6`, CO-1 smoke-tagged), consolidated onto one shared page. The earlier 4-failure run (LEDGER-1/A6-1/A9-1/A9-2) was root-caused to **pre-existing headless readiness/timing flakiness, not this branch** (all four run before the CO block; the index.html diff touches zero Register/auth/load symbols; load time is identical to `main`); the count 142 = 136 baseline (129 `await test(` source lines + the Section-A 8-tab loop) + 6.
 
 - **Remaining pre-activation planning — DELIVERED (2026-07-13, this session; PLANS ONLY, nothing executed):**
@@ -69,11 +69,16 @@ BUILD_TS stamp, Slice 6 and Gate B NOT begun**). Full closeout:
   unchanged + a row-9-guard-build reminder.
 - **P2 (doc consistency):** this section + `docs/phase-status.md` reconciled to Gate C
   approved-not-executed, Gate D Option A, the two browser corrections (superseding 1486/0 & 142/0 →
-  1507/0 static + 148/0 expected e2e), Slice 6 unexecuted, Gate B unapproved, Gate E untriggered.
+  Adam-verified 1507/0 static + 148/0/0 e2e @ commit 114b080), Slice 6 unexecuted, Gate B unapproved,
+  Gate E untriggered.
 
-**Verification:** static regression **1507 / 0** (sandbox-run). Full `node e2e.js` is **Adam's
-gate** (the sandbox cannot initialize Supabase); expected **148 / 0**, readiness fallbacks 0/0.
-**Awaiting Adam review before Slice 6 authorization.**
+**Verification (Adam-verified at commit `114b080f411fe68bfe377c902668677dd99f1710`):** static
+regression **1507 / 0**; full `node e2e.js` **148 / 0 / 0**; readiness fallbacks **openApp 0 /
+clickNav 0**. **Final independent production-readiness review (ChatGPT) accepted the browser at this
+gate; three narrow final corrections F1–F3 (test-count refresh, restore-point boundary, Phase-2
+durable-closeout precondition) applied — see
+`docs/phase-5g-1d-independent-preproduction-review-closeout-2026-07-13.md` §F.** Slice 6 conditionally
+ready; Gate B not authorized. **Awaiting Adam authorization to commit and proceed to Slice 6.**
 
 ## Current Phase
 

@@ -8,8 +8,10 @@ rollback (§6.1). Nothing here is production-affecting until Adam runs it.
 **Date:** 2026-07-13
 **Author:** Claude (session under Adam)
 **Gate D:** Option A (pre-freeze) — APPROVED. **Gate C:** all 11 dispositions APPROVED (Adam,
-2026-07-13) — executes at Gate B, **not here.** Browser (Slices 3/4/5) COMPLETE; local E2E 142/0,
-readiness fallbacks 0/0.
+2026-07-13) — executes at Gate B, **not here.** Browser (Slices 3/4/5 + P0-4 row-9 guard + P1-1
+response validation) COMPLETE — **Adam-verified at commit
+`114b080f411fe68bfe377c902668677dd99f1710`:** static **1507/0**, full `node e2e.js` **148/0/0**,
+readiness fallbacks **openApp 0 / clickNav 0**.
 **Target:** PRODUCTION Adam-Dashboard (`usayoldrawwmjsmretin`), `system_identifier`
 `7632885393857617092`.
 **Committed SQL used (byte-for-byte, unmodified):** `docs/phase-5g-1d-preflight.sql`,
@@ -35,8 +37,9 @@ unchanged.**
 ## 1. Preconditions (all must hold before the sitting)
 
 - ☐ **Gate D decided** = Option A (✓, 2026-07-13).
-- ☐ **Browser complete + verified:** Slices 3/4/5 done; local full `node e2e.js` = **142/0**,
-  readiness fallbacks **0/0** (Adam-verified). Static **1486/0**.
+- ☐ **Browser complete + verified:** Slices 3/4/5 + P0-4 row-9 guard + P1-1 response validation done;
+  **Adam-verified at commit `114b080f411fe68bfe377c902668677dd99f1710`:** static **1507/0**, local
+  full `node e2e.js` **148/0/0**, readiness fallbacks **openApp 0 / clickNav 0**.
 - ☐ **Gate A CLOSED** (`public.is_owner()` identity) — ✓ (2026-07-11).
 - ☐ **Rollback pre-approved:** `docs/phase-5g-1d-rollback.sql` reviewed + separately approved
   **before** the migration runs.
@@ -171,7 +174,14 @@ Manual inert checks (same sitting):
   **No data is ever deleted.** Separate Adam approval.
 - **Boundary:** up to and including Slice 6, rollback = that DROP and nothing else; production data,
   deployed contracts, grants, and app behavior are exactly pre-Slice-6. The §2 restore-point dump
-  is the disaster floor beneath it.
+  is the disaster floor beneath it. **At this point the dump restores cleanly because NO production
+  write has occurred since it was captured** — Slice 6 is inert.
+- **Once Gate B writes the first Week-6 closeout, that clean-restore property ends:** the dump then
+  predates live production data, so it is the **catastrophic disaster-recovery floor ONLY** (not a
+  routine rollback and never a grant-restore tool). After any post-dump write, a dump restore is a
+  separately-approved DR action with the four conditions in the **Gate B runbook §7** (DR approval,
+  restore-point timestamp acknowledgement, post-dump-data preserve/replay-or-accept-loss plan, and
+  scope verification against later reconciliation/snapshot state).
 - Anything Gate B / Slice 7 later changes (activation grants, old-RPC revocation, Gate-C postures,
   browser deploy) carries its **own** rollback (`docs/phase-5g-1d-activation-grants-rollback.sql`,
   the browser-revert) — **outside this boundary.**

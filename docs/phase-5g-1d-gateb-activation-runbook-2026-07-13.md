@@ -39,10 +39,10 @@ Gate C dispositions recorded (`docs/phase-5g-1d-gatec-register-2026-07-13.md`); 
   the activation browser BEFORE the merge — see §4a.**
 - ☐ **Gate A CLOSED** (`public.is_owner()`), ✓.
 - ☐ **Browser complete + verified** (incl. the P0-4 row-9 `deleteRecon` guard AND the P1-1
-  wrapper-response/persisted-state validation — both now on the activation branch): static
-  **1507/0** (sandbox-verified); local full `node e2e.js` expected **148/0**, readiness fallbacks
-  **0/0** (Adam-run gate — the sandbox cannot initialize Supabase, so e2e is verified on Adam's
-  machine). *(These supersede the pre-correction 1486/0 and 142/0.)*
+  wrapper-response/persisted-state validation — both on the activation branch): **Adam-verified at
+  commit `114b080f411fe68bfe377c902668677dd99f1710`:** static **1507/0**, local full `node e2e.js`
+  **148/0/0**, readiness fallbacks **openApp 0 / clickNav 0**. *(Supersedes the pre-correction
+  1486/0 and 142/0.)*
 - ☐ **SECURITY DEFINER owner pinned (P0-3):** the Slice-6 preflight captured the trusted definer
   owner; migration pinned wrapper + Option B to it; validation proved it. `-activation-grants.sql`
   and `-activation-revokes.sql` re-assert owner-unchanged before acting.
@@ -136,9 +136,14 @@ proven AFTER the revoke by two NON-MUTATING probes (steps 8–9).
    `goal_id`s, `snapshot_count` — **not** balances) for the post-revoke idempotent re-submit proof
    (step 8), and capture a before-image (recon row + nine snapshot rows) for the non-mutation check.
 6. ☐ **Phase 2 lockdown** — run `-activation-revokes.sql`. Its pre-lockdown asserts hard-stop unless:
-   wrapper granted, **old recon RPC still granted**, **Week-6 durably complete** (recon row + nine
-   eligible snapshots), and **owner unchanged**. Revokes G-01…G-08 per the approved Gate C postures;
-   execute the Gate-C `repair_commitments_for_week` posture here (G-02).
+   wrapper granted, **old recon RPC still granted**, **owner unchanged**, and the **Week-6 closeout is
+   a durable SUPERVISED-WRAPPER closeout** — **exactly one** Week-6 reconciliation row **and exactly
+   nine** distinct eligible goal snapshots each `model_year=2026`, `week_num=6`,
+   **`source='reconciliation'`** (with no other reconciliation-source rows at Week-6). **Phase 2 does
+   NOT proceed merely because nine arbitrary snapshot rows exist** — they must be the
+   reconciliation-source rows the wrapper wrote (F3); the script hard-stops on a source-qualified
+   count ≠ 9. Revokes G-01…G-08 per the approved Gate C postures; execute the Gate-C
+   `repair_commitments_for_week` posture here (G-02).
 7. ☐ **Phase 2 validation** — `-activation-grants-validation.sql`: authenticated EXECUTE — old recon
    RPC=F, repair=F, snapshot RPC=F, wrapper=T, Option B=T; tables per §6; **owner invariant holds**
    and **all bodies byte-unchanged** vs the pre-activation capture.
@@ -258,11 +263,13 @@ narrowest that resolves the problem:**
    re-grant the repair RPC, the direct snapshot RPC, snapshot INSERT/UPDATE, or
    weekly_reconciliations INSERT/UPDATE/DELETE — those are not needed for continuity and the row-9
    DELETE restriction stays. Restores a **working** closeout, not the exact pre-activation matrix.
-2. **Exact-restore (section B — exceptional, separate approval):** reproduce the EXACT captured
-   pre-activation grant matrix, each re-grant checked against the pre-Phase-1
-   `-activation-grants-validation.sql` capture. For bit-exact fidelity of `weekly_reconciliations`
-   (whose pre-state was a Supabase default grant, not an explicit repo grant), restore from the
-   Slice-6 restore-point dump instead.
+2. **Exact ACL restoration (section B — exceptional, separate approval):** reproduce the EXACT
+   captured pre-activation grant matrix by **generating narrow GRANT/REVOKE statements from the
+   pre-Phase-1 `-activation-grants-validation.sql` capture** — each re-grant checked against that
+   captured privilege matrix. **Do NOT use a full schema/data restore (the Slice-6 dump) merely to
+   recreate grants:** after the Week-6 closeout has written, restoring the dump would also revert that
+   post-dump production data (see the DR boundary below). Grants are restored from the captured
+   matrix, never from the dump.
 3. **Browser rollback (paired with either):** revert the merge on `main` (redeploy the
    pre-activation `index.html`); the reverted browser writes through the re-granted old recon RPC.
 
@@ -270,7 +277,14 @@ narrowest that resolves the problem:**
   does **NOT** delete approved historical snapshots or undo completed reconciliation — **wrong values
   use the correction path (Option B), never a drop** (plan §9). The Week-5 anchor and any Week-6 rows
   already written stay.
-- The Slice-6 restore-point dump remains the disaster floor beneath all modes.
+- **The Slice-6 dump is the catastrophic DISASTER-RECOVERY floor ONLY — not a routine Gate B
+  rollback.** It was captured **before** Slice 6 and **before** the supervised Week-6 closeout, so it
+  predates the first production write. After ANY post-dump production write (the Week-6
+  reconciliation + nine snapshots, or anything later), restoring it is a deliberate DR action that
+  requires: (1) **separate disaster-recovery approval**; (2) **explicit acknowledgement of the
+  restore-point timestamp**; (3) **a plan to preserve/replay the post-dump data, or explicit
+  acceptance of its loss**; and (4) **verification that the restore scope will not unintentionally
+  overwrite valid later reconciliation/snapshot state.** It is never used to "restore grants."
 - **Steady-state vs rollback (resolves the earlier contradiction):** in normal operation after
   activation, reopen/correction go through the wrapper's owner-only branches and the **old RPC is
   never used** — the §4 revoke stands. A **rollback is the one deliberate exception**: the

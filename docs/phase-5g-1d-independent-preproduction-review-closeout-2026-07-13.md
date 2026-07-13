@@ -132,8 +132,9 @@ SQL/browser semantic changes, unresolved owner decisions, and the updated Slice 
 
 - **Static regression:** `node test_regression.js` → **1507 / 0** (sandbox-run; was 1486/0).
 - **E2E:** the sandbox cannot initialize Supabase (CDN blocked → `AUTH_STATE` never terminal), so the
-  full `node e2e.js` is **Adam's machine gate**. Expected **148 / 0** (was 142/0; +3 CO + 3 DEL),
-  readiness fallbacks **0 / 0**. `node --check e2e.js` and `node --check test_regression.js` pass.
+  full `node e2e.js` is **Adam's machine gate**. **Subsequently Adam-verified 148 / 0 / 0** at commit
+  `114b080` (+3 CO + 3 DEL vs the prior 142), readiness fallbacks **openApp 0 / clickNav 0** — see §F.
+  `node --check e2e.js` and `node --check test_regression.js` pass.
 - `BUILD_TS` intentionally unchanged.
 
 ---
@@ -161,3 +162,37 @@ SQL/browser semantic changes, unresolved owner decisions, and the updated Slice 
   runbook. The browser corrections **supersede** the prior 1486/0 and 142/0 gate results.
 
 **Independent pre-production corrections complete. Awaiting Adam review before Slice 6 authorization.**
+
+---
+
+## §F. Addendum — Final independent production-readiness review (items F1–F3, 2026-07-13)
+
+The independent final v2 review (ChatGPT, against feature-branch HEAD
+`114b080f411fe68bfe377c902668677dd99f1710`) **accepted the browser** at the Adam-verified gate
+(static **1507/0**, full `node e2e.js` **148/0/0**, readiness fallbacks **openApp 0 / clickNav 0**),
+judged **Slice 6 conditionally ready** pending three narrow corrections, and **did not authorize Gate
+B**. These are documentation + SQL comment/precondition changes only — **no application code
+(`index.html`, `e2e.js`) changed; no SQL executed; nothing merged; `BUILD_TS` unchanged.**
+
+| ID | Finding | Disposition | Files changed |
+|---|---|---|---|
+| **F1** | Current-facing docs still cited superseded / "expected" test counts | **Fixed.** All current-facing Slice 6 / Gate C / Gate B readiness statements now record the **Adam-verified** final gate at commit `114b080`: static **1507/0**, E2E **148/0/0**, fallbacks **0/0**. Historical counts retained only where explicitly marked superseded. | `slice6-deploy-runbook` (header + §1), `gatec-register` (header), `gateb-activation-runbook` (§0), `CODEX_STATUS.md` (corrections section + annotations), `phase-status.md` (pointer) |
+| **F2** | The Slice-6 dump was described as a routine "exact grant restore" after Week-6 is written | **Fixed.** The dump was captured **before** Slice 6 and **before** the Week-6 closeout, so restoring it after any production write would revert that data. Binding posture recorded: **routine Gate B rollback** = operational-continuity grant rollback + browser revert + validation vs the captured privilege matrix, **never a dump restore**; **exact ACL restoration** = narrow GRANT/REVOKE generated **from the captured privilege matrix**, never a full schema/data restore; **the dump is the catastrophic DR floor only**, and after any post-dump write its restore is a separately-approved DR action requiring (1) DR approval, (2) restore-point-timestamp acknowledgement, (3) a post-dump-data preserve/replay-or-accept-loss plan, and (4) scope verification against later reconciliation/snapshot state. | `activation-grants-rollback.sql` (header ⚠ + (B) header + template comments), `gateb-activation-runbook` (§7), `gatec-register` (§5), `slice6-deploy-runbook` (§6) |
+| **F3** | Phase-2 durable-closeout precondition accepted nine arbitrary snapshot rows | **Fixed.** `-activation-revokes.sql` precondition 3 now hard-stops unless there is **exactly one** Week-6 reconciliation row AND **exactly nine** distinct eligible goal snapshots each `model_year=2026`, `week_num=c_first_close_week`, **`source='reconciliation'`**, **and** the total `source='reconciliation'` row count at Week-6 is 9 (eligible-ids-only, no dupes/extras). Nine arbitrary snapshots no longer qualify — they must be the reconciliation-source rows the supervised wrapper wrote. | `activation-revokes.sql` (DECLARE `v_wk6_recon_rows`; precondition 3 logic + NOTICE), `gateb-activation-runbook` (§4 step 6) |
+
+**SQL semantic change (F3, the only behavioral SQL change):** the Phase-2 hard-stop tightened from
+`v_wk6_recon < 1 OR v_wk6_snaps <> 9` (any recon row + nine eligible snapshots of any source) to
+`v_wk6_recon <> 1` **and** nine eligible `source='reconciliation'` snapshots **and** total
+reconciliation-source rows = 9. F1/F2 are documentation + SQL-comment changes with no executable
+effect.
+
+**No application behavior changed.** `index.html` and `e2e.js` are untouched by F1–F3; the browser
+gate (1507/0, 148/0/0) still stands at commit `114b080`.
+
+**Final Slice 6 readiness verdict:** **conditionally ready → conditions met.** Owner
+capture/pin/prove (P0-3) and the hardened restore point (P1-2) were already in the committed package;
+F1–F3 close the final review's three narrow items. Slice 6 remains **AUTHORED, NOT EXECUTED**, pending
+its own execution approval + a same-sitting restore point. **Gate B is not authorized by this work.**
+
+**Final independent review corrections complete. Awaiting Adam authorization to commit and proceed to
+Slice 6.**

@@ -36,7 +36,7 @@ DECLARE
   c_first_close_week CONSTANT INT := 6;   -- the first post-activation wrapper closeout (activation computes next=6)
   c_eligible9 CONSTANT text[] := ARRAY['adam_ira','wendy_ira','wendy_sep','alaska','bailey_529','bryce_529','preston_529','bryce_vehicle','christmas_cruise'];
   c_resume    CONSTANT BOOLEAN := false;  -- set TRUE (LOCAL, approved) only to re-run an interrupted Phase 2
-  v_recon_granted BOOLEAN; v_wk6_recon INT; v_wk6_snaps INT;
+  v_recon_granted BOOLEAN; v_wk6_recon INT; v_wk6_snaps INT; v_wk6_recon_rows INT;
   v_trusted text; v_wrap_owner text; v_optb_owner text;
 BEGIN
   SELECT system_identifier INTO v_sysid FROM pg_control_system();
@@ -63,15 +63,24 @@ BEGIN
   IF NOT v_recon_granted AND NOT c_resume THEN
     RAISE EXCEPTION 'HARD STOP: old recon RPC authenticated EXECUTE is ALREADY revoked — Phase 2 may have already run, or the pre-lockdown baseline is unexpected. Set c_resume=TRUE (LOCAL, approved) only for a deliberate re-run. Aborting.'; END IF;
 
-  -- Precondition 3 (P0-1 — THE ordering guarantee): the FIRST post-activation wrapper closeout
-  -- (Week-6) is DURABLY COMPLETE before we remove the old path — reconciliation row present AND all
-  -- nine eligible goal snapshots persisted. This is what makes the revoke safe: the first real write
-  -- already happened through the wrapper, with the old RPC still available as a fallback until now.
+  -- Precondition 3 (P0-1 / F3 — THE ordering guarantee): the FIRST post-activation closeout (Week-6)
+  -- is DURABLY COMPLETE and was produced by the SUPERVISED WRAPPER before we remove the old path.
+  -- Nine ARBITRARY snapshot rows do NOT qualify — they must be the source='reconciliation' rows the
+  -- wrapper wrote. Require: EXACTLY one Week-6 reconciliation row; EXACTLY nine DISTINCT eligible
+  -- goal_ids each with model_year=2026, week_num=c_first_close_week, source='reconciliation'; AND no
+  -- other source='reconciliation' rows at that week (total = 9 ⇒ eligible-ids-only, no dupes/extras).
+  -- This is what makes the revoke safe: the first real write already landed through the wrapper, with
+  -- the old RPC still available as a fallback until now.
   SELECT count(*) INTO v_wk6_recon FROM public.weekly_reconciliations WHERE week_num = c_first_close_week;
   SELECT count(DISTINCT goal_id) INTO v_wk6_snaps FROM public.goal_funding_snapshots
-    WHERE model_year = 2026 AND week_num = c_first_close_week AND goal_id = ANY(c_eligible9);
-  IF v_wk6_recon < 1 OR v_wk6_snaps <> 9 THEN
-    RAISE EXCEPTION 'HARD STOP: first wrapper closeout (Week-%) is NOT durably complete (recon rows=%, eligible snapshots=% of 9). Do the supervised Week-% closeout through the wrapper BEFORE lockdown. Aborting.', c_first_close_week, v_wk6_recon, v_wk6_snaps, c_first_close_week; END IF;
+    WHERE model_year = 2026 AND week_num = c_first_close_week AND source = 'reconciliation'
+      AND goal_id = ANY(c_eligible9);
+  SELECT count(*) INTO v_wk6_recon_rows FROM public.goal_funding_snapshots
+    WHERE model_year = 2026 AND week_num = c_first_close_week AND source = 'reconciliation';
+  IF v_wk6_recon <> 1 THEN
+    RAISE EXCEPTION 'HARD STOP: expected EXACTLY one Week-% reconciliation row, found %. Aborting lockdown.', c_first_close_week, v_wk6_recon; END IF;
+  IF v_wk6_snaps <> 9 OR v_wk6_recon_rows <> 9 THEN
+    RAISE EXCEPTION 'HARD STOP: first wrapper closeout (Week-%) is NOT a durable SUPERVISED-WRAPPER closeout — need EXACTLY nine eligible source=''reconciliation'' snapshots (distinct-eligible=% , total-reconciliation-source-rows=%; both must be 9). Nine arbitrary snapshots do NOT qualify. Do the supervised Week-% closeout through the wrapper BEFORE lockdown. Aborting.', c_first_close_week, v_wk6_snaps, v_wk6_recon_rows, c_first_close_week; END IF;
 
   -- Precondition 4 (P0-3): SECURITY DEFINER owner unchanged since deploy — wrapper/Option B still
   -- owned by the trusted definer owner (== deployed recon RPC owner). A drifted owner here would
@@ -86,7 +95,7 @@ BEGIN
   -- browser MUST carry the row-9 deleteRecon guard build before G-08 revokes weekly_reconciliations
   -- DELETE. Confirm BUILD_TS on dashboard.herndons.us == the guard build (runbook §4a) before running.
   RAISE NOTICE 'PRECONDITION (manual): confirm the deployed browser BUILD_TS carries the row-9 deleteRecon guard (Gate B runbook §4a) — G-08 revokes weekly_reconciliations DELETE below.';
-  RAISE NOTICE 'PRE-LOCKDOWN STATE OK: wrapper granted; old recon RPC still granted; Week-% durably complete (recon=%, snaps=9); owner=% unchanged.', c_first_close_week, v_wk6_recon, v_trusted;
+  RAISE NOTICE 'PRE-LOCKDOWN STATE OK: wrapper granted; old recon RPC still granted; Week-% durable supervised-wrapper closeout (recon rows=%, eligible source=reconciliation snapshots=%, total reconciliation-source rows=%); owner=% unchanged.', c_first_close_week, v_wk6_recon, v_wk6_snaps, v_wk6_recon_rows, v_trusted;
 END $$;
 
 -- ── G-01  old reconciliation RPC — REVOKE authenticated EXECUTE (exact 11-arg signature) ──
