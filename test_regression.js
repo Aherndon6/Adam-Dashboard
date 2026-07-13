@@ -12437,6 +12437,50 @@ console.log('\n── Section 5G-1D Slice 3: confirmation view + funded-edit ─
   }finally{_closeout=_c;_reconBalances=_rb;}
 })();
 
+// ── Section 5G-1D Slice 4c: half-close repair-mode confirmation ──
+console.log('\n── Section 5G-1D Slice 4c: half-close repair confirmation ──');
+(function(){
+  var NINE=SNAPSHOT_ELIGIBLE_GOAL_IDS;
+  var _c=_closeout,_rb=_reconBalances;
+  function mkRepair(presentIds){
+    var funded={},priors={},present={};
+    NINE.forEach(function(id){var here=presentIds.indexOf(id)>=0;present[id]=here;priors[id]=100;funded[id]=100;});
+    return {week:7,phase:'confirm',repair:true,funded:funded,priors:priors,present:present,newCommitments:[],patched:[],error:''};
+  }
+  var mockW={num:7,dates:'x'};
+  try{
+    test('5G1D-S4C-01: repair view shows Repair mode banner, "already recorded" count, and Complete closeout button',function(){
+      _closeout=mkRepair(['alaska','adam_ira','wendy_ira']);_reconBalances={chk:1,sav:2,amx:3,tax:4,lc:5};
+      var h=renderCloseoutConfirm(mockW);
+      assert(/Repair mode/.test(h),'repair banner');
+      assert(/3 already recorded/.test(h),'recorded count');
+      assert(/Complete closeout<\/button>/.test(h),'complete-closeout button');
+      assert(/Repair does not change commitments/.test(h),'commitments not changed note');
+    });
+    test('5G1D-S4C-02: recorded (present) rows are locked (disabled + "recorded" chip); missing rows editable',function(){
+      _closeout=mkRepair(['alaska']);_reconBalances={chk:0,sav:0,amx:0,tax:0,lc:0};
+      var h=renderCloseoutConfirm(mockW);
+      var recordedChips=(h.match(/closeout-recorded/g)||[]).length;
+      assert(recordedChips===1,'exactly one recorded chip, got '+recordedChips);
+      var disabledInputs=(h.match(/closeout-input"[^>]*disabled/g)||[]).length;
+      assert(disabledInputs===1,'exactly one disabled (locked) input, got '+disabledInputs);
+    });
+    test('5G1D-S4C-03: setCloseoutFunded ignores a locked (present) row in repair, edits a missing one',function(){
+      _closeout=mkRepair(['alaska']);
+      setCloseoutFunded('alaska','999');assert(_closeout.funded.alaska===100,'locked row unchanged');
+      setCloseoutFunded('bryce_529','250');assert(_closeout.funded.bryce_529===250,'missing row edited');
+    });
+    test('5G1D-S4C-04: a normal (non-repair) closeout has no locked rows and the standard confirm label',function(){
+      _closeout={week:6,phase:'confirm',funded:{},priors:{},newCommitments:[],patched:[],error:''};
+      NINE.forEach(function(id){_closeout.funded[id]=100;_closeout.priors[id]=100;});
+      _reconBalances={chk:0,sav:0,amx:0,tax:0,lc:0};
+      var h=renderCloseoutConfirm({num:6,dates:'x'});
+      assert(!/closeout-recorded/.test(h),'no recorded chips in a normal closeout');
+      assert(/Confirm &amp; close week/.test(h),'standard confirm label');
+    });
+  }finally{_closeout=_c;_reconBalances=_rb;}
+})();
+
 // ─────────────────────────────────────────────────────────────────────────
 console.log('\n╔══════════════════════════════════════════════════════════════╗');
 console.log('║                       RESULTS                               ║');

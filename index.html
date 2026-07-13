@@ -352,6 +352,7 @@ body{background:var(--bg);color:var(--ink);font-family:Inter,ui-sans-serif,syste
 .closeout-delta.up{color:var(--green)}
 .closeout-delta.down{color:var(--red)}
 .closeout-below .closeout-input{border-color:var(--red)}
+.closeout-recorded{font-size:10px;color:var(--green);background:var(--greenSoft);border:1px solid #86efac;border-radius:5px;padding:1px 5px;margin-left:4px}
 .closeout-adjudicate{font-size:12px;color:var(--red);background:var(--redSoft);border:1px solid #fca5a5;border-radius:8px;padding:8px 11px;margin-top:8px}
 .closeout-ambiguous{font-size:12px;color:var(--muted);margin-top:8px}
 .recon-guidance-note{font-size:11px;color:var(--muted);line-height:1.5;background:var(--surface3);border:1px solid var(--line2);border-radius:7px;padding:8px 10px;margin-bottom:11px}
@@ -2791,30 +2792,51 @@ function beginCloseout(n){
     return;
   }
   function gv(id){return parseFloat(document.getElementById(id).value)||0;}
+  // 5G-1D Slice 4c — closeout-state routing. A half_closed week (reconciled, <9 eligible
+  // snapshots) is REPAIRED (wrapper branch G): missing rows only, empty commitment arrays,
+  // balances equal to the persisted reconciliation. A blocked/corrupt week cannot be closed
+  // from here (the wrapper would hard-stop) — guide the operator instead of letting them submit.
+  var _st=closeoutState(n);
+  if(_st==='blocked_prior_incomplete'){
+    var be=document.querySelector('.recon-error');
+    if(be){be.textContent='An earlier week’s closeout is still incomplete — complete it first (one week at a time).';be.style.display='block';}
+    return;
+  }
+  if(_st==='corrupt'){
+    var ce=document.querySelector('.recon-error');
+    if(ce){ce.textContent='This week has goal snapshots but no reconciliation — it needs review; do not close it from here.';ce.style.display='block';}
+    return;
+  }
+  var isRepair=(_st==='half_closed');
   // Capture entered balances into _reconBalances so they survive Back / re-render and become
-  // the closeout payload (no optimistic reconData write — amendment §F).
-  _reconBalances={chk:gv('ri_chk'),sav:gv('ri_sav'),amx:gv('ri_amx'),tax:gv('ri_tax'),lc:gv('ri_lc')};
+  // the closeout payload (no optimistic reconData write — amendment §F). For a REPAIR the
+  // balances MUST equal the persisted reconciliation (branch G), so take them from reconData[n].
+  _reconBalances=(isRepair&&reconData[n])?{chk:reconData[n].chk,sav:reconData[n].sav,amx:reconData[n].amx,tax:reconData[n].tax,lc:reconData[n].lc}
+                                         :{chk:gv('ri_chk'),sav:gv('ri_sav'),amx:gv('ri_amx'),tax:gv('ri_tax'),lc:gv('ri_lc')};
   // Commitment arrays — built ONCE here, before the confirmation renders, from the staged
   // answers as they exist now (identical builders + signatures to the pre-1D path).
   var patched=buildPhase1PatchArray(commitmentData,_reconPhase1Answers,_reconBasis,n);
   var newCommitments=buildPhase2NewCommitments(getPhase2WDCandidates(reconEffectiveWD(),n,commitmentData),_reconPhase2Answers,_reconBasis,n);
   var newCommitmentsAll=newCommitments.concat(buildPhase3NewCommitments(_reconPhase3Items,_reconBasis,n));
+  if(isRepair){patched=[];newCommitmentsAll=[];} // branch G: a repair never mutates commitments
   // Per-goal funded prefill (plan §2.4.7a): each eligible goal defaults to its prior effective
-  // snapshot amount (the monotonic floor); the operator confirms/increases observed reality.
-  // Values are NEVER derived from runModel's projected goalSaved (plan §3.1).
-  var priors={},funded={};
+  // snapshot amount (the monotonic floor); NEVER runModel's projected goalSaved (plan §3.1). In a
+  // repair, an already-present eligible row is LOCKED to its persisted value (branch G requires
+  // present rows to match); only the missing rows are entered.
+  var priors={},funded={},present={};
   SNAPSHOT_ELIGIBLE_GOAL_IDS.forEach(function(id){
-    var p=_latestGoalSnapshot(id,n-1);
-    var pv=(typeof p==='number'&&isFinite(p))?Math.round(p*100)/100:0;
-    priors[id]=pv;funded[id]=pv;
+    var here=(isRepair&&goalSnapData[n]&&goalSnapData[n][id]!==undefined)?Math.round(goalSnapData[n][id]*100)/100:undefined;
+    if(here!==undefined){present[id]=true;priors[id]=here;funded[id]=here;}
+    else{var p=_latestGoalSnapshot(id,n-1);var pv=(typeof p==='number'&&isFinite(p))?Math.round(p*100)/100:0;present[id]=false;priors[id]=pv;funded[id]=pv;}
   });
-  _closeout={week:n,phase:'confirm',funded:funded,priors:priors,newCommitments:newCommitmentsAll,patched:patched,error:''};
+  _closeout={week:n,phase:'confirm',repair:isRepair,funded:funded,priors:priors,present:present,newCommitments:newCommitmentsAll,patched:patched,error:''};
   renderApp();
   setTimeout(function(){var el=document.querySelector('.closeout-confirm');if(el)el.scrollIntoView({behavior:'smooth',block:'nearest'});},60);
 }
 // Operator edits one goal's confirmed cumulative funded amount (parse at the UI boundary).
 function setCloseoutFunded(id,val){
   if(!_closeout)return;
+  if(_closeout.repair&&_closeout.present&&_closeout.present[id])return; // locked to persisted in a repair
   var num=parseFloat(val);
   _closeout.funded[id]=Number.isFinite(num)?num:NaN; // NaN => buildCloseoutSnapshotRows rejects at confirm
   _closeout.error='';renderApp();
@@ -3043,34 +3065,40 @@ function _closeoutStateBadge(n){
 // (plan §2.2). Submits the operator-confirmed values verbatim — no model re-derivation.
 function renderCloseoutConfirm(w){
   var c=_closeout,n=w.num;var b=_reconBalances||{chk:0,sav:0,amx:0,tax:0,lc:0};
-  var busy=c.phase==='in_flight';
+  var busy=c.phase==='in_flight';var repair=!!c.repair;var present=c.present||{};
+  var recordedCnt=0;SNAPSHOT_ELIGIBLE_GOAL_IDS.forEach(function(id){if(present[id])recordedCnt++;});
   var pUpd=(c.patched||[]).length,pNew=(c.newCommitments||[]).length;
   var buildErr='';try{buildCloseoutSnapshotRows(c.funded);}catch(e){buildErr=e.message;}
-  var h='<div class="recon-form closeout-confirm"><div class="recon-form-title">Confirm weekly closeout — Wk '+getCalWeek(n)+' \xb7 '+w.dates+'</div>';
-  h+='<div class="closeout-warn">Reconciliation and the nine goal-funding snapshots commit <strong>together</strong> as one atomic closeout — nothing is saved until you confirm.</div>';
-  h+='<div class="closeout-sec"><div class="closeout-sec-t">Balances to persist</div>'+
+  var h='<div class="recon-form closeout-confirm"><div class="recon-form-title">'+(repair?'Complete closeout (repair)':'Confirm weekly closeout')+' — Wk '+getCalWeek(n)+' \xb7 '+w.dates+'</div>';
+  h+='<div class="closeout-warn">'+(repair
+    ?'Repair mode — this week is reconciled but its goal-funding snapshots are incomplete. Confirming fills in the <strong>missing</strong> snapshots only; it does <strong>not</strong> change the reconciliation or the snapshots already recorded.'
+    :'Reconciliation and the nine goal-funding snapshots commit <strong>together</strong> as one atomic closeout — nothing is saved until you confirm.')+'</div>';
+  h+='<div class="closeout-sec"><div class="closeout-sec-t">'+(repair?'Balances (unchanged — already reconciled)':'Balances to persist')+'</div>'+
      '<div class="closeout-bal">Truist Checking <b>'+fc(b.chk)+'</b> · Truist Savings <b>'+fc(b.sav)+'</b> · AMEX Savings <b>'+fc(b.amx)+'</b> · Vio Tax <b>'+fc(b.tax)+'</b> · Lending Club <b>'+fc(b.lc)+'</b></div>'+
-     '<div class="closeout-basis">Basis: '+esc(_reconBasis||'—')+' · Prior-commitment updates: '+pUpd+' · New commitments: '+pNew+'</div></div>';
-  h+='<div class="closeout-sec"><div class="closeout-sec-t">Goal funding — confirm the observed cumulative funded amount for each of the 9 eligible goals <span class="closeout-count">(expected rows: 9)</span></div>';
-  h+='<div class="closeout-tip">Prefilled with last week’s value. Cross-check each against the transfers executed this week (listed above); a value below last week is rejected here and handled through the supervised correction path.</div>';
+     '<div class="closeout-basis">Basis: '+esc(_reconBasis||'—')+' · '+(repair?'Repair does not change commitments':'Prior-commitment updates: '+pUpd+' · New commitments: '+pNew)+'</div></div>';
+  h+='<div class="closeout-sec"><div class="closeout-sec-t">Goal funding — confirm the observed cumulative funded amount for each of the 9 eligible goals <span class="closeout-count">(expected rows: 9'+(repair?'; '+recordedCnt+' already recorded':'')+')</span></div>';
+  h+='<div class="closeout-tip">'+(repair
+    ?'Rows already recorded are locked; enter only the missing ones. A value below last week is rejected here and handled through the supervised correction path.'
+    :'Prefilled with last week’s value. Cross-check each against the transfers executed this week (listed above); a value below last week is rejected here and handled through the supervised correction path.')+'</div>';
   h+='<table class="closeout-goals"><thead><tr><th>Goal</th><th>Last week</th><th>This week (cumulative)</th><th>Δ</th></tr></thead><tbody>';
   SNAPSHOT_ELIGIBLE_GOAL_IDS.forEach(function(id){
     var gd=GOALS_REGISTRY.find(function(x){return x.id===id;});
     var label=gd?gd.name:id;
     var prior=c.priors[id]||0;var cur=c.funded[id];
     var curFin=Number.isFinite(cur);
+    var locked=repair&&present[id]; // an already-recorded row in a repair — read-only (branch G)
     var delta=curFin?Math.round((cur-prior)*100)/100:null;
     var below=curFin&&Math.round(cur*100)<Math.round(prior*100);
-    h+='<tr'+(below?' class="closeout-below"':'')+'><td>'+esc(label)+'</td><td class="closeout-prior">'+fc(prior)+'</td>'+
-       '<td><input class="closeout-input" type="number" step="0.01" value="'+(curFin?cur:'')+'"'+(busy?' disabled':'')+' onchange="setCloseoutFunded(\''+id+'\',this.value)"></td>'+
-       '<td class="closeout-delta'+(delta&&delta>0?' up':'')+(below?' down':'')+'">'+(delta==null?'—':(delta>=0?'+':'')+fc(delta))+'</td></tr>';
+    h+='<tr'+(below?' class="closeout-below"':'')+'><td>'+esc(label)+(locked?' <span class="closeout-recorded">recorded</span>':'')+'</td><td class="closeout-prior">'+fc(prior)+'</td>'+
+       '<td><input class="closeout-input" type="number" step="0.01" value="'+(curFin?cur:'')+'"'+((busy||locked)?' disabled':'')+' onchange="setCloseoutFunded(\''+id+'\',this.value)"></td>'+
+       '<td class="closeout-delta'+(delta&&delta>0?' up':'')+(below?' down':'')+'">'+(locked?'—':(delta==null?'—':(delta>=0?'+':'')+fc(delta)))+'</td></tr>';
   });
   h+='</tbody></table></div>';
   if(c.phase==='adjudication')h+='<div class="closeout-adjudicate">This week is already closed. Your resubmission changes commitments, so it needs supervised adjudication — do not retry from here.</div>';
   if(c.phase==='ambiguous')h+='<div class="closeout-ambiguous">Checking the server…</div>';
   h+='<div class="recon-error" style="display:'+(c.error?'block':'none')+';color:var(--red);font-size:12px;background:var(--redSoft);border:1px solid #fca5a5;border-radius:6px;padding:8px 10px;margin-top:8px">'+(c.error?esc(c.error):'')+'</div>';
   h+='<div class="recon-btn-row" style="margin-top:10px">'+
-     '<button class="recon-save" onclick="submitCloseout()"'+((busy||buildErr)?' disabled style="opacity:.5;cursor:not-allowed"':'')+'>Confirm &amp; close week</button>'+
+     '<button class="recon-save" onclick="submitCloseout()"'+((busy||buildErr)?' disabled style="opacity:.5;cursor:not-allowed"':'')+'>'+(repair?'Complete closeout':'Confirm &amp; close week')+'</button>'+
      '<button class="recon-cancel" onclick="backToReconForm()"'+(busy?' disabled':'')+'>Back to balances</button>'+
      '<button class="recon-cancel" onclick="cancelRecon()"'+(busy?' disabled':'')+'>Cancel</button>'+
      (busy?'<span class="save-status saving">Closing…</span>':'')+
