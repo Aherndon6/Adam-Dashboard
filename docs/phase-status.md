@@ -1,5 +1,30 @@
 # Herndon Financial OS — Phase Status
 
+> **OPERATING-STATE NOTE (2026-07-13, Adam-confirmed).** **Quicken parallel operation has ended;
+> the Quicken subscription is canceled; the historical Quicken data is retained as a historical
+> archive/reference only; the Herndon Financial OS is now the SOLE LIVE SYSTEM OF RECORD.** Quicken
+> is **not** an active operational system, parallel ledger, or independent live recovery replica.
+> Wherever this file (or the reviews) still describe an "active Aug–Sep parallel run" or "cancellation
+> only after one full parallel month," that language is **stale** — this operating-state note governs.
+> Consequence: scheduled restore-tested backups (off-device, encrypted, named backup owner, MFA) are
+> an **immediate production/disaster-recovery requirement**, not a future cancellation prerequisite.
+>
+> **CANONICAL POST-5G-1D ROADMAP POINTER (2026-07-13).** For all **forward (post-5G-1D)
+> sequencing, dependencies, conflict resolution, the month-end close/audit operating model,
+> and the parked backlog,** the authoritative source is
+> `docs/post-5g-1d-canonical-roadmap-synthesis-2026-07-13.md` (advisory; adopt per Adam approval —
+> see its §11). That synthesis reconciles the three 2026-07-12 Fable reviews against the operating
+> state above and the verified repository state — notably that 5G-1D is **staging-accepted
+> at the RPC layer but not production-activated** (Slice 3 / Slice 6 / Gate B production activation /
+> Slice 7 and Gates C/D/E remain; activation timing is the open **Gate D** owner decision, not
+> presumed pre- or post-freeze). The tables in **this** file remain authoritative for **completed-phase
+> status** and as the phase-map base; where forward sequencing here conflicts with the canonical
+> synthesis, the synthesis governs (pending Adam adoption). The legacy technical-gate fold-in flagged
+> OPEN below (calc-core extraction, set-aside gate, zero-outflow test, Budget-identity change,
+> spreadsheet retirement) is resolved in the synthesis §5–§6, with the docs-only patch actions
+> enumerated in its §10–§11 (the broader patch-target table is retained in the superseded
+> 2026-07-12 draft's §7 and remains UNAPPLIED pending Adam approval).
+
 ## Roadmap Sequence (as of 2026-07-06)
 
 | Phase | Name | Status |
@@ -61,7 +86,7 @@ Per Adam decision (2026-07-08), the funding-model integrity review (`docs/fundin
 
 **Renumber note (2026-07-08):** the legacy "5G-1" (planned_outflows schema, staging-validated) becomes **5G-2 (Planned Outflows Foundation)** — the staging validation carries forward unchanged; only the label moved. The legacy "5G-2" (Derived Account Allocation view) becomes **5G-3 (Cash Allocation)**.
 
-**Legacy technical gates — carry-forward mapping is an OPEN item (not fully resolved in this docs pass):** the superseded 2026-07-06 map below carried specific technical gates that must NOT be lost — **calc-core extraction / characterization under golden-master (legacy 5G-2.5)**, the **set-aside AMEX-lookahead / max-safe-sweep gate and derived-not-stored deferred set-asides (legacy 5G-4a)**, the **zero-outflow identity committed test and earmark adapter into the 5F-1 engine (legacy 5G-4b)**, the **Budget-identity change / Available-for-Goals-becomes-derived work (legacy 5G-3)**, and **spreadsheet retirement after one clean parallel month (legacy 5G-5)**. The new roadmap does not obviously contain 1:1 slots for these; their precise fold-in (which new 5G-2…5G-6 phase each attaches to, and whether Budget-identity change is absorbed or re-scheduled) is a **follow-up roadmap-mapping decision for Adam**, deliberately not fabricated here. Until then, treat the legacy table below as the authority for those gate details.
+**Legacy technical gates — carry-forward mapping is an OPEN item (not fully resolved in this docs pass):** the superseded 2026-07-06 map below carried specific technical gates that must NOT be lost — **calc-core extraction / characterization under golden-master (legacy 5G-2.5)**, the **set-aside AMEX-lookahead / max-safe-sweep gate and derived-not-stored deferred set-asides (legacy 5G-4a)**, the **zero-outflow identity committed test and earmark adapter into the 5F-1 engine (legacy 5G-4b)**, the **Budget-identity change / Available-for-Goals-becomes-derived work (legacy 5G-3)**, and **legacy-system / spreadsheet retirement (legacy 5G-5)**. **Correction (2026-07-13, Adam-confirmed):** the legacy-5G-5 trigger "after one clean parallel month" is superseded — Quicken parallel operation has ended, the subscription is canceled, and the OS is the sole live system of record (see the Operating-state note at the top of this file). **No additional clean parallel month is required.** Any remaining legacy-5G-5 work is now scoped to archival verification, retained-data/retention policy, export verification, documentation cleanup, and removal of obsolete workflow references — with the retained Quicken historical data protected (archive/reference only; not to be deleted or modified without explicit Adam approval). The new roadmap does not obviously contain 1:1 slots for these; their precise fold-in (which new 5G-2…5G-6 phase each attaches to, and whether Budget-identity change is absorbed or re-scheduled) is a **follow-up roadmap-mapping decision for Adam**, deliberately not fabricated here. Until then, treat the legacy table below as the authority for those gate details.
 
 #### 5G-1D readiness handoff (2026-07-10)
 
@@ -83,7 +108,7 @@ Per Adam decision (2026-07-08), the funding-model integrity review (`docs/fundin
 | 5G-3 | Budget identity change; Available for Goals becomes derived; hand-balancing retired; budgeted income lines only; variable income stays model-side under tax lock/waterfall | Post-Alaska; gated on Wendy feedback + A2 income actuals | Not started — **legacy gate; fold-in TBD** |
 | 5G-4a | Set-aside transfer recommendations + shortfall warnings; Checking-to-AMEX must pass AMEX lookahead / max-safe-sweep gate; deferred set-asides derived (accrued minus funded), not stored | Post-Alaska | Not started — **legacy gate; fold-in TBD** |
 | 5G-4b | Earmark-funded adapter into 5F-1 Cash Availability Engine; input layer only; no engine internals modified; zero-outflow identity gate as committed automated test | Post-Alaska | Not started — **legacy gate; fold-in TBD** |
-| 5G-5 | Spreadsheet retirement after one clean parallel month | Post-Alaska | Not started — **legacy gate; fold-in TBD** |
+| 5G-5 | Legacy-system / spreadsheet retirement *(the "after one clean parallel month" trigger is superseded 2026-07-13 — Quicken retired, OS is sole system of record; scope is now archival verification / retained-data policy / export verification / docs cleanup; retained Quicken data protected)* | Post-Alaska | Not started — **legacy gate; fold-in TBD** |
 
 **5G-0 complete (2026-07-07):** Label/docs cleanup only. "Available for Goals" visible rename done (`misc.goal_sweep` key unchanged); SYS-1 (Budget block retitled "Statement check", user-facing phase strings stripped), SYS-4 (exact-string plain-language: Clr→Cleared, Model→Planned / Transfer→Custom chips, Budget Rule→Budget Line, "registry keys"→"categories", register reconciliation hint reworded), and WK-6 (banner pluralization) complete. No Budget identity, model/runModel, reconciliation-engine, schema/RLS/RPC, or Cash Planning changes. Tests: static regression 1332/0, e2e 131/0. BUD-1/BUD-2/SYS-3 remain routed to UX-0 (not 5G-0). Full detail in CODEX_STATUS.md "5G-0 CLOSED".
 

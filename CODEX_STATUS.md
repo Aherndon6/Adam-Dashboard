@@ -1,5 +1,20 @@
 # Codex Status: Herndon Financial OS
 
+## CURRENT-STATUS CORRECTION (2026-07-13)
+
+*This dated banner reflects the verified current state. It does not rewrite any historical dated entry below; where older sections (e.g. the 2026-07-10/11 handoffs) still read "5G-1D implementation NOT STARTED," that language is historical and is corrected here.*
+
+**Operating state (Adam-confirmed 2026-07-13):** Quicken parallel operation has **ended**; the Quicken subscription is **canceled**; the historical Quicken data is retained as a **historical archive/reference only**; the **Herndon Financial OS is now the sole live system of record.** Quicken is not an active operational system, parallel ledger, or independent live recovery replica. Any "parallel run through Aug–Sep / cancel only after one clean parallel month" language elsewhere in this file, `AGENTS.md`, or `docs/phase-status.md` is **stale** and superseded by this note. Consequence: scheduled restore-tested backups (off-device, encrypted, named backup owner, MFA) are an **immediate production/disaster-recovery requirement**, not a future cancellation prerequisite.
+
+**5G-1D execution state (verified at HEAD `aff220c`):**
+- **Slice 1** (`save_weekly_closeout_with_snapshots`) and **Slice 2** (Option B `correct_goal_funding_snapshot` wrapper) RPC layers are **staging-accepted** — the Gate-2 real-caller acceptance matrix **G2-1 … G2-20b PASSED** on staging (`pkwotgqivgaapwuqgwqb`, 2026-07-13); teardown/restore/ungrant/validation passed.
+- Both new functions were **returned to inert grants** after testing (anon/authenticated EXECUTE = false/false); production DDL/data untouched.
+- **Gate 0 (E2 completion)** and **Gate A (`is_owner()` identity)** are **CLOSED**.
+- **Still outstanding:** Slice 3 (browser closeout UI + state machine), Slice 6 (prod inert deploy + inert checks), **Gate B (production activation)**, Slice 7 (Week-6 writer smoke + old-RPC grant revoke); **Gates C, D, E remain OPEN.** Gate D (pre- vs post-freeze activation timing) is an unresolved owner decision.
+- **5G-1D is NOT production-live and is NOT complete.**
+
+**Canonical post-5G-1D roadmap:** `docs/post-5g-1d-canonical-roadmap-synthesis-2026-07-13.md` (advisory; adopt per Adam approval).
+
 ## Current Phase
 
 Phase 5B complete.

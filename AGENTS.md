@@ -73,8 +73,9 @@ Dashboard stable.
 
 Next milestone:
 - Wendy's Budget tab live use starting July 1, 2026
-- parallel run with Quicken through August-September
-- Quicken cancellation only after one full parallel month where category totals match, card totals reconcile, and reimbursables track cleanly
+
+**Operating state (2026-07-13, Adam-confirmed — supersedes the two Quicken bullets that were here):** The **Herndon Financial OS is the sole live system of record.** Quicken parallel operation has **ended**, the Quicken subscription is **canceled**, and the historical Quicken data is retained as an **archive/reference source only** — Quicken is **not** an active operational system, parallel ledger, or independent live recovery replica. **No additional clean parallel month is required for anything.** The retained historical Quicken data **must not be deleted, modified, or treated as disposable without explicit Adam approval.**
+- **Recovery consequence (immediate):** because the OS is now the sole live record with no parallel fallback, backup/restore maturity is an **immediate production-operability requirement**, not a future cancellation prerequisite — scheduled production backups; encrypted off-device storage; documented + periodically tested restore; a named backup owner; and MFA on the owner Supabase login.
 
 Next build phase:
 - 5G Cash Planning + Allocation (locked). 5G-0 is the first implementation sub-phase and is label/docs cleanup only. 5G-1 is the first schema/build sub-phase.
@@ -178,7 +179,7 @@ Before changing code:
 - Goal waterfall ordering and the ira_cpa_cleared gate.
 - prod Supabase DDL; staging first.
 - index.html script body and global namespace for new feature code.
-- Quicken parallel comparison data during Aug-Sep.
+- Retained historical Quicken data (archive/reference only; Quicken is retired — see the Operating-state note above). Do not delete, modify, export externally, or treat as disposable without explicit Adam approval. It is a historical archive, not a live recovery replica. *(Supersedes the prior "Quicken parallel comparison data during Aug-Sep" item — parallel operation has ended.)*
 - Never edit golden-master expected outputs to make tests pass without Adam approval.
 
 ## Review Artifacts
