@@ -2875,6 +2875,37 @@ function buildCloseoutSnapshotRows(funded){
   return rows;
 }
 
+// ── 5G-1D Slice 4 — closeout-complete predicate (pure; read-only over reconData +
+// goalSnapData + the eligible nine). Mirrors the deployed wrapper's branch structure
+// (docs/phase-5g-1d-migration.sql STEP 5 E/F/G/H) and amendment §A/§F completeness
+// scoping: a post-anchor week is "complete" only when ALL nine eligible ids exist for it,
+// ANY source (the loader does not fetch `source`); weeks 1-4 are legacy pre-anchor (never
+// flagged/repaired), week 5 is the opening anchor (E2's, not authored here). No DOM/Date/
+// random/network — reads module state only, like getGoalFunded. Never throws.
+// Count of the eligible nine present at week n (non-eligible ids like wewe_* are ignored).
+function _eligibleSnapCount(n){
+  var snaps=goalSnapData[n]; if(!snaps)return 0;
+  var c=0;for(var i=0;i<SNAPSHOT_ELIGIBLE_GOAL_IDS.length;i++){if(snaps[SNAPSHOT_ELIGIBLE_GOAL_IDS[i]]!==undefined)c++;}
+  return c;
+}
+// States: legacy_pre_anchor | anchor | open | blocked_prior_incomplete | half_closed |
+// complete | corrupt. INERT until Slice-3 wiring writes post-anchor snapshots — with only
+// the Week-5 anchor present, every reconciled week 6+ correctly reads 'half_closed' (the
+// true pre-activation gap-week state the post-freeze repair pass resolves).
+function closeoutState(n){
+  if(n<=4)return'legacy_pre_anchor';
+  if(n===5)return'anchor';
+  var recon=isWeekReconciled(n);
+  var elig=_eligibleSnapCount(n);
+  if(recon&&elig>=9)return'complete';                 // reconciled ∧ nine-complete (wrapper branch F)
+  if(recon)return'half_closed';                        // reconciled, <9 eligible incl. 0 (wrapper branch G)
+  if(elig>=1)return'corrupt';                          // snapshots without reconciliation (wrapper branch H hard-stop)
+  for(var w=6;w<n;w++){                                 // open only if every earlier post-anchor week is complete (§6.1 no-advance)
+    if(!(isWeekReconciled(w)&&_eligibleSnapCount(w)>=9))return'blocked_prior_incomplete';
+  }
+  return'open';                                        // ready for a normal new closeout (wrapper branch E)
+}
+
 // ── Tasks ──────────────────────────────────────────────────────────────────
 // ── 5G-1B: reconciled-transfer-history resolver + resolver-aware write ───────
 // Pure, deterministic (no DOM/Date/random). Resolves current model-transfer

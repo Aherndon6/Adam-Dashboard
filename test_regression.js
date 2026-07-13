@@ -12312,6 +12312,63 @@ console.log('\n── Section 5G-1D Slice 1: closeout snapshot payload builder �
   });
 })();
 
+// ═══════════════════════════════════════════════════════════════════════════
+// Section 5G-1D / Slice 4 — closeout-complete predicate closeoutState(n)
+// Pure, read-only over reconData + goalSnapData + the eligible nine. Mirrors the
+// deployed wrapper branch structure (docs/phase-5g-1d-migration.sql) + amendment
+// §A/§F completeness scoping (all nine eligible ids, any source; weeks 1-4 legacy;
+// week 5 anchor). INERT — no wiring/render dependency.
+// ═══════════════════════════════════════════════════════════════════════════
+console.log('\n── Section 5G-1D Slice 4: closeout-complete predicate ──');
+(function(){
+  var NINE=SNAPSHOT_ELIGIBLE_GOAL_IDS;
+  var _rd=reconData,_gs=goalSnapData;                  // save shared globals
+  function reset(){reconData={};goalSnapData={};}
+  function recon(n){reconData[n]={chk:0,sav:0,amx:0,tax:0,lc:0,balance_basis:'posted_current_balance'};}
+  function snap(n,ids){goalSnapData[n]=goalSnapData[n]||{};ids.forEach(function(id){goalSnapData[n][id]=100;});}
+  function full(n){snap(n,NINE);}
+  try{
+    test('5G1D-S4-01: weeks 1-4 are legacy pre-anchor regardless of state',function(){
+      reset();recon(3);full(3);
+      assert(closeoutState(1)==='legacy_pre_anchor','wk1');
+      assert(closeoutState(4)==='legacy_pre_anchor','wk4');
+    });
+    test('5G1D-S4-02: week 5 is the opening anchor',function(){reset();assert(closeoutState(5)==='anchor');});
+    test('5G1D-S4-03: reconciled + all nine eligible => complete',function(){
+      reset();recon(6);full(6);assert(closeoutState(6)==='complete');
+    });
+    test('5G1D-S4-04: reconciled + partial (1..8) eligible => half_closed',function(){
+      reset();recon(6);snap(6,NINE.slice(0,5));assert(closeoutState(6)==='half_closed');
+    });
+    test('5G1D-S4-05: reconciled + zero eligible snapshots => half_closed (zero-snapshot legacy)',function(){
+      reset();recon(6);assert(closeoutState(6)==='half_closed');
+    });
+    test('5G1D-S4-06: snapshots without reconciliation => corrupt (wrapper branch H hard-stop)',function(){
+      reset();full(6);assert(closeoutState(6)==='corrupt');
+    });
+    test('5G1D-S4-07: open week (prior complete, itself empty) => open',function(){
+      reset();recon(6);full(6);assert(closeoutState(7)==='open');
+    });
+    test('5G1D-S4-08: first post-anchor week (6) with nothing prior => open',function(){
+      reset();assert(closeoutState(6)==='open');
+    });
+    test('5G1D-S4-09: open week blocked when an earlier post-anchor week is incomplete (no-advance §6.1)',function(){
+      reset();recon(6);                                 // wk6 reconciled, NO snapshots => half_closed
+      assert(closeoutState(8)==='blocked_prior_incomplete');
+    });
+    test('5G1D-S4-10: completeness ignores source (loader does not fetch source)',function(){
+      reset();recon(6);full(6);assert(_eligibleSnapCount(6)===9);assert(closeoutState(6)==='complete');
+    });
+    test('5G1D-S4-11: non-eligible ids (wewe_rccl/wewe_dcl) do not affect eligible count',function(){
+      reset();recon(6);full(6);goalSnapData[6].wewe_rccl=600;goalSnapData[6].wewe_dcl=500;
+      assert(_eligibleSnapCount(6)===9,'non-eligible ignored');assert(closeoutState(6)==='complete');
+    });
+    test('5G1D-S4-12: never throws on empty state; far week with no prior is blocked',function(){
+      reset();assert(closeoutState(6)==='open');assert(closeoutState(31)==='blocked_prior_incomplete');
+    });
+  }finally{reconData=_rd;goalSnapData=_gs;}             // restore shared globals for later sections
+})();
+
 // ─────────────────────────────────────────────────────────────────────────
 console.log('\n╔══════════════════════════════════════════════════════════════╗');
 console.log('║                       RESULTS                               ║');
