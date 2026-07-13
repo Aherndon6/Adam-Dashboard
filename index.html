@@ -329,6 +329,11 @@ body{background:var(--bg);color:var(--ink);font-family:Inter,ui-sans-serif,syste
 .recon-open-btn:hover{background:var(--blueSoft);border-color:var(--blue);color:var(--blue);border-style:solid}
 .recon-form{background:var(--surface2);border:1px solid var(--line2);border-radius:11px;padding:13px;margin-top:9px}
 .recon-form-title{font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;margin-bottom:9px}
+/* 5G-1D Slice 4b — closeout-state line (reconciled vs fully closed vs anomaly). Calm/muted. */
+.closeout-state{font-size:11px;padding:4px 9px;border-radius:7px;margin-top:6px;line-height:1.35}
+.closeout-state.complete{color:var(--green);background:var(--greenSoft);border:1px solid #86efac}
+.closeout-state.pending{color:var(--amber);background:var(--amberSoft);border:1px solid var(--amber)}
+.closeout-state.corrupt{color:var(--red);background:var(--redSoft);border:1px solid #fca5a5}
 .recon-guidance-note{font-size:11px;color:var(--muted);line-height:1.5;background:var(--surface3);border:1px solid var(--line2);border-radius:7px;padding:8px 10px;margin-bottom:11px}
 .recon-inputs{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:11px}
 .recon-field label{font-size:10px;color:var(--muted2);text-transform:uppercase;letter-spacing:.04em;display:block;margin-bottom:3px}
@@ -2905,6 +2910,17 @@ function closeoutState(n){
   }
   return'open';                                        // ready for a normal new closeout (wrapper branch E)
 }
+// 5G-1D Slice 4b — view helper: the closeout-state line for a week's recon panel. Surfaces
+// the reconciled-vs-fully-closed distinction (plan §2.5) for post-anchor weeks only; returns
+// '' for legacy_pre_anchor/anchor/open/blocked (no visual change → weeks 1-5 render exactly
+// as before). INERT display until Slice-3 wiring writes post-anchor snapshots.
+function _closeoutStateBadge(n){
+  var st=closeoutState(n);
+  if(st==='complete')return'<div class="closeout-state complete">✓ Closeout complete \xb7 goal funding anchored</div>';
+  if(st==='half_closed')return'<div class="closeout-state pending">Closeout snapshot pending — goal funding not yet anchored for this week</div>';
+  if(st==='corrupt')return'<div class="closeout-state corrupt">⚠ Snapshot present without a reconciliation — needs review</div>';
+  return'';
+}
 
 // ── Tasks ──────────────────────────────────────────────────────────────────
 // ── 5G-1B: reconciled-transfer-history resolver + resolver-aware write ───────
@@ -4494,8 +4510,10 @@ function renderWeekDetail(w,weeks){
   html+='<div class="panel card-pad">';
   if(w.reconciled&&reconOpen!==w.num){
     html+='<div class="recon-done-row"><span class="recon-done-lbl">✅ Reconciled \xb7 '+w.actualBals.date+'</span>'+(canWriteFinancials()?'<button class="recon-edit-btn" onclick="openRecon('+w.num+')">Edit actuals</button>':'')+'</div>';
+    html+=_closeoutStateBadge(w.num); // 5G-1D Slice 4b: reconciled-vs-fully-closed line (weeks 6+ only; '' otherwise)
   }else if(canWriteFinancials()&&(isPastWeek||isNowWeek)&&reconOpen!==w.num){
     html+='<button class="recon-open-btn" onclick="openRecon('+w.num+')">Reconcile this week ✏️ — enter actual balances</button>';
+    html+=_closeoutStateBadge(w.num); // 5G-1D Slice 4b: surfaces a corrupt snapshot-without-reconciliation anomaly ('' otherwise)
   }
   if(reconOpen===w.num){
     var pre=w.actualBals||{chk:w.mChk,sav:w.mSav,amx:w.mAmx,tax:w.mTax,lc:w.mLc};

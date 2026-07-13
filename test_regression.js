@@ -12369,6 +12369,38 @@ console.log('\n── Section 5G-1D Slice 4: closeout-complete predicate ──'
   }finally{reconData=_rd;goalSnapData=_gs;}             // restore shared globals for later sections
 })();
 
+// ── Section 5G-1D Slice 4b: closeout-state badge (view helper) ──
+console.log('\n── Section 5G-1D Slice 4b: closeout-state badge ──');
+(function(){
+  var NINE=SNAPSHOT_ELIGIBLE_GOAL_IDS;
+  var _rd=reconData,_gs=goalSnapData;
+  function reset(){reconData={};goalSnapData={};}
+  function recon(n){reconData[n]={chk:0,sav:0,amx:0,tax:0,lc:0,balance_basis:'posted_current_balance'};}
+  function full(n){goalSnapData[n]={};NINE.forEach(function(id){goalSnapData[n][id]=100;});}
+  try{
+    test('5G1D-S4B-01: complete week => green "Closeout complete" line',function(){
+      reset();recon(6);full(6);var h=_closeoutStateBadge(6);
+      assert(/closeout-state complete/.test(h)&&/Closeout complete/.test(h),h);
+    });
+    test('5G1D-S4B-02: half_closed week => amber "snapshot pending" line',function(){
+      reset();recon(6);var h=_closeoutStateBadge(6);
+      assert(/closeout-state pending/.test(h)&&/snapshot pending/i.test(h),h);
+    });
+    test('5G1D-S4B-03: corrupt (snapshots without reconciliation) => red "needs review" line',function(){
+      reset();full(6);var h=_closeoutStateBadge(6);
+      assert(/closeout-state corrupt/.test(h)&&/needs review/i.test(h),h);
+    });
+    test('5G1D-S4B-04: weeks 1-5 render NO closeout-state line (parity — legacy/anchor untouched)',function(){
+      reset();recon(3);full(3);recon(5);full(5);
+      assert(_closeoutStateBadge(1)===''&&_closeoutStateBadge(4)===''&&_closeoutStateBadge(5)==='','weeks 1-5 empty');
+    });
+    test('5G1D-S4B-05: open/blocked weeks render NO line (no clutter for un-closed weeks)',function(){
+      reset();assert(_closeoutStateBadge(6)==='','open empty');
+      recon(6);assert(_closeoutStateBadge(8)==='','blocked empty');
+    });
+  }finally{reconData=_rd;goalSnapData=_gs;}
+})();
+
 // ─────────────────────────────────────────────────────────────────────────
 console.log('\n╔══════════════════════════════════════════════════════════════╗');
 console.log('║                       RESULTS                               ║');
