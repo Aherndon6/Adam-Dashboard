@@ -78,7 +78,40 @@ clickNav 0**. **Final independent production-readiness review (ChatGPT) accepted
 gate; three narrow final corrections F1–F3 (test-count refresh, restore-point boundary, Phase-2
 durable-closeout precondition) applied — see
 `docs/phase-5g-1d-independent-preproduction-review-closeout-2026-07-13.md` §F.** Slice 6 conditionally
-ready; Gate B not authorized. **Awaiting Adam authorization to commit and proceed to Slice 6.**
+ready → **NOW EXECUTED (see the next section).** Gate B not authorized.
+
+## 5G-1D SLICE 6 INERT PRODUCTION DEPLOYMENT COMPLETE + GREEN (2026-07-13)
+
+**The closeout wrapper + Option B are live in PRODUCTION Adam-Dashboard (`usayoldrawwmjsmretin`),
+INERT.** Executed by Adam in the Supabase SQL Editor / terminal, one gate at a time under the
+finalized runbook (`docs/phase-5g-1d-slice6-deploy-runbook-2026-07-13.md`); Claude ran no SQL and
+verified each verbatim output. Committed SQL used byte-for-byte: `-preflight.sql` / `-migration.sql`
+/ `-validation.sql`. **Balance-free.** Full evidence:
+`docs/phase-5g-1d-slice6-closeout-2026-07-13.md`; restore-point metadata:
+`docs/phase-5g-1d-slice6-restorepoint-metadata-20260713T222223Z.md`.
+
+- **Gate 1 preflight:** env=production, sysid `7632885393857617092`, `app_environment` absent;
+  `current_user=session_user=postgres`; the four SECURITY DEFINER functions share one trusted owner
+  (`postgres`); deployed-RPC MD5 baselines == approved (`1bfde751…150c` / `154231b3…7076`); new
+  functions absent; Week-5 anchor 9/9.
+- **Gate 2 restore point (DR floor):** custom-format public-schema `pg_dump`, `pg_restore --list`
+  4/4, chmod 600, SHA-256 recorded, encrypted off-device copy verified (post-transfer PASS). DR-only
+  — not a routine rollback.
+- **Gate 3 migration:** exactly two functions created; both owner `postgres`, SECURITY DEFINER,
+  `search_path=public,pg_temp`, anon/authenticated EXECUTE false.
+- **Gate 4 validation:** bodies byte-unchanged; both new functions INERT; owner pinned; **old recon
+  RPC `authenticated` EXECUTE still true** (its revoke is Gate B); no exception.
+- **Gate 5 inert checks:** REST POST to both new functions → 404/PGRST202 (no 2xx); live
+  `BUILD_TS` unchanged (`2026-07-11T17:26:14`); all tabs render, console clean; `goal_funding_snapshots`
+  total **11**, Week-5 anchor **9** (no rows changed). Rollback **not** needed.
+
+**INERT end state:** the two new functions exist (SECURITY DEFINER, zero API-role EXECUTE); E1 +
+recon RPC + its grant + RLS + all data byte/state-unchanged; the deployed browser still writes via
+the old RPC. **Production behavior is unchanged.**
+
+**NOT authorized / NOT done (each a separate gate):** Gate B, Phase-1 grants, Phase-2 revokes, merge
+to `main`, `BUILD_TS` stamp, browser activation, first Week-6 supervised closeout, Option B use, any
+correction. **No grant change, merge, or activation has occurred.**
 
 ## Current Phase
 
