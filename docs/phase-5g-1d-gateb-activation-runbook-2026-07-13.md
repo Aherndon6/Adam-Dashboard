@@ -72,6 +72,12 @@ grant baseline** + function-body md5s, and confirm:
 - ☐ Week-5 anchor still nine `opening_anchor` + two `wewe_*` correction rows;
 - ☐ latest reconciled week + latest complete snapshot week are consistent with a **Week-6** next
   closeout (the wrapper computes next = 6 + complete-count; confirm no gap).
+- ☐ **ADJUNCT PREFLIGHT (Fable P2-1) — run `docs/phase-5g-1d-gateb-adjunct-preflight.sql` (READ
+  ONLY) immediately before Phase 1.** It hard-stops unless: Week-5 partition = **9 `opening_anchor` +
+  2 `correction` = 11 total**; `weekly_reconciliations` = **5 rows, weeks 1–5 only, latest = 5**; and
+  **0 `goal_funding_snapshots` at `week_num ≥ 6`**. This proves the first supervised closeout will
+  land cleanly at `week_num = 6` (calendar Week 28). **Any different result is a HARD STOP before
+  Phase 1.**
 
 **Hard stop** on any mismatch.
 
@@ -132,9 +138,21 @@ proven AFTER the revoke by two NON-MUTATING probes (steps 8–9).
    fallback: a wrapper hard-failure on a correctable input does not strand the operator, and the
    browser-revert rollback needs no grant change. Verify the write three ways (§5). **Do not proceed
    to step 6 until Week-6 is durably complete.**
-5. ☐ **Record the exact Week-6 wrapper payload** (balance-free: `week_num`, `p_mode`, the nine
-   `goal_id`s, `snapshot_count` — **not** balances) for the post-revoke idempotent re-submit proof
-   (step 8), and capture a before-image (recon row + nine snapshot rows) for the non-mutation check.
+5. ☐ **Record the exact Week-6 wrapper payload + capture a LOCAL balance-bearing before-image.**
+   Committed evidence stays balance-free (`week_num`, `p_mode`, the nine `goal_id`s,
+   `snapshot_count`). Separately, **local-only (never committed — same discipline as the restore
+   point):** capture the persisted Week-6 reconciliation **balances + `balance_basis`**, the **nine
+   persisted round-2 snapshot values**, and the recon row + nine snapshot rows as the before-image.
+   Proof A (step 8) replays these EXACTLY, and the non-mutation check compares against them.
+
+> **▲ BINDING — Week-6 state freeze (Fable P1-1).** From the successful first closeout (step 4)
+> **through completion of BOTH post-revoke proofs (steps 8–9): NO Option B correction of model week
+> 6, and NO `approved_reopen` of model week 6.** A value issue discovered during this interval
+> **waits until after Proof B** — do not touch week 6. If an owner mutation is genuinely unavoidable
+> before the proofs complete: **(a) do NOT edit or weaken the revoke SQL; (b) re-capture the payload
+> and before-image (step 5); (c) STOP and re-plan Phase 2.** Both proofs assume the Week-6 state is
+> byte-identical to the step-5 before-image; any mutation in the interval invalidates them.
+
 6. ☐ **Phase 2 lockdown** — run `-activation-revokes.sql`. Its pre-lockdown asserts hard-stop unless:
    wrapper granted, **old recon RPC still granted**, **owner unchanged**, and the **Week-6 closeout is
    a durable SUPERVISED-WRAPPER closeout** — **exactly one** Week-6 reconciliation row **and exactly
@@ -148,15 +166,22 @@ proven AFTER the revoke by two NON-MUTATING probes (steps 8–9).
    RPC=F, repair=F, snapshot RPC=F, wrapper=T, Option B=T; tables per §6; **owner invariant holds**
    and **all bodies byte-unchanged** vs the pre-activation capture.
 8. ☐ **Post-revoke Proof A (NON-MUTATING) — wrapper idempotent re-submit.** Re-submit the EXACT
-   Week-6 payload from step 5 (empty commitment arrays + the nine already-persisted rows) through the
+   Week-6 payload built from the step-5 local before-image (Fable P2-3): **the exact persisted Week-6
+   reconciliation balances + `balance_basis`; empty `p_new_commitments` and `p_patched` arrays; the
+   nine persisted round-2 snapshot values; `p_mode='normal_closeout'`; `p_expected_count=9`.** The
    wrapper → branch-F fully-closed identity returns
    `{ok:true, mode:'normal_closeout', idempotent:true, week_num:6, snapshot_count:9}`, makes **no
    inner-RPC write, mutates nothing**. Prove non-mutation: the Week-6 recon row + nine snapshots
-   re-read equal to the step-5 before-image (no value/`updated_at` change). This proves the wrapper
-   still works **as the definer owner after the revoke** AND is idempotent — with zero new mutation.
+   re-read equal to the step-5 before-image (no value/`updated_at` change). **Any drift from the
+   before-image → re-read and retry; NEVER force the proof.** This proves the wrapper still works **as
+   the definer owner after the revoke** AND is idempotent — with zero new mutation.
 9. ☐ **Post-revoke Proof B (NON-MUTATING) — old-RPC bypass probe.** An authenticated direct POST to
-   `/rest/v1/rpc/save_reconciliation_with_commitments` with an INVALID input the function rejects
-   **before any write** (e.g. `p_model_year: 9999`). Guaranteed non-mutating either way: (a) a
+   `/rest/v1/rpc/save_reconciliation_with_commitments` that **sends EVERY named argument of the 11-arg
+   signature — including BOTH JSONB arguments (`p_new_commitments`, `p_patched`) — with
+   `p_model_year = 9999`** (Fable P2-3). Sending the full argument set is required so PostgREST
+   resolves the overload and the request reaches the **in-body validation rejection** (`invalid
+   model_year: 9999`, before any write) rather than failing with a PostgREST signature-resolution
+   (PGRST202/404) error that would prove nothing. Guaranteed non-mutating either way: (a) a
    grant-layer denial (401/403/404 — the revoke took), or (b) if the grant somehow persisted, the
    function's own first validation raises `invalid model_year: 9999` before any INSERT/UPDATE
    (grounded: `docs/phase-5f-1-migration.sql:510`, ahead of every write). Proves the bypass path is
@@ -182,21 +207,23 @@ Gate C row 9 (approved) restricts deletion of anchored weeks. After Phase 2 G-08
 weekly_reconciliations`), the current `deleteRecon` direct DELETE is denied for **every** week
 (fail-closed). Two required parts:
 
-- ☐ **Browser guard (index.html, add to the activation branch BEFORE the merge in step 2):**
-  `deleteRecon`/the Remove-reconciliation control must **not offer deletion** for a week whose
-  `closeoutState(n)` is `anchor`, `complete`, or `half_closed`, or that otherwise holds
-  opening-anchor / reconciliation / correction snapshot state; and must surface the post-revoke
-  denial gracefully (no silent optimistic delete). **This guard is NOT in the branch-held Slices
-  3/4/5** — it is a small Slice-7 pre-merge addition (display-layer + a `closeoutState`-gated
-  disable), landing on `claude/herndon-5g-1d-preactivation-j428vn` and re-verified (static + e2e)
-  before the merge.
+- ☐ **Browser guard (index.html) — IMPLEMENTED on the activation branch (P0-4, verified @ commit
+  `114b080`).** `canDeleteRecon(n)` offers reconciliation deletion **only** for a legacy pre-anchor
+  week (1–4) that bears no snapshots with a known-good snapshot load, and **fails closed** on any
+  uncertain load; anchor (5), `complete`, `half_closed`, `corrupt`, and any snapshot-bearing week are
+  never deletable. `deleteRecon` re-checks the guard (defense in depth), does not optimistically drop
+  local state on a denied DELETE, and surfaces a week-scoped operator message. Covered by static
+  (`5G1D-P04-01…16`) + e2e (`5G1D-DEL-1…3`); part of the verified gate (static 1507/0, e2e 148/0/0).
+  **No further browser work is required for row 9 before the merge** — just confirm the deployed
+  `BUILD_TS` carries this build.
 - ☐ **Owner-only cleanup/remediation path (separate design + approval):** legitimate deletion of an
   unanchored/exceptional week — if ever needed — goes through an owner-gated RPC or a supervised
   guarded-SQL runbook, **never** the ordinary UI and **never** as a correction. Draft + approve
   separately; not required for activation, but the register records it as the governed path.
 
-**Do not merge (step 2) until the row-9 browser guard is on the branch and re-verified.** No SQL
-change — the server side is G-08, already in `-activation-revokes.sql`.
+**The row-9 browser guard is already on the branch and re-verified (P0-4 @ `114b080`) — this
+pre-merge condition is SATISFIED.** No SQL change — the server side is G-08, already in
+`-activation-revokes.sql`.
 
 ---
 
@@ -205,6 +232,13 @@ change — the server side is G-08, already in `-activation-revokes.sql`.
 Under Option A (pre-freeze), the "Week-6 supervised smoke" **is the ordinary Week-6 combined
 closeout** through the wrapper (readiness Slice 7, pre-freeze interpretation) — the first real
 `reconciliation` + nine-snapshot write.
+
+> **Model/calendar mapping (Fable-resolved):** "Week-6" everywhere in this runbook and in
+> `-activation-revokes.sql` is the **model `week_num = 6`** — `getCalWeek(6) = 28`, i.e. **calendar
+> Week 28**. The first supervised production closeout therefore persists `week_num = 6` to both
+> `weekly_reconciliations` and `goal_funding_snapshots`; the F3 precondition (`c_first_close_week =
+> 6`) targets exactly that row. The adjunct preflight (§1) confirms `weekly_reconciliations` currently
+> holds weeks 1–5 only, so week 6 is the clean next write.
 
 - ☐ Adam performs the Week-6 weekly closeout in the live app: enter balances → **Save actuals —
   review & close** → confirm the nine funded values in the confirmation view → **Confirm & close
@@ -229,6 +263,13 @@ change beyond de-activating the two new functions. **Do not run the Phase-2 revo
 closeout is durably complete** — the revoke script itself hard-stops if Week-6 is not complete. The
 wrapper was Gate-2-proven on staging, so a hard failure here is unlikely, but the fallback is intact.
 
+> **▲ BINDING — Week-6 state freeze (Fable P1-1), repeated here.** Once the first closeout SUCCEEDS,
+> model week 6 is **frozen through completion of both post-revoke proofs (§4 steps 8–9): NO Option B
+> correction and NO `approved_reopen` of week 6.** A value issue found in that interval **waits until
+> after Proof B.** If an owner mutation is genuinely unavoidable: **do NOT edit or weaken the revoke
+> SQL; re-capture the payload + before-image (§4 step 5); STOP and re-plan Phase 2.** A mid-interval
+> mutation invalidates the proofs' before-image and forces a re-plan.
+
 ---
 
 ## 6. Post-activation verification (expected end state)
@@ -247,8 +288,14 @@ wrapper was Gate-2-proven on staging, so a hard failure here is unlikely, but th
 - ☐ **BUILD_TS** on dashboard.herndons.us = the new activation build.
 - ☐ Ordinary weekly closeout now runs through the wrapper for both Adam and Wendy
   (`can_write_financials()`); reopen/correction remain owner-only, supervised, out of the ordinary UI.
-- ☐ Update `CODEX_STATUS.md` / `docs/phase-status.md`: 5G-1D **production-live**; Gate B CLOSED;
-  Slice 7 complete; first Week-6 closeout evidenced.
+- ☐ Update the **post-activation status-refresh list** — `CODEX_STATUS.md`, `docs/phase-status.md`,
+  **and `AGENTS.md`** (Fable P2-4 hygiene; refresh at activation, not tonight): 5G-1D
+  **production-live**; Gate B CLOSED; Slice 7 complete; first Week-6 closeout evidenced.
+- ☐ **P2-2 (post-activation roadmap constraint, recorded — NOT a Gate B blocker):**
+  `weekly_reconciliations` is keyed **only by `week_num`** (no `model_year`), so the 2026 model
+  weeks 1–31 will collide with a 2027 cycle. **Before the first 2027 closeout,** `weekly_reconciliations`
+  must be re-keyed (add `model_year` to the key), archived, or otherwise handled. Tracked as a 5G-1D
+  post-activation follow-up; does not affect the 2026 activation.
 
 ---
 

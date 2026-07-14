@@ -16,8 +16,10 @@ perform supervised closeout, execute Gate B, execute SQL against production, mod
 > 2026-07-13 by the independent pre-production corrections + final review: Adam-verified at commit
 > `114b080` — static 1507/0, full `node e2e.js` 148/0/0, fallbacks 0/0; see
 > `docs/phase-5g-1d-independent-preproduction-review-closeout-2026-07-13.md`.** **Gate D is DECIDED:
-> Option A (pre-freeze), Adam-approved 2026-07-13.** The Gate C brief (§3), Slice 6 checklist (§5),
-> and execution plan (§7) below are **superseded for execution** by the finalized packages:
+> Option A (pre-freeze), Adam-approved 2026-07-13.** The Gate C brief (§3), **the Gate D timing
+> decision card (§4) — Gate D is DECIDED, so its "both options / not chosen here" framing is
+> superseded** — the Slice 6 checklist (§5), and the execution plan (§7) below are **superseded for
+> execution** by the finalized packages:
 > `docs/phase-5g-1d-gatec-register-2026-07-13.md` (Gate C register + grant SQL),
 > `docs/phase-5g-1d-slice6-deploy-runbook-2026-07-13.md` (Slice 6), and
 > `docs/phase-5g-1d-gateb-activation-runbook-2026-07-13.md` (Gate B). This document is retained as
