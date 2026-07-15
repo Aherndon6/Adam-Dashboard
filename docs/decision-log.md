@@ -36,6 +36,7 @@
 | 2026-07-15 | Inline-adjacent implementation this week; **no ES-module extraction** — standing exception recorded, modularization roadmap preserved | Adam | docs/phase-5g-1b-openwindow-netting-2026-07-15.md §D.7 |
 | 2026-07-15 | Progress-plane transfer-identity gap recorded; `holding_events` (RCCL/DCL) cannot serve as the progress-plane durable identity; layers a/b/c/d separated with owning phases | Adam | docs/roadmap/amendment-2026-07-15-progress-plane-transfer-identity.md |
 | 2026-07-15 | Saturday operator package reissued (repin HEAD/BUILD_TS/static+e2e+readiness counts; add production precheck, pre-close duplicate scan, Week-6 cumulative-includes-executed-residual, post-close zero-later-recommendation). **Activation itself remains unauthorized pending independent review + Adam go-ahead.** | Adam (directed) | docs/phase-5g-1d-saturday-operator-package-2026-07-18.md |
+| 2026-07-15 | Second preactivation blocker (positional `applyCompletionSnapshots`/`_trAmts` aliasing erased the Week-28 `$425.68` commission-tax task) fixed adapter-only at `fd5d7a1` (identity-resolved normalization + commission-tax write amount); frozen surfaces byte-unchanged, 0 `.sql`; static 1533/0, e2e 153/0/0. Production rows Scenario-E clean → **no data correction**. Fable re-review requested; operator package repinned to v3. | Adam | docs/phase-5g-1b-identity-resolution-2026-07-15.md |
 
 *Append-only. Seed further rows as A3/A6/A7–A12 and future decisions resolve (e.g., DR-1 sign-off, A6 patch approval, D7/D6/D10/D-11).*
 

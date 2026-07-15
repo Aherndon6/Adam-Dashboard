@@ -1,5 +1,11 @@
 # Codex Status: Herndon Financial OS
 
+## CURRENCY NOTE (2026-07-15b) — identity-resolution correction (second pre-activation blocker)
+
+- **Second preactivation blocker FIXED at `fd5d7a1`** (adapter/render + write-ctx only): the positional `applyCompletionSnapshots` / `_trAmts` task_idx aliasing that erased the Week-28 **`$425.68`** commission-tax task (an executed Adam IRA `$61.06` completion at the colliding index). Now identity-resolved; commission-tax write amount parsed from the resolved label (not undefined `w.ct`). Record: `docs/phase-5g-1b-identity-resolution-2026-07-15.md`.
+- **Verification:** static **1533/0**; full `node e2e.js` **153/0/0** (rerun; initial 2 failures were headless `clickNav` flakes); readiness **0/0**. `index.html` blob **`6804711de4b520389fdca3dbbd52b7462ebc2279`**, `BUILD_TS 2026-07-15T19:51:00`. Frozen surfaces byte-unchanged (`runModel`/`resolveWeekTransfers`/`computeGoalTransferNetting`/commission-tax calc); 0 `.sql`.
+- **Production rows Scenario-E clean** (the `$61.06` is under `goal_adam_ira`; no `commission_tax` contamination) → **no data correction**. Operator package repinned to **v3**; **independent Fable re-review requested**. **Activation remains UNAUTHORIZED** (branch not pushed; awaiting review + Adam go-ahead).
+
 ## CURRENCY NOTE (2026-07-15) — open-window transfer-netting correction (pre-activation)
 
 - **Open-window goal-transfer netting/suppression control IMPLEMENTED** at correction commit **`15b372f`** (adapter/projection + write-guard only; `runModel`/waterfall/`goalSaved`/snapshot SQL/schema/wrapper/reconciliation/grants/production data untouched; 0 `.sql` changed). Record: `docs/phase-5g-1b-openwindow-netting-2026-07-15.md`.
