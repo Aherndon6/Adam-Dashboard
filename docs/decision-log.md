@@ -21,6 +21,13 @@
 | 2026-07-14 | Wishlist reconciliation approved (live production export mapped; Fable ID/status corrections applied) | Adam | canonical-roadmap Appendix B |
 | 2026-07-14 | Roadmap UI Lite recorded as a new future candidate (W-8); Wishlist items 32/33 subsumed | Adam | canonical-roadmap §17 |
 | 2026-07-14 | Monthly Close v1 spec + operator runbook drafted (spec/runbook only; no implementation) | Adam (directed) | docs/monthly-close-v1-spec-2026-07-14.md; -operator-runbook-2026-07-14.md |
+| 2026-07-14 | T-1 — TX-SPLIT default Jan 2027 (first post-rollover) / 5G-2 November; conditional Nov swap (4 preconditions, decide ≤ Oct 1) | Adam | canonical-roadmap §3.0 / §12.3; Fable Targeted Sequencing Review + Amendment 1 |
+| 2026-07-14 | T-2 — Fold BUD-MX-lite into P3b-1 as P3b-1.MX (Misc/Extra Envelope v1); resolves W-3; identity 20% stays Budget-Identity Change | Adam | canonical-roadmap §3 P3b-1; Amendment 1 §3 |
+| 2026-07-14 | T-3 — Dissolve "Stage 1A"; no separate Architecture Enablement code phase; pre-1B prep bright line (§8) | Adam | canonical-roadmap §8 / §9 / §3.0; Amendment 1 §2 |
+| 2026-07-14 | T-4 — 5G-5 renamed "Goal Intelligence & Timeline" + GT-R read-only trajectory carve-out (interleave-class) | Adam | canonical-roadmap §3 P6 / §12.3 |
+| 2026-07-14 | T-5 — Re-date 5G-4a/4b/full 5G-5 to 2027 (honesty change; no scope change) | Adam | canonical-roadmap §3.0 / §3 P6 |
+| 2026-07-14 | T-6 — Adopt Account Composition Visibility Rider (AMEX Savings + Truist Savings; Checking deferred to 5G-3; not `5G-3A`) | Adam | canonical-roadmap §18; Fable Amendment 2 |
+| 2026-07-14 | Provenance: three Fable 2026-07-14 sequencing documents adopted as controlling amendments (targeted review + boundary clarifications + account composition scope) | Adam | docs/roadmap/archive-index.md |
 
 *Append-only. Seed further rows as A3/A6/A7–A12 and future decisions resolve (e.g., DR-1 sign-off, A6 patch approval, D7/D6/D10/D-11).*
 
