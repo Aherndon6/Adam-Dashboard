@@ -885,7 +885,7 @@ button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-vis
 // ── Constants (unchanged) ──────────────────────────────────────────────────
 // Simplified architecture — $8,250 total from LC · $6,500 operating floor · no legacy mechanics
 // Real-world moves: keep $2,250 in chk, move $2,750 sav→chk, move $1,000 LC→chk, move $2,250 LC→chk (Option 1 correction)
-const BUILD_TS='2026-07-11T17:26:14'; // updated each push — local time string
+const BUILD_TS='2026-07-15T13:01:24'; // updated each push — local time string
 const START_CHK=18037.73,START_SAV=3772.77,START_AMX=103.64,START_TAX=0,START_LC=13488.88;
 const EF_AMT=13488.88; // LC/EF balance — static this model year (no transfers in or out)
 const BASE_TAX=521.36,RET_SAV_XFR=3772.74;
@@ -3249,6 +3249,209 @@ function resolveWeekTransfers(inp){
   var doneCount=currentRows.filter(function(c){return c.completed;}).length;
   return {currentRows:currentRows,executedHistory:executedHistory,doneCount:doneCount,executedCount:executedHistory.length,occupiedTaskIdx:occupiedTaskIdx};
 }
+// ═══════════════════════════════════════════════════════════════════════════
+// 5G-1B open-window executed-transfer NETTING (adapter / projection ONLY)
+// ───────────────────────────────────────────────────────────────────────────
+// Prevents an already-satisfied goal-funding obligation from re-presenting as a
+// NEW executable PLANNED transfer after an open-week recalc (the reported Adam
+// IRA $61.06 duplicate). This is a PURE projection over durable persisted state:
+//   • weekly_tasks completions  — action_key + completed_amount (recovered from
+//     completed_label only when the amount is absent);
+//   • goal_funding_snapshots    — the authoritative post-reconciliation funded
+//     baseline (goalSnapData), gated on _goalSnapLoadStatus==='loaded';
+//   • GOALS_REGISTRY            — per-goal cumulative target.
+// It NEVER mutates runModel output, goalSaved, snapshots, realActs, or any write
+// surface; it reads weeks[].goalSaved's snapshot boundary only. Netting is keyed
+// by DURABLE OBLIGATION identity (goal id + direction, encoded by action_key),
+// NOT by volatile recommendation-row week/sequence identity, cumulatively across
+// the FULL open/unreconciled horizon after the latest authoritative snapshot
+// boundary. Fail-closed: any attribution uncertainty BLOCKS the obligation (it is
+// surfaced for review, never silently suppressed or silently executed).
+// Two obligation classes only; everything else is left 'normal' (untouched):
+//   • target_accumulation — the nine snapshot-eligible goals (cumulative target);
+//   • fixed_once          — goal_adam_ira_seed (a single fixed transfer, and it
+//     must NEVER cross-net with adam_ira target accumulation).
+// Per-occurrence / non-goal actions (commission_tax, tax_base, setup_*, monthly
+// LC boosts, alaska draws, custom tasks) are out of scope — no amount-only, no
+// cross-goal matching.
+var _NET_TOL=0.005, _NET_OVERCREDIT_TOL=1.00;
+var _NET_FIXED_ONCE=Object.create(null); _NET_FIXED_ONCE['goal_adam_ira_seed']=true; // fixed_once → adam_ira window
+function _netParseAmt(lbl){if(lbl==null)return null;var m=/\$([0-9,]+(?:\.[0-9]+)?)/.exec(String(lbl));return m?parseFloat(m[1].replace(/,/g,'')):null;}
+function computeGoalTransferNetting(weeks,opts){
+  opts=opts||{};
+  var _td=opts.taskData||(typeof taskData!=='undefined'?taskData:{});
+  var _snap=opts.goalSnapData||(typeof goalSnapData!=='undefined'?goalSnapData:{});
+  var _snapStatus=(opts.goalSnapLoadStatus!==undefined)?opts.goalSnapLoadStatus:(typeof _goalSnapLoadStatus!=='undefined'?_goalSnapLoadStatus:'unknown');
+  var _recon=opts.reconData||(typeof reconData!=='undefined'?reconData:{});
+  var _registry=opts.registry||(typeof GOALS_REGISTRY!=='undefined'?GOALS_REGISTRY:[]);
+  var _akTarget=(opts.akTarget!==undefined)?opts.akTarget:(typeof goalAk==='number'?goalAk:null);
+  var out={rows:Object.create(null),blockedObligations:[],boundaryByGoal:Object.create(null)};
+  if(!weeks||!weeks.length)return out;
+  var openW=weeks.slice(); // full horizon; each obligation restricts to num>boundary itself
+  function rr(n){return Math.round(n*100)/100;}
+  function _targetFor(goalId){
+    if(goalId==='alaska')return (typeof _akTarget==='number'?_akTarget:null);
+    var g=_registry.find(function(x){return x.id===goalId;});
+    return (g&&typeof g.target==='number')?g.target:null;
+  }
+  function _expectDestToken(goalId){
+    if(goalId==='alaska')return 'Truist Savings';
+    if(['adam_ira','wendy_ira','bailey_529','bryce_529','preston_529'].indexOf(goalId)>=0)return 'AMEX Savings';
+    var g=_registry.find(function(x){return x.id===goalId;});
+    return (g&&g.dest)?g.dest:null;
+  }
+  // Latest week that is BOTH reconciled AND carries an authoritative snapshot for this goal.
+  function _boundary(goalId){
+    var best=-1;
+    for(var k in _snap){var wn=+k; if(_snap[k]&&_snap[k][goalId]!==undefined&&_recon[wn]&&wn>best)best=wn;}
+    return best;
+  }
+  // Netting engages for an obligation ONLY when it has at least one COMPLETED transfer in an
+  // unreconciled (open) week — i.e. there is an executed transfer that a recalc could duplicate.
+  // With no such completion there is no duplicate risk, so the recommendation stays 'normal'
+  // (unchanged behavior). This is what keeps a legitimate fresh transfer from being touched.
+  function _hasOpenCredit(actionKey){
+    for(var key in _td){
+      var us=key.indexOf('_'); if(us<0)continue;
+      var wn=parseInt(key.slice(0,us),10); var sfx=key.slice(us+1);
+      if(!/^\d+$/.test(String(wn))||!/^\d+$/.test(sfx))continue;
+      if(_recon[wn])continue;
+      var td=_td[key]; if(td&&td.completed&&td.actionKey===actionKey)return true;
+    }
+    return false;
+  }
+  // Persisted task rows for a week, built from THIS call's task source (_td). Mirrors
+  // _taskRowsForWeek but stays consistent with the injected taskData (default: the global),
+  // so the resolver's completed/matched determination uses the same source as credit accounting.
+  function _rowsFromTd(weekNum){
+    var prefix=weekNum+'_',rows=[];
+    for(var k in _td){
+      if(k.indexOf(prefix)!==0)continue; var sfx=k.slice(prefix.length);
+      if(!/^\d+$/.test(sfx))continue; var td=_td[k]||{};
+      rows.push({taskIdx:parseInt(sfx,10),completed:!!td.completed,
+        actionKey:(td.actionKey!=null?td.actionKey:null),
+        completedLabel:(td.completedLabel!=null?td.completedLabel:null),
+        completedAmount:(td.completedAmount!=null?td.completedAmount:null),
+        completedAt:(td.completedAt!=null?td.completedAt:null)});
+    }
+    rows.sort(function(a,b){return a.taskIdx-b.taskIdx;});
+    return rows;
+  }
+  // Every completed weekly_task row for actionKey in unreconciled weeks with num>boundary.
+  // Returns {sum,count,ambiguous,dirMismatch} — amount recovered from completed_amount, else label.
+  function _creditFor(actionKey,boundary,expectTok){
+    var sum=0,count=0,ambiguous=false,dirMismatch=false;
+    for(var key in _td){
+      var us=key.indexOf('_'); if(us<0)continue;
+      var wn=parseInt(key.slice(0,us),10); var sfx=key.slice(us+1);
+      if(!/^\d+$/.test(String(wn))||!/^\d+$/.test(sfx))continue;
+      if(!(wn>boundary))continue;
+      if(_recon[wn])continue; // only unreconciled (open) weeks are credit for netting
+      var td=_td[key]; if(!td||!td.completed||td.actionKey!==actionKey)continue;
+      var amt=(td.completedAmount!=null)?Number(td.completedAmount):_netParseAmt(td.completedLabel);
+      if(amt==null||!isFinite(amt)){ambiguous=true;continue;}
+      if(expectTok&&td.completedLabel!=null&&String(td.completedLabel).indexOf(expectTok)<0)dirMismatch=true;
+      sum=rr(sum+amt);count++;
+    }
+    return {sum:sum,count:count,ambiguous:ambiguous,dirMismatch:dirMismatch};
+  }
+  // Uncompleted recommendation rows (resolver did NOT match them to a completion) for actionKey,
+  // in open weeks (num>boundary), ordered (week asc, display-idx asc). amt parsed from realActs.
+  function _candidates(actionKey,boundary){
+    var list=[];
+    for(var wi=0;wi<openW.length;wi++){
+      var w=openW[wi]; if(!(w.num>boundary))continue;
+      if(_recon[w.num])continue; // only unreconciled (open) weeks carry executable candidates
+      var acts=w.realActs||[],keys=w.realActKeys||[]; if(!acts.length)continue;
+      var res=resolveWeekTransfers({realActs:acts,realActKeys:keys,taskRows:_rowsFromTd(w.num)});
+      for(var i=0;i<acts.length;i++){
+        if((keys[i]||null)!==actionKey)continue;
+        if(res.currentRows[i]&&res.currentRows[i].completed)continue; // already done → not a candidate
+        list.push({wk:w.num,i:i,amt:_netParseAmt(acts[i]),label:acts[i]});
+      }
+    }
+    return list;
+  }
+  function _block(keyId,reason,cands){
+    out.blockedObligations.push({obligationKey:keyId,reason:reason});
+    for(var c=0;c<cands.length;c++){
+      out.rows[cands[c].wk+'_'+cands[c].i]={disposition:'blocked',netAmount:null,reason:reason,obligationKey:keyId,goalId:keyId,cls:'blocked'};
+    }
+  }
+  // distributeKeep: keepBudget is how much SHOULD remain actionable; each candidate keeps
+  // min(remaining, amt); anything with no budget left is suppressed; a clipped row is partial.
+  function _distribute(keyId,goalId,cls,cands,keepBudget){
+    var remaining=keepBudget;
+    for(var c=0;c<cands.length;c++){
+      var cand=cands[c];
+      if(cand.amt==null||!isFinite(cand.amt)){ // unparseable recommendation amount → fail-closed
+        out.blockedObligations.push({obligationKey:keyId,reason:'unparseable recommendation amount'});
+        out.rows[cand.wk+'_'+cand.i]={disposition:'blocked',netAmount:null,reason:'unparseable recommendation amount',obligationKey:keyId,goalId:goalId,cls:cls};
+        continue;
+      }
+      var keep=Math.min(remaining,cand.amt); if(keep<0)keep=0; keep=rr(keep); remaining=rr(remaining-keep);
+      if(keep<=_NET_TOL){
+        out.rows[cand.wk+'_'+cand.i]={disposition:'suppressed',netAmount:0,reason:'obligation already satisfied by a completed transfer',obligationKey:keyId,goalId:goalId,cls:cls};
+      }else if(keep<cand.amt-_NET_TOL){
+        out.rows[cand.wk+'_'+cand.i]={disposition:'partial',netAmount:keep,reason:'net of amount already transferred this cycle',obligationKey:keyId,goalId:goalId,cls:cls};
+      } // else: full keep → 'normal' → leave out of the map (unchanged behavior)
+    }
+  }
+  // 1) target_accumulation — the nine snapshot-eligible goals.
+  var NINE=(typeof SNAPSHOT_ELIGIBLE_GOAL_IDS!=='undefined')?SNAPSHOT_ELIGIBLE_GOAL_IDS:[];
+  for(var gi=0;gi<NINE.length;gi++){
+    (function(goalId){
+      var actionKey='goal_'+goalId;
+      if(!_hasOpenCredit(actionKey))return; // no executed transfer in the open horizon → no duplicate risk
+      var bnd=_boundary(goalId); out.boundaryByGoal[goalId]=bnd;
+      var cands=_candidates(actionKey,bnd);
+      if(!cands.length)return; // credit exists but no re-emitted recommendation → nothing to suppress
+      try{
+        if(_snapStatus!=='loaded')return _block(actionKey,'snapshot baseline not loaded/authoritative',cands);
+        if(bnd<0)return _block(actionKey,'no authoritative snapshot baseline for goal',cands);
+        var target=_targetFor(goalId); if(target==null)return _block(actionKey,'unknown/undefined goal target',cands);
+        var baseline=Number(_snap[bnd][goalId]); if(!isFinite(baseline))return _block(actionKey,'non-finite snapshot baseline',cands);
+        var cr=_creditFor(actionKey,bnd,_expectDestToken(goalId));
+        if(cr.ambiguous)return _block(actionKey,'completed amount missing and unrecoverable',cands);
+        if(cr.dirMismatch)return _block(actionKey,'completed transfer direction inconsistent with goal',cands);
+        if(rr(baseline+cr.sum-target)>_NET_OVERCREDIT_TOL)return _block(actionKey,'executed credits exceed the modeled remaining obligation',cands);
+        var keepBudget=Math.max(0,rr((target-baseline)-cr.sum));
+        _distribute(actionKey,goalId,'target_accumulation',cands,keepBudget);
+      }catch(e){ _block(actionKey,'netting error: '+(e&&e.message||e),cands); }
+    })(NINE[gi]);
+  }
+  // 2) fixed_once — goal_adam_ira_seed (uses the adam_ira snapshot window; never cross-nets).
+  Object.keys(_NET_FIXED_ONCE).forEach(function(actionKey){
+    var goalId='adam_ira'; // window anchor for the seed
+    if(!_hasOpenCredit(actionKey))return; // no executed seed in the open horizon → no duplicate risk
+    var bnd=_boundary(goalId);
+    var cands=_candidates(actionKey,bnd);
+    if(!cands.length)return;
+    try{
+      if(_snapStatus!=='loaded')return _block(actionKey,'snapshot baseline not loaded/authoritative',cands);
+      if(bnd<0)return _block(actionKey,'no authoritative snapshot baseline for seed window',cands);
+      var cr=_creditFor(actionKey,bnd,null);
+      if(cr.ambiguous)return _block(actionKey,'completed seed amount missing and unrecoverable',cands);
+      if(cr.count>=2)return _block(actionKey,'fixed_once obligation executed more than once',cands);
+      var maxAmt=0; for(var c=0;c<cands.length;c++){ if(cands[c].amt!=null&&cands[c].amt>maxAmt)maxAmt=cands[c].amt; }
+      var obligationTotal=Math.max(cr.sum,maxAmt);
+      var keepBudget=Math.max(0,rr(obligationTotal-cr.sum));
+      _distribute(actionKey,goalId,'fixed_once',cands,keepBudget);
+    }catch(e){ _block(actionKey,'seed netting error: '+(e&&e.message||e),cands); }
+  });
+  return out;
+}
+// Render/count consumers read this render-scoped view (refreshed once per pass from the canonical
+// weeks). Absent entry ⇒ 'normal'. Never throws; a null view degrades to pre-netting behavior.
+var _transferNetView=null;
+function _refreshTransferNet(weeks){ try{ _transferNetView=computeGoalTransferNetting(weeks); }catch(e){ _transferNetView=null; } return _transferNetView; }
+function _xfrNetInfo(weekNum,i){ return (_transferNetView&&_transferNetView.rows)?(_transferNetView.rows[weekNum+'_'+i]||null):null; }
+function _xfrRowSuppressed(weekNum,i){ var v=_xfrNetInfo(weekNum,i); return !!(v&&v.disposition==='suppressed'); }
+function _xfrRowBlocked(weekNum,i){ var v=_xfrNetInfo(weekNum,i); return !!(v&&v.disposition==='blocked'); }
+function _xfrRowPartial(weekNum,i){ var v=_xfrNetInfo(weekNum,i); return (v&&v.disposition==='partial')?v:null; }
+// A model row counts as an OPEN action only when it is not already satisfied (suppressed). Blocked
+// rows remain "open" (they demand review). Shared by every open/badge/count site.
+function _modelRowOpen(weekNum,i){ if(_xfrRowSuppressed(weekNum,i))return false; var td=taskData[weekNum+'_'+i]; return !td||!td.completed; }
 function _firstFreeIdx(taskRows){
   var occ=Object.create(null);(taskRows||[]).forEach(function(r){occ[r.taskIdx]=1;});
   var i=0;while(occ[i])i++;return i;
@@ -3281,6 +3484,20 @@ function _buildWeeklyTaskPayload(week,taskIdx,checked,actionKey,completedLabel,a
 var _xfrWriteCtx={};  // render-time transport: ctxKey -> {actionKey, completedLabel, amount, matchTaskIdx}
 async function toggleTransfer(weekNum,ctxKey,checked){
   if(!canWriteFinancials())return;
+  // 5G-1B defense-in-depth: recompute the netting disposition at write time so a STALE UI cannot
+  // execute an already-satisfied (suppressed) or ambiguous (blocked) obligation. Unchecking is always
+  // allowed (it only clears state). If netting cannot be computed, the pre-existing identity write
+  // path is unchanged (the render layer already fails closed on blocked rows).
+  if(checked){
+    try{
+      var _wgView=computeGoalTransferNetting(applyCompletionSnapshots(getActiveModel()));
+      var _wgRow=(_wgView&&_wgView.rows)?_wgView.rows[ctxKey]:null;
+      if(_wgRow&&(_wgRow.disposition==='suppressed'||_wgRow.disposition==='blocked')){
+        console.warn('toggleTransfer: refused '+_wgRow.disposition+' obligation '+ctxKey+(_wgRow.reason?' ('+_wgRow.reason+')':''));
+        renderApp();return;
+      }
+    }catch(_wgErr){/* netting unavailable → leave the existing write path unchanged */}
+  }
   var ctx=_xfrWriteCtx[ctxKey]||{};
   var rows=_taskRowsForWeek(weekNum);
   var tgt=_resolveWriteTarget({checked:checked,actionKey:ctx.actionKey,completedLabel:ctx.completedLabel,matchTaskIdx:ctx.matchTaskIdx,taskRows:rows});
@@ -3584,7 +3801,7 @@ function getWeekChipClass(w){
     w.trough?'trough':'',
     w.managed?'managed':'',
     w.reconciled?'reconciled':'',
-    w.realActs&&w.realActs.some(function(_,i){return!taskData[w.num+'_'+i]||!taskData[w.num+'_'+i].completed;})?'openActions':'',
+    w.realActs&&w.realActs.some(function(_,i){return _modelRowOpen(w.num,i);})?'openActions':'',
     overrideData[w.num]?'edited':'',
     overrideData[w.num]&&overrideData[w.num].is_custom?'custom':''
   ].filter(Boolean).join(' ');
@@ -3601,7 +3818,7 @@ function buildDashboardViewModel(weeks,goals){
   const allActions=weeks.flatMap(function(w){
     var modelActs=w.realActs.map(function(label,index){
       const key=w.num+'_'+index;
-      return{weekNum:w.num,taskIdx:index,label:label,completed:!!(taskData[key]&&taskData[key].completed),isCustom:false};
+      return{weekNum:w.num,taskIdx:index,label:label,completed:!!(taskData[key]&&taskData[key].completed),netSuppressed:_xfrRowSuppressed(w.num,index),isCustom:false};
     });
     var customActs=(customTaskData[w.num]||[]).map(function(ct){
       var _cm=getTaskMeta(ct.id,ct.label);
@@ -3635,7 +3852,7 @@ function buildDashboardViewModel(weeks,goals){
     retirementCompletion:retirementCompletion,   // backwards compat
     goalCompletion:goalCompletion,               // NEW: keyed by goal id
     surplusCompletion:surplusCompletion,lowestChecking:lowestChecking,
-    allActions:allActions,openActions:allActions.filter(function(a){return!a.completed&&!a.dismissed;}),
+    allActions:allActions,openActions:allActions.filter(function(a){return!a.completed&&!a.dismissed&&!a.netSuppressed;}),
     troughWeeks:weeks.filter(function(w){return w.trough;}),
     managedWeeks:weeks.filter(function(w){return w.managed;}),
     reconciledWeeks:weeks.filter(function(w){return w.reconciled;}),
@@ -4634,11 +4851,20 @@ function renderWeekDetail(w,weeks){
   var _actCT=_allCT.filter(function(ct){var m=getTaskMeta(ct.id,ct.label);return m.type==='action'&&!m.dismissed;});
   // 5G-1B: identity-resolve model transfers against persisted completions (position-independent)
   var _xfrRes=resolveWeekTransfers({realActs:w.realActs,realActKeys:w.realActKeys,taskRows:_taskRowsForWeek(w.num)});
+  // 5G-1B netting: a suppressed (already-satisfied) or blocked (review-required) obligation is NOT an
+  // executable row and must not inflate the executable total. Suppressed rows render as "Satisfied by
+  // completed transfer"; blocked rows render as non-executable "Review required".
+  var _netSuppressedCount=0,_netBlockedCount=0,_execModelCount=0;
+  for(var _nmi=0;_nmi<w.realActs.length;_nmi++){
+    if(_xfrRowSuppressed(w.num,_nmi))_netSuppressedCount++;
+    else if(_xfrRowBlocked(w.num,_nmi))_netBlockedCount++;
+    else _execModelCount++;
+  }
   // Progress counts: model transfers (resolver doneCount) + transfer custom tasks + action custom tasks
   var _doneModel=_xfrRes.doneCount;
   var _doneXfr=_xfrCT.filter(function(ct){return ct.completed;}).length;
   var _doneAct=_actCT.filter(function(ct){return ct.completed;}).length;
-  var _totalXfr=w.realActs.length+_xfrCT.length;
+  var _totalXfr=_execModelCount+_xfrCT.length;
   var _totalAct=_actCT.length;
   var _doneAll=_doneModel+_doneXfr+_doneAct;
   var _totalAll=_totalXfr+_totalAct;
@@ -4659,12 +4885,31 @@ function renderWeekDetail(w,weeks){
       (w.realActs.length?w.realActs.map(function(a,i){
         var _cr=_xfrRes.currentRows[i];var done=_cr.completed;
         var actionKey=w.realActKeys?w.realActKeys[i]:null;
+        var _ctxKey=w.num+'_'+i;
+        if(actionKey){_actionLabelCache[_ctxKey]=a;}
+        var _net=_xfrNetInfo(w.num,i);
+        // 5G-1B netting — an already-satisfied obligation renders read-only ("Satisfied by completed
+        // transfer"), NEVER as an executable PLANNED row, and carries NO write context (cannot be toggled).
+        if(_net&&_net.disposition==='suppressed'){
+          return'<div class="task-row net-satisfied" style="opacity:.68">'+
+            '<input type="checkbox" class="task-check" checked disabled title="Satisfied by a completed transfer — not executable">'+
+            '<div class="task-text done"><span class="act-type-badge" style="background:var(--green);border:none;color:#fff">Satisfied</span>'+esc(a)+
+            '<span class="task-date">Satisfied by completed transfer</span></div></div>';
+        }
+        // Ambiguous attribution — FAIL CLOSED: visible, non-executable, exact review reason, no write context.
+        if(_net&&_net.disposition==='blocked'){
+          return'<div class="task-row net-blocked" style="background:var(--amberSoft);border-radius:7px;padding:6px 8px">'+
+            '<span class="xi" style="color:var(--amber);font-weight:700">⚠</span>'+
+            '<div class="task-text"><span class="act-type-badge" style="background:var(--amber);border:none;color:#fff">Review required</span>'+esc(a)+
+            '<div class="deferred-why">Execution disabled — '+esc(_net.reason||'attribution ambiguous')+'. Confirm completed-transfer history before acting.</div></div></div>';
+        }
+        var _isPartial=!!(_net&&_net.disposition==='partial');
         var isModelAct=!!actionKey;
         var isLocked=actionKey&&LOCKED_MODEL_ACTIONS.has(actionKey);
         var canDelete=actionKey&&DELETEABLE_MODEL_ACTIONS.has(actionKey);
         var hasOv=actionKey&&hasActionOverride(actionKey);
         var note=actionKey?getActionOverrideNote(actionKey):'';
-        var badge=isLocked?'<span class="act-type-badge locked">Locked</span>':isModelAct?'<span class="act-type-badge model">Planned</span>':'';
+        var badge=isLocked?'<span class="act-type-badge locked">Locked</span>':_isPartial?'<span class="act-type-badge model" style="background:var(--amber);border:none;color:#fff">Partial</span>':isModelAct?'<span class="act-type-badge model">Planned</span>':'';
         var noteHtml=note?'<div class="act-override-note">'+esc(note)+'</div>':'';
         var controls='';
         if(isModelAct&&!isLocked&&!_weekIsRecon&&canWriteFinancials()){
@@ -4678,14 +4923,15 @@ function renderWeekDetail(w,weeks){
         var _isGoalKey=actionKey&&actionKey.indexOf('goal_')===0;
         var _goalAmtM=_isGoalKey?(/\$([0-9,]+(?:\.[0-9]+)?)/.exec(a)):null;
         var _goalAmt=_goalAmtM?parseFloat(_goalAmtM[1].replace(/,/g,'')):null;
-        var _amtVal=(actionKey===ACTION_KEYS.COMMISSION_TAX)?w.ct:(_isGoalKey&&_goalAmt!=null?_goalAmt:null);
-        var _ctxKey=w.num+'_'+i;
-        if(actionKey){_actionLabelCache[_ctxKey]=a;}
+        // For a PARTIAL, the executable/write amount is the NET remaining (completed_label stays the
+        // model recommendation so the resolver still matches it as this obligation on the next render).
+        var _amtVal=_isPartial?_net.netAmount:((actionKey===ACTION_KEYS.COMMISSION_TAX)?w.ct:(_isGoalKey&&_goalAmt!=null?_goalAmt:null));
+        var _partialNote=_isPartial?'<div class="act-override-note" style="color:var(--amber)">⚠ Partial — only '+f(_net.netAmount)+' remains to execute'+((_goalAmt!=null)?' ('+f(Math.max(0,Math.round((_goalAmt-_net.netAmount)*100)/100))+' already transferred this cycle)':'')+'. Confirm before executing.</div>':'';
         // Resolver-aware write context: identity + matched persisted task_idx (NOT the display index)
         _xfrWriteCtx[_ctxKey]={actionKey:actionKey||null,completedLabel:a,amount:_amtVal,matchTaskIdx:_cr.matchTaskIdx};
-        return'<div class="task-row'+(hasOv?' edited':'')+'">'+
+        return'<div class="task-row'+(hasOv?' edited':'')+(_isPartial?' net-partial':'')+'">'+
           '<input type="checkbox" class="task-check" '+(done?'checked':'')+(canWriteFinancials()?'':' disabled')+' onchange="toggleTransfer('+w.num+',\''+_ctxKey+'\',this.checked)">'+
-          '<div class="task-text'+(done?' done':'')+'">'+badge+esc(a)+'<span class="task-date">'+getWeekDate(w.num)+'</span>'+noteHtml+'</div>'+
+          '<div class="task-text'+(done?' done':'')+'">'+badge+esc(a)+'<span class="task-date">'+getWeekDate(w.num)+'</span>'+noteHtml+_partialNote+'</div>'+
           controls+
         '</div>'+
         (actionKey?renderActionEditPanel(actionKey,a,w.num):'');
@@ -5740,13 +5986,14 @@ function setHistoryFilter(f){historyFilter=f;var g=getGoals();renderHistory(runM
 function renderHistory(weeksArg){
   var weeks=weeksArg;
   if(!weeks){var g=getGoals();weeks=runModel(g.ak,g.rt);}
+  _refreshTransferNet(weeks); // 5G-1B: netting view for History counts (direct setHistoryFilter path)
   var reconKeys=Object.keys(reconData).map(Number).filter(function(n){return reconData[n]&&reconData[n].chk!==undefined;});
   var maxRecon=reconKeys.length?Math.max.apply(null,reconKeys):0;
   // Filter logic
   var filters=[
     {id:'all',label:'All ('+weeks.length+')'},
     {id:'reconciled',label:'Reconciled ('+weeks.filter(function(w){return w.reconciled;}).length+')'},
-    {id:'open',label:'Open Actions ('+weeks.filter(function(w){ensureAutoReminders(w.num);var _c=customTaskData[w.num]||[];return(w.realActs.length&&w.realActs.some(function(_,i){return!taskData[w.num+'_'+i]||!taskData[w.num+'_'+i].completed;}))||_c.some(function(t){var _m=getTaskMeta(t.id,t.label);return!t.completed&&!_m.dismissed;});}).length+')'},
+    {id:'open',label:'Open Actions ('+weeks.filter(function(w){ensureAutoReminders(w.num);var _c=customTaskData[w.num]||[];return(w.realActs.length&&w.realActs.some(function(_,i){return _modelRowOpen(w.num,i);}))||_c.some(function(t){var _m=getTaskMeta(t.id,t.label);return!t.completed&&!_m.dismissed;});}).length+')'},
     {id:'variance',label:'Variance >$'+VAR_THRESHOLD+' ('+weeks.filter(function(w){return w.reconciled&&w.variance&&Object.values(w.variance).some(function(v){return Math.abs(v)>VAR_THRESHOLD;});}).length+')'},
     {id:'trough',label:'Trough ('+weeks.filter(function(w){return w.trough;}).length+')'},
     {id:'managed',label:'Managed ('+weeks.filter(function(w){return w.managed;}).length+')'},
@@ -5755,7 +6002,7 @@ function renderHistory(weeksArg){
   ];
   var filteredWeeks=weeks;
   if(historyFilter==='reconciled')filteredWeeks=weeks.filter(function(w){return w.reconciled;});
-  else if(historyFilter==='open')filteredWeeks=weeks.filter(function(w){ensureAutoReminders(w.num);var _c=customTaskData[w.num]||[];return(w.realActs.length&&w.realActs.some(function(_,i){return!taskData[w.num+'_'+i]||!taskData[w.num+'_'+i].completed;}))||_c.some(function(t){var _m=getTaskMeta(t.id,t.label);return!t.completed&&!_m.dismissed;});});
+  else if(historyFilter==='open')filteredWeeks=weeks.filter(function(w){ensureAutoReminders(w.num);var _c=customTaskData[w.num]||[];return(w.realActs.length&&w.realActs.some(function(_,i){return _modelRowOpen(w.num,i);}))||_c.some(function(t){var _m=getTaskMeta(t.id,t.label);return!t.completed&&!_m.dismissed;});});
   else if(historyFilter==='variance')filteredWeeks=weeks.filter(function(w){return w.reconciled&&w.variance&&Object.values(w.variance).some(function(v){return Math.abs(v)>VAR_THRESHOLD;});});
   else if(historyFilter==='trough')filteredWeeks=weeks.filter(function(w){return w.trough;});
   else if(historyFilter==='managed')filteredWeeks=weeks.filter(function(w){return w.managed;});
@@ -5767,7 +6014,7 @@ function renderHistory(weeksArg){
   filteredWeeks.forEach(function(wx){
     var isPast=wx.num<currentW;var isNow=wx.num===currentW;
     var _wxCustom=customTaskData[wx.num]||[];
-    var hasOpenTasks=isPast&&((wx.realActs.length&&wx.realActs.some(function(_,i){return!taskData[wx.num+'_'+i]||!taskData[wx.num+'_'+i].completed;}))||_wxCustom.some(function(t){var _m=getTaskMeta(t.id,t.label);return!t.completed&&!_m.dismissed;}));
+    var hasOpenTasks=isPast&&((wx.realActs.length&&wx.realActs.some(function(_,i){return _modelRowOpen(wx.num,i);}))||_wxCustom.some(function(t){var _m=getTaskMeta(t.id,t.label);return!t.completed&&!_m.dismissed;}));
     var cls='hcard';
     if(isNow&&wx.reconciled)cls+=' past-recon current-recon';
     else if(isNow)cls+=' current';
@@ -8088,6 +8335,7 @@ function renderApp(){
   try{
   var g=getGoals();
   var weeks=applyCompletionSnapshots(getActiveModel());
+  _refreshTransferNet(weeks); // 5G-1B: recompute the open-window netting view once per render pass
   var vm=buildDashboardViewModel(weeks,g);
   updateReconLabel(weeks);
   // ── Budget Rules warning banner ────────────────────────────────────────

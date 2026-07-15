@@ -1,5 +1,7 @@
 # Defect — Executed transfer history disappears after reconciliation because transfer rows are re-derived and keyed positionally
 
+> **Follow-on (2026-07-15):** this fix preserved executed-transfer *history* but did NOT stop an already-satisfied obligation from re-presenting as a NEW executable PLANNED row after an open-week recalc (the Adam IRA $61.06 duplicate). That open-window gap is closed by the mandatory pre-activation **open-window executed-transfer netting/suppression control** — see `docs/phase-5g-1b-openwindow-netting-2026-07-15.md` (adapter/projection + write-guard; frozen surfaces untouched) and the identity amendment `docs/roadmap/amendment-2026-07-15-progress-plane-transfer-identity.md`.
+
 **Logged:** 2026-07-11 · **Status:** RESOLVED 2026-07-11 (adapter/UI fix, commit `db2704f`) ·
 **Classification:** 5G-1B rider — stable executed-transfer identity and history preservation
 (display/audit-history defect — NOT data loss, NOT an E2 blocker) ·

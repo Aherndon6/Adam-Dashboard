@@ -12597,6 +12597,186 @@ console.log('\n── Section 5G-1D Slice 4c: half-close repair confirmation ─
   }finally{_closeout=_c;_reconBalances=_rb;}
 })();
 
+// ═══════════════════════════════════════════════════════════════════════════
+// Section 5G-1B-NET: open-window executed-transfer netting/suppression control
+// (computeGoalTransferNetting) — pure projection; obligation-key netting; dispositions
+// normal/partial/suppressed/blocked; fail-closed. Mandatory pre-activation correction.
+// ═══════════════════════════════════════════════════════════════════════════
+(function(){
+  console.log('\n── Section 5G-1B-NET: open-window executed-transfer netting ──');
+  var IRA_LBL='Transfer $61.06 from Truist Checking to AMEX Savings (Adam IRA)';
+  var IRA_LBL_OLD='Transfer $61.06 from Truist Checking to AMEX Savings (Adam IRA) [prior]';
+  function W(num,acts,keys,gs){return {num:num,realActs:acts||[],realActKeys:keys||[],goalSaved:gs||{}};}
+  function td(completed,actionKey,amt,label){return {completed:completed,actionKey:actionKey,completedAmount:amt,completedLabel:label};}
+  // BASE: adam_ira anchored at wk5=7438.94 (short $61.06 of the $7,500 target); wk5 reconciled.
+  function base(over){var o={goalSnapLoadStatus:'loaded',goalSnapData:{5:{adam_ira:7438.94}},reconData:{5:true},registry:GOALS_REGISTRY,akTarget:7000,taskData:{}};for(var k in (over||{}))o[k]=over[k];return o;}
+  function N(weeks,opts){return computeGoalTransferNetting(weeks,opts);}
+  function disp(res,key){return res.rows[key]?res.rows[key].disposition:'normal';}
+
+  // NET-1 — full satisfaction; the executed $61.06 was matched in wk6, the recalc re-emits it in wk7 → suppressed.
+  test('5G1B-NET-1: satisfied obligation re-emitted in a later week is suppressed, not executable',function(){
+    var wks=[W(6,[IRA_LBL],['goal_adam_ira']),W(7,[IRA_LBL],['goal_adam_ira'])];
+    var opts=base({taskData:{'6_0':td(true,'goal_adam_ira',61.06,IRA_LBL)}});
+    var res=N(wks,opts);
+    assert(disp(res,'6_0')==='normal','wk6 row is the matched/done row (resolver), not netted');
+    assert(disp(res,'7_0')==='suppressed','wk7 duplicate suppressed, got '+disp(res,'7_0'));
+  });
+  // NET-2 — placement-independent: an unmatched executed credit suppresses duplicates in EVERY open week.
+  test('5G1B-NET-2: no executable duplicate in any open week (wk28 AND wk29)',function(){
+    var wks=[W(6,[],[]),W(7,[IRA_LBL],['goal_adam_ira']),W(8,[IRA_LBL],['goal_adam_ira'])];
+    var opts=base({taskData:{'6_0':td(true,'goal_adam_ira',61.06,IRA_LBL_OLD)}}); // executed-history (wk6 has no rec)
+    var res=N(wks,opts);
+    assert(disp(res,'7_0')==='suppressed'&&disp(res,'8_0')==='suppressed','both open-week duplicates suppressed');
+  });
+  // NET-3 — partial: $30 executed, model re-emits $61.06 → only the $31.06 remainder is executable.
+  test('5G1B-NET-3: partial completion exposes only the net remaining amount',function(){
+    var wks=[W(6,[],[]),W(7,[IRA_LBL],['goal_adam_ira'])];
+    var opts=base({taskData:{'6_0':td(true,'goal_adam_ira',30,'Transfer $30.00 from Truist Checking to AMEX Savings (Adam IRA)')}});
+    var res=N(wks,opts);
+    assert(disp(res,'7_0')==='partial','partial disposition, got '+disp(res,'7_0'));
+    assertApprox(res.rows['7_0'].netAmount,31.06,'net remaining');
+  });
+  // NET-4 — multi-week ordered allocation: $40 done in wk6, wk7 $21.06 remains → wk7 stays executable.
+  test('5G1B-NET-4: multi-week ordered allocation keeps the genuine remainder executable',function(){
+    var L40='Transfer $40.00 from Truist Checking to AMEX Savings (Adam IRA)';
+    var L21='Transfer $21.06 from Truist Checking to AMEX Savings (Adam IRA)';
+    var wks=[W(6,[L40],['goal_adam_ira']),W(7,[L21],['goal_adam_ira'])];
+    var opts=base({taskData:{'6_0':td(true,'goal_adam_ira',40,L40)}}); // matched/done in wk6
+    var res=N(wks,opts);
+    assert(disp(res,'6_0')==='normal','wk6 matched-done row untouched');
+    assert(disp(res,'7_0')==='normal','wk7 genuine remainder stays executable, got '+disp(res,'7_0'));
+  });
+  // NET-5 — different-goal isolation: a legit transfer for a goal WITHOUT executed credit is never touched.
+  test('5G1B-NET-5: a legitimate different-goal transfer is not suppressed',function(){
+    var WIRA='Transfer $500.00 from Truist Checking to AMEX Savings (Wendy IRA)';
+    var wks=[W(6,[],[]),W(7,[IRA_LBL,WIRA],['goal_adam_ira','goal_wendy_ira'])];
+    var opts=base({taskData:{'6_0':td(true,'goal_adam_ira',61.06,IRA_LBL_OLD)}});
+    var res=N(wks,opts);
+    assert(disp(res,'7_0')==='suppressed','adam_ira suppressed');
+    assert(disp(res,'7_1')==='normal','wendy_ira (no credit) stays normal — no cross-goal/amount matching');
+  });
+  // NET-6 — seed vs sweep separation: seed credit must not satisfy adam_ira target accumulation.
+  test('5G1B-NET-6: seed and adam_ira target accumulation do not cross-net',function(){
+    var SEED='Transfer $3,772.74 from Truist Savings to AMEX Savings (Adam IRA seed — IRA Holding)';
+    var wks=[W(6,[],[]),W(7,[IRA_LBL,SEED],['goal_adam_ira','goal_adam_ira_seed'])];
+    // Only the SEED has executed credit; adam_ira target has none.
+    var opts=base({taskData:{'6_0':td(true,'goal_adam_ira_seed',3772.74,SEED)}});
+    var res=N(wks,opts);
+    assert(disp(res,'7_1')==='suppressed','seed duplicate suppressed by its own credit');
+    assert(disp(res,'7_0')==='normal','adam_ira NOT suppressed by seed credit (no cross-net)');
+  });
+  // NET-7 — per-occurrence exclusion: commission_tax is out of scope (no netting, ever).
+  test('5G1B-NET-7: per-occurrence commission_tax is excluded from netting',function(){
+    var CT='Transfer $417.83 from Truist Checking to Vio Bank - Tax Reserve (deferred commission 40%)';
+    var wks=[W(6,[],[]),W(7,[CT],['commission_tax'])];
+    var opts=base({taskData:{'6_0':td(true,'commission_tax',417.83,CT)}});
+    var res=N(wks,opts);
+    assert(disp(res,'7_0')==='normal','commission_tax untouched (not a goal obligation)');
+  });
+  // NET-8 — null-amount / null-label ambiguity → BLOCKED (fail closed).
+  test('5G1B-NET-8: unrecoverable completed amount blocks execution (fail closed)',function(){
+    var wks=[W(6,[],[]),W(7,[IRA_LBL],['goal_adam_ira'])];
+    var opts=base({taskData:{'6_0':td(true,'goal_adam_ira',null,null)}});
+    var res=N(wks,opts);
+    assert(disp(res,'7_0')==='blocked','ambiguous credit → blocked, got '+disp(res,'7_0'));
+  });
+  // NET-9 — unparseable recommendation amount → BLOCKED.
+  test('5G1B-NET-9: unparseable recommendation amount blocks execution',function(){
+    var BAD='Transfer some funds to AMEX Savings (Adam IRA)';
+    var wks=[W(6,[],[]),W(7,[BAD],['goal_adam_ira'])];
+    var opts=base({taskData:{'6_0':td(true,'goal_adam_ira',61.06,IRA_LBL_OLD)}});
+    var res=N(wks,opts);
+    assert(disp(res,'7_0')==='blocked','unparseable recommendation → blocked');
+  });
+  // NET-10 — over-credit anomaly (executed beyond target+tol) → BLOCKED.
+  test('5G1B-NET-10: executed credits exceeding the obligation block execution',function(){
+    var wks=[W(6,[],[]),W(7,[IRA_LBL],['goal_adam_ira'])];
+    var opts=base({taskData:{'6_0':td(true,'goal_adam_ira',61.06,IRA_LBL_OLD),'6_1':td(true,'goal_adam_ira',61.06,IRA_LBL_OLD)}});
+    var res=N(wks,opts);
+    assert(disp(res,'7_0')==='blocked','over-credit → blocked');
+  });
+  // NET-11 — snapshot-load uncertainty with credit present → BLOCKED.
+  test('5G1B-NET-11: uncertain snapshot baseline blocks (when attribution is required)',function(){
+    var wks=[W(6,[],[]),W(7,[IRA_LBL],['goal_adam_ira'])];
+    var opts=base({goalSnapLoadStatus:'unknown',taskData:{'6_0':td(true,'goal_adam_ira',61.06,IRA_LBL_OLD)}});
+    var res=N(wks,opts);
+    assert(disp(res,'7_0')==='blocked','uncertain snapshot + credit → blocked');
+  });
+  // NET-12 — NO credit (e.g. after an uncheck) → recommendation stays NORMAL (never over-suppresses).
+  test('5G1B-NET-12: with no executed credit the recommendation stays normal (uncheck restores it)',function(){
+    var wks=[W(6,[],[]),W(7,[IRA_LBL],['goal_adam_ira'])];
+    var res=N(wks,base({taskData:{}}));
+    assert(disp(res,'7_0')==='normal','no credit → normal (no false suppression)');
+    // and even with an uncertain snapshot, no-credit stays normal (does not block a fresh transfer)
+    var res2=N(wks,base({goalSnapLoadStatus:'unknown',taskData:{}}));
+    assert(disp(res2,'7_0')==='normal','no credit + uncertain snapshot → still normal');
+  });
+  // NET-13 — Edit-Week delta: completed_amount is authoritative over a stale label; credited once.
+  test('5G1B-NET-13: Edit-Week delta uses completed_amount (no double-netting)',function(){
+    var wks=[W(6,[],[]),W(7,[IRA_LBL],['goal_adam_ira'])];
+    // stale label shows $70 but the durable completed_amount is 61.06 (autoBackfill semantics)
+    var opts=base({taskData:{'6_0':td(true,'goal_adam_ira',61.06,'Transfer $70.00 from Truist Checking to AMEX Savings (Adam IRA)')}});
+    var res=N(wks,opts);
+    assert(disp(res,'7_0')==='suppressed','credit uses completed_amount 61.06 → suppressed exactly once');
+  });
+  // NET-14 — boundary moves after wk6 closes: the executed credit is absorbed by the wk6 snapshot
+  // (now reconciled), so netting steps back and the (real) snapshot overlay is authoritative.
+  test('5G1B-NET-14: after wk6 closeout the credit is no longer open — netting defers to the snapshot',function(){
+    var wks=[W(7,[IRA_LBL],['goal_adam_ira'])];
+    var opts=base({goalSnapData:{5:{adam_ira:7438.94},6:{adam_ira:7500}},reconData:{5:true,6:true},
+      taskData:{'6_0':td(true,'goal_adam_ira',61.06,IRA_LBL)}}); // wk6 now reconciled
+    var res=N(wks,opts);
+    assert(disp(res,'7_0')==='normal','reconciled-week credit is not open → no suppression by this control');
+  });
+  // NET-15 — direction mismatch on the executed credit → BLOCKED (attribution inconsistent).
+  test('5G1B-NET-15: a completed transfer with inconsistent direction blocks execution',function(){
+    var wks=[W(6,[],[]),W(7,[IRA_LBL],['goal_adam_ira'])];
+    var WRONG='Transfer $61.06 from Truist Checking to Truist Savings (Adam IRA)'; // wrong dest for adam_ira
+    var opts=base({taskData:{'6_0':td(true,'goal_adam_ira',61.06,WRONG)}});
+    var res=N(wks,opts);
+    assert(disp(res,'7_0')==='blocked','direction mismatch → blocked');
+  });
+  // NET-16 — fixed_once executed more than once → BLOCKED.
+  test('5G1B-NET-16: a fixed_once seed executed twice blocks execution',function(){
+    var SEED='Transfer $3,772.74 from Truist Savings to AMEX Savings (Adam IRA seed — IRA Holding)';
+    var wks=[W(6,[],[]),W(7,[SEED],['goal_adam_ira_seed'])];
+    var opts=base({taskData:{'6_0':td(true,'goal_adam_ira_seed',3772.74,SEED),'6_1':td(true,'goal_adam_ira_seed',3772.74,SEED)}});
+    var res=N(wks,opts);
+    assert(disp(res,'7_0')==='blocked','seed executed twice → blocked');
+  });
+  // NET-17 — the pure function never mutates its inputs (frozen-surface safety).
+  test('5G1B-NET-17: computeGoalTransferNetting does not mutate weeks/realActs',function(){
+    var acts=[IRA_LBL];var wks=[W(6,[],[]),W(7,acts,['goal_adam_ira'])];
+    var beforeLen=acts.length,beforeLbl=acts[0];
+    N(wks,base({taskData:{'6_0':td(true,'goal_adam_ira',61.06,IRA_LBL_OLD)}}));
+    assert(acts.length===beforeLen&&acts[0]===beforeLbl,'realActs array not mutated');
+    assert(wks[1].realActs===acts,'week.realActs reference preserved');
+  });
+  // NET-18 — render-path helpers + count integrity via the module-global refresh path.
+  test('5G1B-NET-18: _refreshTransferNet + helpers drive count/badge integrity (suppressed not open)',function(){
+    var _sv={td:taskData,snap:goalSnapData,recon:reconData,st:_goalSnapLoadStatus,view:_transferNetView};
+    try{
+      // Rebind module globals to a controlled scenario (adam_ira satisfied, dup re-emitted in wk7).
+      var g={}; g['6_0']={completed:true,actionKey:'goal_adam_ira',completedAmount:61.06,completedLabel:IRA_LBL_OLD};
+      taskData=g; goalSnapData={5:{adam_ira:7438.94}}; reconData={5:true}; _goalSnapLoadStatus='loaded';
+      var wks=[W(6,[],[]),W(7,[IRA_LBL],['goal_adam_ira'])];
+      _refreshTransferNet(wks);
+      assert(_xfrRowSuppressed(7,0)===true,'suppressed helper true for the duplicate');
+      assert(_modelRowOpen(7,0)===false,'suppressed row is NOT an open action (badge integrity)');
+      // executable-count exclusion arithmetic (mirrors renderWeekDetail): 1 realAct, suppressed → 0 executable
+      var _exec=0; for(var i=0;i<wks[1].realActs.length;i++){ if(!_xfrRowSuppressed(7,i)&&!_xfrRowBlocked(7,i))_exec++; }
+      assert(_exec===0,'suppressed row excluded from executable total');
+    } finally { taskData=_sv.td; goalSnapData=_sv.snap; reconData=_sv.recon; _goalSnapLoadStatus=_sv.st; _transferNetView=_sv.view; }
+  });
+  // NET-19 — write-guard decision parity: the guard rejects exactly suppressed/blocked dispositions.
+  test('5G1B-NET-19: write-guard reject set matches suppressed/blocked dispositions',function(){
+    var wks=[W(6,[],[]),W(7,[IRA_LBL],['goal_adam_ira'])];
+    var res=N(wks,base({taskData:{'6_0':td(true,'goal_adam_ira',61.06,IRA_LBL_OLD)}}));
+    var d=res.rows['7_0']&&res.rows['7_0'].disposition;
+    assert(d==='suppressed'||d==='blocked','a satisfied/ambiguous row carries a guard-reject disposition ('+d+')');
+  });
+})();
+
 // ─────────────────────────────────────────────────────────────────────────
 console.log('\n╔══════════════════════════════════════════════════════════════╗');
 console.log('║                       RESULTS                               ║');

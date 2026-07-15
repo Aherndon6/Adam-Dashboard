@@ -1060,6 +1060,110 @@ async function clickNav(page, id) {
     await context.close();
   }, { tags: [] });
 
+  // ── Section 5G-1B-NET: open-window executed-transfer netting (incident reproduction) ──
+  console.log('── Section 5G-1B-NET: open-window executed-transfer netting ──');
+
+  // Shared injector: the 5G-1C-2.1 anchor state (adam_ira short $61.06), loaded snapshot status,
+  // real runModel → the model emits the Adam IRA residual exactly once at some open week (residWk).
+  const NET_INJECT = `(function(){
+    goalSnapData = { 5: { adam_ira: 7438.94, wendy_ira: 0, alaska: 7000, bailey_529: 0, bryce_529: 0, preston_529: 0, bryce_vehicle: 0, christmas_cruise: 0 } };
+    _goalSnapLoadStatus = 'loaded';
+    var rc=function(chk,amx){return{chk:chk,sav:200,amx:amx,tax:1500,lc:13488.88,balance_basis:'posted_current_balance'};};
+    reconData = { 1: rc(9000,104), 2: rc(8000,104), 3: rc(7200,104), 4: rc(6800,104), 5: rc(6700,8539.20) };
+    var g=getGoals(); var W=runModel(g.ak,g.rt); var resid=null;
+    W.forEach(function(w){ (w.realActKeys||[]).forEach(function(k,i){ if(k==='goal_adam_ira'&&!resid){ var a=w.realActs[i]; resid={wk:w.num,idx:i,label:a,amt:parseFloat(((a.match(/\\$([\\d,\\.]+)/)||[])[1]||'0').replace(/,/g,''))}; } }); });
+    return resid;
+  })()`;
+
+  // NET-E1 — the reported incident: an already-executed Adam IRA transfer must NOT re-present as an
+  // executable PLANNED row after a recalc. Executed credit sits in an earlier open week; the model
+  // re-emits the residual at residWk; the rendered Weekly view must show it "Satisfied" with NO
+  // enabled Adam IRA checkbox anywhere in the open week.
+  await test('5G1B-NET-E1: executed Adam IRA residual is suppressed (no enabled duplicate) after recalc', async () => {
+    const { page, context } = await openApp(browser);
+    await clickNav(page, 'weekly');
+    const res = await page.evaluate((INJECT) => {
+      const _s = goalSnapData, _r = reconData, _st = _goalSnapLoadStatus, _saved = {};
+      try {
+        const resid = eval(INJECT);
+        if (!resid) return { skip: true };
+        const creditWk = (resid.wk === 6) ? 7 : 6;               // an open week that is NOT residWk
+        const ck = creditWk + '_0';
+        _saved[ck] = taskData[ck];
+        taskData[ck] = { completed: true, completedAt: '2026-07-15T00:00:00Z', completedAmount: resid.amt, actionKey: 'goal_adam_ira', completedLabel: resid.label };
+        activeW = resid.wk; setSection('weekly'); renderApp();
+        const rows = Array.from(document.querySelectorAll('#weekly-content .task-row'));
+        const iraRows = rows.filter(r => (r.textContent || '').indexOf('(Adam IRA)') >= 0 && (r.textContent||'').indexOf('Adam IRA seed') < 0);
+        const enabledIra = iraRows.filter(r => { const cb = r.querySelector('input.task-check'); return cb && !cb.disabled; });
+        const html = document.getElementById('weekly-content').innerHTML || '';
+        return { skip:false, residWk: resid.wk, iraRowCount: iraRows.length, enabledIra: enabledIra.length,
+          hasSatisfied: html.indexOf('Satisfied by completed transfer') >= 0 };
+      } finally {
+        Object.keys(_saved).forEach(k => { if (_saved[k] === undefined) delete taskData[k]; else taskData[k] = _saved[k]; });
+        goalSnapData = _s; reconData = _r; _goalSnapLoadStatus = _st; renderApp();
+      }
+    }, NET_INJECT);
+    assert(!res.skip, 'model must emit an Adam IRA residual to exercise this test');
+    assert(res.iraRowCount >= 1, 'the Adam IRA residual row must be present in the Weekly view');
+    assert(res.enabledIra === 0, 'NO enabled Adam IRA transfer checkbox may appear (got ' + res.enabledIra + ')');
+    assert(res.hasSatisfied, 'the satisfied obligation must render as "Satisfied by completed transfer"');
+    await context.close();
+  }, { tags: [] });
+
+  // NET-E2 — after Week-6 closeout (snapshot anchors adam_ira at target), the model emits NO Adam IRA
+  // residual in any later week — the durable snapshot mechanism (5G-1D) takes over. (req 9 post-close)
+  await test('5G1B-NET-E2: after wk6 closeout no later-week Adam IRA recommendation is emitted', async () => {
+    const { page, context } = await openApp(browser);
+    await clickNav(page, 'weekly');
+    const res = await page.evaluate(() => {
+      const _s = goalSnapData, _r = reconData, _st = _goalSnapLoadStatus;
+      try {
+        // adam_ira funded to target at the wk6 anchor (executed $61.06 absorbed into the closeout snapshot)
+        goalSnapData = { 5: { adam_ira: 7438.94 }, 6: { adam_ira: 7500, wendy_ira: 0, alaska: 7000, bailey_529: 0, bryce_529: 0, preston_529: 0, bryce_vehicle: 0, christmas_cruise: 0 } };
+        _goalSnapLoadStatus = 'loaded';
+        const rc = (chk, amx) => ({ chk, sav: 200, amx, tax: 1500, lc: 13488.88, balance_basis: 'posted_current_balance' });
+        reconData = { 1: rc(9000,104), 2: rc(8000,104), 3: rc(7200,104), 4: rc(6800,104), 5: rc(6700,8539.20), 6: rc(6500,8600) };
+        const g = getGoals(); const W = runModel(g.ak, g.rt);
+        let iraRecs = 0; W.forEach(w => (w.realActKeys || []).forEach(k => { if (k === 'goal_adam_ira') iraRecs++; }));
+        return { iraRecs };
+      } finally { goalSnapData = _s; reconData = _r; _goalSnapLoadStatus = _st; renderApp(); }
+    });
+    assert(res.iraRecs === 0, 'no Adam IRA recommendation should remain after the wk6 closeout anchor; got ' + res.iraRecs);
+    await context.close();
+  }, { tags: [] });
+
+  // NET-E3 — defense in depth: a STALE UI (a checkbox that shouldn't exist) calling toggleTransfer on a
+  // suppressed obligation must be rejected by the write path — no optimistic state, no write. (req 6)
+  await test('5G1B-NET-E3: write-guard rejects a stale-UI toggle of a suppressed obligation', async () => {
+    const { page, context } = await openApp(browser);
+    await clickNav(page, 'weekly');
+    const res = await page.evaluate(async (INJECT) => {
+      const _s = goalSnapData, _r = reconData, _st = _goalSnapLoadStatus, _cwf = canWriteFinancials, _saved = {};
+      try {
+        const resid = eval(INJECT);
+        if (!resid) return { skip: true };
+        const creditWk = (resid.wk === 6) ? 7 : 6, ck = creditWk + '_0';
+        _saved[ck] = taskData[ck];
+        taskData[ck] = { completed: true, completedAt: '2026-07-15T00:00:00Z', completedAmount: resid.amt, actionKey: 'goal_adam_ira', completedLabel: resid.label };
+        canWriteFinancials = () => true;                        // simulate an authorized writer
+        const key = resid.wk + '_' + resid.idx;
+        _saved[key] = taskData[key];
+        // Stale write context as a cached UI would carry it, then attempt to execute the suppressed row:
+        _xfrWriteCtx[key] = { actionKey: 'goal_adam_ira', completedLabel: resid.label, amount: resid.amt, matchTaskIdx: null };
+        await toggleTransfer(resid.wk, key, true);
+        const after = taskData[key];
+        return { skip:false, wroteOptimistic: !!(after && after.completed) };
+      } finally {
+        canWriteFinancials = _cwf;
+        Object.keys(_saved).forEach(k => { if (_saved[k] === undefined) delete taskData[k]; else taskData[k] = _saved[k]; });
+        goalSnapData = _s; reconData = _r; _goalSnapLoadStatus = _st; renderApp();
+      }
+    }, NET_INJECT);
+    assert(!res.skip, 'model must emit an Adam IRA residual to exercise this test');
+    assert(!res.wroteOptimistic, 'write-guard must reject the suppressed toggle: no optimistic completed state may be set');
+    await context.close();
+  }, { tags: [] });
+
   // ── Section J: Mobile viewport ─────────────────────────────────────────
   console.log('── Section J: Mobile viewport ──');
   await test('Mobile: all tabs reachable without horizontal overflow', async () => {
