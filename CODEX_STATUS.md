@@ -1,5 +1,13 @@
 # Codex Status: Herndon Financial OS
 
+## CURRENCY NOTE (2026-07-15) — open-window transfer-netting correction (pre-activation)
+
+- **Open-window goal-transfer netting/suppression control IMPLEMENTED** at correction commit **`15b372f`** (adapter/projection + write-guard only; `runModel`/waterfall/`goalSaved`/snapshot SQL/schema/wrapper/reconciliation/grants/production data untouched; 0 `.sql` changed). Record: `docs/phase-5g-1b-openwindow-netting-2026-07-15.md`.
+- **Verification (Adam machine pending; captured locally):** static **1526 / 0**; full `node e2e.js` **151 / 0 / 0**; readiness fallbacks **0 / 0**. `index.html` blob `302fd454ba6819a62a8cba23d18525a2eb31f922`, `BUILD_TS 2026-07-15T13:01:24`.
+- **Independent Fable review: CLEARED the implementation** (accepted without code changes; commits `15b372f` + `0cfb34f` not to be modified/squashed/rebased).
+- **Production activation remains UNAUTHORIZED.** Still outstanding: final operator-package reconciliation (this note's docs commit), activation-branch fast-forward, **Adam push**, and **Adam local full-suite verification**. No merge to `main`, no push, no production query, no Gate B step has occurred.
+- Authoritative activation pins/counts now live in the reissued **Saturday operator package v2** (`docs/phase-5g-1d-saturday-operator-package-2026-07-18.md`).
+
 ## CURRENCY BANNER (2026-07-14, prepared under A6 — awaiting Adam approval)
 
 *This file is the **State** document in the four-document authority model (Law = `AGENTS.md`; State = this file; History = closeouts + `docs/execution-ledger.md` + `docs/decision-log.md`; Plan = `docs/roadmap/canonical-roadmap.md`). For "what's next / in what order," read the **canonical roadmap** — not the older synthesis/FINAL/amendment layers (provenance only: `docs/roadmap/archive-index.md`).*

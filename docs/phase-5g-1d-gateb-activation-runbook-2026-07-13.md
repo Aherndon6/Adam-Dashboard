@@ -8,6 +8,14 @@ Adam-approved.** Nothing here is performed by this document; no grant, merge, de
 happens until Adam runs each step. Gate B is closed only by the activation approval + a green first
 closeout + the post-revoke proofs.
 
+> **Supersession note (2026-07-15):** the **authoritative activation pins and verification counts**
+> (activation-lineage anchor `15b372f` + `index.html` blob gate, `BUILD_TS 2026-07-15T13:01:24`, static
+> **1526/0**, e2e **151/0/0**, readiness **0/0**) are now maintained in the reissued **Saturday operator
+> package v2** (`docs/phase-5g-1d-saturday-operator-package-2026-07-18.md`), which folds in the mandatory
+> open-window transfer-netting pre-activation control. Where this historical runbook still shows the
+> earlier pins/counts (e.g. `7f0f47d`, `1507/0`, `148/0/0`), the operator package v2 governs. This note
+> does not rewrite the runbook.
+
 > **P0-1 activation-order correction (2026-07-13):** the first real Week-6 closeout now happens
 > **before** the Phase-2 revokes, so the highest-risk first write keeps the old RPC as a fallback.
 > "The wrapper is the sole write path" is then proven **after** the revoke by two NON-MUTATING probes

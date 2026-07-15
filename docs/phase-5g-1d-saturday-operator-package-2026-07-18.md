@@ -56,11 +56,12 @@ other files mid-execution. Authoritative detail lives in
 
 | Item | Expected |
 |---|---|
-| Feature branch | `claude/herndon-5g-1d-preactivation-j428vn` |
-| HEAD commit | `7f0f47d7b27a2de6101a951996230343a7ed824c` |
+| Feature branch | `claude/herndon-5g-1d-preactivation-j428vn` (advanced to the final docs-only reconciliation commit via fast-forward) |
+| Activation-lineage anchor | correction commit `15b372f` **MUST be an ancestor of HEAD** — `git merge-base --is-ancestor 15b372f HEAD`. **Do NOT pin the final tip hash**; the final tip is the docs-only reconciliation commit. |
+| `index.html` identity gate | `git rev-parse HEAD:index.html` == `302fd454ba6819a62a8cba23d18525a2eb31f922` |
 | `origin/main` | `5bd6c69787bee7a8fe26ee1fb2ceb0528526d6f1` (must stay unchanged until the merge step) |
 | Working tree | CLEAN (`git status --porcelain` empty) |
-| `BUILD_TS` (pre-activation) | `2026-07-11T17:26:14` (unchanged until the deploy step) |
+| `BUILD_TS` (pre-activation) | `2026-07-15T13:01:24` (unchanged until the deploy step) |
 | Production project | **Adam-Dashboard**, ref **`usayoldrawwmjsmretin`**, `system_identifier 7632885393857617092`, `app_environment` ABSENT |
 | Week mapping | **model `week_num = 6` = calendar Week 28** (`getCalWeek(6)=28`); the first closeout persists `week_num = 6` |
 
@@ -69,7 +70,7 @@ other files mid-execution. Authoritative detail lives in
 - Read-only: `docs/phase-5g-1d-gateb-adjunct-preflight.sql`, `docs/phase-5g-1d-activation-grants-validation.sql`
 - Mutating (grants): `docs/phase-5g-1d-activation-grants.sql` (Phase 1), `docs/phase-5g-1d-activation-revokes.sql` (Phase 2)
 - Rollback: `docs/phase-5g-1d-activation-grants-rollback.sql` (grant rollback, two scopes), `docs/phase-5g-1d-rollback.sql` (Slice-6 DROP — not expected in Gate B)
-- Browser: `index.html` (closeout + row-9 guard + response validation; verified gate static **1507/0**, e2e **148/0/0**)
+- Browser: `index.html` (closeout + row-9 guard + response validation + open-window transfer netting; verified gate static **1526/0**, e2e **151/0/0**, readiness **0/0**)
 - DR floor: the Slice-6 restore point `5G-1D-slice6-restorepoint-20260713T222223Z.dump` (local + encrypted off-device). *The adjunct preflight (step 2) confirms production has not been written since 07-13, so this dump is still a valid pre-Week-6 DR floor. A fresh same-sitting `pg_dump` (Slice-6 runbook §2 procedure) is OPTIONAL belt-and-suspenders — recommended if any doubt.*
 
 ---
@@ -77,7 +78,7 @@ other files mid-execution. Authoritative detail lives in
 ## 2. One-page execution checklist (in order — 🛑 = STOP for explicit Adam approval)
 
 ```
-[ ]  1. RE-GROUND ............... §9 start block: branch, HEAD 7f0f47d, clean tree, origin/main, BUILD_TS, files
+[ ]  1. RE-GROUND ............... §9 start block: branch, 15b372f is-ancestor + index.html blob 302fd454…, clean tree, origin/main, BUILD_TS 2026-07-15T13:01:24, files
 [ ]  2. ADJUNCT PREFLIGHT (RO) .. gateb-adjunct-preflight.sql → wk5 9/2/11; recon 5 rows wks1-5; snaps@wk>=6 = 0
 [ ]  3. PRE-PHASE-1 VALIDATION .. activation-grants-validation.sql (+ consolidated query) → 17/17 pass; inert; MD5s; owner
 ━━ 🛑 APPROVAL GATE 1 — Adam authorizes PHASE 1 GRANTS ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -98,7 +99,7 @@ other files mid-execution. Authoritative detail lives in
 [ ] 15. PROOF A (NON-MUTATING) .. wrapper idempotent re-submit of exact Week-6 payload → branch-F identity; before/after equal; NEVER force
 [ ] 16. PROOF B (NON-MUTATING) .. old-RPC probe, all named args incl. both JSONB, p_model_year=9999 → denial or "invalid model_year: 9999"
 [ ] 17. ▲▲▲ RELEASE WEEK-6 FREEZE (only after BOTH proofs pass) ▲▲▲
-[ ] 18. FINAL TEST SUITE (LOCAL)  node test_regression.js (1507/0) ; node e2e.js (148/0/0, fallbacks 0/0)
+[ ] 18. FINAL TEST SUITE (LOCAL)  node test_regression.js (1526/0) ; node e2e.js (151/0/0, fallbacks 0/0)
 [ ] 19. CLOSEOUT EVIDENCE + STATUS updates (docs: CODEX_STATUS, phase-status, AGENTS refresh, activation closeout evidence)
 [ ] 20. FINAL COMMIT + PUSH ..... docs-only --no-verify; feature branch; (merge to main already done in step 6)
 ```
@@ -127,6 +128,23 @@ order by week_num, task_idx;
   `goal_adam_ira` attribution (the control would BLOCK — resolve the row before activation, never force).
 - **No mutation.** If the row set is unexpected, STOP and reconcile the data first.
 
+**PRECHECK — unattributable-rows scan (read-only; same slot).** The Adam-IRA-specific query above cannot
+detect a completed open-window row that has NO durable attribution. Also run:
+```sql
+select *
+from public.weekly_tasks
+where completed = true
+  and week_num > 5
+  and (
+    action_key is null
+    or completed_amount is null
+  );
+```
+- **Expect: zero rows.** Any completed open-window row missing `action_key` or `completed_amount` is
+  unattributable — the netting control would BLOCK (fail closed).
+- **Hard stop** if any row is returned: STOP and **require investigation**. **Do NOT authorize cleanup or
+  any mutation** from this package; resolve the row's provenance first, then re-run the precheck.
+
 **PRE-CLOSE DUPLICATE SCAN (read-only; at step 7 live-browser verify, before Approval Gate 3).** On the
 deployed build (new `BUILD_TS`), open the current + next open weeks (Cal Wk 28/29) and confirm:
 - **No enabled Adam IRA PLANNED checkbox** in any open week (the executed residual renders as
@@ -154,7 +172,7 @@ halves reload, confirm on the deployed build:
 
 | # | Step | File / action | R/W | Runs in | Expected success | Hard-stop |
 |---|---|---|---|---|---|---|
-| 1 | Re-ground | §9 block | RO | Local terminal | HEAD=7f0f47d, tree clean, origin/main=5bd6c69, BUILD_TS 2026-07-11T17:26:14 | Any mismatch |
+| 1 | Re-ground | §9 block | RO | Local terminal | `15b372f` is-ancestor of HEAD, `index.html` blob 302fd454…, tree clean, origin/main=5bd6c69, BUILD_TS 2026-07-15T13:01:24 | Any mismatch |
 | 2 | Adjunct preflight | `gateb-adjunct-preflight.sql` | RO | Supabase SQL Editor | `ADJUNCT PREFLIGHT PASS`; 3 rows = §4 values | Any RAISE EXCEPTION / different row |
 | 3 | Pre-Phase-1 validation | `activation-grants-validation.sql` + §consolidated query | RO | Supabase SQL Editor | 17/17 `pass=true`; inert; MD5s; owner postgres | Any `pass=false` |
 | 4 | Phase 1 grants | `activation-grants.sql` | **WRITE (grants)** | Supabase SQL Editor | `ACTIVATION GRANTS PASS`; COMMIT | HARD STOP notice; env≠production; unexpected pre-grant (c_resume=false) |
@@ -170,7 +188,7 @@ halves reload, confirm on the deployed build:
 | 14b | Post-Phase-2 STALE browser | cached/pre-deploy tab (old direct-RPC path) | **NON-MUTATING** (fails closed) | Browser/REST | old-RPC call denied (401/403/404); no false success; no optimistic state; **ZERO** rows/timestamps written; clear error/reload | any 2xx; false success; optimistic state; ANY row/timestamp change |
 | 15 | Proof A | wrapper re-submit (exact payload) | **NON-MUTATING** (branch-F identity) | Browser/REST | branch-F identity; before/after byte-equal | Any inner-RPC write / before-image drift → re-read, never force |
 | 16 | Proof B | old-RPC probe (all args, p_model_year=9999) | **NON-MUTATING** (rejected pre-write) | REST | grant denial OR `invalid model_year: 9999` | PGRST202/404 signature-resolution (send ALL args incl. both JSONB) |
-| 18 | Final tests | `node test_regression.js`; `node e2e.js` | RO | Local terminal | 1507/0; 148/0/0; fallbacks 0/0 | Any fail / any readiness fallback |
+| 18 | Final tests | `node test_regression.js`; `node e2e.js` | RO | Local terminal | 1526/0; 151/0/0; fallbacks 0/0 | Any fail / any readiness fallback |
 | 19–20 | Evidence + commit | docs | RO→commit | Local/Git | docs-only commit; push feature branch | app/test/exec-SQL/BUILD_TS touched |
 
 ### 3a. Post-Phase-2 browser verification (step 14) — detail
@@ -327,16 +345,22 @@ tab; investigate why the revoke didn't deny before proceeding to the proofs.
 cd ~/Adam-Dashboard || { echo "✗ repo not found"; return 2>/dev/null || exit 1; }
 git fetch origin
 git switch claude/herndon-5g-1d-preactivation-j428vn
-# clean-tree GUARD before aligning to remote (no destructive reset on a dirty tree):
+# ▲▲▲ SEQUENCING WARNING ▲▲▲ Do NOT run `git reset --hard origin/<activation-branch>` until AFTER
+# Adam has PUSHED the advanced activation branch. Before the push, the remote tip is still the OLD
+# a952560; resetting to it would REWIND the local branch and DISCARD the reconciliation. The reset is
+# therefore emitted as an instruction, NOT auto-run.
 if [ -n "$(git status --porcelain)" ]; then
-  echo "✗ STOP: working tree is DIRTY — investigate before Saturday. Do NOT reset."; 
+  echo "✗ STOP: working tree is DIRTY — investigate before Saturday. Do NOT reset."
 else
-  git reset --hard origin/claude/herndon-5g-1d-preactivation-j428vn
+  echo "→ ONLY AFTER Adam has PUSHED the advanced activation branch, align local with:"
+  echo "    git reset --hard origin/claude/herndon-5g-1d-preactivation-j428vn"
 fi
-echo "HEAD:        $(git rev-parse HEAD)          # expect 7f0f47d7b27a2de6101a951996230343a7ed824c"
+# Ancestry-plus-blob identity gate (do NOT pin the final tip hash — it is the docs reconciliation commit):
+git merge-base --is-ancestor 15b372f HEAD && echo "ancestry:    15b372f is an ancestor of HEAD (OK)" || echo "✗ STOP: 15b372f is NOT an ancestor of HEAD"
+echo "index blob:  $(git rev-parse HEAD:index.html)   # expect 302fd454ba6819a62a8cba23d18525a2eb31f922"
 echo "tree:        $([ -z "$(git status --porcelain)" ] && echo CLEAN || echo DIRTY)"
 echo "origin/main: $(git rev-parse origin/main)   # expect 5bd6c69787bee7a8fe26ee1fb2ceb0528526d6f1"
-grep -o "BUILD_TS[^,;]*" index.html | head -1     # expect BUILD_TS='2026-07-11T17:26:14'
+grep -o "BUILD_TS[^,;]*" index.html | head -1     # expect BUILD_TS='2026-07-15T13:01:24'
 for f in docs/phase-5g-1d-gateb-activation-runbook-2026-07-13.md \
          docs/phase-5g-1d-gateb-adjunct-preflight.sql \
          docs/phase-5g-1d-activation-grants.sql \
@@ -364,7 +388,7 @@ done
 - [ ] Week-6 row counts + source proof (1 recon; 9 source=reconciliation)
 - [ ] Proof A result (branch-F identity; before/after equal)
 - [ ] Proof B result (denial or `invalid model_year: 9999`)
-- [ ] Static + E2E results (1507/0; 148/0/0; fallbacks 0/0)
+- [ ] Static + E2E results (1526/0; 151/0/0; fallbacks 0/0)
 - [ ] Final status-doc commit hash(es)
 
 > **Committed evidence must NEVER contain:** secrets, JWTs, anon keys, DSNs, backup contents, or

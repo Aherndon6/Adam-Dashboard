@@ -157,6 +157,12 @@ Plan Period spec (design so 2027 is the first instance) → staging rehearsal �
 
 **Sizing honesty:** schema + grant + engine + ops slice with three gates — deliberately *not* "tightly, like 1A.5." Calendar: build start ≤ ~Sep 14 (Cal Wk 37); complete before DCL ~Cal Wk 41 (~Oct 17); miss-penalty graceful and documented (F-07), never solved by an unreviewed rush fix.
 
+**Open — progress-plane transfer identity (pointer, 2026-07-15):** see `docs/roadmap/amendment-2026-07-15-progress-plane-transfer-identity.md`.
+- The **immediate adapter-level open-window goal-transfer netting/suppression control is IMPLEMENTED** (`15b372f`; `docs/phase-5g-1b-openwindow-netting-2026-07-15.md`) and complements 5G-1D snapshots.
+- **Durable progress-plane obligation/execution identity remains OPEN.** The current correction is an adapter/projection guard, **NOT** an event-ledger solution — do not claim otherwise.
+- The current **5G-1B `holding_events` scope covers RCCL/DCL only and does NOT include Adam IRA** (or any of the eligible nine), so it cannot serve as the progress-plane durable identity today.
+- Future ownership **must include funding-cycle / `model_year` identity before the 2027 rollover**; **event identity, idempotency, and reversal linkage remain future work** (candidate: the L3 ledger that rides 1B, §8/P8).
+
 ---
 
 ## 5. Disaster Recovery Exit Gate — DR-1 (mandatory, pre-freeze)
