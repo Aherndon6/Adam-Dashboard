@@ -1,0 +1,29 @@
+# Decision Log
+
+**Role:** Governance tier of the History layer (four-document model). **Append-only.** One line per **made** decision (the registers in the living roadmap §12 track only *open* decisions). Completes the audit ladder: L2 = row mutations, L3 = domain events, **decision log = governance events**.
+**Authority:** `docs/roadmap/canonical-roadmap.md` §14 (AF-9). Seeded from the A-list as it resolves. **Secrets-free, balance-free.**
+
+| Date | Decision | Approver | Evidence |
+|---|---|---|---|
+| 2026-07-13 | Gate D — Option A (pre-freeze activation) | Adam | `CODEX_STATUS.md` "## 5G-1D BROWSER COMPLETE + GATE D DECIDED" |
+| 2026-07-13 | Gate C — all 11 write-surface dispositions approved (approved, not executed) | Adam | `docs/phase-5g-1d-gatec-register-2026-07-13.md` |
+| 2026-07-14 | A1 — Adopt the FINAL roadmap as amended (→ APPROVED — controlling); produce the single living canonical roadmap | Adam | `docs/roadmap/canonical-roadmap.md` §0 |
+| 2026-07-14 | A2 — Freeze dates confirmed `Jul 29 – Aug 10` (controlled repository-stability period) | Adam | canonical-roadmap §0 / §11.3 |
+| 2026-07-14 | A4 — Alaska posture: deliberate skip + sequential catch-up (wk 8, wk 9) | Adam | canonical-roadmap §6 |
+| 2026-07-14 | A5 — Adopt the activation contingency annex | Adam | canonical-roadmap §7 |
+| 2026-07-14 | A13 — Wishlist-34 December trip routes to 5G-2 `planned_outflows` | Adam | canonical-roadmap §3 P5 / Appendix B |
+| 2026-07-14 | A14 — 1B reviewer chain in Fable's absence = ChatGPT challenge + §4 conformance + Adam | Adam | canonical-roadmap §11.2 |
+| 2026-07-14 | A15 — Split Register bundle P3b-1/P3b-2; fold 5G-1E into 1B as demotable 1B-S4 | Adam | canonical-roadmap §13 SR-1/SR-2 |
+| 2026-07-14 | A17 — Elevate the Edge Function layer to first post-rollover platform enabler (early 2027) | Adam | canonical-roadmap §13 SR-4 |
+| 2026-07-14 | A18 — DOC-1: one living canonical roadmap now; DOC-2/DOC-3 later | Adam | canonical-roadmap §16 |
+| 2026-07-14 | A16 — D10 option (c) authorized for the November menu; **decision deferred** (not selected now) | Adam | canonical-roadmap §12/§13 SR-3 |
+| 2026-07-14 | A19 — Verify Supabase inactivity-pause policy before departure; document unpause; verification pending | Adam | canonical-roadmap §14 AF-3 |
+| 2026-07-14 | Wishlist reconciliation approved (live production export mapped; Fable ID/status corrections applied) | Adam | canonical-roadmap Appendix B |
+| 2026-07-14 | Roadmap UI Lite recorded as a new future candidate (W-8); Wishlist items 32/33 subsumed | Adam | canonical-roadmap §17 |
+| 2026-07-14 | Monthly Close v1 spec + operator runbook drafted (spec/runbook only; no implementation) | Adam (directed) | docs/monthly-close-v1-spec-2026-07-14.md; -operator-runbook-2026-07-14.md |
+
+*Append-only. Seed further rows as A3/A6/A7–A12 and future decisions resolve (e.g., DR-1 sign-off, A6 patch approval, D7/D6/D10/D-11).*
+
+---
+
+*Append-only. Secrets-free, balance-free.*

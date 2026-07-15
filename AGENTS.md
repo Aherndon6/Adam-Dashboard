@@ -23,6 +23,10 @@ Before Financial OS product/code work, read:
 
 Do not copy AI Context files into this repo.
 
+## Document Authority (four-document model, 2026-07-14)
+
+One job per document: **Law** = this `AGENTS.md` (stable rules, conventions, Do-Not-Touch, gates); **State** = `CODEX_STATUS.md` (current operating state, active phase/gate, verified test baseline, next actions); **History** = append-only closeouts + `docs/execution-ledger.md` + `docs/decision-log.md`; **Plan** = the single living `docs/roadmap/canonical-roadmap.md` (revised in place; git history is its changelog). Prior roadmap layers are provenance only — see `docs/roadmap/archive-index.md`. For "what's next / in what order," read the canonical roadmap, not older synthesis/FINAL/amendment layers. The Alaska repository-stability freeze is **Jul 29 – Aug 10, 2026** (controlled period, not a total blackout — canonical roadmap §11.3).
+
 ## Architecture
 
 No framework, no build step.
@@ -147,7 +151,7 @@ Before changing code:
 - No new globals.
 - data / domain / view separation for new modules: data access, pure domain logic, and view/DOM wiring kept distinct.
 - Future modularization is selective and characterization-tested, not a blanket rewrite.
-- Before 5G-3 / 5G-4, extract the calculation core under golden-master / characterization tests first.
+- Before the **Budget-Identity Change (legacy 5G-3)** and before **5G-4a/4b** (goal data-model and write phases), complete the **Calc-Core Extraction** under golden-master / characterization tests. New-numbering **5G-3 Cash Allocation** may proceed pre-extraction **only if its spec proves zero engine change**. *(Re-pinned per the 2026-07-14 canonical-roadmap adoption; see `docs/roadmap/canonical-roadmap.md` §9. This is a blocking prerequisite to 5G-3.)*
 
 ### Schema / migration conventions
 
@@ -165,21 +169,28 @@ Before changing code:
 
 ## Do Not Touch
 
+*Categorized per DOC-4 (2026-07-14) into frozen code / protected data / protected process so additions land with the right review reflex. No item removed; categorization only, plus the runModel re-pin (see `docs/roadmap/canonical-roadmap.md` §9/§16).*
+
+### Frozen code / calculation surfaces
 - WD / effectiveWD logic. Do not inject planned outflows into either.
-- runModel internals: frozen through 5G-2; move-only during extraction under golden-master identity; modifiable at 5G-3+ per spec only.
-- cash_commitments schema. No synthetic rows.
+- runModel internals: **frozen until the Calc-Core Extraction phase**; move-only during extraction under golden-master identity; modifiable after extraction per approved spec only. Freeze exceptions require explicit Adam approval per incident.
 - 5F-1 Cash Availability Engine internals. The earmark adapter integrates at the input layer only.
 - Reconciliation RPCs and the reconciliation state machine.
+- Goal waterfall ordering and the ira_cpa_cleared gate.
+- Budget identity math before 5G-3.
+- index.html script body and global namespace for new feature code.
+
+### Protected data / schema
+- cash_commitments schema. No synthetic rows.
 - Register transaction schema. No fake Register transactions.
 - No fake Budget Clearance account.
 - misc.goal_sweep key.
-- Budget identity math before 5G-3.
+- Retained historical Quicken data (archive/reference only; Quicken is retired — see the Operating-state note above). Do not delete, modify, export externally, or treat as disposable without explicit Adam approval. It is a historical archive, not a live recovery replica. *(Supersedes the prior "Quicken parallel comparison data during Aug-Sep" item — parallel operation has ended.)*
+
+### Protected process / security
 - Existing RLS role model and the anthropic_key guardrail.
 - New tables must use conforming can_write_financials() policies, never anon.
-- Goal waterfall ordering and the ira_cpa_cleared gate.
 - prod Supabase DDL; staging first.
-- index.html script body and global namespace for new feature code.
-- Retained historical Quicken data (archive/reference only; Quicken is retired — see the Operating-state note above). Do not delete, modify, export externally, or treat as disposable without explicit Adam approval. It is a historical archive, not a live recovery replica. *(Supersedes the prior "Quicken parallel comparison data during Aug-Sep" item — parallel operation has ended.)*
 - Never edit golden-master expected outputs to make tests pass without Adam approval.
 
 ## Review Artifacts
