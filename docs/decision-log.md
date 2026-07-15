@@ -28,6 +28,9 @@
 | 2026-07-14 | T-5 — Re-date 5G-4a/4b/full 5G-5 to 2027 (honesty change; no scope change) | Adam | canonical-roadmap §3.0 / §3 P6 |
 | 2026-07-14 | T-6 — Adopt Account Composition Visibility Rider (AMEX Savings + Truist Savings; Checking deferred to 5G-3; not `5G-3A`) | Adam | canonical-roadmap §18; Fable Amendment 2 |
 | 2026-07-14 | Provenance: three Fable 2026-07-14 sequencing documents adopted as controlling amendments (targeted review + boundary clarifications + account composition scope) | Adam | docs/roadmap/archive-index.md |
+| 2026-07-14 | 5G-1B RG-1 review received (ADOPT WITH CHANGES); C-1…C-5 folded into the architecture package; B-11/B-12 added, B-10 amended | Fable (review) | docs/phase-5g-1b-architecture-2026-07-14.md; Fable 5G-1B Architecture Review - 2026-07-14.md |
+| 2026-07-14 | 5G-1B final contract corrections: `effective_at timestamptz` (not date; closed-week via governing tz); `correction` event type removed → four financial types, corrections = reversal + replacement | Adam | docs/phase-5g-1b-architecture-2026-07-14.md §4/§8/§9 |
+| 2026-07-14 | 5G-1B decisions B-6, B-7, B-8, B-10, B-11, B-12 APPROVED (model-freeze exception limited to the seam + golden-master-verified; 1B-S4 + demote valve; golden recapture only with expected-effect record + Adam review; authenticated owner REST normal path / SQL-editor read-only / service-role break-glass; note-required basis_adjustment no override; effective_at timestamptz + created_at) | Adam | docs/phase-5g-1b-architecture-2026-07-14.md §19 |
 
 *Append-only. Seed further rows as A3/A6/A7–A12 and future decisions resolve (e.g., DR-1 sign-off, A6 patch approval, D7/D6/D10/D-11).*
 
