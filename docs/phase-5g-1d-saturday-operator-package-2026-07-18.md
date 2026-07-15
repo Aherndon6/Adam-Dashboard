@@ -1,3 +1,47 @@
+## ⟲ REISSUE v2 — 2026-07-15 (supersedes the original pins below)
+
+**Why:** the mandatory pre-activation **open-window executed-transfer netting/suppression control**
+(`docs/phase-5g-1b-openwindow-netting-2026-07-15.md`) changed the app commit, so the original package
+pins are stale and **must not be reused**. This banner is authoritative where it conflicts with the
+v1 body below.
+
+**Repinned baseline (authoritative):**
+| Item | v1 (superseded) | **v2 (authoritative)** |
+|---|---|---|
+| Activation-lineage HEAD | `7f0f47d` | **`15b372fc94b35ac46a8b9af40375055a66ad1f7f`** (correction commit) |
+| `BUILD_TS` (pre-activation) | `2026-07-11T17:26:14` | **`2026-07-15T13:01:24`** |
+| Static regression | 1507 / 0 | **1526 / 0** |
+| Full `node e2e.js` | 148 / 0 / 0 | **151 / 0 / 0** |
+| Readiness fallbacks | 0 / 0 | **0 / 0** |
+| `origin/main` | `5bd6c69` | `5bd6c69` (unchanged) |
+
+**Branch reconciliation (Adam decision — REQUIRED before Saturday):** the correction commit `15b372f`
+currently sits on `docs/canonical-roadmap-revision-2026-07-14` (a linear descendant of the preactivation
+lineage; app code was byte-identical to `7f0f47d` before this commit). Before Saturday, the activation
+branch `claude/herndon-5g-1d-preactivation-j428vn` must be advanced/reconciled to `15b372f` (fast-forward
+or cherry-pick), and the §9 start block + §1 table's branch/HEAD/BUILD_TS `expect` values updated to the
+v2 pins above. **Do not run §9 as written against the old remote tip.**
+
+**Added pre-activation steps (v2) — see §2b for detail; they slot into the §2 checklist as noted:**
+1. **PRODUCTION PRECHECK (read-only, before Approval Gate 1)** — confirm the open-window Adam IRA
+   execution state (exactly one completed $61.06; no second duplicate; `action_key` + `completed_amount`
+   populated; no ambiguous legacy row). **No production mutation.**
+2. **PRE-CLOSE DUPLICATE SCAN (read-only, at step 7 live-browser verify)** — the deployed build must
+   show **no enabled Adam IRA PLANNED checkbox** in any open week; the executed $61.06 shows "Satisfied
+   by completed transfer" / "Executed earlier"; console clean.
+3. **WEEK-6 CUMULATIVE VALUE (at step 8 frozen-payload review)** — the confirmed Adam IRA cumulative
+   funded value **must include the executed $61.06** (i.e. reflects the real AMEX IRA-holding balance),
+   so the wk6 snapshot anchors funded state correctly.
+4. **POST-CLOSE VERIFICATION (at step 10 durable-state verify)** — after the wk6 closeout + reload,
+   confirm **zero later-week Adam IRA recommendations** (the snapshot boundary advanced; the netting
+   control steps back to the durable snapshot).
+
+**Release condition (Adam, unchanged):** this control must be implemented, independently reviewed, and
+fully green before the Saturday production baseline is authorized. If it cannot meet the bar in time,
+**the affected Saturday activation slips** — do not silently revert to the v1 package.
+
+---
+
 # Phase 5G-1D — Saturday Gate B Operator Package (single-sitting execution)
 
 **Purpose:** the one document to operate Gate B + 5G-1D completion from, end to end, in a single
@@ -60,6 +104,51 @@ other files mid-execution. Authoritative detail lives in
 ```
 
 ---
+
+## 2b. v2 ADDED PRE-ACTIVATION STEPS (2026-07-15) — netting-control gates
+
+These are **additive** to the §2 checklist; run them at the slots named. All are read-only except the
+normal closeout itself.
+
+**PRECHECK (read-only; before 🛑 Approval Gate 1).** In the Supabase SQL Editor, production
+Adam-Dashboard (`usayoldrawwmjsmretin`), run:
+```sql
+-- READ-ONLY. Open-window Adam IRA execution state (no mutation).
+select week_num, task_idx, action_key, completed, completed_amount,
+       (completed_label is not null) as has_label
+from public.weekly_tasks
+where action_key = 'goal_adam_ira' and completed = true and week_num > 5
+order by week_num, task_idx;
+```
+- **Expect:** exactly **one** completed row; `completed_amount` **equals the executed Adam IRA residual**
+  (the $61.06 top-up) and is **non-null**; `action_key` populated; `has_label = true`.
+- **Hard stop** if: more than one completed row (a real second execution → investigate, do not close out
+  over it); `completed_amount` null/unrecoverable, or a legacy row with null key/label affecting
+  `goal_adam_ira` attribution (the control would BLOCK — resolve the row before activation, never force).
+- **No mutation.** If the row set is unexpected, STOP and reconcile the data first.
+
+**PRE-CLOSE DUPLICATE SCAN (read-only; at step 7 live-browser verify, before Approval Gate 3).** On the
+deployed build (new `BUILD_TS`), open the current + next open weeks (Cal Wk 28/29) and confirm:
+- **No enabled Adam IRA PLANNED checkbox** in any open week (the executed residual renders as
+  "Satisfied by completed transfer", and/or the completion shows under "Executed earlier");
+- console clean; the executable "Transfers to execute X/Y" count does **not** include the satisfied row.
+- **Hard stop** if any enabled Adam IRA duplicate checkbox appears, or a "Review required" (blocked) row
+  is present → do not close out; investigate attribution.
+
+**WEEK-6 CUMULATIVE VALUE (at step 8 frozen-payload review).** When confirming the nine funded values,
+the **Adam IRA cumulative funded value must include the executed $61.06** — i.e. it reflects the real
+AMEX IRA-holding balance after the top-up, so the wk6 snapshot anchors funded state at (≈) the $7,500
+target. If the entered value omits the executed residual, **Go Back and correct** before submitting.
+
+**POST-CLOSE VERIFICATION (at step 10 durable-state verify).** After the wk6 closeout succeeds and both
+halves reload, confirm on the deployed build:
+- the wk6 snapshot for `adam_ira` reflects the cumulative funded value (incl. the $61.06);
+- **zero later-week (Cal Wk 29+) Adam IRA transfer recommendations** remain (the snapshot boundary
+  advanced; the netting control has stepped back to the durable snapshot);
+- no "Satisfied"/"Executed earlier" Adam IRA row is needed in future weeks (there is no recommendation to
+  suppress).
+- **Hard stop** if a later-week Adam IRA recommendation reappears → the anchor did not absorb the
+  execution; do NOT run Phase 2 revokes; investigate.
 
 ## 3. Exact file + command map (per step)
 
