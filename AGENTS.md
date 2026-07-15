@@ -207,17 +207,46 @@ Roles:
 
 Adam manually approves: pushes, prod Supabase migrations, destructive actions, secrets, and Context Manager patch application. Claude Code can commit locally under approved permissions but does not push.
 
-Session start:
+### Starting a New Claude Code Session
 
-1. Read this AGENTS.md and CODEX_STATUS.md.
-2. When available locally, read the AI Context files from ~/AI-Context (00, 02, 05, 08); never copy them into this repo. Do not assume the repo requires those files to exist.
-3. Confirm the active goal, affected files/functions, intended tests, and risk areas before changing code.
+When Adam begins with a simple request such as "Let's work on the Herndon Financial OS," "What's next?", or "I want to work on the OS today," Claude Code must, before changing anything:
 
-Session end:
+1. Read `AGENTS.md` as Law.
+2. Read `CODEX_STATUS.md` as current State.
+3. Read `docs/roadmap/canonical-roadmap.md` as the authoritative Plan.
+4. Read the applicable AI Context files required by the existing context-routing rules.
+5. Identify the active phase and next authorized roadmap item.
+6. Check calendar deadlines, approval gates, freezes, WIP=1, and branch constraints.
+7. Classify the proposed work as planning, specification, architecture, documentation, implementation, testing, staging, or production activation.
+8. Explain why the work is next.
+9. Identify prerequisites, unresolved Adam decisions, and prohibited work.
+10. Propose the session objective and expected deliverable.
+11. Wait for Adam's approval before making changes.
 
-- Propose a clear commit message.
-- State test status and any test Adam must run manually.
-- Update the CODEX_STATUS.md current-state pointer.
+### Ending a Session
+
+Before stopping, Claude Code must:
+
+- summarize what was completed;
+- identify any required roadmap or `CODEX_STATUS.md` updates;
+- state the next recommended roadmap item;
+- report branch, HEAD, working-tree status, and anything uncommitted or unpushed;
+- report test status where applicable;
+- propose a commit message when work is ready to commit.
+
+Keep this consistent with the four-document authority model.
+
+### Cross-Track Requests
+
+If Adam asks to work on the Health OS:
+
+- do not apply the Financial OS roadmap, phase numbering, WIP=1 rule, freeze controls, production gates, or financial-system authority model;
+- route the work to the Health OS workspace and its own governing instructions;
+- do not modify Health OS records or canonical Health context from the Financial OS repository;
+- protect `/Health OS/private/`;
+- if the request is only a read-only health-status question and the Health OS workspace is unavailable, use the canonical Health context cautiously and clearly state the source and limitations.
+
+The Financial OS repository must not become the permanent governance authority for the Health OS.
 
 ## Definition of Done
 
