@@ -12777,6 +12777,80 @@ console.log('\n── Section 5G-1D Slice 4c: half-close repair confirmation ─
   });
 })();
 
+// ═══════════════════════════════════════════════════════════════════════════
+// Section 5G-1B-IDENT: identity-resolved completion normalization
+// (applyCompletionSnapshots + _trAmts + commission_tax write amount) — the fix that stops an
+// Adam IRA completion at a colliding task_idx from erasing the $425.68 commission_tax task.
+// ═══════════════════════════════════════════════════════════════════════════
+(function(){
+  console.log('\n── Section 5G-1B-IDENT: identity-resolved completion normalization ──');
+  var IRA='Transfer $61.06 from Truist Checking to AMEX Savings (Adam IRA)';
+  var CT ='Transfer $425.68 from Truist Checking to Vio Bank - Tax Reserve (commission 40%)';
+  function td(completed,actionKey,amt,label){return {completed:completed,actionKey:actionKey,completedAmount:amt,completedLabel:label,completedAt:completed?'2026-07-15T00:00:00Z':null};}
+  function withTaskData(rows,fn){
+    var saved={};Object.keys(taskData).forEach(function(k){saved[k]=taskData[k];delete taskData[k];});
+    Object.keys(rows).forEach(function(k){taskData[k]=rows[k];});
+    try{return fn();}finally{Object.keys(taskData).forEach(function(k){delete taskData[k];});Object.keys(saved).forEach(function(k){taskData[k]=saved[k];});}
+  }
+  // IDENT-1 — the reported collision: an Adam IRA $61.06 completion at task_idx 0 must NOT overwrite the
+  // commission_tax $425.68 recommendation (also at display index 0).
+  test('5G1B-IDENT-1: applyCompletionSnapshots preserves the $425.68 commission_tax label under a colliding Adam IRA completion',function(){
+    withTaskData({'6_0':td(true,'goal_adam_ira',61.06,IRA)},function(){
+      var out=applyCompletionSnapshots([{num:6,realActs:[CT],realActKeys:['commission_tax']}]);
+      assert(out[0].realActs[0].indexOf('$425.68')>=0,'commission_tax $425.68 preserved, got: '+out[0].realActs[0]);
+      assert(out[0].realActs[0].indexOf('Adam IRA')<0,'commission_tax label NOT overwritten by Adam IRA');
+      assert(out[0].realActKeys[0]==='commission_tax','key unchanged');
+    });
+  });
+  // IDENT-2 — a CORRECTLY-matched commission_tax completion still normalizes to its completedLabel (no regression).
+  test('5G1B-IDENT-2: a matched commission_tax completion still normalizes to its completed label',function(){
+    var exec='Transfer $425.68 from Truist Checking to Vio Bank - Tax Reserve (commission 40%) [executed]';
+    withTaskData({'6_0':td(true,'commission_tax',425.68,exec)},function(){
+      var out=applyCompletionSnapshots([{num:6,realActs:[CT],realActKeys:['commission_tax']}]);
+      assert(out[0].realActs[0]===exec,'matched commission_tax normalizes to completedLabel, got: '+out[0].realActs[0]);
+    });
+  });
+  // IDENT-3 — a correctly-matched GOAL completion at its own index still normalizes (generic path preserved).
+  test('5G1B-IDENT-3: a matched goal completion still normalizes to its completed label',function(){
+    var exec='Transfer $61.06 from Truist Checking to AMEX Savings (Adam IRA) [done]';
+    withTaskData({'6_0':td(true,'goal_adam_ira',61.06,exec)},function(){
+      var out=applyCompletionSnapshots([{num:6,realActs:[IRA],realActKeys:['goal_adam_ira']}]);
+      assert(out[0].realActs[0]===exec,'matched goal normalizes to completedLabel, got: '+out[0].realActs[0]);
+    });
+  });
+  // IDENT-4 — a completion whose action_key differs from the recommendation at the SAME index does NOT normalize it.
+  test('5G1B-IDENT-4: a different-action completion at the same index does not overwrite',function(){
+    var rccl='Transfer $600.00 from Truist Checking to AMEX Savings (holding) (Wewe RCCL)';
+    var bailey='Transfer $250.00 from Truist Checking to AMEX Savings (Bailey 529)';
+    withTaskData({'6_0':td(true,'goal_wewe_rccl',600,rccl)},function(){
+      var out=applyCompletionSnapshots([{num:6,realActs:[bailey],realActKeys:['goal_bailey_529']}]);
+      assert(out[0].realActs[0]===bailey,'bailey_529 recommendation not overwritten by an rccl completion');
+    });
+  });
+  // IDENT-5 — no completion → recommendation unchanged (the $425.68 stays a live recommendation).
+  test('5G1B-IDENT-5: an unmatched (no completion) recommendation is unchanged',function(){
+    withTaskData({},function(){
+      var out=applyCompletionSnapshots([{num:6,realActs:[CT],realActKeys:['commission_tax']}]);
+      assert(out[0].realActs[0]===CT,'no completion → label unchanged');
+    });
+  });
+  // IDENT-6 — the resolver leaves the commission_tax recommendation OPEN under the colliding Adam IRA completion
+  // (so the executable panel renders an enabled checkbox, and the Adam IRA row is executed-history).
+  test('5G1B-IDENT-6: resolver leaves commission_tax open + Adam IRA as executed history under the collision',function(){
+    withTaskData({'6_0':td(true,'goal_adam_ira',61.06,IRA)},function(){
+      var R=resolveWeekTransfers({realActs:[CT],realActKeys:['commission_tax'],taskRows:_taskRowsForWeek(6)});
+      assert(R.currentRows[0].completed===false,'commission_tax recommendation stays OPEN (clickable)');
+      assert(R.executedCount===1&&R.executedHistory[0].actionKey==='goal_adam_ira','Adam IRA surfaces as executed history, not a match');
+    });
+  });
+  // IDENT-7 — commission_tax write amount parses to 425.68 from the (identity-resolved) label (not w.ct).
+  test('5G1B-IDENT-7: commission_tax actionable/write amount parses to 425.68 from the resolved label',function(){
+    var m=/\$([0-9,]+(?:\.[0-9]+)?)/.exec(CT); var amt=m?parseFloat(m[1].replace(/,/g,'')):null;
+    assert(amt===425.68,'commission_tax write amount parses to 425.68, got '+amt);
+    assert(typeof (WEEKS.find(function(w){return w.num===6;})||{}).ct==='undefined','proves w.ct is undefined (why the old path wrote null)');
+  });
+})();
+
 // ─────────────────────────────────────────────────────────────────────────
 console.log('\n╔══════════════════════════════════════════════════════════════╗');
 console.log('║                       RESULTS                               ║');

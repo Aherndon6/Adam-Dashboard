@@ -1164,6 +1164,80 @@ async function clickNav(page, id) {
     await context.close();
   }, { tags: [] });
 
+  // ── Section 5G-1B-IDENT: identity-resolved completion normalization (commission-tax visibility) ──
+  console.log('── Section 5G-1B-IDENT: identity-resolved completion normalization ──');
+
+  // Shared injector: wk6 commission override $2,108.78 (ct=843.51), wk1-5 reconciled (wk5 end $8,382.92 →
+  // model splits comm-tax $425.68/$417.83), and the executed Adam IRA $61.06 completion at wk6/task_idx 0
+  // (the colliding index). Restores all globals afterward.
+  const IDENT_INJECT = `(function(){
+    goalSnapData={5:{adam_ira:7438.94,wendy_ira:0,alaska:7000,bailey_529:0,bryce_529:0,preston_529:0,bryce_vehicle:0,christmas_cruise:0}};
+    _goalSnapLoadStatus='loaded';
+    var rc=function(chk){return{chk:chk,sav:7000.07,amx:8539.20,tax:1952.22,lc:14024.76,balance_basis:'posted_current_balance'};};
+    reconData={1:rc(15000),2:rc(13000),3:rc(11000),4:rc(9500),5:rc(8382.92)};
+    overrideData[6]={week_num:6,dates:'Jul 12-18',events_json:[{l:'AMEX Gold payment due 7/18',t:'ob',a:-5718.52},{l:'Wendy Deep South commission (7/15)',t:'in',a:2108.78,tx:true},{l:'Wendy paycheck (7/17)',t:'in',a:2152.50}],ct:843.51,ca:1265.27};
+    taskData['6_0']={completed:true,completedAt:'2026-07-14T01:21:52Z',completedAmount:61.06,actionKey:'goal_adam_ira',completedLabel:'Transfer $61.06 from Truist Checking to AMEX Savings (Adam IRA)'};
+    taskData['7_1']={completed:false,completedAt:null,completedAmount:null,actionKey:'goal_adam_ira',completedLabel:null};
+  })()`;
+
+  // IDENT-E1 — Week 28 must show ONE enabled $425.68 commission_tax task; the narrative must show
+  // $425.68 (not $61.06) with $417.83 carried forward; the Adam IRA $61.06 stays separate/non-executable;
+  // and the commission_tax write context carries 425.68 + the correct label.
+  await test('5G1B-IDENT-E1: Week 28 shows one enabled $425.68 commission_tax task, correct narrative, Adam IRA separate, write ctx 425.68', async () => {
+    const { page, context } = await openApp(browser);
+    await clickNav(page, 'weekly');
+    const res = await page.evaluate((INJECT) => {
+      const _s=goalSnapData,_r=reconData,_st=_goalSnapLoadStatus,_o=overrideData[6],_t0=taskData['6_0'],_t1=taskData['7_1'];
+      try {
+        eval(INJECT);
+        activeW=6; setSection('weekly'); renderApp();
+        const html=document.getElementById('weekly-content').innerHTML||'';
+        const rows=Array.from(document.querySelectorAll('#weekly-content .task-row'));
+        const enabledCT=rows.filter(r=>{const cb=r.querySelector('input.task-check');const t=r.textContent||'';return cb&&!cb.disabled&&t.indexOf('$425.68')>=0&&t.indexOf('Tax Reserve')>=0;});
+        const enabledIraDup=rows.filter(r=>{const cb=r.querySelector('input.task-check');const t=r.textContent||'';return cb&&!cb.disabled&&t.indexOf('(Adam IRA)')>=0&&t.indexOf('Adam IRA seed')<0;});
+        let ctx=null; for(const k in _xfrWriteCtx){ if(_xfrWriteCtx[k]&&_xfrWriteCtx[k].actionKey==='commission_tax'){ctx=_xfrWriteCtx[k];break;} }
+        return { enabledCT:enabledCT.length, enabledIraDup:enabledIraDup.length,
+          narr425: html.indexOf('$425.68')>=0, narr417carry: html.indexOf('$417.83 carries forward')>=0,
+          narr61bad: /Commission 40% \$61\.06/.test(html),
+          ctxAmt: ctx?ctx.amount:null, ctxLabelOk: ctx?(String(ctx.completedLabel).indexOf('Vio Bank - Tax Reserve')>=0):false };
+      } finally { goalSnapData=_s;reconData=_r;_goalSnapLoadStatus=_st;
+        (_o===undefined)?delete overrideData[6]:overrideData[6]=_o;
+        (_t0===undefined)?delete taskData['6_0']:taskData['6_0']=_t0;
+        (_t1===undefined)?delete taskData['7_1']:taskData['7_1']=_t1; renderApp(); }
+    }, IDENT_INJECT);
+    assert(res.enabledCT===1, 'exactly one enabled $425.68 commission_tax checkbox (got '+res.enabledCT+')');
+    assert(res.enabledIraDup===0, 'no enabled Adam IRA duplicate checkbox (got '+res.enabledIraDup+')');
+    assert(res.narr425, 'narrative shows $425.68');
+    assert(res.narr417carry, 'narrative shows $417.83 carries forward');
+    assert(!res.narr61bad, 'narrative must NOT show "Commission 40% $61.06"');
+    assert(res.ctxAmt===425.68, 'commission_tax write ctx amount = 425.68 (got '+res.ctxAmt+')');
+    assert(res.ctxLabelOk, 'commission_tax write ctx label is the Vio Tax Reserve label');
+    await context.close();
+  }, { tags: [] });
+
+  // IDENT-E2 — Week 29 retains exactly one $417.83 commission_tax task; no cross-attribution / no $61.06.
+  await test('5G1B-IDENT-E2: Week 29 retains exactly one enabled $417.83 commission_tax task', async () => {
+    const { page, context } = await openApp(browser);
+    await clickNav(page, 'weekly');
+    const res = await page.evaluate((INJECT) => {
+      const _s=goalSnapData,_r=reconData,_st=_goalSnapLoadStatus,_o=overrideData[6],_t0=taskData['6_0'],_t1=taskData['7_1'];
+      try {
+        eval(INJECT);
+        activeW=7; setSection('weekly'); renderApp();
+        const rows=Array.from(document.querySelectorAll('#weekly-content .task-row'));
+        const enabled417=rows.filter(r=>{const cb=r.querySelector('input.task-check');const t=r.textContent||'';return cb&&!cb.disabled&&t.indexOf('$417.83')>=0&&t.indexOf('Tax Reserve')>=0;});
+        const html=document.getElementById('weekly-content').innerHTML||'';
+        return { enabled417:enabled417.length, has61inComm: /Commission 40% \$61\.06/.test(html) };
+      } finally { goalSnapData=_s;reconData=_r;_goalSnapLoadStatus=_st;
+        (_o===undefined)?delete overrideData[6]:overrideData[6]=_o;
+        (_t0===undefined)?delete taskData['6_0']:taskData['6_0']=_t0;
+        (_t1===undefined)?delete taskData['7_1']:taskData['7_1']=_t1; renderApp(); }
+    }, IDENT_INJECT);
+    assert(res.enabled417===1, 'exactly one enabled $417.83 commission_tax task in Week 29 (got '+res.enabled417+')');
+    assert(!res.has61inComm, 'Week 29 commission line not contaminated with $61.06');
+    await context.close();
+  }, { tags: [] });
+
   // ── Section J: Mobile viewport ─────────────────────────────────────────
   console.log('── Section J: Mobile viewport ──');
   await test('Mobile: all tabs reachable without horizontal overflow', async () => {

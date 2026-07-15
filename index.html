@@ -885,7 +885,7 @@ button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-vis
 // ── Constants (unchanged) ──────────────────────────────────────────────────
 // Simplified architecture — $8,250 total from LC · $6,500 operating floor · no legacy mechanics
 // Real-world moves: keep $2,250 in chk, move $2,750 sav→chk, move $1,000 LC→chk, move $2,250 LC→chk (Option 1 correction)
-const BUILD_TS='2026-07-15T13:01:24'; // updated each push — local time string
+const BUILD_TS='2026-07-15T19:51:00'; // updated each push — local time string
 const START_CHK=18037.73,START_SAV=3772.77,START_AMX=103.64,START_TAX=0,START_LC=13488.88;
 const EF_AMT=13488.88; // LC/EF balance — static this model year (no transfers in or out)
 const BASE_TAX=521.36,RET_SAV_XFR=3772.74;
@@ -4707,11 +4707,17 @@ function renderWeekDetail(w,weeks){
     '</div>'+
     '<div class="panel card-pad">'+
       (function(){
-        // Build key→completedAmount map from taskData for this week
+        // Build key→completedAmount map by ACTION IDENTITY (5G-1B fix): resolve each recommendation to
+        // its completion via the resolver's matchTaskIdx, never by positional task_idx — so a completion
+        // for a different action (e.g. Adam IRA $61.06 at a colliding index) cannot inject its amount
+        // into another action's narrative line (e.g. the commission_tax line).
+        var _trRes=resolveWeekTransfers({realActs:w.realActs,realActKeys:w.realActKeys,taskRows:_taskRowsForWeek(w.num)});
         var _trAmts={};
         (w.realActKeys||[]).forEach(function(ak,ai){
           if(!ak)return;
-          var td=taskData[w.num+'_'+ai];
+          var _tcr=_trRes.currentRows[ai];
+          if(!_tcr||!_tcr.completed||_tcr.matchTaskIdx==null)return;
+          var td=taskData[w.num+'_'+_tcr.matchTaskIdx];
           if(td&&td.completed&&td.completedAmount!=null)_trAmts[ak]=td.completedAmount;
         });
         // Normalize done entries: replace model amount with actual completedAmount where available
@@ -4923,9 +4929,14 @@ function renderWeekDetail(w,weeks){
         var _isGoalKey=actionKey&&actionKey.indexOf('goal_')===0;
         var _goalAmtM=_isGoalKey?(/\$([0-9,]+(?:\.[0-9]+)?)/.exec(a)):null;
         var _goalAmt=_goalAmtM?parseFloat(_goalAmtM[1].replace(/,/g,'')):null;
+        // 5G-1B fix: the commission_tax write amount is the ACTUAL actionable amount parsed from the
+        // (identity-resolved) recommendation label — NOT w.ct, which is not present on the week object
+        // (checking the $425.68 leg must persist completed_amount=425.68, not null).
+        var _ctAmtM=(actionKey===ACTION_KEYS.COMMISSION_TAX)?(/\$([0-9,]+(?:\.[0-9]+)?)/.exec(a)):null;
+        var _ctAmt=_ctAmtM?parseFloat(_ctAmtM[1].replace(/,/g,'')):null;
         // For a PARTIAL, the executable/write amount is the NET remaining (completed_label stays the
         // model recommendation so the resolver still matches it as this obligation on the next render).
-        var _amtVal=_isPartial?_net.netAmount:((actionKey===ACTION_KEYS.COMMISSION_TAX)?w.ct:(_isGoalKey&&_goalAmt!=null?_goalAmt:null));
+        var _amtVal=_isPartial?_net.netAmount:((actionKey===ACTION_KEYS.COMMISSION_TAX)?_ctAmt:(_isGoalKey&&_goalAmt!=null?_goalAmt:null));
         var _partialNote=_isPartial?'<div class="act-override-note" style="color:var(--amber)">⚠ Partial — only '+f(_net.netAmount)+' remains to execute'+((_goalAmt!=null)?' ('+f(Math.max(0,Math.round((_goalAmt-_net.netAmount)*100)/100))+' already transferred this cycle)':'')+'. Confirm before executing.</div>':'';
         // Resolver-aware write context: identity + matched persisted task_idx (NOT the display index)
         _xfrWriteCtx[_ctxKey]={actionKey:actionKey||null,completedLabel:a,amount:_amtVal,matchTaskIdx:_cr.matchTaskIdx};
@@ -6232,9 +6243,16 @@ function renderEditDrawer(){
 // Single source of truth for all consumers: UI, Ask Claude, buildDashboardViewModel.
 function applyCompletionSnapshots(weeks){
   return weeks.map(function(w){
+    // 5G-1B identity fix: resolve each recommendation to its completion by ACTION IDENTITY (action_key
+    // match, via the resolver's matchTaskIdx) — NEVER by positional task_idx. This prevents a completion
+    // for a DIFFERENT action (e.g. an Adam IRA $61.06 row sitting at a colliding task_idx) from
+    // overwriting another action's label (e.g. erasing the $425.68 commission_tax recommendation).
+    var _res=resolveWeekTransfers({realActs:w.realActs,realActKeys:w.realActKeys,taskRows:_taskRowsForWeek(w.num)});
     var changed=false;
     var newRealActs=w.realActs.map(function(label,i){
-      var td=taskData[w.num+'_'+i];
+      var _cr=_res.currentRows[i];
+      if(!_cr||!_cr.completed||_cr.matchTaskIdx==null)return label; // only an identity-matched completion normalizes
+      var td=taskData[w.num+'_'+_cr.matchTaskIdx];
       var aKey=w.realActKeys?w.realActKeys[i]:null;
       if(!aKey||!td||!td.completed||td.completedAmount==null)return label;
       changed=true;
