@@ -885,7 +885,7 @@ button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-vis
 // ── Constants (unchanged) ──────────────────────────────────────────────────
 // Simplified architecture — $8,250 total from LC · $6,500 operating floor · no legacy mechanics
 // Real-world moves: keep $2,250 in chk, move $2,750 sav→chk, move $1,000 LC→chk, move $2,250 LC→chk (Option 1 correction)
-const BUILD_TS='2026-07-15T19:51:00'; // updated each push — local time string
+const BUILD_TS='2026-07-15T20:52:49'; // updated each push — local time string
 const START_CHK=18037.73,START_SAV=3772.77,START_AMX=103.64,START_TAX=0,START_LC=13488.88;
 const EF_AMT=13488.88; // LC/EF balance — static this model year (no transfers in or out)
 const BASE_TAX=521.36,RET_SAV_XFR=3772.74;
@@ -3451,7 +3451,19 @@ function _xfrRowBlocked(weekNum,i){ var v=_xfrNetInfo(weekNum,i); return !!(v&&v
 function _xfrRowPartial(weekNum,i){ var v=_xfrNetInfo(weekNum,i); return (v&&v.disposition==='partial')?v:null; }
 // A model row counts as an OPEN action only when it is not already satisfied (suppressed). Blocked
 // rows remain "open" (they demand review). Shared by every open/badge/count site.
-function _modelRowOpen(weekNum,i){ if(_xfrRowSuppressed(weekNum,i))return false; var td=taskData[weekNum+'_'+i]; return !td||!td.completed; }
+// 5G-1B B3: resolver result per week, memoized per render pass (keyed by the week object). Completion
+// of a model recommendation is derived from IDENTITY (resolveWeekTransfers), NEVER from a positional
+// taskData[week+'_'+displayIndex] read — a foreign completion at that index must not count as "done".
+var _weekResolvedCache=(typeof WeakMap!=='undefined')?new WeakMap():null;
+function _weekResolved(w){
+  if(!w||!w.realActs)return {currentRows:[]};
+  if(_weekResolvedCache&&_weekResolvedCache.has(w))return _weekResolvedCache.get(w);
+  var r=resolveWeekTransfers({realActs:w.realActs,realActKeys:w.realActKeys||[],taskRows:_taskRowsForWeek(w.num)});
+  if(_weekResolvedCache)_weekResolvedCache.set(w,r);
+  return r;
+}
+function _modelRowDone(w,i){ var _cr=_weekResolved(w).currentRows[i]; return !!(_cr&&_cr.completed); }
+function _modelRowOpen(w,i){ if(!w)return false; if(_xfrRowSuppressed(w.num,i))return false; return !_modelRowDone(w,i); }
 function _firstFreeIdx(taskRows){
   var occ=Object.create(null);(taskRows||[]).forEach(function(r){occ[r.taskIdx]=1;});
   var i=0;while(occ[i])i++;return i;
@@ -3644,12 +3656,22 @@ async function saveWeekEdits(n){
       var _oldCt=(overrideData[weekNum]||{}).ct||0;
       var _deltaCt=Math.round((ct-_oldCt)*100)/100;
       if(_deltaCt>0.005){
-        var _ctIdx=_preWk?(_preWk.realActKeys||[]).indexOf(ACTION_KEYS.COMMISSION_TAX):-1;
-        if(_ctIdx>=0&&taskData[weekNum+'_'+_ctIdx]&&taskData[weekNum+'_'+_ctIdx].completed){
+        // 5G-1B B1: select the backfill target by PERSISTED IDENTITY (own action_key === commission_tax),
+        // NEVER by display position — a foreign completed row (e.g. Adam IRA) sitting at the commission
+        // display index must never be rewritten. Skip (no patch) + warn on >1, or on a foreign-at-index.
+        var _ctMatches=_taskRowsForWeek(weekNum).filter(function(r){return r.completed&&r.actionKey===ACTION_KEYS.COMMISSION_TAX;});
+        var _ctPosIdx=_preWk?(_preWk.realActKeys||[]).indexOf(ACTION_KEYS.COMMISSION_TAX):-1;
+        if(_ctMatches.length>1){
+          console.warn('autoBackfillCommTax: '+_ctMatches.length+' completed commission_tax rows in wk'+weekNum+' — skipping backfill (ambiguous, no patch)');
+        } else if(_ctMatches.length===0){
+          var _ctPos=(_ctPosIdx>=0)?taskData[weekNum+'_'+_ctPosIdx]:null;
+          if(_ctPos&&_ctPos.completed)console.warn('autoBackfillCommTax: no identity match for commission_tax but a foreign completed row (key='+_ctPos.actionKey+') occupies its display index in wk'+weekNum+' — protected, no patch');
+        } else {
+          var _ctIdx=_ctMatches[0].taskIdx;
           var _ctTaskKey=weekNum+'_'+_ctIdx;
           var _ctPrevAmt=taskData[_ctTaskKey].completedAmount; // snapshot
           taskData[_ctTaskKey].completedAmount=_oldCt;
-          taskData[_ctTaskKey].actionKey=ACTION_KEYS.COMMISSION_TAX;
+          // action_key already IS commission_tax (identity-selected) — never rewrite a foreign key
           var _ctPatchR=await fetch(SUPA_URL+'/rest/v1/weekly_tasks?week_num=eq.'+weekNum+'&task_idx=eq.'+_ctIdx,{method:'PATCH',headers:Object.assign({},_ewh,{'Prefer':'return=minimal'}),body:JSON.stringify({completed_amount:_oldCt,action_key:ACTION_KEYS.COMMISSION_TAX})}).catch(function(e){console.error('autoBackfillCompletedAmount:',e);return null;});
           if(!_ctPatchR||!_ctPatchR.ok){
             taskData[_ctTaskKey].completedAmount=_ctPrevAmt; // roll back
@@ -3682,20 +3704,25 @@ async function saveWeekEdits(n){
         var _parseSwpAmt=function(lbl){var m=/\$([0-9,]+(?:\.[0-9]+)?)/.exec(lbl||'');return m?parseFloat(m[1].replace(/,/g,'')):0;};
         var _realActKeys=_postWk.realActKeys||[];
         for(var _gai=0;_gai<_realActKeys.length;_gai++){
-          var aKey=_realActKeys[_gai];var ai=_gai;
+          var aKey=_realActKeys[_gai];
           if(!aKey||aKey.indexOf('goal_')!==0)continue;
-          var td=taskData[weekNum+'_'+ai];
-          if(!td||!td.completed)continue;
           var _preIdx=(_preWk.realActKeys||[]).indexOf(aKey);
           if(_preIdx<0)continue;
-          var _prevAmt=td.completedAmount!=null?td.completedAmount:_parseSwpAmt(_preWk.realActs[_preIdx]);
-          var _newAmt=_parseSwpAmt(_postWk.realActs[ai]);
+          // 5G-1B B2: identity-select the completed persisted row for THIS goal (own action_key===aKey),
+          // NEVER by display position — a foreign/commission_tax/other-goal completed row at this index
+          // must never be rewritten. Skip + warn on >1 or foreign-at-index; silent skip if not executed.
+          var _gMatches=_taskRowsForWeek(weekNum).filter(function(r){return r.completed&&r.actionKey===aKey;});
+          if(_gMatches.length>1){console.warn('autoBackfillGoal: '+_gMatches.length+' completed '+aKey+' rows in wk'+weekNum+' — skipping (ambiguous, no patch)');continue;}
+          if(_gMatches.length===0){var _gPos=taskData[weekNum+'_'+_gai];if(_gPos&&_gPos.completed&&_gPos.actionKey!==aKey)console.warn('autoBackfillGoal: no identity match for '+aKey+' but a foreign completed row (key='+_gPos.actionKey+') occupies its display index in wk'+weekNum+' — protected, no patch');continue;}
+          var _gRow=_gMatches[0];var ai=_gRow.taskIdx;
+          var _prevAmt=_gRow.completedAmount!=null?_gRow.completedAmount:_parseSwpAmt(_preWk.realActs[_preIdx]);
+          var _newAmt=_parseSwpAmt(_postWk.realActs[_gai]);
           var _gDelta=Math.round((_newAmt-_prevAmt)*100)/100;
           if(_gDelta>0.005){
             var _gTaskKey=weekNum+'_'+ai;
             var _gPrevAmt=taskData[_gTaskKey].completedAmount; // snapshot
             taskData[_gTaskKey].completedAmount=_prevAmt;
-            taskData[_gTaskKey].actionKey=aKey;
+            // action_key already === aKey (identity-selected) — never rewrite a foreign key
             var _gPatchR=await fetch(SUPA_URL+'/rest/v1/weekly_tasks?week_num=eq.'+weekNum+'&task_idx=eq.'+ai,{method:'PATCH',headers:Object.assign({},_ewh,{'Prefer':'return=minimal'}),body:JSON.stringify({completed_amount:_prevAmt,action_key:aKey})}).catch(function(e){console.error('autoBackfillGoal:',e);return null;});
             if(!_gPatchR||!_gPatchR.ok){
               taskData[_gTaskKey].completedAmount=_gPrevAmt; // roll back
@@ -3801,7 +3828,7 @@ function getWeekChipClass(w){
     w.trough?'trough':'',
     w.managed?'managed':'',
     w.reconciled?'reconciled':'',
-    w.realActs&&w.realActs.some(function(_,i){return _modelRowOpen(w.num,i);})?'openActions':'',
+    w.realActs&&w.realActs.some(function(_,i){return _modelRowOpen(w,i);})?'openActions':'',
     overrideData[w.num]?'edited':'',
     overrideData[w.num]&&overrideData[w.num].is_custom?'custom':''
   ].filter(Boolean).join(' ');
@@ -3817,8 +3844,8 @@ function buildDashboardViewModel(weeks,goals){
   const lowestChecking=weeks.reduce(function(min,w){return w.chk<min.chk?w:min;},weeks[0]);
   const allActions=weeks.flatMap(function(w){
     var modelActs=w.realActs.map(function(label,index){
-      const key=w.num+'_'+index;
-      return{weekNum:w.num,taskIdx:index,label:label,completed:!!(taskData[key]&&taskData[key].completed),netSuppressed:_xfrRowSuppressed(w.num,index),isCustom:false};
+      // 5G-1B B3: completion by resolver identity, not positional taskData[w.num+'_'+index]
+      return{weekNum:w.num,taskIdx:index,label:label,completed:_modelRowDone(w,index),netSuppressed:_xfrRowSuppressed(w.num,index),isCustom:false};
     });
     var customActs=(customTaskData[w.num]||[]).map(function(ct){
       var _cm=getTaskMeta(ct.id,ct.label);
@@ -4062,7 +4089,7 @@ function renderOverview(vm){
 
   // Current week actions
   var cwActs=w.realActs||[];var cwKeys=w.realActKeys||[];
-  var cwDone=0;for(var _ti=0;_ti<cwActs.length;_ti++){if(taskData[w.num+'_'+_ti]&&taskData[w.num+'_'+_ti].completed)cwDone++;}
+  var cwDone=0;for(var _ti=0;_ti<cwActs.length;_ti++){if(_modelRowDone(w,_ti))cwDone++;} // 5G-1B B3: resolver identity, not positional
   var cwCustom=customTaskData[w.num]||[];
   var cwCustomDone=cwCustom.filter(function(ct){return ct.completed;}).length;
   var openActsCount=(cwActs.length+cwCustom.length)-(cwDone+cwCustomDone);
@@ -6004,7 +6031,7 @@ function renderHistory(weeksArg){
   var filters=[
     {id:'all',label:'All ('+weeks.length+')'},
     {id:'reconciled',label:'Reconciled ('+weeks.filter(function(w){return w.reconciled;}).length+')'},
-    {id:'open',label:'Open Actions ('+weeks.filter(function(w){ensureAutoReminders(w.num);var _c=customTaskData[w.num]||[];return(w.realActs.length&&w.realActs.some(function(_,i){return _modelRowOpen(w.num,i);}))||_c.some(function(t){var _m=getTaskMeta(t.id,t.label);return!t.completed&&!_m.dismissed;});}).length+')'},
+    {id:'open',label:'Open Actions ('+weeks.filter(function(w){ensureAutoReminders(w.num);var _c=customTaskData[w.num]||[];return(w.realActs.length&&w.realActs.some(function(_,i){return _modelRowOpen(w,i);}))||_c.some(function(t){var _m=getTaskMeta(t.id,t.label);return!t.completed&&!_m.dismissed;});}).length+')'},
     {id:'variance',label:'Variance >$'+VAR_THRESHOLD+' ('+weeks.filter(function(w){return w.reconciled&&w.variance&&Object.values(w.variance).some(function(v){return Math.abs(v)>VAR_THRESHOLD;});}).length+')'},
     {id:'trough',label:'Trough ('+weeks.filter(function(w){return w.trough;}).length+')'},
     {id:'managed',label:'Managed ('+weeks.filter(function(w){return w.managed;}).length+')'},
@@ -6013,7 +6040,7 @@ function renderHistory(weeksArg){
   ];
   var filteredWeeks=weeks;
   if(historyFilter==='reconciled')filteredWeeks=weeks.filter(function(w){return w.reconciled;});
-  else if(historyFilter==='open')filteredWeeks=weeks.filter(function(w){ensureAutoReminders(w.num);var _c=customTaskData[w.num]||[];return(w.realActs.length&&w.realActs.some(function(_,i){return _modelRowOpen(w.num,i);}))||_c.some(function(t){var _m=getTaskMeta(t.id,t.label);return!t.completed&&!_m.dismissed;});});
+  else if(historyFilter==='open')filteredWeeks=weeks.filter(function(w){ensureAutoReminders(w.num);var _c=customTaskData[w.num]||[];return(w.realActs.length&&w.realActs.some(function(_,i){return _modelRowOpen(w,i);}))||_c.some(function(t){var _m=getTaskMeta(t.id,t.label);return!t.completed&&!_m.dismissed;});});
   else if(historyFilter==='variance')filteredWeeks=weeks.filter(function(w){return w.reconciled&&w.variance&&Object.values(w.variance).some(function(v){return Math.abs(v)>VAR_THRESHOLD;});});
   else if(historyFilter==='trough')filteredWeeks=weeks.filter(function(w){return w.trough;});
   else if(historyFilter==='managed')filteredWeeks=weeks.filter(function(w){return w.managed;});
@@ -6025,7 +6052,7 @@ function renderHistory(weeksArg){
   filteredWeeks.forEach(function(wx){
     var isPast=wx.num<currentW;var isNow=wx.num===currentW;
     var _wxCustom=customTaskData[wx.num]||[];
-    var hasOpenTasks=isPast&&((wx.realActs.length&&wx.realActs.some(function(_,i){return _modelRowOpen(wx.num,i);}))||_wxCustom.some(function(t){var _m=getTaskMeta(t.id,t.label);return!t.completed&&!_m.dismissed;}));
+    var hasOpenTasks=isPast&&((wx.realActs.length&&wx.realActs.some(function(_,i){return _modelRowOpen(wx,i);}))||_wxCustom.some(function(t){var _m=getTaskMeta(t.id,t.label);return!t.completed&&!_m.dismissed;}));
     var cls='hcard';
     if(isNow&&wx.reconciled)cls+=' past-recon current-recon';
     else if(isNow)cls+=' current';

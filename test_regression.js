@@ -12762,7 +12762,7 @@ console.log('\n── Section 5G-1D Slice 4c: half-close repair confirmation ─
       var wks=[W(6,[],[]),W(7,[IRA_LBL],['goal_adam_ira'])];
       _refreshTransferNet(wks);
       assert(_xfrRowSuppressed(7,0)===true,'suppressed helper true for the duplicate');
-      assert(_modelRowOpen(7,0)===false,'suppressed row is NOT an open action (badge integrity)');
+      assert(_modelRowOpen(wks[1],0)===false,'suppressed row is NOT an open action (badge integrity)'); // B3: _modelRowOpen(w,i)
       // executable-count exclusion arithmetic (mirrors renderWeekDetail): 1 realAct, suppressed → 0 executable
       var _exec=0; for(var i=0;i<wks[1].realActs.length;i++){ if(!_xfrRowSuppressed(7,i)&&!_xfrRowBlocked(7,i))_exec++; }
       assert(_exec===0,'suppressed row excluded from executable total');
@@ -12848,6 +12848,89 @@ console.log('\n── Section 5G-1D Slice 4c: half-close repair confirmation ─
     var m=/\$([0-9,]+(?:\.[0-9]+)?)/.exec(CT); var amt=m?parseFloat(m[1].replace(/,/g,'')):null;
     assert(amt===425.68,'commission_tax write amount parses to 425.68, got '+amt);
     assert(typeof (WEEKS.find(function(w){return w.num===6;})||{}).ct==='undefined','proves w.ct is undefined (why the old path wrote null)');
+  });
+})();
+
+// ═══════════════════════════════════════════════════════════════════════════
+// Section 5G-1B-WRITE-B3: identity write-selection (B1/B2) + identity completion reads (B3)
+// ═══════════════════════════════════════════════════════════════════════════
+(function(){
+  console.log('\n── Section 5G-1B-WRITE-B3: identity write-selection + identity completion reads ──');
+  var IRA='Transfer $61.06 from Truist Checking to AMEX Savings (Adam IRA)';
+  var CT ='Transfer $425.68 from Truist Checking to Vio Bank - Tax Reserve (commission 40%)';
+  function td(completed,actionKey,amt,label){return {completed:completed,actionKey:actionKey,completedAmount:amt,completedLabel:label,completedAt:completed?'2026-07-15T00:00:00Z':null};}
+  function W(num,acts,keys){return {num:num,realActs:acts||[],realActKeys:keys||[],goalSaved:{}};}
+  function withTaskData(rows,fn){var saved={};Object.keys(taskData).forEach(function(k){saved[k]=taskData[k];delete taskData[k];});Object.keys(rows).forEach(function(k){taskData[k]=rows[k];});try{return fn();}finally{Object.keys(taskData).forEach(function(k){delete taskData[k];});Object.keys(saved).forEach(function(k){taskData[k]=saved[k];});}}
+  var CK=ACTION_KEYS.COMMISSION_TAX;
+
+  // ── B1 commission-tax backfill selection (writer selects by identity, never position) ──
+  test('5G1B-WRITE-1 (B1): under the Adam IRA collision, NO commission_tax row is selected → foreign row protected (no target, no patch)',function(){
+    withTaskData({'6_0':td(true,'goal_adam_ira',61.06,IRA)},function(){
+      var sel=_taskRowsForWeek(6).filter(function(r){return r.completed&&r.actionKey===CK;});
+      assert(sel.length===0,'no commission_tax identity match → skip; Adam IRA row never targeted');
+      assert(taskData['6_0'].actionKey==='goal_adam_ira','Adam IRA action_key unchanged (not rewritten)');
+    });
+  });
+  test('5G1B-WRITE-2 (B1): a correctly-keyed completed commission_tax row is selected by identity (any task_idx)',function(){
+    withTaskData({'6_3':td(true,CK,707.18,'Transfer $707.18 from Truist Checking to Vio Bank - Tax Reserve (commission 40%)')},function(){
+      var sel=_taskRowsForWeek(6).filter(function(r){return r.completed&&r.actionKey===CK;});
+      assert(sel.length===1&&sel[0].taskIdx===3,'the commission_tax row is selected at its real task_idx 3');
+    });
+  });
+  test('5G1B-WRITE-3 (B1): a legacy null-key row is not selected as commission_tax → skip',function(){
+    withTaskData({'6_0':td(true,null,707.18,'legacy')},function(){
+      assert(_taskRowsForWeek(6).filter(function(r){return r.completed&&r.actionKey===CK;}).length===0,'null-key excluded → skip, no patch');
+    });
+  });
+  // ── B2 goal-sweep backfill selection ──
+  test('5G1B-WRITE-4 (B2): a commission_tax row at a goal display index is not selected as the goal → foreign protected',function(){
+    withTaskData({'6_0':td(true,CK,425.68,CT)},function(){
+      assert(_taskRowsForWeek(6).filter(function(r){return r.completed&&r.actionKey==='goal_adam_ira';}).length===0,'no goal identity match → commission_tax row never rewritten to a goal');
+      assert(taskData['6_0'].actionKey===CK,'commission_tax action_key unchanged');
+    });
+  });
+  test('5G1B-WRITE-5 (B2): a correctly-keyed completed goal row is selected by identity',function(){
+    withTaskData({'6_2':td(true,'goal_bailey_529',250,'Transfer $250.00 from Truist Checking to AMEX Savings (Bailey 529)')},function(){
+      var sel=_taskRowsForWeek(6).filter(function(r){return r.completed&&r.actionKey==='goal_bailey_529';});
+      assert(sel.length===1&&sel[0].taskIdx===2,'the goal row is selected at its real task_idx 2');
+    });
+  });
+  test('5G1B-WRITE-6 (B2): a legacy null-key row is not selected as a goal → skip',function(){
+    withTaskData({'6_0':td(true,null,250,'legacy')},function(){
+      assert(_taskRowsForWeek(6).filter(function(r){return r.completed&&r.actionKey==='goal_bailey_529';}).length===0,'null-key excluded → skip, no patch');
+    });
+  });
+  // ── Source-structure guard: writers select by identity; the positional action_key rewrite is GONE ──
+  test('5G1B-WRITE-7: backfill writers use identity selection; the positional action_key rewrite is removed (regression lock)',function(){
+    assertIncludes(html,"_ctMatches=_taskRowsForWeek(weekNum).filter(function(r){return r.completed&&r.actionKey===ACTION_KEYS.COMMISSION_TAX;})",'commission backfill selects by identity');
+    assertIncludes(html,"_gMatches=_taskRowsForWeek(weekNum).filter(function(r){return r.completed&&r.actionKey===aKey;})",'goal backfill selects by identity');
+    assert(!html.includes("if(_ctIdx>=0&&taskData[weekNum+'_'+_ctIdx]&&taskData[weekNum+'_'+_ctIdx].completed)"),'old positional commission selector removed');
+    assert(!html.includes("taskData[_ctTaskKey].actionKey=ACTION_KEYS.COMMISSION_TAX;"),'commission action_key local-rewrite removed');
+    assert(!html.includes("taskData[_gTaskKey].actionKey=aKey;"),'goal action_key local-rewrite removed');
+  });
+  // ── B3 identity completion reads (_modelRowDone / _modelRowOpen) ──
+  function withState(rows,weeks,fn){
+    var sv={td:taskData,snap:goalSnapData,recon:reconData,st:_goalSnapLoadStatus,view:_transferNetView};
+    try{ taskData=rows; goalSnapData={5:{adam_ira:7438.94}}; reconData={5:true}; _goalSnapLoadStatus='loaded'; _refreshTransferNet(weeks); return fn(); }
+    finally{ taskData=sv.td; goalSnapData=sv.snap; reconData=sv.recon; _goalSnapLoadStatus=sv.st; _transferNetView=sv.view; }
+  }
+  test('5G1B-B3-1: _modelRowOpen reports the $425.68 commission_tax OPEN under the Adam IRA collision (Adam IRA does not satisfy it)',function(){
+    var wks=[W(6,[CT],['commission_tax'])];
+    withState({'6_0':td(true,'goal_adam_ira',61.06,IRA)},wks,function(){
+      assert(_modelRowDone(wks[0],0)===false,'commission_tax NOT done — a foreign Adam IRA completion does not satisfy it');
+      assert(_modelRowOpen(wks[0],0)===true,'commission_tax recommendation is OPEN (chip/Overview/History count integrity)');
+    });
+  });
+  test('5G1B-B3-2: a correctly-matched completion reports done via identity',function(){
+    var wks=[W(6,[CT],['commission_tax'])];
+    withState({'6_0':td(true,'commission_tax',425.68,CT)},wks,function(){
+      assert(_modelRowDone(wks[0],0)===true&&_modelRowOpen(wks[0],0)===false,'a matched commission_tax completion → done, not open');
+    });
+  });
+  test('5G1B-B3-3: source guard — Overview/chip/History completion reads no longer key taskData by display index',function(){
+    assertIncludes(html,'function _modelRowDone(w,i){ var _cr=_weekResolved(w).currentRows[i]; return !!(_cr&&_cr.completed); }','_modelRowDone resolves by identity');
+    assert(!html.includes("if(taskData[w.num+'_'+_ti]&&taskData[w.num+'_'+_ti].completed)cwDone++"),'positional cwDone removed');
+    assert(!html.includes("completed:!!(taskData[key]&&taskData[key].completed),netSuppressed"),'positional modelActs completion removed');
   });
 })();
 

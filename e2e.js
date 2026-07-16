@@ -1238,6 +1238,69 @@ async function clickNav(page, id) {
     await context.close();
   }, { tags: [] });
 
+  // B3 — Overview / chip / History surfaces count the open $425.68 commission-tax task by identity;
+  // the completed Adam IRA is isolated (does not satisfy the commission recommendation).
+  await test('5G1B-IDENT-E3 (B3): Overview/chip/History count the open $425.68 commission_tax; Adam IRA isolated', async () => {
+    const { page, context } = await openApp(browser);
+    await clickNav(page, 'weekly');
+    const res = await page.evaluate((INJECT) => {
+      const _s=goalSnapData,_r=reconData,_st=_goalSnapLoadStatus,_o=overrideData[6],_t0=taskData['6_0'],_t1=taskData['7_1'];
+      try {
+        eval(INJECT);
+        var g=getGoals(); var weeks=applyCompletionSnapshots(getActiveModel()); _refreshTransferNet(weeks);
+        var w6=weeks.find(function(x){return x.num===6;});
+        var chipOpen=getWeekChipClass(w6).indexOf('openActions')>=0;
+        var vm=buildDashboardViewModel(weeks,g);
+        var comm425=vm.openActions.filter(function(a){return a.label&&a.label.indexOf('$425.68')>=0&&a.label.indexOf('Tax Reserve')>=0&&!a.isCustom;});
+        var iraOpen=vm.openActions.filter(function(a){return a.label&&a.label.indexOf('(Adam IRA)')>=0;});
+        var histWk6Open=weeks.filter(function(w){return w.realActs.length&&w.realActs.some(function(_,i){return _modelRowOpen(w,i);});}).some(function(w){return w.num===6;});
+        return { chipOpen:chipOpen, comm425:comm425.length, iraOpen:iraOpen.length, histWk6Open:histWk6Open };
+      } finally { goalSnapData=_s;reconData=_r;_goalSnapLoadStatus=_st;
+        (_o===undefined)?delete overrideData[6]:overrideData[6]=_o;
+        (_t0===undefined)?delete taskData['6_0']:taskData['6_0']=_t0;
+        (_t1===undefined)?delete taskData['7_1']:taskData['7_1']=_t1; renderApp(); }
+    }, IDENT_INJECT);
+    assert(res.chipOpen, 'wk6 chip indicates an open action');
+    assert(res.comm425===1, 'Overview openActions includes exactly one open $425.68 commission_tax action (got '+res.comm425+')');
+    assert(res.iraOpen===0, 'the completed Adam IRA is NOT an open action (isolated)');
+    assert(res.histWk6Open, 'History open filter includes wk6 (commission-tax obligation counted)');
+    await context.close();
+  }, { tags: [] });
+
+  // B1/B2 — a Week-28 commission edit (saveWeekEdits) must NOT rewrite the foreign Adam IRA row; no PATCH
+  // targets it as commission_tax. Drives the real async write path with a fetch spy.
+  await test('5G1B-IDENT-E4 (B1/B2): a Week-28 commission edit does not rewrite the foreign Adam IRA row (no PATCH)', async () => {
+    const { page, context } = await openApp(browser);
+    await clickNav(page, 'weekly');
+    const res = await page.evaluate(() => {
+      const _s=goalSnapData,_r=reconData,_st=_goalSnapLoadStatus,_o=overrideData[6],_t0=taskData['6_0'],_role=USER_ROLE,_ree=_readEditEvents,_f=window.fetch;
+      var patches=[];
+      return (async function(){
+        try {
+          USER_ROLE='owner';
+          goalSnapData={5:{adam_ira:7438.94}}; _goalSnapLoadStatus='loaded';
+          var rc=function(chk){return{chk:chk,sav:0,amx:0,tax:0,lc:0,balance_basis:'posted_current_balance'};};
+          reconData={1:rc(15000),2:rc(13000),3:rc(11000),4:rc(9500),5:rc(8382.92)};
+          overrideData[6]={week_num:6,ct:707.18,ca:1060.76,events_json:[]};                 // prior (old) commission override
+          taskData['6_0']={completed:true,completedAt:'2026-07-14T01:21:52Z',completedAmount:61.06,actionKey:'goal_adam_ira',completedLabel:'Transfer $61.06 from Truist Checking to AMEX Savings (Adam IRA)'};
+          _readEditEvents=function(){return [{l:'AMEX Gold',t:'ob',a:-5718.52},{l:'Wendy commission',t:'in',a:2108.78,tx:true},{l:'Wendy paycheck',t:'in',a:2152.50}];}; // → ct 843.51 (increase)
+          window.fetch=function(url,opts){ if(opts&&opts.method==='PATCH'&&String(url).indexOf('weekly_tasks')>=0)patches.push({url:String(url),body:String(opts.body||'')}); return Promise.resolve({ok:true,status:200,json:function(){return Promise.resolve([]);},text:function(){return Promise.resolve('');}}); };
+          try { await saveWeekEdits(6); } catch(e){ /* later stages irrelevant to the write-safety assertions */ }
+          var ira=taskData['6_0'];
+          return { iraKey: ira?ira.actionKey:null,
+            rewroteIraToComm: patches.some(function(p){return p.url.indexOf('task_idx=eq.0')>=0&&p.body.indexOf('commission_tax')>=0;}),
+            patchCount: patches.length };
+        } finally { goalSnapData=_s;reconData=_r;_goalSnapLoadStatus=_st;
+          (_o===undefined)?delete overrideData[6]:overrideData[6]=_o;
+          (_t0===undefined)?delete taskData['6_0']:taskData['6_0']=_t0;
+          USER_ROLE=_role; _readEditEvents=_ree; window.fetch=_f; }
+      })();
+    });
+    assert(res.iraKey==='goal_adam_ira', 'Adam IRA row action_key NOT rewritten by the commission edit (got '+res.iraKey+')');
+    assert(!res.rewroteIraToComm, 'NO PATCH rewrote the Adam IRA row (task_idx 0) into commission_tax');
+    await context.close();
+  }, { tags: [] });
+
   // ── Section J: Mobile viewport ─────────────────────────────────────────
   console.log('── Section J: Mobile viewport ──');
   await test('Mobile: all tabs reachable without horizontal overflow', async () => {
