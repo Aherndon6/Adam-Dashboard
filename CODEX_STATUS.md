@@ -1,5 +1,11 @@
 # Codex Status: Herndon Financial OS
 
+## CURRENCY NOTE (2026-07-15c) — positional-identity closure (B1–B4; Fable delta-review round)
+
+- **Fable delta-review findings B1–B4 FIXED at `4ce6aff`** (adapter/write-ctx/operator-doc only): **B1/B2** Edit-Week commission-tax + goal-sweep backfill writers now select the completed row by **persisted `action_key` identity**, never by display position — a foreign completed row (e.g. Adam IRA at the commission index) can no longer be rewritten/re-armed; **B3** Overview/chip/History completion reads (`_modelRowOpen`, `buildDashboardViewModel` modelActs, `cwDone`, History open-counts) derive completion from resolver identity; **B4** adds an explicit commission-posting hard gate (operator package **v4 §2c**). Record: `docs/phase-5g-1b-identity-writepath-2026-07-15.md`.
+- **Verification:** static **1543/0**; full `node e2e.js` **155/0/0** (readiness 0/0; clean first run). `index.html` blob **`a4c458af2c9c53a67ceb621dd4d8c9c48d6343a2`**, `BUILD_TS 2026-07-15T20:52:49`. Frozen surfaces byte-unchanged (`runModel`/waterfall/commission-tax calc/`resolveWeekTransfers`/`computeGoalTransferNetting`); 0 `.sql`.
+- **No data correction** (Scenario-E clean; B1 is forward-looking protection). Operator package repinned **v4**; **narrow Fable delta-review requested** (CLEAR TO PUSH pending). **Activation remains UNAUTHORIZED** (branch not pushed; awaiting Fable delta-review + Adam go-ahead).
+
 ## CURRENCY NOTE (2026-07-15b) — identity-resolution correction (second pre-activation blocker)
 
 - **Second preactivation blocker FIXED at `fd5d7a1`** (adapter/render + write-ctx only): the positional `applyCompletionSnapshots` / `_trAmts` task_idx aliasing that erased the Week-28 **`$425.68`** commission-tax task (an executed Adam IRA `$61.06` completion at the colliding index). Now identity-resolved; commission-tax write amount parsed from the resolved label (not undefined `w.ct`). Record: `docs/phase-5g-1b-identity-resolution-2026-07-15.md`.

@@ -8,13 +8,14 @@ Adam-approved.** Nothing here is performed by this document; no grant, merge, de
 happens until Adam runs each step. Gate B is closed only by the activation approval + a green first
 closeout + the post-revoke proofs.
 
-> **Supersession note (2026-07-15):** the **authoritative activation pins and verification counts**
-> (activation-lineage anchor `15b372f` + `index.html` blob gate, `BUILD_TS 2026-07-15T13:01:24`, static
-> **1526/0**, e2e **151/0/0**, readiness **0/0**) are now maintained in the reissued **Saturday operator
-> package v2** (`docs/phase-5g-1d-saturday-operator-package-2026-07-18.md`), which folds in the mandatory
-> open-window transfer-netting pre-activation control. Where this historical runbook still shows the
-> earlier pins/counts (e.g. `7f0f47d`, `1507/0`, `148/0/0`), the operator package v2 governs. This note
-> does not rewrite the runbook.
+> **Supersession note (2026-07-15):** the **authoritative activation pins and verification counts** are
+> maintained in the **current reissue of the Saturday operator package**
+> (`docs/phase-5g-1d-saturday-operator-package-2026-07-18.md` — its top REISSUE banner always carries the
+> live activation-lineage anchor, `index.html` blob gate, `BUILD_TS`, and static/e2e/readiness counts),
+> which folds in the mandatory pre-activation controls (open-window transfer netting + identity-resolved
+> completion normalization + identity write-selection/reads). Where this historical runbook still shows
+> earlier pins/counts (e.g. `7f0f47d`, `1507/0`, `148/0/0`), **the operator package's current reissue
+> governs.** This note does not rewrite the runbook.
 
 > **P0-1 activation-order correction (2026-07-13):** the first real Week-6 closeout now happens
 > **before** the Phase-2 revokes, so the highest-risk first write keeps the old RPC as a fallback.

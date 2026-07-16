@@ -2,7 +2,7 @@
 
 **Date:** 2026-07-15 · **Class:** Mandatory 5G-1D **Gate B activation blocker** correction (second) · **Type:** adapter/render + write-ctx only. **No `runModel`, waterfall, `goalSaved`, snapshot SQL/schema, snapshot payload, wrapper, grants/RLS, reconciliation, or reopen change.** **Balance-free.** **Commit:** `fd5d7a1`.
 **Owner:** Adam · **Implementer:** Claude Code (local) · **Review:** independent Fable re-review requested (this doc is the review package).
-**Relationship:** follows the open-window netting correction (`15b372f`, `docs/phase-5g-1b-openwindow-netting-2026-07-15.md`). Same positional-`task_idx` defect family that `db2704f` fixed in the resolver; this closes two positional stragglers the resolver fix left behind.
+**Relationship:** follows the open-window netting correction (`15b372f`, `docs/phase-5g-1b-openwindow-netting-2026-07-15.md`). Same positional-`task_idx` defect family that `db2704f` fixed in the resolver. **This commit (`fd5d7a1`) closes only the `applyCompletionSnapshots` / `_trAmts` render stragglers — it does NOT by itself fully close the positional-identity class.** The Edit-Week **write-path** backfills (B1 commission-tax, B2 goal-sweep, which could rewrite a foreign completed row's `action_key`) and the remaining **read-path** completion sites (B3: `_modelRowOpen`, `buildDashboardViewModel` modelActs, Overview `cwDone`, History open-counts) are closed by the **follow-on correction `4ce6aff`** (`docs/phase-5g-1b-identity-writepath-2026-07-15.md`). The positional-identity class is considered closed only with B1–B3 complete; `runModel.doneTasks` remains a dormant positional counter (documented, not consumed).
 
 ## A. Root cause (proven in code + confirmed against production rows)
 
