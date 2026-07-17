@@ -66,3 +66,37 @@ Two rows, both correctly dated 2026-07-04, both correctly categorized **Extra**:
 - REG-4 uncategorized surfacing (5H): `docs/reviews/ui-flow-review-triage-2026-07-07.md`.
 - Income taxonomy seed: `docs/phase-5d-1-migration.sql:280-282`.
 - BK-bonus / commission handling in the model: `index.html:2838, 5223, 5300`.
+
+## Post-activation follow-up — TX-1.1: "Wendy Extra BK Pay" register-category alignment (2026-07-17)
+
+**Status:** Post-activation backlog item; sub-item of TX-1, scheduled within roadmap **P3b-1 Data Integrity** (the post-5G-1D data-integrity lane). **Docs/backlog capture only — no code, SQL, category, budget-rule, transaction, or production-data change is made here.** Authoritative per Adam 2026-07-17.
+
+**Decision — exact register category label.** The transaction-register income category MUST be named **exactly** `Wendy Extra BK Pay`, matching the weekly-model label verbatim to prevent terminology drift. This **refines/supersedes** the earlier tentative labels in "Desired TX-1 scope" item 1 / Example 1 (`BKCPA Extra Pay` / `Wendy BKCPA Extra Pay`). The `category_key` / `behavior_class` / `budget_treatment` (`income.bkcpa_extra_pay` / `commission_income` / `display_only`) are unchanged — only the display label is now pinned exact.
+
+**Intent (Adam 2026-07-17).**
+- Irregular supplemental income from **Barfield and Kinkeade (BK)**.
+- Sits **outside** the recurring monthly budget. *(Refines Example 1's earlier "recurs regularly" framing for categorization purposes: treat as supplemental, not a recurring monthly baseline line.)*
+- Must **not** be categorized as `Net Salary Spouse` (`income.net_salary_spouse`).
+- Must **not** increase or distort budgeted salary actuals.
+- Should remain available for goal funding and/or budget-month overages **through the weekly model**.
+- Register category label matches the weekly-model label exactly (drift guard).
+
+**Acceptance criteria.**
+1. Create or confirm a register income category named exactly `Wendy Extra BK Pay`.
+2. Confirm the category is **not** mapped to the recurring monthly budget baseline (`budget_treatment='display_only'`; excluded from salary budget-vs-actual rollups).
+3. Confirm transactions categorized `Wendy Extra BK Pay`:
+   - appear in income / register reporting;
+   - remain **distinct** from `Net Salary Spouse`;
+   - remain **distinct** from `Deep South Commissions`;
+   - do **not** alter recurring salary budget-vs-actual reporting;
+   - do **not** independently trigger the tax rule from the register category (Register categories are display/reporting only; they never feed `runModel`, tax rules, or goal allocations — see Example 1).
+4. Preserve the existing operating treatment: the taxable-income flag and 40/60 handling come from the **weekly-model Edit Week** workflow (the "Tax?" split → `commission_tax`; operator package §2d). The register category is for classification and reporting only.
+5. After the category exists, update the **2026-07-17 Barfield and Kinkeade inflow of $1,752.26** from **No Category** → `Wendy Extra BK Pay`. *(This is a distinct instance from Example 1's 2026-07-03 $1,089.08 BK inflow.)*
+6. **Activation-sitting exclusion:** do **not** perform the category creation or the transaction recategorization during the 5G-1D production activation sitting **unless** it is explicitly added to an approved post-activation section **after all activation gates, closeout, revokes, proofs, and validation are complete**.
+7. Recorded in the roadmap P3b-1 phase + the decision log so it cannot be lost.
+
+**Dependency on existing category / budget architecture.**
+- **Income taxonomy:** adds a **fourth** income leaf alongside `income.net_salary` / `income.net_salary_spouse` / `income.deep_south_commissions` (`docs/phase-5d-1-migration.sql:280-282`). Owner-only category creation executed at P3b-1 build time (schema/RLS/RPC/SQL only when that phase formally starts — this capture executes nothing).
+- **Budget isolation:** relies on `budget_treatment='display_only'` to keep the category out of the recurring monthly budget baseline and salary actuals (same mechanism already used for `income.deep_south_commissions`).
+- **Tax path:** the weekly-model Edit Week "Tax?" 40/60 → `commission_tax` (operator package §2d) is the sole tax trigger; the Register category never re-triggers it (no duplicate inflow / tax rule / goal allocation).
+- **Do Not Touch:** no `runModel` / WD / effectiveWD / waterfall / `commission_tax` change (AGENTS.md).
