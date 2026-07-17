@@ -1,6 +1,6 @@
 # Phase 5G-1D — Saturday Activation Checklist (2026-07-18)
 
-**One-page operator checklist for the production sitting. NOT a replacement for the Operator Package** (`docs/phase-5g-1d-saturday-operator-package-2026-07-18.md`, **v4**) — every item cites the package section that governs. Balance-free. 🛑 = **explicit Adam approval required**. Work top to bottom; any **HARD STOP** ends the sitting until resolved. *Rough total: ~2.5–3.5 hrs.*
+**One-page operator checklist for the production sitting. NOT a replacement for the Operator Package** (`docs/phase-5g-1d-saturday-operator-package-2026-07-18.md`, **v5**) — every item cites the package section that governs. Balance-free. 🛑 = **explicit Adam approval required**. Work top to bottom; any **HARD STOP** ends the sitting until resolved. *Rough total: ~2.5–3.5 hrs.*
 
 > **Recovery Rule**
 > If any **HARD STOP** occurs:
@@ -31,6 +31,14 @@
 - [ ] Mark **only** the correct Week-28 `commission_tax` task complete (persists `commission_tax / 425.68 / correct label`)
 - [ ] Week 29 still shows the single `$417.83` `commission_tax` task
 - [ ] **HARD STOP** if the commission has not posted → do not transfer, do not close Week 28 (delay = contingency annex, roadmap §7)
+
+## C2. Extra-paycheck taxable-inflow constraint (NEW v5) — §2d
+- [ ] **BINDING RULE:** never save a Week-28 Edit-Week taxable increase **after** any Week-28 `commission_tax` completion (§2d)
+- [ ] Select **PATH A or PATH B by posting order** — never the prohibited middle sequence (§2d)
+- [ ] **PATH A** ($1,752.26 posted, no commission_tax completion yet): enter $1,752.26 taxable → verify **one enabled `$1,544.42`** commission_tax task, **no `$417.83` deferred**, **no additional-income custom task** → transfer + complete **exactly $1,544.42** → verify persisted `completed_amount == 1544.42` → then close (§2d)
+- [ ] **PATH B** ($1,752.26 not posted): §2c ($425.68) first → verify `completed_amount == 425.68` and `$417.83` deferred remains → **never enter $1,752.26 into Week 28** → enter only in its actual posting week → verify that week yields a **`$700.90`** commission_tax task with `$417.83` intact (§2d)
+- [ ] 🛑 **MANDATORY STOP:** do NOT complete $425.68 then add taxable income to Week 28; if it occurs, **do not close Week 28** (§2d)
+- [ ] Evidence: read-only `weekly_tasks` (`action_key='commission_tax'`) before/after each material step; `completed_amount` == actual bank transfer; Weekly-view retained; obligation conservation within rounding tolerance ($1,544.42 combined vs $1,544.41 sum-of-legs, ≤ $0.01) (§2d)
 
 **STOP — Review results with ChatGPT before continuing.**
 ## D. 🛑 Approval Gate 1 — Adam authorizes Phase-1 grants (§2)

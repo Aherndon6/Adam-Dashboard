@@ -1,3 +1,41 @@
+## ⟲ REISSUE v5 — 2026-07-17 (docs-only; adds §2d extra-paycheck taxable-inflow constraint; supersedes v4's §2c-only treatment)
+
+**Why:** Fable's narrow review of the Wendy **$1,752.26** extra-paycheck workflow returned **CLEAR WITH OPERATOR
+CONSTRAINT.** This reissue is **documentation-only** — it adds the **§2d** operator constraint (binding rule +
+PATH A / PATH B + mandatory stop + evidence) and a **§2c → §2d cross-reference**. **No application-code, SQL,
+test, migration, or production-data change; frozen surfaces and every v4 pin are unchanged** (this is a docs
+reissue, not a repin).
+
+**Binding rule (see §2d):** **Never save a Week-28 Edit-Week change that increases taxable income after any
+Week-28 `commission_tax` task has been completed.** The previously-proposed "complete $425.68 first, then add
+the $1,752.26 taxable inflow" sequence is **PROHIBITED** — §2d encodes the two allowed paths (A / B) instead.
+
+**Pins — UNCHANGED from v4 (docs-only reissue; nothing repinned):**
+| Item | v5 (== v4; unchanged) |
+|---|---|
+| Activation-lineage anchor | correction commit **`4ce6affb113e9d8efa28a8c4b807bcd8547cc43f`** MUST be an ancestor of HEAD — `git merge-base --is-ancestor 4ce6aff HEAD`; **do NOT pin the final tip hash** |
+| `index.html` identity gate | `git rev-parse HEAD:index.html` == **`a4c458af2c9c53a67ceb621dd4d8c9c48d6343a2`** |
+| `BUILD_TS` (pre-activation) | **`2026-07-15T20:52:49`** |
+| Static regression | **1543 / 0** |
+| Full `node e2e.js` | **155 / 0 / 0** (readiness 0/0) |
+| Readiness fallbacks | **0 / 0** |
+| `origin/main` | `5bd6c69787bee7a8fe26ee1fb2ceb0528526d6f1` (unchanged) |
+
+**Future work — NOT part of this activation (post-activation B1 correction backlog):** §2d's operator
+constraint exists because the deployed Edit-Week delta-backfill still carries an amount-correctness gap that
+identity selection (B1–B3, `4ce6aff`) does not close. The owed correction — scheduled as its own reviewed,
+post-activation change, **not** run in this sitting — is:
+- **do not overwrite a non-null `completed_amount`;**
+- **calculate added obligation from current total tax less the sum of actual completed `commission_tax`
+  amounts** (not from the override `ct` scalar);
+- **decouple custom-task creation from the legacy PATCH;**
+- **add the floor-split regression fixture specified by Fable.**
+Until that correction ships, the §2d operator constraint is mandatory.
+
+The v4/v3/v2/v1 banners below are retained as history.
+
+---
+
 ## ⟲ REISSUE v4 — 2026-07-15 (write-path + read-path identity closure + commission-posting gate; supersedes v3)
 
 **Why:** Fable's delta review returned four more blocking findings, now fixed adapter-only at commit **`4ce6aff`**:
@@ -237,6 +275,72 @@ halves reload, confirm on the deployed build:
 Edit-Week override (`ct=843.51`) + the model's `commTaxPending` carry-forward — not lost, not reduced to
 $417.83, not doubled; but closing before the deposit posts leaves a large first-anchor variance and a
 past-week $425.68 execution. Wait for posted funds.
+
+**Cross-reference → §2d (v5).** §2c governs the **$2,108.78 Deep South commission alone**. Whenever Wendy's
+**$1,752.26** extra paycheck is contemplated for entry into Week 28, **§2d governs**: its BINDING RULE and the
+PATH A / PATH B selection are mandatory, and the §2c completion must **never** be combined with a Week-28
+taxable-income increase (the prohibited middle sequence). Read §2d before entering the extra paycheck.
+
+## 2d. v5 EXTRA-PAYCHECK TAXABLE-INFLOW CONSTRAINT (2026-07-17) — governs Wendy's $1,752.26 extra paycheck
+
+**Review disposition:** Fable narrow review = **CLEAR WITH OPERATOR CONSTRAINT.** Docs-only; no application-code
+change. B1–B3 (`4ce6aff`) close the positional-identity class, but the deployed Edit-Week delta-backfill still
+carries the amount-correctness gap tracked in the v5 banner's post-activation backlog; until that ships, this
+operator constraint is mandatory.
+
+**BINDING RULE (never violate):** **Never save a Week-28 Edit-Week change that increases taxable income after
+any Week-28 `commission_tax` task has been completed.**
+
+**Why the previously-proposed "complete $425.68 first, then add $1,752.26" sequence is PROHIBITED.** On the
+deployed build, saving an Edit-Week taxable increase *after* a `commission_tax` completion triggers the legacy
+delta-backfill, which:
+- rewrites the completed row's `completed_amount` from the actual **$425.68** execution to **$843.51** (the full
+  override `ct`, not what was moved);
+- merges the recomputed commission obligation into a single scalar;
+- removes the **$417.83** deferred obligation from actionable surfaces;
+- leaves only a **$700.91** additional-income custom task visible while **$1,118.74** ($417.83 + $700.91)
+  remains economically unpaid.
+
+**Trigger:** whenever Wendy's **$1,752.26** extra paycheck is contemplated for entry into Week 28. Choose PATH A
+or PATH B by posting order — **never** the prohibited middle sequence.
+
+### PATH A — $1,752.26 posts BEFORE any commission-tax transfer
+1. Deploy the v4 / v5 package (pins unchanged).
+2. With **no** Week-28 `commission_tax` completion present, enter **$1,752.26** as a Week-28 taxable inflow
+   (Edit Week → inflow, "Tax?" checked).
+3. Verify **one enabled `$1,544.42` `commission_tax` task** (= 40% × ($2,108.78 + $1,752.26)).
+4. Verify **no** deferred **$417.83** task and **no** additional-income custom task (nothing was backfilled or
+   merged — there was no prior completion to delta against).
+5. Transfer and complete **exactly $1,544.42** against posted funds.
+6. Verify persisted `completed_amount` **== $1,544.42**.
+7. Then close Week 28.
+
+### PATH B — $1,752.26 NOT posted before the commission-tax transfer
+1. Execute **§2c exactly**: transfer and complete **$425.68**.
+2. Verify persisted `completed_amount` **== $425.68**.
+3. Verify the **$417.83** deferred obligation remains (exactly one Week-29 `commission_tax` task).
+4. **Never enter the $1,752.26 into Week 28.**
+5. Enter it **only in its actual posting week**.
+6. Verify that later week produces a **$700.90** `commission_tax` task (= 40% × $1,752.26) and that the
+   **$417.83** deferred obligation remains intact.
+
+### 🛑 MANDATORY STOP
+**Do NOT complete $425.68 and then add taxable income to Week 28.** If that sequence occurs, **do not close
+Week 28** — hold and escalate.
+
+### Evidence (retain; read-only; balance-free)
+- Read-only `weekly_tasks` output filtered `action_key='commission_tax'` **before and after each material step**
+  (each transfer, each completion, any Edit-Week save).
+- Persisted `completed_amount` **must equal the actual bank transfer** ($1,544.42 on PATH A; $425.68 on PATH B).
+- Retain the **Weekly-view state** at each checkpoint.
+- Verify **obligation conservation within the documented rounding tolerance**: combined-basis
+  40% × ($2,108.78 + $1,752.26) = **$1,544.42**; sum of the separate legs $843.51 + $700.90 = **$1,544.41**; the
+  ≤ $0.01 difference is expected half-cent rounding and is within tolerance.
+
+**Rationale (balance-free):** PATH A and PATH B each keep every dollar of obligation on an actionable surface and
+keep persisted `completed_amount` equal to the real transfer. The prohibited middle sequence is the only path
+that inflates a completed amount, hides the $417.83, and strands $1,118.74 — so it is barred, not merely
+discouraged.
 
 ## 3. Exact file + command map (per step)
 
