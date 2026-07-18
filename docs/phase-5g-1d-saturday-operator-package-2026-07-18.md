@@ -899,8 +899,13 @@ order by due_date;
 
 ### 14.2 AMEX Gold Week-28 payment — corrected amount + in-flight treatment (2026-07-18)
 
-**Corrected fact.** The AMEX Gold payment screen shows statement balance due **`$5,666.01`** (supersedes
-the earlier assumed **`$5,718.52`**), min due `$113.32`, current total balance `$15,521.50`, due **Sat
+**Corrected fact (edit path updated 2026-07-18).** The AMEX Gold **verified Remaining Statement Balance is
+`$5,666.01`**. Actual sequence: OS planning amount `$5,500` → the operator had previously updated the
+**persisted Week-28 model outflow to `$5,718.52`** (then-known statement balance) → a later **AMEX credit**
+reduced the verified balance to **`$5,666.01`**. **So Step 3's model edit was an outflow-only correction
+`$5,718.52 → $5,666.01` (−`$52.51`) — DONE 2026-07-18, post-save PASS** (`commission_tax` still `425.68` @
+`2026-07-18 03:20:38.457+00`, `goal_adam_ira` still `61.06`, no custom task, Baseline A/B no drift). The
+payment screen also shows min due `$113.32`, current total balance `$15,521.50`, due **Sat
 07/18/2026**, source **Truist Checking …0608**, payment-effective **today (07/18)** if submitted by
 8:00 p.m. MST. **Not yet submitted.** This is a SEPARATE Week-28 outflow — it does **NOT** remove or alter
 the §14 commission-tax HARD STOP.
@@ -977,8 +982,10 @@ operation, and is **not** blocked by the HARD STOP. V6/Q6 confirmed **no AMEX Go
 currently exists** — so there is nothing to update pre-closeout; the durable reservation is **created** at
 the closeout per the "Required closeout entry" table above.
 
-**`$5,718.52`:** **not referenced** anywhere in the repo or the decision package (verified by search) —
-nothing to update; the corrected figure `$5,666.01` is recorded here.
+**`$5,718.52`:** not in the *repo* — but it WAS the **persisted production Week-28 model outflow**
+(`model_week_overrides`, the operator's prior update from the `$5,500` planning amount). Step 3 corrected
+it to `$5,666.01` (outflow-only). End state `$5,666.01` matches Fable's Option-C requirement; the variance
+control (§C of the Option-C script) is unaffected.
 
 ### 14.3 Gate-3 resolution — Option C / §2d PATH-B* (Fable: PROCEED WITH CONDITIONS, 2026-07-18)
 

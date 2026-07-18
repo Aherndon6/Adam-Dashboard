@@ -84,8 +84,10 @@ not close until explained.
    5 rows wk4–5. **HARD STOP on any drift or unexpected row.**
 2. **Docs checkpoint.** Confirm this script + the corrected decision package + operator package §14.2 are
    committed (docs-only, unpushed). No production action.
-3. **Week-28 outflow-only AMEX edit.** Edit Week 28 → update the AMEX Gold outflow `~$5,500` → **`$5,666.01`**.
-   **Touch NO taxable-income field. Do NOT enter the `$1,752.26`.** Save.
+3. **Week-28 outflow-only AMEX edit.** Edit Week 28 → correct the AMEX Gold outflow **`$5,718.52` →
+   `$5,666.01`** (the persisted value was `$5,718.52`, not the `$5,500` planning amount; a later AMEX
+   credit reduced the verified balance). **Touch NO taxable-income field. Do NOT enter the `$1,752.26`.**
+   Save. — **DONE 2026-07-18: post-save PASS** (both rows unchanged, no custom task, Baseline A/B no drift).
 4. **Immediate V1/V2 re-verify (read-only).** Confirm `commission_tax` = **425.68** and `goal_adam_ira` =
    **61.06** are **UNCHANGED** (the outflow edit must not have altered them). **HARD STOP** if either
    changed, or if any new completed `commission_tax`/goal row appeared.
