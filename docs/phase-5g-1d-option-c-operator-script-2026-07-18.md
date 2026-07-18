@@ -20,6 +20,19 @@ is the owner-approved resolution:
 - The §2d MANDATORY STOP still holds absolutely: **never add the `$1,752.26` (or any taxable income) to
   Week 28.**
 
+**Amended 2026-07-18 (Fable Step-6 disposition — package §14.4; owner-adopted):**
+- Week-28 **`$425.68`** executed leg (persisted `2026-07-18 03:20:38.457+00`) is **immutable**.
+- Deep-South remainder **pinned at `$417.83`** (= `843.51 − 425.68`, executed basis). The model's
+  **`$365.32`** carry display is a **known projection artifact** (the `$52.51` AMEX-edit re-split) and
+  **must never be executed, completed, or used in evidence figures.**
+- Extra BK Pay tax leg **pinned at `$700.90`**; Week-29 combined execution total **`$1,118.73`**
+  (two separate legs).
+- **The B1 correction must ship before the `$417.83` leg is executed/completed** (the fixed build must
+  display carry = `417.83`). If B1 slips past ~Jul 23 → escalate for a supervised owner-approved
+  completion; never complete a task displaying ≠ `417.83`.
+- Conservation proof at every §14.1 rerun: Σ completed Week-28 `commission_tax` = `425.68`; after Week-29
+  execution: `425.68 + 417.83 + 700.90 = 1,544.41` (= combined `1,544.42` within the documented ≤ `$0.01`).
+
 ## B. Option-C AMEX Gold requirement
 
 - **Week-28 model outflow** updated from `~$5,500` → **`$5,666.01`** (outflow-only Edit-Week; **no
@@ -40,25 +53,36 @@ is the owner-approved resolution:
 
 ## C. Variance control (mathematically explicit)
 
+> **CORRECTED 2026-07-18 per the Fable Step-6 disposition (package §14.4).** The original table below-noted
+> two specification errors that caused the Step-6 false HARD STOP: it carried the commission line at the
+> **executed** value where the `A − M` identity requires the **model-embedded** value, and it **omitted the
+> modeled-but-unsettled Week-28 goal-funding legs**. The corrected control follows; the recorded Step-6
+> residual `161.45 = 52.51 + 108.94` closes exactly under it.
+
 At the **atomic capture moment**, let `A` = captured actual **Truist Checking** balance and `M` = the
 model-projected **Week-28 ending Truist Checking** balance (after the `$5,666.01` AMEX outflow update;
-**without** the `$1,752.26` income; with the `$425.68` commission-tax modeled as moved).
+**without** the `$1,752.26` income; with the model's Week-28 commission-tax leg — **`$478.19`** after the
+known re-split — modeled as moved). `A`, `M`, and the full transfer enumeration are captured in **one
+atomic observation window**; any mid-window posting into `A` (e.g., the Greenlight `+$120.00`,
+Week-29-effective 07/20 — excluded from the Week-28 table) forces a full re-capture.
 
-**Variance V = A − M.**
+**Variance V = A − M (raw — never deployable/adjusted cash).**
 
-Explained components — **include ONLY those applicable at the atomic capture moment**; each sign is its
+Explained components — **named components only; every component at MODEL basis**; each sign is its
 contribution to `A − M`:
 
 | Component | Sign / value | Include when |
 |---|---|---|
 | Extra BK Pay unmodeled income | **+ `$1,752.26`** | always (permanent Week-29 attribution) |
 | AMEX Gold in-flight (model removed it; Truist hasn't debited) | **+ `$5,666.01`** | iff `status ∈ {initiated, bank_pending}` at capture (omit if `cleared`) |
-| Commission-tax `$425.68` in-flight (settles Mon 07/20) | **+ `$425.68`** | iff not yet debited from Truist at capture (omit if cleared) |
-| Any other model-expected-but-not-yet-actual item | ± its amount | iff present at capture |
+| Commission-tax — **dual-basis line**: model **`$478.19`** = executed **`$425.68`** (settles Mon 07/20) + **`$52.51`** known re-split artifact | **+ `$478.19`** (model basis) | iff the executed leg not yet debited at capture (if cleared, include only the `$52.51` artifact) |
+| **Week-28 goal-funding legs** — enumerate EVERY modeled-but-unsettled leg by **name/obligation · modeled amount · executed status · bank-settlement status** (known member: Adam IRA `$61.06`, executed-unsettled) | **+ `$108.94` exactly** (Σ of named legs) | per-leg, iff not debited at capture |
 
-**Control:** `| V − Σ(included components) | ≤ $0.01`. **Zero unexplained residual** (tolerance ≤ `$0.01`).
-Restated: `M + Σ(included components) = A` within `$0.01`. Any residual above `$0.01` = **HARD STOP** — do
-not close until explained.
+**Control:** `| V − Σ(named components) | ≤ $0.01`. **Zero unexplained residual.** **An approximate or
+unnamed residual leg is NOT sufficient evidence** — if the named goal-funding set does not total exactly
+`$108.94` (or the penny-exact in-window equivalent if settlement states changed), that is a **HARD STOP**,
+not a rounding allowance. Reference closure at the recorded Step-6 capture:
+`1,752.26 + 5,666.01 + 478.19 + 108.94 = 8,005.40 = V` exactly.
 
 > Direction note: every component above is **positive** because each is either cash present in `A` but
 > absent from `M` (the income) or cash the model already removed but that Truist still holds (undebited
@@ -104,11 +128,14 @@ not close until explained.
 8. **Phase 2 (new commitments) → AMEX commitment confirmation.** Confirm the AMEX Gold commitment via the
    standard Phase-2 path with the exact §B fields; `status` from the step-6 capture; **reflected-in-balance
    answer must match `A`.** **No separate `$425.68` commitment.**
-9. **Frozen-payload review** (step 8). Confirm the nine funded values; **Adam IRA cumulative includes the
-   executed `$61.06`**; commission-tax shows **`$425.68` done + `$417.83` deferred** (total `$843.51`
-   preserved, not doubled/lost); AMEX Gold reflects `$5,666.01` in-flight (Truist actual not manually
-   reduced). **Run the §C variance control: `|V − Σcomponents| ≤ $0.01`, zero unexplained residual — HARD
-   STOP otherwise.** Do NOT submit yet.
+9. **Frozen-payload review** (step 8) — *expectation amended 2026-07-18 (package §14.4(5)).* Confirm the
+   nine funded values; **Adam IRA cumulative includes the executed `$61.06`**; **the completed `$425.68`
+   commission-tax row is INTACT (hard check — any mutation of that row = HARD STOP)**; on the current
+   build **expect the temporary `$365.32` carry display** (known `$52.51` re-split artifact — it is NOT
+   executable and NOT a false-stop condition; the pinned obligation remains `$417.83`); AMEX Gold reflects
+   `$5,666.01` in-flight (Truist actual not manually reduced). **Run the corrected §C variance control:
+   `|V − Σ(named components)| ≤ $0.01`, zero unexplained residual, goal-funding set named and exactly
+   `$108.94` — HARD STOP otherwise.** Do NOT submit yet.
 10. **Wrapper submission** (Approval Gate 3 — Adam authorizes). "Confirm & close week" → expect
     `{ok:true, mode:normal_closeout, week_num:6, snapshot_count:9}`.
 11. **Durable verification** (3 ways): 9 rows `source=reconciliation` @ wk6; badge "Closeout complete";
@@ -120,12 +147,18 @@ not close until explained.
     (`activation-revokes.sql` → `LOCKDOWN REVOKES PASS`) → final grant validation (raw + consolidated
     `post_phase_2` 17/17) → **Proof A / Proof B** (both non-mutating) → **release the freeze** after both
     pass.
-15. **Week-29 income + two-leg tax execution** (fresh week; PATH-A-safe — no prior completion). Enter the
-    **`$1,752.26`** into **Week 29** (Edit Week, Tax? checked). Verify the model books a **`$700.90`**
-    commission_tax leg **and preserves the `$417.83`** Deep-South carry-forward as a **separate** leg.
-    Execute **two separate** Truist → Vio transfers and complete each task: **`$417.83`** and **`$700.90`**
-    (**total `$1,118.73`** — never the combined `$1,118.74`). Verify each persisted `completed_amount`
-    equals its actual transfer.
+15. **Week-29 income + two-leg tax execution** — *amended 2026-07-18 (package §14.4(4)).* Enter the
+    **`$1,752.26`** into **Week 29** (Edit Week, Tax? checked; fresh week, PATH-A-safe). Verify the model
+    books a **`$700.90`** commission_tax leg. The Deep-South carry may DISPLAY **`$365.32`** (and may
+    slide to Week 30 once Week 29 carries its own `ct` — expected pre-B1 behavior): **the pinned leg is
+    `$417.83` and `$365.32` is never executed or completed.** **The `$417.83` leg executes ONLY on the
+    B1-corrected build** (which must display carry = `417.83`); if B1 has not shipped by ~Jul 23, escalate
+    for a supervised owner-approved completion — never complete a task displaying ≠ `417.83`. The
+    `$700.90` leg (its own correctly-displayed task) may execute on the current build if needed. Execute
+    **two separate** Truist → Vio transfers and complete each task: **`$417.83`** and **`$700.90`**
+    (**total `$1,118.73`** — never the combined `$1,118.74`; never a blended completion). Verify each
+    persisted `completed_amount` equals its actual transfer; then run the conservation check
+    `425.68 + 417.83 + 700.90 = 1,544.41` (= combined `1,544.42` within ≤ `$0.01`).
 16. **Final tests + evidence + status.** `node test_regression.js` (1543/0) · `node e2e.js` (155/0/0,
     readiness 0/0); record closeout evidence; update status docs; docs-only commit; **push only on Adam's
     authorization.**
@@ -136,6 +169,11 @@ not close until explained.
   hard-stops (GFA01, domain reject, ambiguous 2xx, wrong week_num, count ≠ 9). · Week-6 freeze (no Option
   B / approved_reopen through both proofs). · Phase-2 pre-lockdown asserts. · Two-leg tax integrity
   ($417.83 + $700.90 separate; completed_amount = actual transfer).
+- **Added 2026-07-18 (§14.4):** goal-funding enumeration must be **named** and total **exactly `$108.94`**
+  in the atomic window (no approximate/unnamed residual). · Any mid-window posting into `A` → full
+  re-capture. · **`$365.32` never executed/completed.** · Any mutation of the `$425.68` row = HARD STOP.
+  · **Week-28 Edit-Week is CLOSED for this sitting** (no further saves of any field). · The `$417.83` leg
+  only on the B1-corrected build.
 
 ---
 
@@ -176,6 +214,30 @@ PASS; AMEX submitted conf W3870). **Step 6 (atomic capture) does NOT pass — re
 ### F.5 Disposition
 Escalated to Fable — see `docs/phase-5g-1d-gate3-fable-followup-step6-2026-07-18.md` (items A–D). Activation
 remains blocked pending Fable disposition + Adam authorization.
+
+### F.6 FABLE DISPOSITION RECEIVED + OWNER-ADOPTED (2026-07-18) — Step-6 control corrected; resume path defined
+
+**Ruling (package §14.4 is the authoritative record):** the Step-6 failure was caused by a
+**mis-specified variance control**, not by wrong production state — the `161.45` residual decomposes
+exactly as **`52.51`** (commission line recorded at executed `425.68` where the `A − M` identity requires
+the model-embedded `478.19`) **+ `108.94`** (omitted modeled-but-unsettled Week-28 goal-funding legs).
+The `$52.51` re-split **remains a real display/projection defect** (B1 class — surplus-driven
+reallocation of an executed tax obligation); no write path consumes `478.19`/`365.32`.
+**Operator-side control is sufficient for activation; the B1 correction is mandatory before the Week-29
+Deep-South (`$417.83`) execution.**
+
+**Resume conditions (all required before re-attempting Step 6):**
+1. §C control replaced by the corrected specification (done above — dual-basis commission line at model
+   `$478.19`; named goal-funding enumeration totaling exactly `$108.94`; raw `A − M`; atomic window).
+2. Fresh atomic capture (`A`, `M`, full enumeration in one window) closing to ≤ `$0.01` with **zero
+   unnamed residual**; reference closure `1,752.26 + 5,666.01 + 478.19 + 108.94 = 8,005.40`.
+3. PATH-B\* amendment (§A above / §14.4(4)) + amended step-9 expectation (§14.4(5)) recorded — done.
+4. **Week-28 Edit-Week CLOSED for the sitting** (no further saves of any field).
+5. Adam's per-step authorization to resume at Step 6.
+
+**Gate 3: RESUMES under these conditions.** B1 scope additions (anchored executed legs; carry = total −
+Σ executed; cash-side edits never re-split an executed leg; the `$5,718.52 → $5,666.01` regression case)
+are binding on the B1 correction (§14.4(6)).
 
 ---
 **No production mutation, closeout, deploy, revoke, Phase 2, or push has occurred beyond the recorded

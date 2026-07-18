@@ -1005,3 +1005,57 @@ operator sequence live in **`docs/phase-5g-1d-option-c-operator-script-2026-07-1
   mapping, and needs unsafe multi-step choreography on the defective build (the immediate backfill is not
   the issue — unchecking removes the match). **Option A** stays the posting-week-accurate path but needs a
   reviewed B1-fix deploy (not same-day). **Gate 3 stays HARD-STOPPED** pending Adam's per-step authorization.
+
+### 14.4 Step-6 disposition — corrected variance control, PATH-B\* amendment, B1 scope additions (Fable, 2026-07-18; owner-adopted)
+
+**Ruling:** the Step-6 HARD STOP was caused by a **mis-specified variance control**, not by wrong
+production state. The `$161.45` residual decomposes exactly as `$52.51` (commission line recorded at the
+executed value where the identity requires the model-embedded value) + `$108.94` (omitted
+modeled-but-unsettled Week-28 goal-funding legs). The `$52.51` re-split remains a **real
+display/projection defect** (B1 class — surplus-driven reallocation of an executed tax obligation); no
+write path consumes it. **Operator-side control is sufficient for activation; the B1 code correction is
+mandatory before the Week-29 Deep-South (`$417.83`) execution.** Gate 3 resumes on a fresh atomic capture
+under the corrected control below.
+
+**(1) Corrected raw variance identity (the gate operates on raw `A − M`, never on deployable/adjusted
+cash):**
+> **`V = A − M`**, with `A` (actual Truist Checking), `M` (model-projected Week-28 ending Truist
+> Checking), and the full modeled-transfer enumeration all captured in **one atomic observation window**.
+> Any posting into `A` mid-window (e.g., the Greenlight `+$120.00`, Week-29-effective 07/20, excluded from
+> the Week-28 table) forces a full re-capture. Control: `|V − Σ(named components)| ≤ $0.01` — zero
+> unexplained residual.
+
+**(2) Dual-basis commission-tax line (mandatory form):** the variance component is recorded at **model
+basis `$478.19`** (that is what `M` embeds), written as the dual-basis identity
+**`478.19 (model) = 425.68 (executed, persisted 2026-07-18 03:20:38.457+00) + 52.51 (known re-split
+artifact)`** — so executed reality is pinned in the same line and the `$52.51` appears exactly once.
+
+**(3) Goal-funding enumeration requirement:** every modeled-but-unsettled Week-28 goal-funding leg must be
+enumerated with **name/obligation · modeled amount · executed status · bank-settlement status**, in the
+same atomic window, and the set must total **exactly `$108.94`** (known member: Adam IRA `$61.06`,
+executed-unsettled). **An approximate or unnamed residual leg is NOT acceptable evidence** — a set that
+does not close by name to `$108.94` (or the penny-exact in-window equivalent if settlement states have
+changed) is a HARD STOP.
+Reference closure at the recorded capture: `1,752.26 + 5,666.01 + 478.19 + 108.94 = 8,005.40 = V` exactly.
+
+**(4) PATH-B\* amendment (adopted verbatim):**
+- Week-28 **`$425.68`** executed leg is **immutable**.
+- Deep-South remainder **pinned at `$417.83`** (= `843.51 − 425.68`, executed basis).
+- Extra BK Pay tax leg **pinned at `$700.90`**.
+- Week-29 combined execution total **`$1,118.73`** (two separate legs; never a blended completion).
+- **`$365.32` is a known projection artifact and must never be executed, completed, or used in evidence.**
+- **The B1 correction is required before executing/completing the `$417.83` leg** (the fixed build must
+  display carry = total − Σ executed = `417.83`); if B1 has not shipped by ~Jul 23, escalate for a
+  supervised owner-approved completion — never complete a task displaying ≠ `417.83`.
+
+**(5) Amended step-8 (frozen-payload) expectation:** require the **completed `$425.68` row intact** (hard
+check); **expect the temporary `$365.32` carry display** on the current build — it is not executable and
+is **not** a false-stop condition; **any mutation of the `$425.68` row remains a HARD STOP.**
+
+**(6) B1 scope additions (binding on the B1 correction):** completed commission-tax legs are **anchored by
+`completed_amount`**; carry-forward = **total obligation − Σ completed executed legs**; **cash-side edits
+must never re-split an executed leg**; add the **`$5,718.52 → $5,666.01` AMEX outflow-edit regression
+case** to the B1 fixtures.
+
+**(7) Sitting constraint:** Week-28 Edit-Week is **CLOSED for this sitting** — no further saves of any
+field (nothing further is needed pre-close; every cash-affecting edit can re-split the projection).

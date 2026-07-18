@@ -52,3 +52,38 @@ No reconciliation, wrapper, commitment creation, Phase 2, deploy, revoke, or pus
 entry (§2d). No Weeks 1–5 edits (§13). Baseline A/B (`4/4·2/2·0/0·1/1·5/5`; `15/14/1`) and the executed
 `425.68` @ `2026-07-18 03:20:38.457+00` must remain unchanged. Gate 3 HARD-STOPPED pending this disposition
 + Adam authorization.
+
+---
+
+## FABLE DISPOSITION (2026-07-18) — ADOPTED (owner); authoritative record: operator package §14.4
+
+**A. Variance decomposition.** The control was **mis-specified**; production state is correct. The gate
+operates on **raw `V = A − M`** (never deployable/adjusted cash), captured with the full enumeration in
+**one atomic observation window**. The commission-tax component enters at **model basis** as the
+**dual-basis line `478.19 (model) = 425.68 (executed) + 52.51 (known re-split artifact)`**. Every
+modeled-but-unsettled Week-28 **goal-funding leg** must be enumerated by **name/obligation · modeled
+amount · executed status · bank-settlement status** and total **exactly `$108.94`** in-window (known
+member: Adam IRA `$61.06`, executed-unsettled) — **an approximate or unnamed residual leg is not
+sufficient evidence.** Recorded-capture closure: `1,752.26 + 5,666.01 + 478.19 + 108.94 = 8,005.40 = V`
+exactly; the prior `161.45` residual = `52.51` (basis error) + `108.94` (omitted legs).
+
+**B. `$52.51` re-split.** A **real defect** (B1 class: surplus-driven reallocation of an executed tax
+obligation), demonstrated by a cash-side edit; on this build its blast radius is **display/projection
+only** (backfill fires only on a positive taxable-income delta — SQL-proven rows unchanged; the closeout
+reads no tasks; commission_tax is outside netting; the `425.68` row is identity-bound). **No hand
+correction; no compensating Edit-Week entries.** Folded into B1 with added scope: completed legs anchored
+by `completed_amount`; carry = total obligation − Σ completed executed legs; cash-side edits must never
+re-split an executed leg; the `$5,718.52 → $5,666.01` case becomes a B1 regression fixture.
+
+**C. PATH-B\*.** Amended: Week-28 `425.68` immutable; Deep-South remainder **pinned `417.83`**; Extra BK
+Pay tax **pinned `700.90`**; Week-29 combined total **`1,118.73`** (two legs); **`365.32` never
+executed**; **B1 required before the `417.83` leg** (fixed build must display `417.83`; escalation if B1
+slips past ~Jul 23). Conservation: `425.68 + 417.83 + 700.90 = 1,544.41` = combined `1,544.42` within
+≤ `$0.01`, checked at every §14.1 rerun.
+
+**D. Activation.** **Operator-side control is SUFFICIENT for activation** (nothing persisted embeds
+`478.19`/`365.32`; the wrapper consumes actual balances, persisted-snapshot priors, and the Phase-2 AMEX
+commitment only). **Gate 3 RESUMES** on: corrected §C control + fresh atomic capture closing ≤ `$0.01` +
+PATH-B\*/step-9 amendments recorded + **Week-28 Edit-Week closed for the sitting** + Adam's per-step
+authorization. **B1 remains mandatory before the Week-29 Deep-South execution** — a code gate on that
+step, not on activation.
