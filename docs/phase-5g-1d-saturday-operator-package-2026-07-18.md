@@ -899,6 +899,11 @@ order by due_date;
 
 ### 14.2 AMEX Gold Week-28 payment — corrected amount + in-flight treatment (2026-07-18)
 
+> **⚠ SUPERSEDED IN PART (2026-07-18): the "Required closeout entry" table below is superseded by §14.5.**
+> AMEX Gold does not surface in Phase 2 (label-derived `eid=null`); create the AMEX commitment via **Phase 3
+> manual reconciliation** per §14.5(B), and leave the synthetic `$843.51` tax candidate **unanswered** per
+> §14.5(A). Follow the revised sequence **7R–11R (§14.5)**.
+
 **Corrected fact (edit path updated 2026-07-18).** The AMEX Gold **verified Remaining Statement Balance is
 `$5,666.01`**. Actual sequence: OS planning amount `$5,500` → the operator had previously updated the
 **persisted Week-28 model outflow to `$5,718.52`** (then-known statement balance) → a later **AMEX credit**
@@ -1059,3 +1064,73 @@ case** to the B1 fixtures.
 
 **(7) Sitting constraint:** Week-28 Edit-Week is **CLOSED for this sitting** — no further saves of any
 field (nothing further is needed pre-close; every cash-affecting edit can re-split the projection).
+
+---
+
+### 14.5 Gate-3 revised Phase-2 sequence 7R–11R (Fable final Phase-2 disposition, 2026-07-18; owner-authorized) — BINDING
+
+**This section SUPERSEDES §14.2 "Required closeout entry" and Option-C operator-script step 8 wherever they
+conflict.** It resolves the Step-8 reconciliation discrepancy
+(`docs/phase-5g-1d-step8-reconciliation-discrepancy-2026-07-18.md`): AMEX Gold does not surface in Phase 2
+(label-derived `eid=null`), and a synthetic `$843.51` tax-transfer candidate does. Where this conflicts with
+§14.2 or step 8, **this section controls.**
+
+#### A. Synthetic tax candidate — LEAVE UNANSWERED
+- Candidate eid: **`2026mw6_tax_transfer_vio_2026_07_12`**
+- Display: **Commission tax reserve (Vio Bank) — $843.51**
+- **It must remain UNANSWERED.** "Unanswered" means **no row is persisted and saving is NOT blocked.**
+- It must **NOT** be persisted at `$843.51`, changed to `$417.83`, split, or otherwise represented as a
+  commitment.
+- **This rule applies to EVERY re-entry into Week-6 reconciliation until the B1-class correction ships.**
+
+#### B. AMEX commitment — create via Phase 3 (manual reconciliation)
+- label: **`AMEX Gold Payment Due 7/18 (conf W3870)`**
+- amount: **`$5,666.01`**
+- response: **`paid_initiated`** unless the live bank state has changed to `bank_pending`
+- reflected in captured balance: **No**
+
+Expected persisted shape:
+| field | value |
+|---|---|
+| `commitment_source` | `manual_reconciliation` |
+| `expected_item_id` | like `manual_%` |
+| `amount_cents` | `566601` |
+| `status` | `initiated` or `bank_pending` — matching live state |
+| `required_or_discretionary` | `protected_required` |
+| `affects_deployable_cash` | `true` |
+| `origin_model_week` | `6` |
+| `source_account` | defaults to `truist_checking` |
+| `commitment_class` | `other_transfer` |
+| `due_date` | `null` |
+| tax-transfer commitment | **none** |
+
+#### C. Revised execution sequence
+- **7R.** Reconfirm Truist Checking has **not changed** from the 9:45 AM capture. Any posting or balance
+  change requires a **fresh complete Step-6 atomic recapture**. Reopen Week-6 reconciliation and confirm
+  **Phase 1 is empty**.
+- **8R.** Leave the `$843.51` Phase-2 tax candidate **unanswered**. Confirm **no other Phase-2 candidate**
+  appears.
+- **8R.5.** Add the **Phase-3 AMEX manual item exactly as specified in §B**.
+- **9R. Frozen-payload review:** exactly **one** new commitment (AMEX `$5,666.01`); **zero** tax commitments;
+  **nine** funded values; Adam IRA cumulative includes **`$61.06`**; `commission_tax` completed row remains
+  **`$425.68`** and unchanged; **`$365.32`** remains a known **non-executable display artifact**; the
+  corrected Step-6 variance decomposition (§14.4) remains governing.
+- **10R.** **Gate 3 owner authorization is required** before "Confirm & close week". Expected wrapper
+  response: `{ok:true, mode:normal_closeout, week_num:6, snapshot_count:9}`.
+- **11R. Post-write verification:** one Week-6 reconciliation row; nine Week-6 `source=reconciliation`
+  snapshots; V1/V2 unchanged; Baseline A/B unchanged; exactly **one** new AMEX manual commitment; **zero**
+  tax-transfer commitments; **then activate the Week-6 freeze.**
+
+#### D. Additional HARD STOPs
+- any answer staged against the synthetic tax candidate
+- any tax commitment in the confirmation view
+- commitment delta not exactly **+1**
+- AMEX commitment missing `protected_required` or `affects_deployable_cash=true`
+- any mutation of the completed `commission_tax` **`$425.68`**
+- `snapshot_count` not equal to **9**
+- any Baseline A/B drift
+- any unexplained variance residual
+
+#### E. B1 backlog additions (binding on the B1 correction)
+- protected-event **eid must derive from structured event date, not label parsing**
+- synthetic tax candidate must calculate **total obligation minus completed executed legs**

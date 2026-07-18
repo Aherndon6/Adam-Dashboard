@@ -125,7 +125,13 @@ not a rounding allowance. Reference closure at the recorded Step-6 capture:
    reflected-in-balance answer.
 7. **Open Week-6 reconciliation → Phase 1** (prior-commitment resolution). Resolve any Phase-1 prior
    commitments per the panel; **no Week 1–5 controls touched.**
-8. **Phase 2 (new commitments) → AMEX commitment confirmation.** Confirm the AMEX Gold commitment via the
+8. **Phase 2 (new commitments) → AMEX commitment confirmation.** — **SUPERSEDED 2026-07-18 by operator
+   package §14.5 (7R–11R).** AMEX Gold does NOT surface in Phase 2 (label-derived `eid=null`). Instead:
+   leave the synthetic `$843.51` tax candidate **unanswered** (§14.5 A / 8R); create the AMEX commitment via
+   **Phase 3 manual reconciliation** (§14.5 B / 8R.5): label `AMEX Gold Payment Due 7/18 (conf W3870)`,
+   `$5,666.01`, response `paid_initiated` (or `bank_pending` per live), reflected-in-balance **No**,
+   `commitment_class=other_transfer`, `due_date=null`. **No separate `$425.68` commitment; no tax-transfer
+   commitment.** *(Original text retained below for history:)* Confirm the AMEX Gold commitment via the
    standard Phase-2 path with the exact §B fields; `status` from the step-6 capture; **reflected-in-balance
    answer must match `A`.** **No separate `$425.68` commitment.**
 9. **Frozen-payload review** (step 8) — *expectation amended 2026-07-18 (package §14.4(5)).* Confirm the
