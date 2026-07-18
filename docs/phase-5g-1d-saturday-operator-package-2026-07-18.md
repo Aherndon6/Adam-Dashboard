@@ -824,3 +824,70 @@ identity** (no positional binding, no backfill of null-metadata completions).
 - Eventual remediation = **5G-1D-HIST-1** (§13.6) — UI / non-actionable treatment; never fabricate
   identity.
 - Gate 3 stays blocked until these docs updates land + Adam's explicit closeout authorization.
+
+---
+
+## 14. Gate-3 HARD STOP — confirmed Week-28 taxable-income posting (2026-07-18)
+
+**Event.** Adam confirmed **directly from Truist** that the Barfield & Kinkeade deposit **`$3,904.76`
+POSTED 07/17/2026** — within Week 28 (Cal Wk 28, Jul 12–18): Wendy regular paycheck **`$2,152.50`** +
+**Wendy Extra BK Pay `$1,752.26`**. The `$1,752.26` taxable income is **no longer hypothetical — it
+posted in Week 28**, and (per the sitting chronology) **before** the operator completed the `$425.68`
+`commission_tax` task the evening of 07/17.
+
+**Determination (grounded in §2d).** The confirmed posting order means **PATH A was the correct path**
+(income posted *before* any completion); the operator instead executed **PATH B's action** (completed
+`$425.68` first, income not entered) under the belief the income was still pending. Reflecting the
+income's tax in Week 28 now requires an **Edit-Week taxable increase AFTER the `$425.68` completion** —
+the §2d **PROHIBITED middle sequence** (triggers the deployed Edit-Week delta-backfill: rewrites
+`$425.68`→`$843.51`, hides the `$417.83`, strands `$1,118.74`; the B1 amount-correction fix is not
+shipped). Per §2d **🛑 MANDATORY STOP: do NOT close Week 28 — hold and escalate.** **PATH B is
+INVALIDATED** (its premise — income posts in a *later* week — is false); PATH A cannot be applied
+retroactively without the prohibited operation. **Gate 3 = HARD STOP.**
+
+**Arithmetic (for the record; the application's established rounding semantics apply):**
+- Combined Week-28 commission-tax obligation: 40% × (`$2,108.78` + `$1,752.26`) = **`$1,544.42`**.
+- Already transferred (Deep South leg; settling Mon 07/20): **`$425.68`**.
+- Total still to transfer: **`$1,118.74`** = existing modeled deferral **`$417.83`** + incremental
+  shortfall from the Extra BK Pay **`$700.91`** (≈ 40% × `$1,752.26` = `$700.90`; ≤ `$0.01` rounding).
+
+**Disposition:** **DEFERRED** under the approved activation contingency annex (roadmap §7 / rollback
+table — deferring the wk-6 closeout is operationally fine, *not* a new correction). Resolution options
+**A / B / C** are compared in **`docs/phase-5g-1d-gate3-hardstop-decision-package-2026-07-18.md`**,
+pending **Fable + owner** review. **No fix drafted or implemented; no production mutation; Week 28 stays
+OPEN; Phase 2 not run; nothing pushed.**
+
+### 14.1 Read-only production verification (run before the disposition call — ALL `SELECT`, no mutation)
+
+```sql
+-- V1  Week-6 commission_tax + goal_adam_ira (expect: commission_tax 425.68 keyed/labeled;
+--     goal_adam_ira 61.06 keyed/labeled; distinct rows/identities)
+select week_num, task_idx, action_key, completed_label, completed, completed_amount, completed_at
+from public.weekly_tasks
+where week_num = 6 and action_key in ('commission_tax','goal_adam_ira')
+order by task_idx;
+
+-- V2  ALL Week-6 weekly_tasks rows (full identity/completion dump)
+select * from public.weekly_tasks where week_num = 6 order by task_idx;
+
+-- V3  Week-29 $417.83 deferral evidence — every commission_tax row, all weeks. The deferral is a
+--     MODEL carry-forward (commTaxPending), not necessarily a durable row; expect exactly ONE
+--     completed commission_tax (wk6 = 425.68) and NO other completed commission_tax anywhere
+--     (the $417.83 and $700.90 are not yet executed/persisted as completed).
+select week_num, task_idx, action_key, completed, completed_amount, completed_label
+from public.weekly_tasks where action_key = 'commission_tax' order by week_num, task_idx;
+
+-- V4  Baseline A/B historical-integrity fingerprint (§13.4) — expect A 1→4/4·2→2/2·3→0/0·4→1/1·5→5/5;
+--     B total 15 / completed 14 / incomplete 1. ANY drift = HARD STOP.
+select week_num, count(*) as total, count(*) filter (where completed) as completed
+from public.weekly_tasks where week_num <= 5 group by week_num order by week_num;
+select count(*) as total, count(*) filter (where completed) as completed,
+       count(*) filter (where not completed) as incomplete from public.weekly_tasks;
+
+-- V5  Week-6 reconciliation + snapshot state — confirm Week 28 is STILL OPEN and NO closeout rows
+--     were written (expect weekly_reconciliations = 5 rows, weeks 1-5, NONE at wk6;
+--     goal_funding_snapshots at model_year=2026 week_num>=6 = 0)
+select week_num, count(*) as recon_rows from public.weekly_reconciliations group by week_num order by week_num;
+select count(*) as snaps_at_wk6plus from public.goal_funding_snapshots
+where model_year = 2026 and week_num >= 6;
+```
