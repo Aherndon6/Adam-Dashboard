@@ -1,5 +1,14 @@
 # Phase 5G-1D — Saturday Activation Checklist (2026-07-18)
 
+> **✅ SITTING COMPLETE + VERIFIED (2026-07-18).** All steps executed and verified: Phase-1 grants →
+> deploy (`BUILD_TS 2026-07-17T23:10:13`/`bdcd1d7`) → wk6 wrapper closeout (1 recon + 9 snaps) →
+> Phase-2 revokes (`LOCKDOWN REVOKES PASS`) → final grant validation (`post_phase_2` 17/17) → Proof A
+> (idempotent 200) → Proof B (legacy RPC 403/42501) → Option B (adam_ira `7438.94→7500.00`). Week 6
+> remains reconciled and immutable (owner-only reopen control); the activation execution window is
+> closed; Week-29 duplicate Adam-IRA recommendation gone. Terminal evidence:
+> `docs/phase-5g-1d-activation-closeout-2026-07-18.md`. The unchecked boxes below are retained as the
+> historical run sheet — the closeout doc is the authoritative completion record.
+
 **One-page operator checklist for the production sitting. NOT a replacement for the Operator Package** (`docs/phase-5g-1d-saturday-operator-package-2026-07-18.md`, **v6**) — every item cites the package section that governs. Balance-free. 🛑 = **explicit Adam approval required**. Work top to bottom; any **HARD STOP** ends the sitting until resolved. *Rough total: ~2.5–3.5 hrs.*
 
 > **Recovery Rule**
