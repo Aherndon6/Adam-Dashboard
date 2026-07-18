@@ -1,6 +1,6 @@
 # Phase 5G-1D — Saturday Activation Checklist (2026-07-18)
 
-**One-page operator checklist for the production sitting. NOT a replacement for the Operator Package** (`docs/phase-5g-1d-saturday-operator-package-2026-07-18.md`, **v5**) — every item cites the package section that governs. Balance-free. 🛑 = **explicit Adam approval required**. Work top to bottom; any **HARD STOP** ends the sitting until resolved. *Rough total: ~2.5–3.5 hrs.*
+**One-page operator checklist for the production sitting. NOT a replacement for the Operator Package** (`docs/phase-5g-1d-saturday-operator-package-2026-07-18.md`, **v6**) — every item cites the package section that governs. Balance-free. 🛑 = **explicit Adam approval required**. Work top to bottom; any **HARD STOP** ends the sitting until resolved. *Rough total: ~2.5–3.5 hrs.*
 
 > **Recovery Rule**
 > If any **HARD STOP** occurs:
@@ -16,9 +16,17 @@
 - [ ] Local baseline green: `node test_regression.js` 1543/0 · `node e2e.js` 155/0/0 · readiness 0/0 (§2 step 18)
 - [ ] Production access (Adam-Dashboard `usayoldrawwmjsmretin`) · SQL Editor · authenticated app session · anon key + access token available (§8)
 
-## B. Production prechecks (read-only) (~15 min) — §2 step 2–3, §2b, §4
-- [ ] Adjunct preflight `gateb-adjunct-preflight.sql` → `ADJUNCT PREFLIGHT PASS`; wk5 9/2/11; recon 5 rows wks 1–5; snaps @ wk≥6 = 0 (§4)
-- [ ] Pre-Phase-1 validation → 17/17 pass; inert; MD5 baselines; owner `postgres` (§2 step 3)
+## B. Production prechecks (read-only) (~15 min) — §2 step 2–3, §2b, §4, §12
+
+> **Status (2026-07-17): B1 executed — PASS. B2 HELD.** The consolidated 17-check artifact required
+> by B2 did not exist; it was authored under the **v6 reissue**
+> (`docs/phase-5g-1d-activation-grants-validation-consolidated.sql`). **B2 resumes only after
+> independent review of that artifact + Adam go-ahead**, by running BOTH validation files below.
+> No production mutation has occurred.
+
+- [ ] **B1** Adjunct preflight `gateb-adjunct-preflight.sql` → `ADJUNCT PREFLIGHT PASS`; wk5 9/2/11; recon 5 rows wks 1–5; snaps @ wk≥6 = 0 (§4) — **PASS 2026-07-17**
+- [ ] **B2a** Pre-Phase-1 raw matrices `activation-grants-validation.sql` → capture fn/tbl/md5/owner outputs verbatim (§2 step 3)
+- [ ] **B2b** Pre-Phase-1 consolidated `activation-grants-validation-consolidated.sql` (stage=`pre_phase_1`) → **17/17 pass=true** + single PASS notice (SUMMARY stage == notice stage); inert; owner `postgres`; five body-MD5s captured (§2 step 3, §12)
 - [ ] §2b Adam-IRA precheck → exactly one completed `goal_adam_ira` $61.06, non-null amount + key (§2b)
 - [ ] §2b unattributable-rows scan → **zero rows** (§2b) — **HARD STOP** if any
 - [ ] Snapshot count @ wk≥6 = 0; reconciliation = 5 rows (wks 1–5) (§4)
@@ -45,7 +53,7 @@
 
 ## E. Phase 1 grants (MUTATING) (~10 min) — §2 step 4–5
 - [ ] `activation-grants.sql` → `ACTIVATION GRANTS PASS`; COMMIT
-- [ ] Post-grant validation → wrapper/Option B authenticated=T, anon=F; owner + bodies unchanged
+- [ ] Post-grant validation: raw matrices + consolidated (stage=`post_phase_1`) → **17/17**; owner unchanged; five body-MD5s == step-B2 capture (§2 step 5, §12)
 
 **STOP — Review results with ChatGPT before continuing.**
 ## F. 🛑 Approval Gate 2 — Adam authorizes BUILD_TS stamp + merge + deploy (§2)
@@ -77,7 +85,7 @@
 
 ## K. Phase 2 lockdown (MUTATING) (~15 min) — §2 step 12–13
 - [ ] `activation-revokes.sql` → `LOCKDOWN REVOKES PASS`; COMMIT (hard-stops unless wrapper granted / old RPC still granted / Week-6 durable / owner unchanged)
-- [ ] Final grant validation → wrapper/Option B=T; old recon/repair/snapshot RPC=F; tables INS/UPD/DEL=F, SELECT=T; anon all F
+- [ ] Final grant validation: raw matrices + consolidated (stage=`post_phase_2`) → **17/17** (wrapper/Option B=T; old recon/repair/snapshot RPC=F; authenticated table writes=F, SELECT=T; anon = no fn EXECUTE, no `goal_funding_snapshots` privilege, `weekly_reconciliations` RLS-inert per §12); five body-MD5s == earlier captures (§2 step 13, §12)
 
 ## L. Proofs (~20–30 min) — §2 step 14–16, §3a
 - [ ] **Stale-browser** (§3a): old-RPC call FAILS CLOSED (401/403/404); no false success; no optimistic state; **zero** row/timestamp change
@@ -90,7 +98,7 @@
 - [ ] **Known flake protocol:** a `clickNav`/headless timeout → rerun once; report both runs; a *logic* failure is a HARD STOP
 
 ## N. Evidence collection (~10 min) — §10
-- [ ] Adjunct preflight + 17/17; both §2b precheck outputs; grant matrices (pre/post/final); merge hash + live BUILD_TS; pre-close scan; Week-6 frozen payload (LOCAL, balance-bearing — never committed); Week-6 counts (1 recon / 9 source=reconciliation); post-close zero-recommendation; stale-probe HTTP + no-row-change; Proof A/B; suites 1543/0, 155/0/0, 0/0 — **committed evidence is secrets-free & balance-free**
+- [ ] Adjunct preflight + raw matrices + consolidated 17/17 at ALL THREE stages (CTX + 18 rows + PASS notice each); five-body MD5 cross-stage comparison; both §2b precheck outputs; grant matrices (pre/post/final); merge hash + live BUILD_TS; pre-close scan; Week-6 frozen payload (LOCAL, balance-bearing — never committed); Week-6 counts (1 recon / 9 source=reconciliation); post-close zero-recommendation; stale-probe HTTP + no-row-change; Proof A/B; suites 1543/0, 155/0/0, 0/0 — **committed evidence is secrets-free & balance-free**
 
 ## O. Final GO / NO-GO summary
 - [ ] All 🛑 gates approved; no HARD STOP triggered; both proofs passed; freeze released; suites green → **GO / COMPLETE**

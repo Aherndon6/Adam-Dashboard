@@ -1,3 +1,58 @@
+## ⟲ REISSUE v6 — 2026-07-17 (docs + new read-only SQL artifact only; authors the previously-MISSING consolidated 17-check validation query; corrects the blanket "anon all=F" scoping; supersedes v5's §2-step-3 reference)
+
+**Why:** the Section-B activation sitting was **PAUSED at step B2** (2026-07-17): §2 step 3 / §3 row 3
+require "`activation-grants-validation.sql` (+ consolidated query) → 17/17 pass", but **no consolidated
+17-check artifact existed anywhere in the repository, its git history, branches, reflog, or stashes** —
+the committed raw file emits validation matrices, not 17 labelled boolean pass rows. **Fable's
+independent architecture/control review (2026-07-17) is the controlling design input** for the
+remediation; Adam authorized it docs/SQL-only. **B1 (adjunct preflight) PASSED before the pause; no
+production grant, write, deployment, or other mutation has occurred.**
+
+**What v6 adds/changes** (no application-code, migration, test, grant, revoke, rollback, or
+raw-validation-file change; no production/staging action; the raw validation file remains
+byte-identical):
+- **NEW committed artifact — `docs/phase-5g-1d-activation-grants-validation-consolidated.sql`:**
+  read-only companion to (never a replacement for) the raw matrices. Emits one CTX context row,
+  **exactly 17 scored checks C-01…C-17 + one SUMMARY row** (pass_count / fail_count / emitted_rows /
+  overall_pass), then one fail-closed DO assertion that independently re-derives all 17 and RAISEs on
+  any false check, scored-count ≠ 17, invalid stage, or wrong environment fingerprint. Stage-aware:
+  `pre_phase_1` (committed default) | `post_phase_1` | `post_phase_2`. **§12 (new) is the
+  authoritative expected matrix.**
+- **§2 steps 3 / 5 / 13 and §3 rows 3 / 5 / 13** now require BOTH the raw matrices AND the
+  stage-specific consolidated 17/17 at **all three** validation points.
+- **anon-scoping correction (§4):** the former blanket "anon all=F" is corrected. Proven and scored:
+  **no anon EXECUTE on any of the five functions; no anon table privilege on
+  `goal_funding_snapshots`.** `weekly_reconciliations` was never grant-normalized (Supabase-DEFAULT
+  ACL bits may remain at the grant layer, Phase 2 does not touch anon) — it must instead be
+  **RLS-inert for anon**: RLS enabled, zero policies naming anon/public (that is what C-13 scores);
+  its raw anon ACL bits are captured as informational evidence only.
+- **Five-body MD5 cross-stage rule (§4/§12):** the raw file's `fn-body-md5` matrix (all five
+  functions) must be captured at steps 3, 5, AND 13; the two protected bodies are pinned/scored
+  (C-15/C-16); the three unpinned bodies (wrapper / Option B / repair) must be **byte-identical
+  across the three captures**.
+- **Post-activation backlog (recorded here; NOT this sitting):** explicit `weekly_reconciliations`
+  ACL normalization, including TRUNCATE / REFERENCES / TRIGGER review (§12.5). It does **not** alter
+  this sitting's approved grant/revoke scope.
+
+**Pins — UNCHANGED from v5/v4 (nothing repinned; the new file is read-only SQL under `docs/`):**
+| Item | v6 (== v5/v4; unchanged) |
+|---|---|
+| Activation-lineage anchor | correction commit **`4ce6affb113e9d8efa28a8c4b807bcd8547cc43f`** MUST be an ancestor of HEAD — `git merge-base --is-ancestor 4ce6aff HEAD`; **do NOT pin the final tip hash** |
+| `index.html` identity gate | `git rev-parse HEAD:index.html` == **`a4c458af2c9c53a67ceb621dd4d8c9c48d6343a2`** |
+| `BUILD_TS` (pre-activation) | **`2026-07-15T20:52:49`** |
+| Static regression | **1543 / 0** |
+| Full `node e2e.js` | **155 / 0 / 0** (readiness 0/0) |
+| Readiness fallbacks | **0 / 0** |
+| `origin/main` | `5bd6c69787bee7a8fe26ee1fb2ceb0528526d6f1` (unchanged) |
+
+**Sitting status:** **B1 PASSED (2026-07-17); B2 remains HELD** — it resumes only after independent
+review of the new consolidated artifact + Adam go-ahead, by running BOTH validation files at §2
+step 3. **Activation remains UNAUTHORIZED.**
+
+The v5/v4/v3/v2/v1 banners below are retained as history.
+
+---
+
 ## ⟲ REISSUE v5 — 2026-07-17 (docs-only; adds §2d extra-paycheck taxable-inflow constraint; supersedes v4's §2c-only treatment)
 
 **Why:** Fable's narrow review of the Wendy **$1,752.26** extra-paycheck workflow returned **CLEAR WITH OPERATOR
@@ -155,7 +210,7 @@ other files mid-execution. Authoritative detail lives in
 
 **Authoritative runbook + SQL files (all committed at HEAD above):**
 - Runbook: `docs/phase-5g-1d-gateb-activation-runbook-2026-07-13.md`
-- Read-only: `docs/phase-5g-1d-gateb-adjunct-preflight.sql`, `docs/phase-5g-1d-activation-grants-validation.sql`
+- Read-only: `docs/phase-5g-1d-gateb-adjunct-preflight.sql`, `docs/phase-5g-1d-activation-grants-validation.sql` (raw matrices — capture/rollback reference), `docs/phase-5g-1d-activation-grants-validation-consolidated.sql` (v6 — the 17-check boolean gate; expected matrix in §12)
 - Mutating (grants): `docs/phase-5g-1d-activation-grants.sql` (Phase 1), `docs/phase-5g-1d-activation-revokes.sql` (Phase 2)
 - Rollback: `docs/phase-5g-1d-activation-grants-rollback.sql` (grant rollback, two scopes), `docs/phase-5g-1d-rollback.sql` (Slice-6 DROP — not expected in Gate B)
 - Browser: `index.html` (closeout + row-9 guard + response validation + open-window transfer netting + identity-resolved completion normalization + identity write-selection/read (B1–B3); verified gate static **1543/0**, e2e **155/0/0**, readiness **0/0**)
@@ -168,10 +223,10 @@ other files mid-execution. Authoritative detail lives in
 ```
 [ ]  1. RE-GROUND ............... §9 start block: branch, 4ce6aff is-ancestor + index.html blob a4c458a…, clean tree, origin/main, BUILD_TS 2026-07-15T20:52:49, files
 [ ]  2. ADJUNCT PREFLIGHT (RO) .. gateb-adjunct-preflight.sql → wk5 9/2/11; recon 5 rows wks1-5; snaps@wk>=6 = 0
-[ ]  3. PRE-PHASE-1 VALIDATION .. activation-grants-validation.sql (+ consolidated query) → 17/17 pass; inert; MD5s; owner
+[ ]  3. PRE-PHASE-1 VALIDATION .. activation-grants-validation.sql (raw) + -validation-consolidated.sql stage=pre_phase_1 → 17/17 + PASS notice; inert; 5 body-MD5s captured; owner
 ━━ 🛑 APPROVAL GATE 1 — Adam authorizes PHASE 1 GRANTS ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 [ ]  4. PHASE 1 GRANTS (MUTATING) activation-grants.sql → wrapper+Option B authenticated EXECUTE granted
-[ ]  5. POST-GRANT VALIDATION ... activation-grants-validation.sql → wrapper/Option B authenticated=T, anon=F; owner unchanged; bodies unchanged
+[ ]  5. POST-GRANT VALIDATION ... activation-grants-validation.sql (raw) + -validation-consolidated.sql stage=post_phase_1 → 17/17; owner unchanged; 5 body-MD5s == step-3 capture
 ━━ 🛑 APPROVAL GATE 2 — Adam authorizes BUILD_TS STAMP + MERGE + DEPLOY ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 [ ]  6. BUILD_TS STAMP + MERGE → DEPLOY ... stamp BUILD_TS; merge feature → main; GitHub Pages build green; BUILD_TS advances live
 [ ]  7. LIVE-BROWSER VERIFY (pre-write) ... fresh session renders; closeout-state badges; confirmation view opens; console clean; DO NOT submit
@@ -182,7 +237,7 @@ other files mid-execution. Authoritative detail lives in
 [ ] 11. ▲▲▲ WEEK-6 FREEZE ACTIVE (see §7) — begins at closeout success, holds through Proof B ▲▲▲
 ━━ 🛑 APPROVAL GATE 4 — Adam authorizes PHASE 2 REVOKES (only after Week-6 durably complete) ━━━━━━━━━
 [ ] 12. PHASE 2 REVOKES (MUTATING) activation-revokes.sql → hard-stops unless wrapper granted, old RPC still granted, owner unchanged, Week-6 = 1 recon + 9 source=reconciliation snaps
-[ ] 13. FINAL GRANT VALIDATION .. activation-grants-validation.sql → wrapper/Option B=T; old recon/repair/snapshot RPC=F; tables INS/UPD/DEL=F, SELECT=T; anon all=F; owner+bodies unchanged
+[ ] 13. FINAL GRANT VALIDATION .. activation-grants-validation.sql (raw) + -validation-consolidated.sql stage=post_phase_2 → 17/17 (final posture §4/§12); owner unchanged; 5 body-MD5s == steps 3/5
 [ ] 14. POST-PHASE-2 BROWSER VERIFY (see §3a) — FRESH: new session shows new BUILD_TS, closeout uses the wrapper, tabs render, console clean, wrapper callable, Option B owner-gated | STALE: a cached/pre-deploy tab's old-RPC call FAILS CLOSED (denial), no false success, no optimistic state, ZERO rows/timestamps written, clear error/reload prompt
 [ ] 15. PROOF A (NON-MUTATING) .. wrapper idempotent re-submit of exact Week-6 payload → branch-F identity; before/after equal; NEVER force
 [ ] 16. PROOF B (NON-MUTATING) .. old-RPC probe, all named args incl. both JSONB, p_model_year=9999 → denial or "invalid model_year: 9999"
@@ -348,16 +403,16 @@ discouraged.
 |---|---|---|---|---|---|---|
 | 1 | Re-ground | §9 block | RO | Local terminal | `4ce6aff` is-ancestor of HEAD, `index.html` blob a4c458a…, tree clean, origin/main=5bd6c69, BUILD_TS 2026-07-15T20:52:49 | Any mismatch |
 | 2 | Adjunct preflight | `gateb-adjunct-preflight.sql` | RO | Supabase SQL Editor | `ADJUNCT PREFLIGHT PASS`; 3 rows = §4 values | Any RAISE EXCEPTION / different row |
-| 3 | Pre-Phase-1 validation | `activation-grants-validation.sql` + §consolidated query | RO | Supabase SQL Editor | 17/17 `pass=true`; inert; MD5s; owner postgres | Any `pass=false` |
+| 3 | Pre-Phase-1 validation | `activation-grants-validation.sql` (raw) + `-validation-consolidated.sql` (stage=pre_phase_1) | RO | Supabase SQL Editor | 17/17 `pass=true` + single PASS notice; inert; owner postgres; five body-MD5s captured | Any `pass=false` / any DO exception |
 | 4 | Phase 1 grants | `activation-grants.sql` | **WRITE (grants)** | Supabase SQL Editor | `ACTIVATION GRANTS PASS`; COMMIT | HARD STOP notice; env≠production; unexpected pre-grant (c_resume=false) |
-| 5 | Post-grant validation | `activation-grants-validation.sql` | RO | Supabase SQL Editor | wrapper/Option B authenticated=T, anon=F; owner invariant; bodies unchanged | anon=T; owner drift; body md5 changed |
+| 5 | Post-grant validation | `activation-grants-validation.sql` (raw) + `-validation-consolidated.sql` (stage=post_phase_1) | RO | Supabase SQL Editor | 17/17 `pass=true`; owner invariant; five body-MD5s == step-3 capture | Any `pass=false`; owner drift; any body md5 changed |
 | 6 | BUILD_TS + merge → deploy | git + GitHub Pages | **WRITE (repo/deploy)** | Git/GitHub | `pages-build-deployment` green; live BUILD_TS advances | Pages build fails; BUILD_TS not advanced |
 | 7 | Live-browser verify | dashboard.herndons.us | RO | Browser | render unchanged; badges; confirmation view opens; console clean | Any render/console error; guard build absent |
 | 8 | Frozen payload review | app confirmation view | RO (pre-write) | Browser | nine funded values shown; expected-9; joint-commit warning | Invalid/NaN value; disabled Confirm |
 | 9 | Week-6 closeout | wrapper POST | **WRITE (1 recon + 9 snaps, atomic)** | Browser | `{ok:true,mode:normal_closeout,week_num:6,snapshot_count:9}` | GFA01/adjudication; domain reject; ambiguous; unconfirmed 2xx (stays on confirm) |
 | 10 | Durable-state verify | REST read + overlay | RO | Browser / SQL Editor | 9 rows `source=reconciliation` at wk6; badge "Closeout complete"; no half-close | count≠9; wrong source; partial/half-close |
 | 12 | Phase 2 revokes | `activation-revokes.sql` | **WRITE (grants)** | Supabase SQL Editor | `LOCKDOWN REVOKES PASS`; COMMIT | Any pre-lockdown assert (wrapper not granted / old RPC already revoked / Week-6 not durable / owner drift) |
-| 13 | Final grant validation | `activation-grants-validation.sql` | RO | Supabase SQL Editor | final matrix (§4 post-Phase-2); owner+bodies unchanged | Any deviation |
+| 13 | Final grant validation | `activation-grants-validation.sql` (raw) + `-validation-consolidated.sql` (stage=post_phase_2) | RO | Supabase SQL Editor | 17/17 `pass=true`; final posture (§4/§12); owner unchanged; five body-MD5s == steps 3/5 captures | Any deviation / any `pass=false` |
 | 14a | Post-Phase-2 FRESH browser | dashboard.herndons.us (new session/hard refresh) | RO | Browser | new `BUILD_TS`; closeout uses wrapper; tabs render; console clean; wrapper callable; Option B owner-gated | old BUILD_TS; wrapper not callable; render/console error |
 | 14b | Post-Phase-2 STALE browser | cached/pre-deploy tab (old direct-RPC path) | **NON-MUTATING** (fails closed) | Browser/REST | old-RPC call denied (401/403/404); no false success; no optimistic state; **ZERO** rows/timestamps written; clear error/reload | any 2xx; false success; optimistic state; ANY row/timestamp change |
 | 15 | Proof A | wrapper re-submit (exact payload) | **NON-MUTATING** (branch-F identity) | Browser/REST | branch-F identity; before/after byte-equal | Any inner-RPC write / before-image drift → re-read, never force |
@@ -414,6 +469,11 @@ tab; investigate why the revoke didn't deny before proceeding to the proofs.
 **Protected-RPC MD5 baselines (must stay unchanged all sitting):**
 - `save_reconciliation_with_commitments` = `1bfde751ac647c5e9a25ba168d08150c`
 - `save_goal_funding_snapshots` = `154231b3f180349ec328f08ccbe77076`
+- **Five-body cross-stage rule (v6):** the raw file's `fn-body-md5` matrix (all five functions) is
+  captured at steps 3, 5, AND 13. The two pinned bodies above are scored by the consolidated gate
+  (C-15/C-16); the three UNPINNED bodies (**wrapper, Option B, repair**) have no committed pins and
+  must be **byte-identical across the three captures** — any drift is a HARD STOP (§5 "Protected-RPC
+  MD5 drift" applies to all five).
 
 **Owner / grants:**
 | stage | expected |
@@ -428,11 +488,23 @@ tab; investigate why the revoke didn't deny before proceeding to the proofs.
 - exactly **9** distinct eligible `goal_id` snapshots at wk6, each `model_year=2026`, `week_num=6`, `source='reconciliation'`
 - exactly **9** total `source='reconciliation'` rows at wk6 (no dupes/extras)
 
-**Post-Phase-2 final grant posture (authenticated EXECUTE / table privs; anon all false):**
+**Post-Phase-2 final grant posture (authenticated EXECUTE / table privs):**
 - wrapper = **T**, Option B = **T**
 - old recon RPC = **F**, repair RPC = **F**, direct snapshot RPC = **F**
-- `goal_funding_snapshots`: INSERT/UPDATE = **F**, SELECT = **T**
+- `goal_funding_snapshots`: INSERT/UPDATE = **F**, SELECT = **T** (DELETE was never granted — E1)
 - `weekly_reconciliations`: INSERT/UPDATE/DELETE = **F**, SELECT = **T**
+
+**anon scoping (v6 correction — replaces the former blanket "anon all=F"):**
+- **Functions (all five): anon EXECUTE = F** at every stage (proven; committed migrations revoked
+  PUBLIC/anon and never re-granted) — scored as C-01/03/05/07/09.
+- **`goal_funding_snapshots`: anon has NO table privilege** at any stage (E1 `REVOKE ALL` +
+  narrow re-grant to authenticated only) — scored as C-11.
+- **`weekly_reconciliations`: anon ACL bits are NOT pinned.** The table was never grant-normalized
+  (Supabase-DEFAULT role grants, RLS-gated — Gate C register §2; the Phase-2 revokes touch
+  `authenticated` only). The enforced control — and what C-13 scores — is **RLS-inert for anon**:
+  RLS enabled AND zero policies naming anon/public. The raw anon ACL bits (incl. TRUNCATE) are
+  captured as informational evidence only; their normalization is the §12.5 post-activation backlog
+  item, NOT part of this sitting.
 
 ---
 
@@ -539,6 +611,7 @@ for f in docs/phase-5g-1d-gateb-activation-runbook-2026-07-13.md \
          docs/phase-5g-1d-gateb-adjunct-preflight.sql \
          docs/phase-5g-1d-activation-grants.sql \
          docs/phase-5g-1d-activation-grants-validation.sql \
+         docs/phase-5g-1d-activation-grants-validation-consolidated.sql \
          docs/phase-5g-1d-activation-revokes.sql \
          docs/phase-5g-1d-activation-grants-rollback.sql \
          docs/phase-5g-1d-rollback.sql \
@@ -551,9 +624,12 @@ done
 
 ## 10. Operator evidence checklist (retain verbatim; balance-free in committed docs)
 
-- [ ] Adjunct preflight output (3 rows) + pre-Phase-1 validation (17/17)
-- [ ] Pre-grant and post-grant grant matrices
-- [ ] Post-Phase-2 final grant matrix
+- [ ] Adjunct preflight output (3 rows) + pre-Phase-1 raw matrices + consolidated 17/17
+  (stage=pre_phase_1: CTX row + 18 rows + the single PASS notice, verbatim)
+- [ ] Pre-grant and post-grant grant matrices + consolidated 17/17 (stage=post_phase_1)
+- [ ] Post-Phase-2 final grant matrix + consolidated 17/17 (stage=post_phase_2)
+- [ ] Five-function body-MD5 cross-stage comparison (steps 3/5/13 captures; the three unpinned
+  bodies byte-identical; the two pinned == §4 baselines)
 - [ ] Deployment: merge commit hash + live `BUILD_TS` value
 - [ ] **Post-Phase-2 browser verification (step 14):** stale old-RPC attempt HTTP/PostgREST result
   (expect 401/403/404); confirmation of **no row-count or timestamp change** after it; fresh-browser
@@ -580,3 +656,74 @@ When steps 1–19 are green and the evidence is recorded, the terminal statement
 
 Until every gate is green and the freeze is released after both proofs, 5G-1D is **not** complete —
 do not report it complete.
+
+---
+
+## 12. Consolidated 17-check validation — authoritative expected matrix (v6)
+
+Implemented by `docs/phase-5g-1d-activation-grants-validation-consolidated.sql` (read-only; design
+authority: Fable independent review 2026-07-17). Run at §2 steps **3** (`pre_phase_1`), **5**
+(`post_phase_1`), and **13** (`post_phase_2`) alongside the raw matrices. **ANY `pass=false` (or any
+DO exception) = HARD STOP** (§5). Categories: `fn-grant` (C-01…C-10, individual role × function
+EXECUTE), `tbl-grant` (C-11…C-14, grouped per table × role over SELECT/INSERT/UPDATE/DELETE),
+`fn-body-md5` (C-15/C-16, pinned), `fn-owner` (C-17, consolidated). **The count is fixed at 17.**
+
+### 12.1 Expected values by stage (T/F = authenticated-visible boolean; tuples = sel/ins/upd/del)
+
+| # | Object | Role | pre_phase_1 | post_phase_1 | post_phase_2 | Kind |
+|---|---|---|---|---|---|---|
+| C-01 | old recon RPC (11-arg) | anon | F | F | F | invariant |
+| C-02 | old recon RPC (11-arg) | authenticated | **T** | **T** | **F** | stage |
+| C-03 | repair RPC (5-arg) | anon | F | F | F | invariant |
+| C-04 | repair RPC (5-arg) | authenticated | **T** | **T** | **F** | stage |
+| C-05 | snapshot RPC (3-arg) | anon | F | F | F | invariant |
+| C-06 | snapshot RPC (3-arg) | authenticated | **T** | **T** | **F** | stage |
+| C-07 | wrapper (13-arg) | anon | F | F | F | invariant |
+| C-08 | wrapper (13-arg) | authenticated | **F** (inert) | **T** | **T** | stage |
+| C-09 | Option B (6-arg) | anon | F | F | F | invariant |
+| C-10 | Option B (6-arg) | authenticated | **F** (inert) | **T** | **T** | stage |
+| C-11 | `goal_funding_snapshots` | anon | F/F/F/F | F/F/F/F | F/F/F/F | invariant |
+| C-12 | `goal_funding_snapshots` | authenticated | T/T/T/F | T/T/T/F | T/**F**/**F**/F | stage |
+| C-13 | `weekly_reconciliations` | anon | rls=T ∧ anon/public-policies=0 | same | same | invariant |
+| C-14 | `weekly_reconciliations` | authenticated | T/T/T/T | T/T/T/T | T/**F**/**F**/**F** | stage |
+| C-15 | recon RPC body md5 | — | `1bfde751ac647c5e9a25ba168d08150c` | same | same | invariant |
+| C-16 | snapshot RPC body md5 | — | `154231b3f180349ec328f08ccbe77076` | same | same | invariant |
+| C-17 | owner sweep | — | owner=`postgres` ×6 (recon, snap, wrapper, Option B, `is_owner`, `can_write_financials`); SECURITY DEFINER=T ×4 (recon, snap, wrapper, Option B) | same | same | invariant |
+
+### 12.2 Operator mechanics
+
+- **Stage selector — TWO marked literals, edited TOGETHER:** the `stage` VALUES CTE in the SELECT
+  and the `c_stage` constant in the DO block. Committed default `pre_phase_1`. Verify the SUMMARY
+  row's stage **matches** the PASS notice's stage when capturing evidence; a mismatch means the two
+  literals diverged (the DO still gates on its own stage — a mismatch cannot silently pass).
+- **Fail-closed:** an invalid stage fails every scored row (expected=`INVALID STAGE`) and the DO
+  raises; a missing object still emits its C-xx row with `actual=MISSING`, `pass=false`; the DO
+  hard-stops on any unknown/ambiguous environment fingerprint (production sysid
+  `7632885393857617092` + `app_environment` ABSENT; pinned-staging escape only, `c_staging_sysid=0`
+  = staging hard-stops until pinned).
+- **Evidence:** capture the CTX row + all 18 rows + the single PASS notice verbatim (§10). The raw
+  file's matrices remain the grant-capture / rollback-exact-restore reference.
+- **Informational (never scored):** TRUNCATE bits on both tables; the raw anon ACL bits on
+  `weekly_reconciliations` (C-13's `| info …` segment).
+
+### 12.3 Deliberate exclusions (not among the 17)
+
+`service_role` (bypasses RLS by design; intentionally untouched); `cash_commitments`
+(definer-RPC-only since 5F-1; unchanged by both phases); `weekly_tasks` and all other tables
+(outside Gate C scope); RLS policy content (Gate A, closed); wrapper/Option B/repair body pins
+(none committed — covered by the §4 five-body cross-stage rule instead).
+
+### 12.4 Known accepted residual
+
+C-14's `pre_phase_1` pin (T/T/T/T) rests on the Gate C register's "Supabase default (RLS-gated)"
+posture description, not a committed production capture. If production is MORE restrictive, the
+check fails and stops the sitting — the correct outcome (unexplained grant drift in the
+exact-restore rollback reference).
+
+### 12.5 Post-activation backlog (recorded; NOT this sitting)
+
+Explicit `weekly_reconciliations` grant normalization under its own future review/approval:
+`REVOKE ALL FROM PUBLIC, anon` + narrow re-grant to `authenticated`, including review of
+**TRUNCATE** (Supabase-default, bypasses RLS, not PostgREST-reachable), **REFERENCES**, and
+**TRIGGER**. This item must NOT alter this activation sitting's approved grant/revoke scope, and
+the approved `-activation-revokes.sql` is never edited mid-sitting.
