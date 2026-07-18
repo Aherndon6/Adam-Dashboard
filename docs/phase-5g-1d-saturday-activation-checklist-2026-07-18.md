@@ -6,6 +6,13 @@
 > If any **HARD STOP** occurs:
 > • Do not improvise. • Do not skip steps. • Preserve evidence. • Stop and review the situation with ChatGPT before proceeding.
 
+> **⚠ RECONCILED-WEEK WRITE-LOCK (§13 — Fable 2026-07-18; in force ALL sitting).** Reconciled **Weeks 1–5
+> (Cal Wk 23–27)** have **LIVE write handlers** — a stray check/uncheck/toggle mutates historical
+> `weekly_tasks`. **On Weeks 1–5: do NOT check, do NOT uncheck, do NOT toggle custom tasks, do NOT use
+> Edit Week. Wendy must not touch past-week controls.** Legacy completions there may render as
+> unchecked/actionable — that is the known display issue (§13.1); **historical truth = `weekly_reconciliations`
+> / `goal_funding_snapshots`, never checkbox state.** No-drift fingerprint + reruns: §13.4 (checklist §I, §K).
+
 ## A. Before starting (~10–15 min) — §1, §8, §9
 - [ ] Activation branch `claude/herndon-5g-1d-preactivation-j428vn` checked out (§9)
 - [ ] `4ce6aff` is an ancestor of HEAD (`git merge-base --is-ancestor 4ce6aff HEAD`) (§1)
@@ -82,8 +89,8 @@
 ## F. 🛑 Approval Gate 2 — Adam authorizes BUILD_TS stamp + merge + deploy (§2)
 
 ## G. Deploy (~15–30 min) — §2 step 6–7
-- [ ] Stamp BUILD_TS; merge feature → main; GitHub Pages build green; live BUILD_TS advances
-- [ ] Live-browser (pre-write): fresh session renders; closeout-state badges; confirmation view opens; console clean; **pre-close duplicate scan** — no enabled Adam IRA duplicate; one enabled `$425.68` commission_tax; narrative `$425.68`/`$417.83 carries forward` (§2b) — **DO NOT submit**
+- [x] Stamp BUILD_TS; merge feature → main; GitHub Pages build green; live BUILD_TS advances — **DONE 2026-07-17: BUILD_TS `2026-07-17T23:10:13`, main=`bdcd1d7`, Pages green**
+- [x] Live-browser (pre-write) — **Step-7 smoke PASSED 2026-07-17 (§13.5):** exactly one enabled `$425.68` commission_tax; **no** enabled Adam IRA duplicate; `$61.06` IRA rendered separately as read-only history; `$417.83` carry-forward narrative intact; no blocked/Review-required row; console clean
 
 **STOP — Review results with ChatGPT before continuing.**
 ## H. 🛑 Approval Gate 3 — Adam authorizes the real Week-6 (Cal Wk 28) closeout (§2)
@@ -92,6 +99,7 @@
 - [ ] Frozen payload: confirm the nine funded values; **Adam IRA cumulative includes the executed $61.06** (§2b)
 - [ ] "Confirm & close week" → `{ok:true, mode:normal_closeout, week_num:6, snapshot_count:9}`
 - [ ] Durable-state verify (3 ways): 9 rows `source=reconciliation` @ wk6; badge "Closeout complete"; **post-close: zero later-week Adam IRA recommendation** (§2b)
+- [ ] **Historical no-drift rerun #1 (§13.4):** Baseline A (wk≤5 per-week total/completed = 4/4 · 2/2 · 0/0 · 1/1 · 5/5) **and** Baseline B (whole table 15 total / 14 completed / 1 incomplete) UNCHANGED — **HARD STOP on ANY drift**
 - [ ] ▲ Week-6 state-freeze active (§7) — holds through Proof B
 
 > **Point of No Return Verification** — final confirmation before revoking the legacy write paths:
@@ -107,6 +115,7 @@
 ## J. 🛑 Approval Gate 4 — Adam authorizes Phase-2 revokes (only after Week-6 durably complete) (§2)
 
 ## K. Phase 2 lockdown (MUTATING) (~15 min) — §2 step 12–13
+- [ ] **Historical no-drift rerun #2 (§13.4) — immediately before revokes:** Baseline A (4/4 · 2/2 · 0/0 · 1/1 · 5/5) **and** Baseline B (15 / 14 / 1) UNCHANGED — **HARD STOP on ANY drift** (do not run revokes if drifted)
 - [ ] `activation-revokes.sql` → `LOCKDOWN REVOKES PASS`; COMMIT (hard-stops unless wrapper granted / old RPC still granted / Week-6 durable / owner unchanged)
 - [ ] Final grant validation: raw matrices + consolidated (stage=`post_phase_2`) → **17/17** (wrapper/Option B=T; old recon/repair/snapshot RPC=F; authenticated table writes=F, SELECT=T; anon = no fn EXECUTE, no `goal_funding_snapshots` privilege, `weekly_reconciliations` RLS-inert per §12); five body-MD5s == earlier captures (§2 step 13, §12)
 

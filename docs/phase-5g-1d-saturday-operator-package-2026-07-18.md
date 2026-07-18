@@ -730,3 +730,97 @@ Explicit `weekly_reconciliations` grant normalization under its own future revie
 **TRUNCATE** (Supabase-default, bypasses RLS, not PostgREST-reachable), **REFERENCES**, and
 **TRIGGER**. This item must NOT alter this activation sitting's approved grant/revoke scope, and
 the approved `-activation-revokes.sql` is never edited mid-sitting.
+
+---
+
+## 13. Gate-3 disposition — legacy-completion display regression (Fable review 2026-07-18)
+
+**Verdict: PROCEED WITH CONDITIONS.** The Gate-2 deploy fixed the active Week-28 defect; Week 28 holds
+two clean, distinct completions (`goal_adam_ira`=61.06, `commission_tax`=425.68) and Week 29 retains the
+`$417.83` deferred obligation. The Week-28 closeout + snapshot write path does **not** read/depend on
+`weekly_tasks`; open-week netting **excludes** reconciled historical rows; Week-6 data is clean. **No
+hotfix, no rollback, no backfill this sitting. Positional fallback / positional backfill remain
+PROHIBITED.**
+
+### 13.1 Known production issue (recorded)
+The identity-strict resolver (deployed `4ce6aff` / B3 — no positional fallback) **exposes pre-existing
+legacy completions** in reconciled historical weeks that lack sufficient identity metadata
+(null `action_key` / null `completed_label` / null `completed_amount`). Effect:
+- reconciled-week obligations may render as **unchecked, actionable** recommendations;
+- the original completion rows **remain present**, shown as **"Executed earlier" / "Executed (legacy)"**;
+- **durable `weekly_reconciliations` and `goal_funding_snapshots` are UNAFFECTED** — this is
+  legacy-attribution *exposure*, not data loss.
+
+### 13.2 ⚠ NOT cosmetic — reconciled-week controls are LIVE write handlers (Fable refinement)
+Past reconciled-week transfer checkboxes and custom-task toggles still have **live write handlers**:
+- a mistaken **check** can INSERT a new historical completion row;
+- a mistaken **uncheck** can ALTER an existing historical completion;
+- a **custom-task toggle** can mutate historical `weekly_tasks` state.
+
+### 13.3 MANDATORY OPERATING CONTROL (in force through the sitting)
+For reconciled **Weeks 1–5** (Cal Wk 23–27):
+- **Do NOT check** any checkbox.
+- **Do NOT uncheck** any checkbox.
+- **Do NOT toggle** any custom task.
+- **Do NOT use Edit Week.**
+- **Wendy must NOT interact** with any past-week task control.
+- **Historical truth is taken ONLY from `weekly_reconciliations` and `goal_funding_snapshots`, never
+  from checkbox state.**
+
+### 13.4 Historical-integrity no-drift fingerprint (controlling)
+Captured read-only 2026-07-18. **Any change to any value below = HARD STOP pending investigation.**
+
+**Baseline A — `weekly_tasks` where `week_num <= 5` (per-week total / completed):**
+| week_num | total | completed |
+|---|---|---|
+| 1 | 4 | 4 |
+| 2 | 2 | 2 |
+| 3 | 0 | 0 |
+| 4 | 1 | 1 |
+| 5 | 5 | 5 |
+
+**Baseline B — whole `weekly_tasks` table:** total **15**, completed **14**, incomplete **1**.
+
+**Required reruns (read-only) — HARD STOP on any drift in per-week totals/completed OR whole-table
+totals/completed:**
+1. during **post-close durable-state verification** (§2 step 10 / checklist §I);
+2. **immediately before Approval Gate 4 / Phase-2 revokes** (§2 step 12 / checklist §K).
+
+Rerun SQL (read-only):
+```sql
+-- Baseline A (expect 1→4/4 · 2→2/2 · 3→0/0 · 4→1/1 · 5→5/5)
+select week_num, count(*) as total, count(*) filter (where completed) as completed
+from public.weekly_tasks where week_num <= 5 group by week_num order by week_num;
+-- Baseline B (expect total 15 / completed 14 / incomplete 1)
+select count(*) as total, count(*) filter (where completed) as completed,
+       count(*) filter (where not completed) as incomplete from public.weekly_tasks;
+```
+
+### 13.5 Step-7 deployed smoke — PASSED (recorded)
+On the deployed build (BUILD_TS `2026-07-17T23:10:13`), **before** operator completion of the $425.68:
+- exactly **one enabled `$425.68` commission_tax** task appeared;
+- **no enabled Adam IRA duplicate**;
+- the **`$61.06`** Adam IRA completion rendered **separately as read-only history**;
+- the **`$417.83`** carry-forward narrative remained intact;
+- **no blocked / Review-required row**;
+- **console clean**.
+
+### 13.6 Post-activation remediation — 5G-1D-HIST-1 (named; scheduled before/with Monthly Close v1)
+A separate reviewed change (NOT this sitting; roadmap slot: **P3b-1 Data Integrity**, before or with
+Monthly Close v1):
+- **disable both check AND uncheck** controls for reconciled weeks;
+- **disable reconciled-week custom-task toggles**;
+- render **unmatched historical recommendations as neutral / non-actionable**;
+- **correct or annotate inflated historical open counts**;
+- **preserve fail-closed behavior for open weeks** (a legacy/null row must NEVER falsely satisfy an
+  open obligation);
+- **tests:** reconciled legacy rows; open-week null-key rows; properly keyed current-week rows.
+The fix is **UI / non-actionable treatment for reconciled weeks — it must NEVER fabricate row
+identity** (no positional binding, no backfill of null-metadata completions).
+
+### 13.7 Disposition (recorded)
+- Historical resolver issue **formally DEFERRED under documented control** (§13.3).
+- **No production backfill. No resolver hotfix this sitting. No rollback.**
+- Eventual remediation = **5G-1D-HIST-1** (§13.6) — UI / non-actionable treatment; never fabricate
+  identity.
+- Gate 3 stays blocked until these docs updates land + Adam's explicit closeout authorization.
