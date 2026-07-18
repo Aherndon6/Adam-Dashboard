@@ -12935,6 +12935,146 @@ console.log('\n── Section 5G-1D Slice 4c: half-close repair confirmation ─
 })();
 
 // ─────────────────────────────────────────────────────────────────────────
+// ═══════════════════════════════════════════════════════════════════════════
+// B1 — Commission-Tax Obligation Netting (Fable REVISE→PROCEED 2026-07-18)
+// Spec: docs/phase-5g-1d-b1-commission-tax-netting-design-2026-07-18.md
+// ═══════════════════════════════════════════════════════════════════════════
+(function(){
+  function ewd(rows){return rows.map(function(r){return [r[0],'x',[],[],[],r[1],0,''];});}
+  function leg(w,i,amt){var o={};o[w+'_'+i]={completed:true,actionKey:'commission_tax',completedAmount:amt};return o;}
+  function ctx(amt,cc){return {actionKey:'commission_tax',amount:amt,candidate_context:cc,completedLabel:'Commission tax',matchTaskIdx:null};}
+  // A — candidate generation (authoritative amount)
+  test('B1-A1: 843.51 − 425.68 = 417.83 remaining',function(){
+    var o=computeCommissionTaxObligation(6,{effectiveWD:ewd([[6,843.51]]),taskData:leg(6,1,425.68)});
+    assert(o.remaining===417.83,'remaining '+o.remaining); assert(o.control_status==='ok','ok');
+  });
+  test('B1-A2: AMEX 5718.52 and 5666.01 both yield 417.83 (engine takes no cash input)',function(){
+    var a=computeCommissionTaxObligation(6,{effectiveWD:ewd([[6,843.51]]),taskData:leg(6,1,425.68)}).remaining;
+    var b=computeCommissionTaxObligation(6,{effectiveWD:ewd([[6,843.51]]),taskData:leg(6,1,425.68)}).remaining;
+    assert(a===417.83&&b===417.83,'both 417.83');
+  });
+  test('B1-A3: authoritative candidate is 417.83, never 365.32',function(){
+    var o=computeCommissionTaxObligation(6,{effectiveWD:ewd([[6,843.51]]),taskData:leg(6,1,425.68)});
+    assert(o.remaining===417.83&&o.remaining!==365.32,'417.83 not 365.32');
+  });
+  test('B1-B1: full 417.83 against a fresh candidate is ALLOWED',function(){
+    var opts={effectiveWD:ewd([[6,843.51]]),taskData:leg(6,1,425.68)};
+    var o=computeCommissionTaxObligation(6,opts);
+    assert(_ctWriteGuard(ctx(417.83,o.candidate_context),6,Object.assign({taskRows:[]},opts)).allow,'417.83 allowed');
+  });
+  test('B1-B2: a fresh valid PARTIAL (200 ≤ remaining) is allowed at the engine level',function(){
+    var opts={effectiveWD:ewd([[6,843.51]]),taskData:leg(6,1,425.68)};
+    var o=computeCommissionTaxObligation(6,opts);
+    assert(_ctWriteGuard(ctx(200,o.candidate_context),6,Object.assign({taskRows:[]},opts)).allow,'partial allowed');
+  });
+  test('B1-B3: STALE 365.32 (context mismatch) REFUSED — by staleness, not magnitude',function(){
+    var opts={effectiveWD:ewd([[6,843.51]]),taskData:leg(6,1,425.68)};
+    var g=_ctWriteGuard(ctx(365.32,'STALE-CONTEXT'),6,Object.assign({taskRows:[]},opts));
+    assert(!g.allow&&g.reason==='stale_or_absent_candidate','refused stale: '+g.reason);
+  });
+  test('B1-B4: absent candidate_context refused',function(){
+    var opts={effectiveWD:ewd([[6,843.51]]),taskData:leg(6,1,425.68)};
+    assert(!_ctWriteGuard(ctx(417.83,null),6,Object.assign({taskRows:[]},opts)).allow,'absent context refused');
+  });
+  test('B1-B5: amount > remaining + tolerance refused',function(){
+    var opts={effectiveWD:ewd([[6,843.51]]),taskData:leg(6,1,425.68)};
+    var o=computeCommissionTaxObligation(6,opts);
+    assert(_ctWriteGuard(ctx(500,o.candidate_context),6,Object.assign({taskRows:[]},opts)).reason==='exceeds_remaining','over-remaining refused');
+  });
+  test('B1-B6: zero / negative / NaN / non-finite refused',function(){
+    var opts={effectiveWD:ewd([[6,843.51]]),taskData:leg(6,1,425.68)};
+    var o=computeCommissionTaxObligation(6,opts);
+    [0,-5,NaN,Infinity].forEach(function(v){ assert(!_ctWriteGuard(ctx(v,o.candidate_context),6,Object.assign({taskRows:[]},opts)).allow,'refused '+v); });
+  });
+  test('B1-B7: overwrite of a non-null completed_amount refused',function(){
+    var opts={effectiveWD:ewd([[6,843.51]]),taskData:leg(6,1,425.68),taskRows:[{taskIdx:1,completed:true,actionKey:'commission_tax'}]};
+    var o=computeCommissionTaxObligation(6,opts);
+    var g=_ctWriteGuard({actionKey:'commission_tax',amount:417.83,candidate_context:o.candidate_context,completedLabel:'Commission tax',matchTaskIdx:1},6,opts);
+    assert(!g.allow&&g.reason==='would_overwrite_completed_amount','overwrite refused: '+g.reason);
+  });
+  // C — multiple obligations / origin attribution
+  test('B1-C1: multi-origin + unattributed leg ⇒ ambiguous fail-closed (no manufactured allocation)',function(){
+    var m=computeCommissionTaxObligations({effectiveWD:ewd([[6,843.51],[7,700.90]]),taskData:leg(6,1,425.68)});
+    assert(m.ambiguous&&m.obligations[6].control_status==='fail_closed'&&m.obligations[7].control_status==='fail_closed','ambiguous fail-closed');
+  });
+  test('B1-C2: multi-origin, no legs ⇒ each separable at its full override total',function(){
+    var m=computeCommissionTaxObligations({effectiveWD:ewd([[6,843.51],[7,700.90]]),taskData:{}});
+    assert(!m.ambiguous&&m.obligations[6].remaining===843.51&&m.obligations[7].remaining===700.90,'separable');
+  });
+  test('B1-C3: exact-week matching is NOT attribution (wk6 leg + 2 origins ⇒ fail-closed, not attributed)',function(){
+    var m=computeCommissionTaxObligations({effectiveWD:ewd([[6,843.51],[7,700.90]]),taskData:leg(6,1,425.68)});
+    assert(m.obligations[6].control_status==='fail_closed','wk6 leg NOT auto-attributed to wk6 origin');
+  });
+  // D — Edit-Week / tolerance / determinism / carry-slide
+  test('B1-D1: Edit-Week taxable increase — prior 425.68 leg unchanged; remaining = new total − 425.68',function(){
+    var before=computeCommissionTaxObligation(6,{effectiveWD:ewd([[6,843.51]]),taskData:leg(6,1,425.68)});
+    var after =computeCommissionTaxObligation(6,{effectiveWD:ewd([[6,1300.00]]),taskData:leg(6,1,425.68)});
+    assert(before.executed_total===425.68&&after.executed_total===425.68,'leg immutable 425.68');
+    assert(after.remaining===874.32,'remaining recomputed 1300−425.68=874.32, got '+after.remaining);
+  });
+  test('B1-D2: over-credit ≤ $1 ⇒ remaining 0 informational; > $1 ⇒ fail-closed',function(){
+    var a=computeCommissionTaxObligation(6,{effectiveWD:ewd([[6,400]]),taskData:leg(6,1,400.80)});
+    assert(a.remaining===0&&a.warning_review_state==='informational','≤$1 → 0/informational');
+    assert(computeCommissionTaxObligation(6,{effectiveWD:ewd([[6,400]]),taskData:leg(6,1,402)}).control_status==='fail_closed','>$1 → fail_closed');
+  });
+  test('B1-D3: recomputation is deterministic (identical output)',function(){
+    var a=JSON.stringify(computeCommissionTaxObligation(6,{effectiveWD:ewd([[6,843.51]]),taskData:leg(6,1,425.68)}));
+    var b=JSON.stringify(computeCommissionTaxObligation(6,{effectiveWD:ewd([[6,843.51]]),taskData:leg(6,1,425.68)}));
+    assert(a===b,'deterministic');
+  });
+  test('B1-D4: carry-slide — a leg executed in a later week does not change remaining (single origin)',function(){
+    var a=computeCommissionTaxObligation(6,{effectiveWD:ewd([[6,843.51]]),taskData:leg(6,3,425.68)}).remaining;
+    var b=computeCommissionTaxObligation(6,{effectiveWD:ewd([[6,843.51]]),taskData:leg(7,0,425.68)}).remaining;
+    assert(a===417.83&&b===417.83,'carry-slide stable');
+  });
+  // ELIG — executed-leg attribution boundary (the eligibility window; no chronology/label/position inference)
+  test('B1-ELIG-1: pre-origin legacy leg (wk2 375.68) EXCLUDED from the wk6 843.51 obligation → 417.83, not 42.15',function(){
+    var td=Object.assign(leg(2,0,375.68),leg(6,1,425.68));
+    var o=computeCommissionTaxObligation(6,{effectiveWD:ewd([[6,843.51]]),taskData:td});
+    assert(o.remaining===417.83,'wk2 leg excluded → 417.83, got '+o.remaining);
+    assert(o.executed_total===425.68&&o.valid_executed_legs.length===1,'only the wk6 leg counted');
+  });
+  test('B1-ELIG-2: Weeks 23/24 (= model wk1/2) legacy commission_tax rows excluded (before origin wk6)',function(){
+    var td=Object.assign(leg(1,0,100),leg(2,0,375.68),leg(6,1,425.68));
+    var o=computeCommissionTaxObligation(6,{effectiveWD:ewd([[6,843.51]]),taskData:td});
+    assert(o.remaining===417.83&&o.valid_executed_legs.length===1,'wk1/wk2 legacy excluded');
+  });
+  test('B1-ELIG-3: adding an earlier historical leg does NOT reduce the 417.83 remainder',function(){
+    var base=computeCommissionTaxObligation(6,{effectiveWD:ewd([[6,843.51]]),taskData:leg(6,1,425.68)}).remaining;
+    var withEarlier=computeCommissionTaxObligation(6,{effectiveWD:ewd([[6,843.51]]),taskData:Object.assign(leg(3,0,500),leg(6,1,425.68))}).remaining;
+    assert(base===417.83&&withEarlier===417.83,'earlier leg ignored, got '+withEarlier);
+  });
+  test('B1-ELIG-4: the current 425.68 leg (at origin wk6) remains eligible for the wk6 obligation',function(){
+    var o=computeCommissionTaxObligation(6,{effectiveWD:ewd([[6,843.51]]),taskData:leg(6,1,425.68)});
+    assert(o.valid_executed_legs.length===1&&o.valid_executed_legs[0].amount===425.68&&o.remaining===417.83,'425.68 eligible → 417.83');
+  });
+  test('B1-ELIG-5: an unattributable (multi-origin in-window) leg → fail_closed, NOT an incorrect remaining',function(){
+    var m=computeCommissionTaxObligations({effectiveWD:ewd([[6,843.51],[7,700.90]]),taskData:leg(6,1,425.68)});
+    assert(m.obligations[6].control_status==='fail_closed'&&m.obligations[6].remaining===0,'fail-closed, no incorrect remaining');
+  });
+  test('B1-ELIG-6: only ELIGIBLE legs are scanned — a malformed PRE-origin leg does not fail the obligation',function(){
+    var td=Object.assign(leg(2,0,'abc'),leg(6,1,425.68));
+    var o=computeCommissionTaxObligation(6,{effectiveWD:ewd([[6,843.51]]),taskData:td});
+    assert(o.control_status==='ok'&&o.remaining===417.83,'pre-origin malformed leg excluded, not fail-closed');
+  });
+  test('B1-ELIG-7: an IN-WINDOW malformed leg DOES fail closed (does not silently drop to a wrong remaining)',function(){
+    var o=computeCommissionTaxObligation(6,{effectiveWD:ewd([[6,843.51]]),taskData:leg(6,1,'abc')});
+    assert(o.control_status==='fail_closed'&&o.reason==='malformed_executed_amount','in-window malformed → fail_closed');
+  });
+  // E — subsystem boundaries
+  test('B1-E1: B1 is a SEPARATE computation — not merged into computeGoalTransferNetting',function(){
+    assert(typeof computeCommissionTaxObligation==='function'&&typeof computeGoalTransferNetting==='function','both exist');
+    var gStart=html.indexOf('function computeGoalTransferNetting');
+    var gBody=html.slice(gStart,html.indexOf('\nfunction ',gStart+20));
+    assert(!gBody.includes('computeCommissionTaxObligation'),'goal netting does not call B1');
+  });
+  test('B1-E2: B1 shared fn reads no reconData/weekly_reconciliations.tax and creates no cash_commitment',function(){
+    var body=html.slice(html.indexOf('function _ctCents'),html.indexOf('function computeGoalTransferNetting'));
+    assert(!body.includes('reconData')&&!body.includes('weekly_reconciliations'),'B1 does not consume reconciliation tax');
+    assert(!body.includes('cash_commitments'),'B1 creates no tax cash_commitment');
+  });
+})();
+
 console.log('\n╔══════════════════════════════════════════════════════════════╗');
 console.log('║                       RESULTS                               ║');
 console.log('╚══════════════════════════════════════════════════════════════╝');
