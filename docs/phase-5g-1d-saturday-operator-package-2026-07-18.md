@@ -45,9 +45,12 @@ byte-identical):
 | Readiness fallbacks | **0 / 0** |
 | `origin/main` | `5bd6c69787bee7a8fe26ee1fb2ceb0528526d6f1` (unchanged) |
 
-**Sitting status:** **B1 PASSED (2026-07-17); B2 remains HELD** — it resumes only after independent
-review of the new consolidated artifact + Adam go-ahead, by running BOTH validation files at §2
-step 3. **Activation remains UNAUTHORIZED.**
+**Sitting status (updated 2026-07-17):** **Section A, B1, B2 (`pre_phase_1` 17/17), §2b prechecks — ALL
+PASS. Approval Gate 1 authorized; Phase-1 grants EXECUTED; `post_phase_1` 17/17 PASS.** The consolidated
+artifact was independently reviewed = **CLEAR TO ACCEPT** (commit `b02769b`, pushed). Wrapper + Option B
+now `authenticated`-EXECUTE (anon none); owner/bodies unchanged; old recon RPC still granted. **Now HELD
+at 🛑 Approval Gate 2 (BUILD_TS stamp + merge/deploy) — deploy, Phase-2 revokes, Week-28 closeout, and the
+commission-tax transfer remain UNAUTHORIZED.**
 
 The v5/v4/v3/v2/v1 banners below are retained as history.
 

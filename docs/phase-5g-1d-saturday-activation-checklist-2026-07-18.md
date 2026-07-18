@@ -18,11 +18,13 @@
 
 ## B. Production prechecks (read-only) (~15 min) — §2 step 2–3, §2b, §4, §12
 
-> **Status (2026-07-17): B1 executed — PASS. B2 HELD.** The consolidated 17-check artifact required
-> by B2 did not exist; it was authored under the **v6 reissue**
-> (`docs/phase-5g-1d-activation-grants-validation-consolidated.sql`). **B2 resumes only after
-> independent review of that artifact + Adam go-ahead**, by running BOTH validation files below.
-> No production mutation has occurred.
+> **Status (2026-07-17): Section A, B1, B2a, B2b, §2b prechecks ALL PASS; Approval Gate 1 authorized; PHASE 1 GRANTS EXECUTED (post_phase_1 17/17).** The v6 consolidated 17-check artifact was
+> independently reviewed = **CLEAR TO ACCEPT** (commit `b02769b`, pushed) and ran green at
+> `pre_phase_1` (B2) and `post_phase_1` (step 5), each 17/17 with the independent DO PASS.
+> Phase 1 (`activation-grants.sql`) granted wrapper + Option B `authenticated` EXECUTE (anon none);
+> owner/bodies unchanged; old recon RPC still granted. **Now HELD at 🛑 Approval Gate 2 (BUILD_TS
+> stamp + merge/deploy) — UNAUTHORIZED.** Phase 2 revokes, Week-28 closeout, and the commission-tax
+> transfer remain unauthorized.
 
 - [ ] **B1** Adjunct preflight `gateb-adjunct-preflight.sql` → `ADJUNCT PREFLIGHT PASS`; wk5 9/2/11; recon 5 rows wks 1–5; snaps @ wk≥6 = 0 (§4) — **PASS 2026-07-17**
 - [ ] **B2a** Pre-Phase-1 raw matrices `activation-grants-validation.sql` → capture fn/tbl/md5/owner outputs verbatim (§2 step 3)
@@ -108,9 +110,9 @@
 
 ## Activation Record
 *(permanent operator record — fill in during the sitting)*
-- Activation started: ____________________
+- Activation started: **2026-07-17** (Section A–B complete; Approval Gate 1 authorized; Phase-1 grants executed)
 - Activation completed: ____________________
 - Final activation branch commit: ____________________
 - Merge commit to main: ____________________
 - Live BUILD_TS: ____________________
-- Notes: ____________________
+- Notes: **Phase 1 grants (`activation-grants.sql`) executed 2026-07-17 — wrapper + Option B `authenticated` EXECUTE granted (anon none); owner/bodies unchanged; old recon RPC still granted. Consolidated validation 17/17 at `pre_phase_1` (B2) and `post_phase_1` (step 5). Held at 🛑 Approval Gate 2 (BUILD_TS stamp + merge/deploy). Phase 2 / closeout / commission-tax transfer NOT yet authorized.**
