@@ -885,7 +885,7 @@ button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-vis
 // ── Constants (unchanged) ──────────────────────────────────────────────────
 // Simplified architecture — $8,250 total from LC · $6,500 operating floor · no legacy mechanics
 // Real-world moves: keep $2,250 in chk, move $2,750 sav→chk, move $1,000 LC→chk, move $2,250 LC→chk (Option 1 correction)
-const BUILD_TS='2026-07-18T18:34:31'; // updated each push — local time string
+const BUILD_TS='2026-07-18T18:36:43'; // updated each push — local time string
 const START_CHK=18037.73,START_SAV=3772.77,START_AMX=103.64,START_TAX=0,START_LC=13488.88;
 const EF_AMT=13488.88; // LC/EF balance — static this model year (no transfers in or out)
 const BASE_TAX=521.36,RET_SAV_XFR=3772.74;
@@ -1844,18 +1844,30 @@ function getTaggedWD(wdArray){
     var num=wd[0],evs=wd[4],ct=wd[5];
     var taggedEvs=(evs||[]).map(function(ev){return tagProtectedWDEvent(ev,num);});
     if(ct>0){
-      var wkStart=getWeekStartDate(num);
-      var dueDateStr=_wdDueDateStr(wkStart.getMonth()+1,wkStart.getDate(),wkStart.getFullYear());
-      taggedEvs=taggedEvs.concat([{
-        l:'Commission tax transfer — Vio Bank Tax Reserve (projected)',t:'ob',a:-ct,
-        eid:buildExpectedItemId(PLAN_YEAR,num,'tax_transfer_vio',dueDateStr),
-        cc:'tax_transfer',rod:'protected_required',synthetic:true,
-        // Phase 2 additive: synthetic event is not in WD_PROTECTED_PAYEE_RULES, so its
-        // payee/displayLabel are set explicitly here; due_date uses the week-start proxy.
-        payee:'Commission tax transfer (Vio Bank)',
-        displayLabel:'Commission tax reserve (Vio Bank)',
-        due_date:wkStart.getFullYear()+'-'+_wdPad2(wkStart.getMonth()+1)+'-'+_wdPad2(wkStart.getDate())
-      }]);
+      // B1: surface the AUTHORITATIVE REMAINING obligation (never the full ct, never the runModel
+      // projection). remaining≈0 ⇒ suppress; fail-closed (e.g. multi-origin) ⇒ emit no candidate
+      // (recon falls to owner review under the never-answer rule). eid is UNCHANGED (identity stable).
+      var _b1o=(typeof computeCommissionTaxObligation==='function')?computeCommissionTaxObligation(num,{effectiveWD:wdArray}):null;
+      var _b1amt=ct, _b1ctx=null, _b1emit=true;
+      if(_b1o){
+        if(_b1o.control_status!=='ok'){_b1emit=false;}
+        else if(_b1o.remaining<=_NET_TOL){_b1emit=false;}
+        else {_b1amt=_b1o.remaining;_b1ctx=_b1o.candidate_context;}
+      }
+      if(_b1emit){
+        var wkStart=getWeekStartDate(num);
+        var dueDateStr=_wdDueDateStr(wkStart.getMonth()+1,wkStart.getDate(),wkStart.getFullYear());
+        taggedEvs=taggedEvs.concat([{
+          l:'Commission tax transfer — Vio Bank Tax Reserve (projected)',t:'ob',a:-_b1amt,
+          eid:buildExpectedItemId(PLAN_YEAR,num,'tax_transfer_vio',dueDateStr),
+          cc:'tax_transfer',rod:'protected_required',synthetic:true,candidate_context:_b1ctx,
+          // Phase 2 additive: synthetic event is not in WD_PROTECTED_PAYEE_RULES, so its
+          // payee/displayLabel are set explicitly here; due_date uses the week-start proxy.
+          payee:'Commission tax transfer (Vio Bank)',
+          displayLabel:'Commission tax reserve (Vio Bank)',
+          due_date:wkStart.getFullYear()+'-'+_wdPad2(wkStart.getMonth()+1)+'-'+_wdPad2(wkStart.getDate())
+        }]);
+      }
     }
     var copy=wd.slice();
     copy[4]=taggedEvs;
@@ -3610,6 +3622,15 @@ async function toggleTransfer(weekNum,ctxKey,checked){
   }
   var ctx=_xfrWriteCtx[ctxKey]||{};
   var rows=_taskRowsForWeek(weekNum);
+  // B1: commission_tax write-time guard — recompute the obligation from DURABLE TRUTH and refuse:
+  // fail-closed obligation; non-positive/non-finite amount; amount > remaining + tolerance; STALE or
+  // absent candidate_context (this rejects a stale 365.32, NOT because it is < remaining); or overwrite
+  // of a non-null completed_amount. A fresh partial (amount ≤ remaining + tol) is permitted at the engine
+  // level; today the checkbox UI only submits the full authoritative candidate (a UI limitation).
+  if(checked&&ctx.actionKey===ACTION_KEYS.COMMISSION_TAX){
+    var _cgd=_ctWriteGuard(ctx,weekNum,{taskRows:rows});
+    if(!_cgd.allow){console.warn('toggleTransfer: commission_tax refused — '+_cgd.reason);renderApp();return;}
+  }
   var tgt=_resolveWriteTarget({checked:checked,actionKey:ctx.actionKey,completedLabel:ctx.completedLabel,matchTaskIdx:ctx.matchTaskIdx,taskRows:rows});
   if(tgt.taskIdx==null){renderApp();return;}
   var payload=_buildWeeklyTaskPayload(weekNum,tgt.taskIdx,checked,ctx.actionKey,ctx.completedLabel,ctx.amount);
@@ -3750,48 +3771,12 @@ async function saveWeekEdits(n){
       var _g=getGoals();
       var _preModelWks=runModel(_g.ak,_g.rt);
       _preWk=_preModelWks.find(function(w){return w.num===weekNum;})||null;
-      // ── Commission_tax delta (form-value comparison, no post-model needed) ──
-      var _oldCt=(overrideData[weekNum]||{}).ct||0;
-      var _deltaCt=Math.round((ct-_oldCt)*100)/100;
-      if(_deltaCt>0.005){
-        // 5G-1B B1: select the backfill target by PERSISTED IDENTITY (own action_key === commission_tax),
-        // NEVER by display position — a foreign completed row (e.g. Adam IRA) sitting at the commission
-        // display index must never be rewritten. Skip (no patch) + warn on >1, or on a foreign-at-index.
-        var _ctMatches=_taskRowsForWeek(weekNum).filter(function(r){return r.completed&&r.actionKey===ACTION_KEYS.COMMISSION_TAX;});
-        var _ctPosIdx=_preWk?(_preWk.realActKeys||[]).indexOf(ACTION_KEYS.COMMISSION_TAX):-1;
-        if(_ctMatches.length>1){
-          console.warn('autoBackfillCommTax: '+_ctMatches.length+' completed commission_tax rows in wk'+weekNum+' — skipping backfill (ambiguous, no patch)');
-        } else if(_ctMatches.length===0){
-          var _ctPos=(_ctPosIdx>=0)?taskData[weekNum+'_'+_ctPosIdx]:null;
-          if(_ctPos&&_ctPos.completed)console.warn('autoBackfillCommTax: no identity match for commission_tax but a foreign completed row (key='+_ctPos.actionKey+') occupies its display index in wk'+weekNum+' — protected, no patch');
-        } else {
-          var _ctIdx=_ctMatches[0].taskIdx;
-          var _ctTaskKey=weekNum+'_'+_ctIdx;
-          var _ctPrevAmt=taskData[_ctTaskKey].completedAmount; // snapshot
-          taskData[_ctTaskKey].completedAmount=_oldCt;
-          // action_key already IS commission_tax (identity-selected) — never rewrite a foreign key
-          var _ctPatchR=await fetch(SUPA_URL+'/rest/v1/weekly_tasks?week_num=eq.'+weekNum+'&task_idx=eq.'+_ctIdx,{method:'PATCH',headers:Object.assign({},_ewh,{'Prefer':'return=minimal'}),body:JSON.stringify({completed_amount:_oldCt,action_key:ACTION_KEYS.COMMISSION_TAX})}).catch(function(e){console.error('autoBackfillCompletedAmount:',e);return null;});
-          if(!_ctPatchR||!_ctPatchR.ok){
-            taskData[_ctTaskKey].completedAmount=_ctPrevAmt; // roll back
-            console.warn('autoCustomTask: task backfill PATCH failed; reverted completed_amount');
-          } else {
-            var _id='ct_'+Date.now()+'_'+Math.random().toString(36).slice(2,6);
-            var _lbl='Transfer $'+fc(_deltaCt)+' from Truist Checking to Vio Bank – Tax Reserve (commission 40% on additional income)';
-            if(!customTaskData[weekNum])customTaskData[weekNum]=[];
-            customTaskData[weekNum].push({id:_id,label:_lbl,completed:false});
-            setTaskMeta(_id,{type:'transfer',source:'user',reminderKey:null,lockedLabel:false,dismissed:false,version:1});
-            var _ctCtR=await fetch(SUPA_URL+'/rest/v1/custom_tasks',{method:'POST',headers:Object.assign({},_ewh,{'Prefer':'return=minimal'}),body:JSON.stringify({id:_id,week_num:weekNum,label:_lbl,completed:false})}).catch(function(e){console.error('autoCustomTask:',e);return null;});
-            if(!_ctCtR||!_ctCtR.ok){
-              customTaskData[weekNum]=(customTaskData[weekNum]||[]).filter(function(t){return t.id!==_id;});
-              delete customTaskMeta[_id];
-              console.warn('autoCustomTask: custom task POST failed; local task removed');
-            } else {
-              var _ctMetaOk=await saveCustomTaskMeta();
-              if(!_ctMetaOk){delete customTaskMeta[_id];console.warn('autoCustomTask: task row saved but metadata save failed; local meta cleared');}
-            }
-          }
-        }
-      }
+      // ── B1: commission_tax completed-row delta-PATCH REMOVED ──
+      // The prior code PATCHed the completed commission_tax row's completed_amount to the OLD ct and
+      // spawned a delta custom-task. B1 replaces this with recompute-only: existing completed_amount
+      // values stay IMMUTABLE; the new total obligation persists via overrideData[weekNum]=payload
+      // (below), and remaining = new_total − Σ existing durable executed legs is recomputed by the shared
+      // netting fn on next render. This is the condition that retires the operator package §2d restriction.
     }
     overrideData[weekNum]=payload;
     // ── Goal sweep delta detection (post-save — runs model with NEW override in memory) ──
@@ -5059,12 +5044,37 @@ function renderWeekDetail(w,weeks){
         // (checking the $425.68 leg must persist completed_amount=425.68, not null).
         var _ctAmtM=(actionKey===ACTION_KEYS.COMMISSION_TAX)?(/\$([0-9,]+(?:\.[0-9]+)?)/.exec(a)):null;
         var _ctAmt=_ctAmtM?parseFloat(_ctAmtM[1].replace(/,/g,'')):null;
+        // B1: normalize the commission_tax actionable amount to the AUTHORITATIVE REMAINING obligation
+        // (durable truth, NOT the runModel projection). fail-closed ⇒ non-executable review row (no write
+        // ctx); remaining≈0 ⇒ read-only reserved row (no write ctx); else display + write = remaining, and
+        // carry the candidate_context so the write guard can reject a stale/absent candidate.
+        var _b1CtCtx=null;
+        if(actionKey===ACTION_KEYS.COMMISSION_TAX){
+          var _b1r=(typeof _ctResolveSingle==='function')?_ctResolveSingle():null;
+          if(_b1r&&_b1r.fail){
+            return'<div class="task-row net-blocked" style="background:var(--amberSoft);border-radius:7px;padding:6px 8px">'+
+              '<span class="xi" style="color:var(--amber);font-weight:700">⚠</span>'+
+              '<div class="task-text"><span class="act-type-badge" style="background:var(--amber);border:none;color:#fff">Review required</span>'+esc(a)+
+              '<div class="deferred-why">Commission-tax execution disabled — '+esc(_b1r.reason||'obligation ambiguous')+'. Owner review required (durable per-leg origin deferred).</div></div></div>';
+          }
+          if(_b1r&&_b1r.ok){
+            if(_b1r.remaining<=_NET_TOL){
+              return'<div class="task-row net-satisfied" style="opacity:.68">'+
+                '<input type="checkbox" class="task-check" checked disabled title="Commission-tax obligation fully reserved — not executable">'+
+                '<div class="task-text done"><span class="act-type-badge" style="background:var(--green);border:none;color:#fff">Reserved</span>'+esc(a.replace(/\$[0-9,]+(?:\.[0-9]+)?/,'$'+fc(_b1r.remaining)))+
+                '<span class="task-date">Fully reserved</span></div></div>';
+            }
+            a=a.replace(/\$[0-9,]+(?:\.[0-9]+)?/,'$'+fc(_b1r.remaining));   // display the authoritative remaining
+            _ctAmt=_b1r.remaining;                                          // write the authoritative remaining
+            _b1CtCtx=_b1r.candidate_context;
+          }
+        }
         // For a PARTIAL, the executable/write amount is the NET remaining (completed_label stays the
         // model recommendation so the resolver still matches it as this obligation on the next render).
         var _amtVal=_isPartial?_net.netAmount:((actionKey===ACTION_KEYS.COMMISSION_TAX)?_ctAmt:(_isGoalKey&&_goalAmt!=null?_goalAmt:null));
         var _partialNote=_isPartial?'<div class="act-override-note" style="color:var(--amber)">⚠ Partial — only '+f(_net.netAmount)+' remains to execute'+((_goalAmt!=null)?' ('+f(Math.max(0,Math.round((_goalAmt-_net.netAmount)*100)/100))+' already transferred this cycle)':'')+'. Confirm before executing.</div>':'';
         // Resolver-aware write context: identity + matched persisted task_idx (NOT the display index)
-        _xfrWriteCtx[_ctxKey]={actionKey:actionKey||null,completedLabel:a,amount:_amtVal,matchTaskIdx:_cr.matchTaskIdx};
+        _xfrWriteCtx[_ctxKey]={actionKey:actionKey||null,completedLabel:a,amount:_amtVal,matchTaskIdx:_cr.matchTaskIdx,candidate_context:_b1CtCtx};
         return'<div class="task-row'+(hasOv?' edited':'')+(_isPartial?' net-partial':'')+'">'+
           '<input type="checkbox" class="task-check" '+(done?'checked':'')+(canWriteFinancials()?'':' disabled')+' onchange="toggleTransfer('+w.num+',\''+_ctxKey+'\',this.checked)">'+
           '<div class="task-text'+(done?' done':'')+'">'+badge+esc(a)+'<span class="task-date">'+getWeekDate(w.num)+'</span>'+noteHtml+_partialNote+'</div>'+

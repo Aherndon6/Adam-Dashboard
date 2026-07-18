@@ -7326,12 +7326,12 @@ test('5E7-N6: saveCustomTask checks saveCustomTaskMeta() return value',()=>{
   assertIncludes(fn,'metaOk=await saveCustomTaskMeta()','saveCustomTask must capture saveCustomTaskMeta() return value');
 });
 
-test('5E7-N7: autoCustomTask branch checks saveCustomTaskMeta() return value',()=>{
-  var start=html.indexOf('async function saveWeekEdits(');
-  assert(start!==-1,'saveWeekEdits must exist');
-  var end=html.indexOf('\n}',start+10)+2;
-  var fn=html.slice(start,end);
-  assertIncludes(fn,'_ctMetaOk=await saveCustomTaskMeta()','autoCustomTask branch must capture saveCustomTaskMeta() return value');
+test('5E7-N7 (B1): commission-tax delta-PATCH / autoCustomTask branch REMOVED from saveWeekEdits',()=>{
+  // B1 retires the delta-backfill: existing completed_amount is immutable; the new total persists via the
+  // override and remaining is recomputed. The old completed_amount PATCH + delta custom-task spawn are gone.
+  assert(!html.includes('taskData[_ctTaskKey].completedAmount=_oldCt'),'B1: commission_tax completed_amount delta-PATCH must be removed');
+  assert(!html.includes("var _lbl='Transfer $'+fc(_deltaCt)"),'B1: delta custom-task spawn must be removed');
+  assertIncludes(html,'commission_tax completed-row delta-PATCH REMOVED','B1: removal is documented in saveWeekEdits');
 });
 
 test('5E7-N8: autoCustomTaskGoal branch checks saveCustomTaskMeta() return value',()=>{
@@ -12901,12 +12901,13 @@ console.log('\n── Section 5G-1D Slice 4c: half-close repair confirmation ─
     });
   });
   // ── Source-structure guard: writers select by identity; the positional action_key rewrite is GONE ──
-  test('5G1B-WRITE-7: backfill writers use identity selection; the positional action_key rewrite is removed (regression lock)',function(){
-    assertIncludes(html,"_ctMatches=_taskRowsForWeek(weekNum).filter(function(r){return r.completed&&r.actionKey===ACTION_KEYS.COMMISSION_TAX;})",'commission backfill selects by identity');
+  test('5G1B-WRITE-7 (B1): goal backfill still identity-selects; commission-tax delta-PATCH removed (regression lock)',function(){
+    // Goal-sweep backfill (out of B1 scope) unchanged — still identity-selected, no positional rewrite.
     assertIncludes(html,"_gMatches=_taskRowsForWeek(weekNum).filter(function(r){return r.completed&&r.actionKey===aKey;})",'goal backfill selects by identity');
-    assert(!html.includes("if(_ctIdx>=0&&taskData[weekNum+'_'+_ctIdx]&&taskData[weekNum+'_'+_ctIdx].completed)"),'old positional commission selector removed');
-    assert(!html.includes("taskData[_ctTaskKey].actionKey=ACTION_KEYS.COMMISSION_TAX;"),'commission action_key local-rewrite removed');
     assert(!html.includes("taskData[_gTaskKey].actionKey=aKey;"),'goal action_key local-rewrite removed');
+    // B1: the commission_tax delta-PATCH/backfill is REMOVED entirely (completed_amount immutable; recompute-only).
+    assert(!html.includes("taskData[_ctTaskKey].completedAmount=_oldCt"),'B1: commission_tax completed_amount delta-PATCH removed');
+    assert(!html.includes("_ctMatches=_taskRowsForWeek(weekNum).filter(function(r){return r.completed&&r.actionKey===ACTION_KEYS.COMMISSION_TAX;})"),'B1: commission_tax backfill selector removed');
   });
   // ── B3 identity completion reads (_modelRowDone / _modelRowOpen) ──
   function withState(rows,weeks,fn){
@@ -12957,6 +12958,21 @@ console.log('\n── Section 5G-1D Slice 4c: half-close repair confirmation ─
     var o=computeCommissionTaxObligation(6,{effectiveWD:ewd([[6,843.51]]),taskData:leg(6,1,425.68)});
     assert(o.remaining===417.83&&o.remaining!==365.32,'417.83 not 365.32');
   });
+  test('B1-A4: synthetic candidate surfaces remaining (417.83), eid stable, suppressed at remaining 0',function(){
+    var _ov=overrideData,_td=taskData;
+    try{
+      overrideData={6:{ct:843.51}}; taskData={'6_1':{completed:true,actionKey:'commission_tax',completedAmount:425.68}};
+      var tw=getTaggedWD(reconEffectiveWD()).find(function(w){return w[0]===6;});
+      var syn=(tw[4]||[]).find(function(e){return e.synthetic&&e.cc==='tax_transfer';});
+      assert(syn,'synthetic exists'); assert(Math.abs((-syn.a)-417.83)<0.005,'amount '+(-syn.a)+' == 417.83');
+      assert(/2026mw6_tax_transfer_vio/.test(syn.eid),'eid stable: '+syn.eid);
+      assert(typeof syn.candidate_context==='string'&&syn.candidate_context.length>0,'candidate_context present');
+      taskData={'6_1':{completed:true,actionKey:'commission_tax',completedAmount:417.83},'6_2':{completed:true,actionKey:'commission_tax',completedAmount:425.68}};
+      var tw2=getTaggedWD(reconEffectiveWD()).find(function(w){return w[0]===6;});
+      assert(!(tw2[4]||[]).some(function(e){return e.synthetic&&e.cc==='tax_transfer';}),'remaining 0 suppresses synthetic');
+    } finally { overrideData=_ov; taskData=_td; }
+  });
+  // B — write guard (partial-tolerant; staleness discriminates)
   test('B1-B1: full 417.83 against a fresh candidate is ALLOWED',function(){
     var opts={effectiveWD:ewd([[6,843.51]]),taskData:leg(6,1,425.68)};
     var o=computeCommissionTaxObligation(6,opts);
