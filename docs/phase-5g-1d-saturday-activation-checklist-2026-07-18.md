@@ -33,7 +33,24 @@
 - [ ] §2b unattributable-rows scan → **zero rows** (§2b) — **HARD STOP** if any
 - [ ] Snapshot count @ wk≥6 = 0; reconciliation = 5 rows (wks 1–5) (§4)
 
-## C. Commission gate (NEW v4) (~5 min) — §2c
+## C. Commission gate — posting-state pre-assessment now; EXECUTION deferred to post-deploy — §2c / §2d
+
+> **⚠ Sequencing correction (2026-07-17).** This section is lettered before Gate 1, but its **execution
+> cannot run pre-deploy.** On the current (old) production build the open-window
+> recomputation/attribution defect shows a duplicate enabled **$61.06 Adam IRA** task and **no** enabled
+> **$425.68** `commission_tax` task; the correct single enabled $425.68 task only appears on the **deployed
+> pinned build (`4ce6aff`)**, which fixes that defect. Therefore:
+> - **Pre-Gate-1 (DONE 2026-07-17) — read-only pre-assessment only:** Deep South $2,108.78 POSTED; Wendy
+>   $1,752.26 pending → **PATH B expected**; read-only `weekly_tasks` guard = **no** completed Week-28
+>   `commission_tax` row. **No transfer, no task completion here.**
+> - **DEFERRED — execute only AFTER Step 7 live-browser smoke and BEFORE 🛑 Gate 3:** the actual $425.68
+>   Truist→Vio transfer, the correct Week-28 `commission_tax` completion, and the §2d PATH A/B branch run at
+>   the commission-tax gate / Week-28 closeout (§2 steps 8–9). **Step 7 smoke must FIRST confirm the fixed
+>   build shows:** (1) no enabled duplicate Adam IRA task; (2) the executed $61.06 as read-only history;
+>   (3) exactly one enabled **$425.68** `commission_tax` task; (4) narrative "$417.83 carries forward";
+>   (5) no blocked / Review-required row.
+> The checkboxes below execute at that DEFERRED (closeout) point — not here.
+
 - [ ] $2,108.78 Deep South commission has **POSTED** to Truist Checking (posted/cleared, available)
 - [ ] "Processed"/"pending"/provisional does **NOT** qualify
 - [ ] $425.68 commission-tax transfer has **NOT** already occurred (bank + §2b duplicate scan)
@@ -43,6 +60,10 @@
 - [ ] **HARD STOP** if the commission has not posted → do not transfer, do not close Week 28 (delay = contingency annex, roadmap §7)
 
 ## C2. Extra-paycheck taxable-inflow constraint (NEW v5) — §2d
+
+> **Same deferral as Section C:** the PATH A / PATH B *execution* runs at the commission-tax gate /
+> Week-28 closeout (post-Step-7 smoke, before 🛑 Gate 3), not pre-Gate-1.
+
 - [ ] **BINDING RULE:** never save a Week-28 Edit-Week taxable increase **after** any Week-28 `commission_tax` completion (§2d)
 - [ ] Select **PATH A or PATH B by posting order** — never the prohibited middle sequence (§2d)
 - [ ] **PATH A** ($1,752.26 posted, no commission_tax completion yet): enter $1,752.26 taxable → verify **one enabled `$1,544.42`** commission_tax task, **no `$417.83` deferred**, **no additional-income custom task** → transfer + complete **exactly $1,544.42** → verify persisted `completed_amount == 1544.42` → then close (§2d)
