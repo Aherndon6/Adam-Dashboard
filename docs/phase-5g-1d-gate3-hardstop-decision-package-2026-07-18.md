@@ -25,6 +25,15 @@ three resolution paths.
 - Week-6 closeout write path does not read `weekly_tasks`; the 9-goal snapshot reflects **actual**
   funded balances.
 - Historical Baseline A/B fingerprint (§13.4) must not drift.
+- **AMEX Gold Week-28 payment (operator package §14.2):** whichever option is chosen, the Week-28 close
+  must reserve the **actual `$5,666.01`** AMEX Gold payment (supersedes the earlier `$5,718.52` assumption;
+  the model reserves only the ~$5,500 estimate → a +`$166.01` refinement). It is a `protected_required`
+  commitment, so it is reserved/not-freely-available even while in-flight; if the Truist debit has not
+  posted by the Week-28 cutoff, **do not manually reduce the Truist actual** — keep it as an outstanding
+  obligation and record the bank debit on its **actual** posting date (Week-29 if it lands then), retaining
+  the 07/18 initiation evidence. The `$5,666.01` estimate→actual update is a **Week-28 Edit-Week action,
+  gated by the HARD STOP** — bundle it with the selected path's Week-28 actuals entry (do not do it
+  standalone now). This AMEX item does **not** alter the commission-tax HARD STOP.
 
 ---
 

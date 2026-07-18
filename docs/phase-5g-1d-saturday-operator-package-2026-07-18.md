@@ -890,4 +890,51 @@ select count(*) as total, count(*) filter (where completed) as completed,
 select week_num, count(*) as recon_rows from public.weekly_reconciliations group by week_num order by week_num;
 select count(*) as snaps_at_wk6plus from public.goal_funding_snapshots
 where model_year = 2026 and week_num >= 6;
+
+-- V6 (optional) AMEX Gold commitment currently reserved (confirm estimate vs actual)
+select * from public.cash_commitments
+where payee ilike '%AMEX Gold%' or commitment_class = 'credit_card_payment'
+order by due_date;
 ```
+
+### 14.2 AMEX Gold Week-28 payment — corrected amount + in-flight treatment (2026-07-18)
+
+**Corrected fact.** The AMEX Gold payment screen shows statement balance due **`$5,666.01`** (supersedes
+the earlier assumed **`$5,718.52`**), min due `$113.32`, current total balance `$15,521.50`, due **Sat
+07/18/2026**, source **Truist Checking …0608**, payment-effective **today (07/18)** if submitted by
+8:00 p.m. MST. **Not yet submitted.** This is a SEPARATE Week-28 outflow — it does **NOT** remove or alter
+the §14 commission-tax HARD STOP.
+
+**Model treatment (already built-in).** Week 6 (Cal 28) already models AMEX Gold as a
+`credit_card_payment` / `protected_required` obligation (index.html:915, ~$5,500 estimate; classifier
+1779). The Cash Availability Engine (index.html:1756) **RESERVES** `protected_required` commitments, so
+the AMEX Gold cash is **not** treated as freely available even before it debits. The model reserves the
+**~$5,500 estimate**; the actual **`$5,666.01`** is a **+`$166.01`** refinement.
+
+**Date/status distinctions (keep separate):**
+| Concept | Treatment |
+|---|---|
+| AMEX initiation / payment-effective date | expected **07/18** (if submitted by 8 p.m. MST) |
+| AMEX payment status after submission | AMEX-side "processing/pending" — **not** a bank posting |
+| Actual Truist debit posting date | when Truist debits …0608 (07/18 = Saturday → likely posts ~Mon 07/20+) |
+| Week-28 ending actual bank balance | if **not** yet debited by the Week-28 cutoff, the Truist actual **STILL INCLUDES** the `$5,666.01` |
+| In-flight / commitment treatment | reserved as an **outstanding protected obligation**; cash **NOT** freely available |
+
+**In-flight rules:**
+- Submitted today but Truist has not posted the debit by the Week-28 cutoff → **do NOT manually reduce
+  the Week-28 Truist actual balance**; preserve the payment as an **in-flight/outstanding obligation**
+  (the `protected_required` reservation already does this); **do not treat the cash as freely available.**
+- If Truist posts the debit with a **Week-29 date** → record the bank transaction using that **actual
+  posting date**, while retaining evidence the AMEX payment was **initiated/effective 07/18** (transaction
+  memo/note).
+
+**Operator entry required (GATED).** To reserve the ACTUAL `$5,666.01` (vs the ~$5,500 estimate), the
+AMEX Gold amount is updated via **Edit Week on Week 28** — which is **gated by the §14 HARD STOP** (any
+Week-28 Edit-Week save rides the unfixed delta-backfill path). **Defer the `$5,666.01` actual-amount
+update until the Gate-3 correction path (A/B/C) is selected and executed**, bundling it with that path's
+Week-28 actuals entry. The **bank PAYMENT itself** (Truist→AMEX) is an independent operator bank action,
+not a model/Edit-Week operation, and is **not** blocked by the HARD STOP. Confirm the currently-reserved
+amount with **V6** before the correction path executes.
+
+**`$5,718.52`:** **not referenced** anywhere in the repo or the decision package (verified by search) —
+nothing to update; the corrected figure `$5,666.01` is recorded here.
