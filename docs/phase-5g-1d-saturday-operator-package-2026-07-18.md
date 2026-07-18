@@ -905,11 +905,34 @@ the earlier assumed **`$5,718.52`**), min due `$113.32`, current total balance `
 8:00 p.m. MST. **Not yet submitted.** This is a SEPARATE Week-28 outflow — it does **NOT** remove or alter
 the §14 commission-tax HARD STOP.
 
-**Model treatment (already built-in).** Week 6 (Cal 28) already models AMEX Gold as a
-`credit_card_payment` / `protected_required` obligation (index.html:915, ~$5,500 estimate; classifier
-1779). The Cash Availability Engine (index.html:1756) **RESERVES** `protected_required` commitments, so
-the AMEX Gold cash is **not** treated as freely available even before it debits. The model reserves the
-**~$5,500 estimate**; the actual **`$5,666.01`** is a **+`$166.01`** refinement.
+**Model treatment (PROVEN by V6/Q6 — corrected 2026-07-18).** AMEX Gold is **forecast-only in the Week-6
+client model today. It is NOT durably reserved in `public.cash_commitments`.**
+- Week 6 (Cal 28) carries AMEX Gold as a **model forecast obligation event** — `modelData[6]`
+  `{l:'AMEX Gold ~$5,500 …', t:'ob', a:-5500}` (index.html:915). `runModel` subtracts `t:'ob'` outflows,
+  so the ~$5,500 lowers the Week-6 **projected** balance. This is an in-memory forecast, not a durable row.
+- **`cash_commitments` has NO AMEX Gold row** (Q6 verified: exactly 5 rows — four at `origin_model_week=4`,
+  one at week 5, all `protected_required`; **no week-6 row; no AMEX Gold under any payee/class/identifier**).
+  `cash_commitments` is populated **only by reconciliation** (`save_reconciliation_with_commitments` /
+  `buildPhase2NewCommitments`, ≈2825); Week 6 is not reconciled → no row.
+- The **Cash Availability Engine** (index.html:1756) reserves **only from `cash_commitments` rows**
+  (`reservedProtectedCents`, 1757–1759) — with no AMEX Gold row, **it reserves nothing for it**. The WD
+  tagging rule (`WD_PROTECTED_PAYEE_RULES`, ≈1779) is **inert metadata** — "NOT wired into the cash model"
+  (comment 1770–1775).
+- **Net:** the Week-6 forecast subtracts the ~$5,500 model outflow, but the **durable deployable-cash
+  reservation is created only during reconciliation** (the Phase-2 commitment). The actual **`$5,666.01`**
+  is not reserved anywhere durable until then.
+
+**Required closeout entry (create the durable reservation).** During the eventual Week-6
+reconciliation/Phase-2 closeout flow, confirm the AMEX Gold as a NEW `cash_commitments` row with exactly:
+| field | value |
+|---|---|
+| `payee` | **AMEX Gold** |
+| `amount_cents` | **`$5,666.01`** (566601 cents) |
+| `commitment_class` | **`credit_card_payment`** |
+| `required_or_discretionary` | **`protected_required`** |
+| `source_account` | **`truist_checking`** |
+| `status` | **`initiated`** or **`bank_pending`** — per the live payment status at closeout |
+| `affects_deployable_cash` | **`true`** |
 
 **Date/status distinctions (keep separate):**
 | Concept | Treatment |
@@ -918,12 +941,15 @@ the AMEX Gold cash is **not** treated as freely available even before it debits.
 | AMEX payment status after submission | AMEX-side "processing/pending" — **not** a bank posting |
 | Actual Truist debit posting date | when Truist debits …0608 (07/18 = Saturday → likely posts ~Mon 07/20+) |
 | Week-28 ending actual bank balance | if **not** yet debited by the Week-28 cutoff, the Truist actual **STILL INCLUDES** the `$5,666.01` |
-| In-flight / commitment treatment | reserved as an **outstanding protected obligation**; cash **NOT** freely available |
+| In-flight / commitment treatment | treat as an **outstanding protected obligation** (durable reservation is created at the Week-6 closeout — none exists now); cash **NOT** freely available |
 
 **In-flight rules:**
 - Submitted today but Truist has not posted the debit by the Week-28 cutoff → **do NOT manually reduce
-  the Week-28 Truist actual balance**; preserve the payment as an **in-flight/outstanding obligation**
-  (the `protected_required` reservation already does this); **do not treat the cash as freely available.**
+  the Week-28 Truist actual balance**; preserve the payment as an **in-flight/outstanding obligation**.
+  ⚠ Note (per V6/Q6): **no durable reservation exists yet** — the `protected_required` reservation is
+  **created during the Week-6 reconciliation** (the closeout entry above), not before. Until then, treat
+  the `$5,666.01` as reserved **operationally** and **do not treat the cash as freely available**; the
+  closeout must create the commitment so it is durably reserved thereafter.
 - If Truist posts the debit with a **Week-29 date** → record the bank transaction using that **actual
   posting date**, while retaining evidence the AMEX payment was **initiated/effective 07/18** (transaction
   memo/note).
@@ -947,9 +973,9 @@ rides the backfill" wording):
   avoids Week-28 income entry entirely, booking the income in Week 29 instead.)
 
 The **bank PAYMENT itself** (Truist→AMEX) is an independent operator bank action, not a model/Edit-Week
-operation, and is **not** blocked by the HARD STOP. Confirm the currently-reserved amount with **V6**
-(cash_commitments columns `payee`/`commitment_class` verified; `amount_cents` in cents) before the
-correction path executes.
+operation, and is **not** blocked by the HARD STOP. V6/Q6 confirmed **no AMEX Gold `cash_commitments` row
+currently exists** — so there is nothing to update pre-closeout; the durable reservation is **created** at
+the closeout per the "Required closeout entry" table above.
 
 **`$5,718.52`:** **not referenced** anywhere in the repo or the decision package (verified by search) —
 nothing to update; the corrected figure `$5,666.01` is recorded here.

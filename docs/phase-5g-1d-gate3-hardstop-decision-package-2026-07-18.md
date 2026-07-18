@@ -25,15 +25,18 @@ three resolution paths.
 - Week-6 closeout write path does not read `weekly_tasks`; the 9-goal snapshot reflects **actual**
   funded balances.
 - Historical Baseline A/B fingerprint (§13.4) must not drift.
-- **AMEX Gold Week-28 payment (operator package §14.2):** whichever option is chosen, the Week-28 close
-  must reserve the **actual `$5,666.01`** AMEX Gold payment (supersedes the earlier `$5,718.52` assumption;
-  the model reserves only the ~$5,500 estimate → a +`$166.01` refinement). It is a `protected_required`
-  commitment, so it is reserved/not-freely-available even while in-flight; if the Truist debit has not
-  posted by the Week-28 cutoff, **do not manually reduce the Truist actual** — keep it as an outstanding
-  obligation and record the bank debit on its **actual** posting date (Week-29 if it lands then), retaining
-  the 07/18 initiation evidence. The `$5,666.01` estimate→actual update is a **Week-28 Edit-Week action,
-  gated by the HARD STOP** — bundle it with the selected path's Week-28 actuals entry (do not do it
-  standalone now). This AMEX item does **not** alter the commission-tax HARD STOP.
+- **AMEX Gold Week-28 payment (operator package §14.2; V6/Q6-verified):** AMEX Gold is **forecast-only**
+  in the Week-6 client model (`modelData[6]` `t:'ob' -5500`, index.html:915) — it is **NOT** in
+  `cash_commitments` (Q6: 5 rows, weeks 4–5 only; no week-6, no AMEX Gold), so the Cash Availability Engine
+  reserves **nothing** for it today. Whichever option is chosen, the Week-6 close **must CREATE** the
+  durable reservation as a new commitment: `payee=AMEX Gold`, `amount_cents=$5,666.01` (566601),
+  `commitment_class=credit_card_payment`, `required_or_discretionary=protected_required`,
+  `source_account=truist_checking`, `status=initiated|bank_pending` (live status), `affects_deployable_cash=true`.
+  If the Truist debit has not posted by the Week-28 cutoff, **do not manually reduce the Truist actual** —
+  treat it as outstanding and record the bank debit on its **actual** posting date (Week-29 if it lands then),
+  retaining the 07/18 initiation evidence. The outflow-only estimate→actual model update ($5,500→$5,666.01)
+  is **not** §2d-blocked but is bundled into the selected path's supervised Week-28 pass for cleanliness.
+  This AMEX item does **not** alter the commission-tax HARD STOP.
 
 ---
 
