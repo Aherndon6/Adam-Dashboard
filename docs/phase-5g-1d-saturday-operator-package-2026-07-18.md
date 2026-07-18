@@ -928,13 +928,28 @@ the AMEX Gold cash is **not** treated as freely available even before it debits.
   posting date**, while retaining evidence the AMEX payment was **initiated/effective 07/18** (transaction
   memo/note).
 
-**Operator entry required (GATED).** To reserve the ACTUAL `$5,666.01` (vs the ~$5,500 estimate), the
-AMEX Gold amount is updated via **Edit Week on Week 28** — which is **gated by the §14 HARD STOP** (any
-Week-28 Edit-Week save rides the unfixed delta-backfill path). **Defer the `$5,666.01` actual-amount
-update until the Gate-3 correction path (A/B/C) is selected and executed**, bundling it with that path's
-Week-28 actuals entry. The **bank PAYMENT itself** (Truist→AMEX) is an independent operator bank action,
-not a model/Edit-Week operation, and is **not** blocked by the HARD STOP. Confirm the currently-reserved
-amount with **V6** before the correction path executes.
+**Operator entry (DEFERRED for cleanliness — NOT §2d-blocked). Precise Edit-Week rule** (verified against
+`saveWeekEdits`, index.html:3615, 2026-07-18; supersedes the earlier imprecise "any Week-28 Edit-Week save
+rides the backfill" wording):
+- **A positive taxable-income delta triggers the commission-tax backfill.** `ct = 40% × taxableGross`
+  (taxable inflows only, 3627–3628); the guard `_deltaCt = ct − _oldCt > 0.005` (≈3658) then identity-PATCHes
+  the completed `commission_tax` row (B1). This is the unsafe path.
+- **An outflow-only AMEX Gold update does NOT trigger it.** AMEX Gold is a `t:'ob'` outflow, not in
+  `taxableGross`, so `ct` is unchanged, `_deltaCt = 0`, and the backfill does not run; an outflow *increase*
+  also yields no positive goal-sweep delta (`_gDelta > 0.005`, ≈3721), so the goal-sweep backfill does not
+  patch either.
+- Therefore the `$5,666.01` estimate→actual update is **technically safe in isolation**. We nonetheless
+  **DEFER it and bundle it into the eventual supervised Week-28 correction pass for OPERATIONAL
+  CLEANLINESS** (single-pass Week-28 edit, one no-drift check, and to keep the prohibited income entry out)
+  — **not** because the AMEX change itself is unsafe.
+- **The Week-28 income entry (adding the `$1,752.26` to Week 28) remains PROHIBITED until the corrective
+  path is approved and deployed** — that taxable-income delta is exactly what fires the backfill. (Option C
+  avoids Week-28 income entry entirely, booking the income in Week 29 instead.)
+
+The **bank PAYMENT itself** (Truist→AMEX) is an independent operator bank action, not a model/Edit-Week
+operation, and is **not** blocked by the HARD STOP. Confirm the currently-reserved amount with **V6**
+(cash_commitments columns `payee`/`commitment_class` verified; `amount_cents` in cents) before the
+correction path executes.
 
 **`$5,718.52`:** **not referenced** anywhere in the repo or the decision package (verified by search) —
 nothing to update; the corrected figure `$5,666.01` is recorded here.
