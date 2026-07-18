@@ -74,9 +74,14 @@ Uncheck the `$425.68` completion, then follow PATH A on the current build: enter
 
 - **Production mutations:** (1) uncheck the `$425.68` task (weekly_tasks alter); (2) Edit-Week income
   entry; (3) additional `$1,118.74` transfer + completion at `$1,544.42`; (4) closeout.
-- **Identity/amount risks:** HIGH — performed on the **unfixed** build. The uncheck itself and the
-  re-entry ride the same delta-backfill code the fix would repair; a mis-write can corrupt the record
-  or strand amounts. Collapses the Deep-South `$425.68`/`$417.83` split into a single `$1,544.42`.
+- **Identity/amount risks:** HIGH. **Rejection rationale (corrected 2026-07-18):** the immediate
+  delta-backfill is **not** the stated issue — **unchecking REMOVES the completed-row match**, so the
+  backfill has no completed `commission_tax` row to rewrite at that moment. B is rejected because it
+  **(a) rewrites a truthful executed-transfer record** (the real $425.68 that moved), **(b) breaks the
+  task-to-bank-leg mapping** (the completion no longer corresponds to the actual Vio transfer), and
+  **(c) creates unsafe multi-step choreography on the defective build** (uncheck → re-enter income →
+  re-complete at $1,544.42), any step of which can mis-write. Collapses the Deep-South `$425.68`/`$417.83`
+  split into a single `$1,544.42`.
 - **Required tests:** none added (no code change), which is a liability — the sequence relies on manual
   operation of the defective path. Re-verify via §14.1 after each step.
 - **Deployment/rollback:** no deploy. Rollback is manual and fragile — if the uncheck/re-entry corrupts,
@@ -84,21 +89,25 @@ Uncheck the `$425.68` completion, then follow PATH A on the current build: enter
 - **Effect on the already-scheduled `$425.68`:** **ALTERED** — the uncheck de-links the task from a real
   (settling Mon) transfer; the record no longer cleanly reflects the `$425.68` that actually moved.
 - **Exact remaining bank transfer:** **`$1,118.74`** (to reach `$1,544.42` total).
-- **Snapshot correct without fabricating history?** **RISKY** — reconstructs via PATH A but **rewrites
-  the `$425.68` completion history** of a real executed transfer; borderline history fabrication and
-  runs on the defective build. Not recommended.
+- **Snapshot correct without fabricating history?** **NO — REJECTED.** It **rewrites a truthful
+  executed-transfer record**, **breaks the task-to-bank-leg mapping**, and requires **unsafe multi-step
+  choreography on the defective build**. Not recommended.
 
 ## Option C — Close Week 28 on the Deep-South basis only; model the Extra BK Pay in Week 29
 
 Do **not** touch Week 28's `$425.68` completion or enter the income there. Close Week 28 as currently
-modeled (Deep South: `$425.68` done + `$417.83` deferred) against actual balances (the `$3,904.76` shows
-as real cash in Truist Checking → a large positive checking variance). Enter the `$1,752.26` in **Week 29
-(Cal 29 / model wk 7)** — a fresh week with **no prior completion**, so entry is PATH-A-safe there — where
-the model books `$700.90` alongside the `$417.83` carry-forward (combined `$1,118.74` in Week 29+).
+modeled (Deep South: `$425.68` done + `$417.83` deferred) against actual balances. **Unmodeled-income
+variance = `$1,752.26` only** (the regular Wendy paycheck `$2,152.50` is already modeled in Week 6, so it
+is NOT part of the variance; the `$3,904.76` deposit is `$2,152.50` modeled + `$1,752.26` unmodeled). Enter
+the `$1,752.26` in **Week 29 (Cal 29 / model wk 7)** — a fresh week with **no prior completion**, so entry
+is PATH-A-safe there. **The two tax legs stay SEPARATE** (two tasks, two bank transfers): the `$417.83`
+Deep-South deferral carries into Week 29, and the Extra BK Pay books `$700.90` (= 40% × `$1,752.26`) —
+**total `$1,118.73`** (`$417.83` + `$700.90`). **Do NOT force the combined-basis `$1,118.74`**; the one-cent
+difference vs `$1,544.42 − $425.68` is documented rounding.
 
 - **Production mutations:** (1) Week-6 closeout (wrapper: 1 recon + 9 snapshots) — Week 28 only; later,
-  in Week 29, (2) Edit-Week income entry + (3) the `$1,118.74` transfer + completion. **No Week-28
-  mutation beyond the normal closeout; no code deploy.**
+  in Week 29, (2) Edit-Week income entry + (3) **two separate** transfers/completions (`$417.83` + `$700.90`
+  = `$1,118.73`). **No Week-28 mutation beyond the normal closeout; no code deploy.**
 - **Identity/amount risks:** LOW-MEDIUM — never touches the `$425.68` completion (no backfill trigger);
   Week-29 entry is on a clean week. Risk = a **one-week timing shift** (income posted Week 28, taxed/
   allocated from Week 29) and closing the FIRST activation closeout with a **large positive checking
@@ -108,13 +117,14 @@ the model books `$700.90` alongside the `$417.83` carry-forward (combined `$1,11
 - **Deployment/rollback:** no deploy. Rollback of the Week-6 closeout = the standard operational
   grant-rollback + browser revert; Week-6 rows stay (corrections via Option B post-proofs).
 - **Effect on the already-scheduled `$425.68`:** **PRESERVED and untouched** — settles Mon 07/20.
-- **Exact remaining bank transfer:** **`$1,118.74`**, executed in **Week 29** (`$417.83` deferred +
-  `$700.91` extra).
+- **Exact remaining bank transfer:** **`$1,118.73`**, executed in **Week 29** as **two separate legs** —
+  `$417.83` (Deep-South deferral) + `$700.90` (Extra BK Pay). Two tasks, two transfers; not combined.
 - **Snapshot correct without fabricating history?** **Only partially, and NOT posting-week-accurate.**
   Option C **does not reflect the actual bank posting week.** The `$1,752.26` **posted 07/17 in Week 28**;
   assigning its tax/allocation to Week 29 is a **deliberate model-timing exception**, not a faithful
   representation. Consequences: (1) a **Week-28 bank/model variance** — the actual Truist balance carries
-  the full `$3,904.76` while the Week-28 model omits it; (2) a **potentially inaccurate FIRST frozen
+  the unmodeled `$1,752.26` (the regular `$2,152.50` is already modeled) — documented in the Week-28
+  reconciliation variance per the PATH-B* amendment; (2) a **potentially inaccurate FIRST frozen
   snapshot** — the Week-6 closeout (the first supervised wrapper write, subsequently frozen through both
   proofs) is anchored on a Week-28 state that knowingly excludes income that posted that week; (3) the
   extra income's `$700.90` tax and `~$1,051.36` goal allocation are shifted a week off their actual

@@ -979,3 +979,22 @@ the closeout per the "Required closeout entry" table above.
 
 **`$5,718.52`:** **not referenced** anywhere in the repo or the decision package (verified by search) —
 nothing to update; the corrected figure `$5,666.01` is recorded here.
+
+### 14.3 Gate-3 resolution — Option C / §2d PATH-B* (Fable: PROCEED WITH CONDITIONS, 2026-07-18)
+
+Fable's independent verdict selected **Option C** as the provisional controlling path. The full
+owner-approved decisions, the mathematically-explicit variance control, and the numbered one-action-at-a-time
+operator sequence live in **`docs/phase-5g-1d-option-c-operator-script-2026-07-18.md`**. Key points:
+- **PATH-B\*** (owner-approved): the `$1,752.26` **remains economically/bank-actually part of Week 28**,
+  is **documented in the Week-28 reconciliation variance** (unmodeled variance = **`$1,752.26`** only — the
+  regular `$2,152.50` is already modeled), and its **model/tax attribution is PERMANENTLY placed in Week
+  29** (do **not** re-enter it into closed Week 28 after B1 is fixed). §2d MANDATORY STOP still absolute.
+- **Two-leg tax (Week 29):** `$417.83` Deep-South deferral + `$700.90` Extra BK Pay = **`$1,118.73`** as
+  **two separate tasks/transfers**; do **not** force the combined-basis `$1,118.74` (1¢ = documented rounding).
+- **AMEX:** Week-28 model outflow → `$5,666.01` (outflow-only); commitment created via the standard Phase-2
+  path (fields in §14.2 / the script); status from live capture; reflected-balance must match the captured
+  balance; no separate `$425.68` commitment.
+- **Option B rejected** because it rewrites a truthful executed-transfer record, breaks task-to-bank-leg
+  mapping, and needs unsafe multi-step choreography on the defective build (the immediate backfill is not
+  the issue — unchecking removes the match). **Option A** stays the posting-week-accurate path but needs a
+  reviewed B1-fix deploy (not same-day). **Gate 3 stays HARD-STOPPED** pending Adam's per-step authorization.
