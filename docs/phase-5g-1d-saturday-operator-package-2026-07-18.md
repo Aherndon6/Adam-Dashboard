@@ -859,6 +859,13 @@ OPEN; Phase 2 not run; nothing pushed.**
 
 ### 14.1 Read-only production verification (run before the disposition call — ALL `SELECT`, no mutation)
 
+> **⚠ AMENDMENT A (§14.6 D4, 2026-07-18):** the V-queries below verify **counts/existence + `weekly_tasks`**,
+> but the Gate-4 short-snapshot incident proved that is **insufficient** — a short `goal_funding_snapshots`
+> **value** (adam_ira `7438.94` vs target `7500.00`) passed all counts. **Post-write verification MUST now
+> compare all nine funded values against INDEPENDENTLY DERIVED expected values** (not persisted-vs-confirmed):
+> adam_ira `= 7500.00` post-correction; the other eight rows **byte-unchanged** vs the local before-image.
+> **Post-correction partition (§14.6 D6): 8 `source=reconciliation` + 1 adam_ira `source=correction`.**
+
 ```sql
 -- V1  Week-6 commission_tax + goal_adam_ira (expect: commission_tax 425.68 keyed/labeled;
 --     goal_adam_ira 61.06 keyed/labeled; distinct rows/identities)
@@ -1134,3 +1141,63 @@ Expected persisted shape:
 #### E. B1 backlog additions (binding on the B1 correction)
 - protected-event **eid must derive from structured event date, not label parsing**
 - synthetic tax candidate must calculate **total obligation minus completed executed legs**
+
+---
+
+### 14.6 Gate-4 short-snapshot recovery disposition — owner decisions D1–D7 (Fable-reviewed, owner-authorized 2026-07-18) — BINDING
+
+Resolves the Gate-4 HARD STOP (`docs/phase-5g-1d-gate4-hardstop-adam-ira-duplicate-2026-07-18.md`). **S1
+evidence:** wk6 `adam_ira` snapshot persisted **`7438.94`** (= wk5, delta `0.00`); target **`7500.00`**
+(`7438.94 + 61.06`); the executed open-window **`$61.06`** was **NOT absorbed** — the durable anchor is
+short, and the Week-29 clickable `$61.06` recommendation is a **data-state** consequence, not render-only.
+**Root cause:** #4 Step-11R value-verification gap (most likely) + #1 operator error + #3 confirmation-UX
+gap, over a #5 open-window model limitation (prefill/netting exclude executed open-window transfers); #2
+wrapper **ruled out** (persisted = prefill; e2e `5G1D-CO-9`).
+
+**D1 — Exceptional §2b recovery ordering (narrow; this case only).** Recovery order for this confirmed
+short-snapshot case: **no-drift rerun #2 → Phase-2 revokes → final grant validation → Proof A → Proof B →
+release the Week-6 freeze → Option B correction.** Rationale (verified): the revoke precondition
+(source-flip / 1 recon + 9 `source=reconciliation`) and the Week-6 freeze (proofs assume a byte-identical
+Week-6 state) require revokes + both proofs to complete **before** the correction, which flips one
+snapshot's `source` to `correction`. **This does NOT weaken the revoke SQL and sets NO general precedent** —
+a one-time exception for the verified source-flip / revoke-precondition / freeze dependency.
+
+**D2 — Conditionally authorized post-Proof-B Option B correction (only if EVERY preceding gate passes):**
+- `goal_id = adam_ira`, `model_year = 2026`, `week_num = 6`
+- expected prior (stale-guard): the then-current persisted value, **expected `7438.94`**
+- new funded amount: **`7500.00`**
+- correction note must cite the **Gate-4 short-snapshot incident + Fable disposition**
+- expected result: **`ok=true` AND `corrected=true`**
+- **Do NOT execute Option B on any stale-prior mismatch, drift, unexpected result, or failed preceding
+  gate — STOP and report instead.**
+
+**D3 — Interim no-click control (in force now).** Neither Adam nor Wendy will click or complete **ANY**
+PLANNED goal-transfer row in **ANY** open week until the Week-29 Adam IRA recommendation is **verified
+absent** (post-correction). **The existing `$61.06` transfer must NEVER be executed again.**
+
+**D4 — Amendment A: independently-derived value verification (replaces persisted-vs-confirmed).** Post-write
+verification must compare **all nine funded values against INDEPENDENTLY DERIVED expected values** (not a
+persisted-vs-confirmed comparison). For this correction: `adam_ira` must equal its **target `7500.00`**; the
+**other eight** Week-6 snapshot rows must remain **byte-unchanged** vs the local before-image.
+
+**D5 — B1 correction scope additions (target: before the Week-7 closeout):**
+- pre-submit **warning/block** when an eligible goal with an executed open-window completion is confirmed at
+  the prior snapshot floor;
+- **incorporation of executed open-window transfers into the cumulative funded prefill/credit logic**;
+- **retain Amendment A (D4) and §2b as explicit compensating controls** if the code work is not shipped
+  before that closeout.
+
+**D6 — Post-correction Week-6 snapshot partition = 8 + 1.** After the Option B correction: **8 rows
+`source=reconciliation` + 1 `adam_ira` row `source=correction`** (total 9). Update every applicable
+**post-correction** verification expectation accordingly. **Do NOT alter the Phase-2 revoke precondition
+before it runs** — the revoke script runs BEFORE the correction (D1), so at revoke time all nine are still
+`source=reconciliation` and its precondition is met unchanged; the 8+1 partition applies only after the
+post-Proof-B correction.
+
+**D7 — Docs-only amendment authorized (this commit); no push.**
+
+**BINDING — no resubmit:** after the Option B correction, the **original frozen payload must NEVER be
+resubmitted** for wk6 — resubmitting it would re-persist the short `7438.94` and undo the correction. The
+Option B correction is the sole path to `7500.00`; the wrapper closeout is complete and must not be re-run
+for wk6. *(Proof A's idempotent re-submit occurs BEFORE the correction and is the sanctioned exception; the
+"no resubmit" rule binds AFTER Option B.)*

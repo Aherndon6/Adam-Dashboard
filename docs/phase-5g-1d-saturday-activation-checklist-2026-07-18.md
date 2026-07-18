@@ -114,6 +114,25 @@
 **STOP — Review results with ChatGPT before continuing.**
 ## J. 🛑 Approval Gate 4 — Adam authorizes Phase-2 revokes (only after Week-6 durably complete) (§2)
 
+> **🛑 GATE-4 HARD STOP (2026-07-18) — Phase-2 revokes BLOCKED under §2b.** Detailed Gate-4 UI review found a
+> **clickable Week-29 (Cal Wk 29) PLANNED "Transfer $61.06 … (Adam IRA)"** — a later-week Adam IRA
+> recommendation reappearing post-closeout. Per §2b POST-CLOSE VERIFICATION this is a hard stop: *do NOT run
+> Phase 2 revokes; investigate.* **The earlier UI-Check-1 PASS is SUPERSEDED.** Point-of-No-Return "No
+> duplicate Adam IRA recommendation" = FAILED. **Do NOT click the Week-29 $61.06 row** (would create a real
+> duplicate). Record + investigation plan: `docs/phase-5g-1d-gate4-hardstop-adam-ira-duplicate-2026-07-18.md`;
+> Fable escalation: `docs/phase-5g-1d-gate4-fable-escalation-2026-07-18.md`. Blocked pending Fable + owner.
+>
+> **DISPOSITIONED 2026-07-18 (owner D1–D7; operator package §14.6):** S1 confirmed a SHORT wk6 `adam_ira`
+> snapshot (`7438.94` vs target `7500.00`; `$61.06` not absorbed) — **data-state**, not render-only.
+> **Exceptional recovery order (D1, narrow, no precedent):** no-drift rerun #2 → Phase-2 revokes → final
+> grant validation → Proof A → Proof B → release Week-6 freeze → **Option B correction** (adam_ira/2026/wk6,
+> `7438.94`→`7500.00`, cite this incident; expect `ok=true`+`corrected=true`; STOP on any mismatch/drift).
+> **Interim no-click (D3):** do NOT click/complete ANY open-week PLANNED goal-transfer row until the Week-29
+> recommendation is verified absent; the `$61.06` never re-executes. **Post-correction partition (D6): 8
+> `source=reconciliation` + 1 `source=correction`.** **Amendment A (D4):** verify all nine funded values
+> against independently-derived expectations (adam_ira=`7500.00`; other 8 byte-unchanged vs before-image).
+> **After Option B, the original frozen payload must NEVER be resubmitted.**
+
 ## K. Phase 2 lockdown (MUTATING) (~15 min) — §2 step 12–13
 - [ ] **Historical no-drift rerun #2 (§13.4) — immediately before revokes:** Baseline A (4/4 · 2/2 · 0/0 · 1/1 · 5/5) **and** Baseline B (15 / 14 / 1) UNCHANGED — **HARD STOP on ANY drift** (do not run revokes if drifted)
 - [ ] `activation-revokes.sql` → `LOCKDOWN REVOKES PASS`; COMMIT (hard-stops unless wrapper granted / old RPC still granted / Week-6 durable / owner unchanged)
