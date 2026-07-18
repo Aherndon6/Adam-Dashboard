@@ -145,7 +145,7 @@ difference vs `$1,544.42 − $425.68` is documented rounding.
 | Remaining transfer | `$1,118.74` | `$1,118.74` | `$1,118.74` (in Wk29) |
 | Fabricates/rewrites history | No | **Borderline** | No — **but not posting-accurate** (deliberate Wk29 timing exception) |
 | Posting-week accurate | **Yes (income in Week 28)** | Yes | **No (income posted Wk28, modeled Wk29)** |
-| First-closeout variance | Clean | Clean | **Large positive (unmodeled deposit)** |
+| First-closeout variance | Clean | Clean | **Positive: $1,752.26 unmodeled income** (regular $2,152.50 already modeled) |
 | Identity/amount risk | Lowest | Highest | Low–medium |
 
 ## Recommendation (for Fable + owner)
