@@ -885,7 +885,7 @@ button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-vis
 // ── Constants (unchanged) ──────────────────────────────────────────────────
 // Simplified architecture — $8,250 total from LC · $6,500 operating floor · no legacy mechanics
 // Real-world moves: keep $2,250 in chk, move $2,750 sav→chk, move $1,000 LC→chk, move $2,250 LC→chk (Option 1 correction)
-const BUILD_TS='2026-07-17T23:10:13'; // updated each push — local time string
+const BUILD_TS='2026-07-18T18:34:31'; // updated each push — local time string
 const START_CHK=18037.73,START_SAV=3772.77,START_AMX=103.64,START_TAX=0,START_LC=13488.88;
 const EF_AMT=13488.88; // LC/EF balance — static this model year (no transfers in or out)
 const BASE_TAX=521.36,RET_SAV_XFR=3772.74;
@@ -3277,6 +3277,104 @@ function resolveWeekTransfers(inp){
 var _NET_TOL=0.005, _NET_OVERCREDIT_TOL=1.00;
 var _NET_FIXED_ONCE=Object.create(null); _NET_FIXED_ONCE['goal_adam_ira_seed']=true; // fixed_once → adam_ira window
 function _netParseAmt(lbl){if(lbl==null)return null;var m=/\$([0-9,]+(?:\.[0-9]+)?)/.exec(String(lbl));return m?parseFloat(m[1].replace(/,/g,'')):null;}
+// ═══════════════════════════════════════════════════════════════════════════
+// B1 — Commission-Tax Obligation Netting (pure; no fetch/runModel/DOM/balances).
+// remaining = max(0, total_obligation − Σ valid executed legs). ONE shared computation
+// consumed by all four B1 surfaces (task render · synthetic candidate · Edit-Week · write
+// guard). Identity = (action_key=commission_tax, origin ct-override week, (week_num,task_idx));
+// labels NEVER participate. weekly_tasks lacks a durable origin field → single live origin
+// only; multiple live origins with any executed leg fail closed (durable per-leg origin →
+// deferred to 5G-1B / P2-2). Reuses _NET_TOL / _NET_OVERCREDIT_TOL; shares vocabulary with
+// goal netting, NOT its code path. Cent-normalized + explicitly sorted ⇒ deterministic.
+// ───────────────────────────────────────────────────────────────────────────
+function _ctCents(v){ if(v==null)return null; var n=Number(v); return isFinite(n)?Math.round(n*100):null; }
+// Effective ct source: an obligation origin is a week whose EFFECTIVE ct>0 (base WD ct, or the override
+// ct where present — same merge rule as reconEffectiveWD). Reads effectiveWD (wd[5]=ct), never runModel.
+function _ctEffWD(opts){ if(opts&&opts.effectiveWD)return opts.effectiveWD; if(typeof reconEffectiveWD==='function')return reconEffectiveWD(); return (typeof WD!=='undefined')?WD:[]; }
+function _ctOriginWeeks(effwd){ var o=[]; for(var i=0;i<effwd.length;i++){ var c=Number(effwd[i][5]); if(isFinite(c)&&c>0.005)o.push(effwd[i][0]); } return o.sort(function(a,b){return a-b;}); }
+function _ctTotalCents(effwd,week){ for(var i=0;i<effwd.length;i++)if(effwd[i][0]===week)return _ctCents(effwd[i][5]); return null; }
+function _ctExecutedLegs(td){ var L=[]; for(var k in td){ if(!Object.prototype.hasOwnProperty.call(td,k))continue; var t=td[k]; if(!t||t.completed!==true||t.actionKey!==ACTION_KEYS.COMMISSION_TAX)continue; var p=String(k).split('_'); L.push({week_num:parseInt(p[0],10),task_idx:parseInt(p[1],10),cents:_ctCents(t.completedAmount)}); } L.sort(function(a,b){return (a.week_num-b.week_num)||(a.task_idx-b.task_idx);}); return L; }
+function _ctLegOut(l){ return {week_num:l.week_num,task_idx:l.task_idx,amount:(l.cents!=null?l.cents/100:null)}; }
+function _ctFingerprint(originWeek,totalCents,legs){ var s=String(typeof PLAN_YEAR!=='undefined'?PLAN_YEAR:'')+'|'+originWeek+'|'+totalCents; for(var i=0;i<legs.length;i++)s+='|'+legs[i].week_num+':'+legs[i].task_idx+':'+legs[i].cents; return s; }
+function _ctFail(originWeek,reason,totalC,legs){ return {obligation_type:'commission_tax',plan_year:(typeof PLAN_YEAR!=='undefined'?PLAN_YEAR:null),origin_week:originWeek,total_obligation:(totalC!=null?totalC/100:null),valid_executed_legs:(legs||[]).map(_ctLegOut),executed_total:(legs||[]).reduce(function(s,l){return s+(l.cents||0);},0)/100,remaining:0,control_status:'fail_closed',reason:reason,warning_review_state:'review_required',candidate_context:null}; }
+function computeCommissionTaxObligation(originWeek,opts){
+  opts=opts||{};
+  var effwd=_ctEffWD(opts);
+  var td=opts.taskData||(typeof taskData!=='undefined'?taskData:{});
+  var overTolC=Math.round(((opts.overcreditTol!=null)?opts.overcreditTol:_NET_OVERCREDIT_TOL)*100);
+  var origins=_ctOriginWeeks(effwd);
+  var totalC=_ctTotalCents(effwd,originWeek);
+  if(totalC==null||totalC<0)return _ctFail(originWeek,'missing_or_invalid_obligation',totalC,[]);
+  var allLegs=_ctExecutedLegs(td);
+  // ── ELIGIBILITY WINDOW (attribution boundary — the KEY rule) ──
+  // A leg is eligible ONLY when deterministically inside THIS obligation's window, which OPENS at
+  // origin_week. A leg with week_num < origin_week PREDATES this obligation (a prior cycle / a previously
+  // closed obligation / legacy Weeks 23–24 = model wk 1–2) and is EXCLUDED — never subtracted. Chronology
+  // is NOT used to attribute AMONG competing obligations: with a SINGLE live origin, every leg at/after
+  // origin_week belongs to the sole obligation (nothing else it could be); with MULTIPLE live origins, any
+  // leg at/after the earliest origin is unattributable (no durable per-leg origin) → FAIL CLOSED. Only
+  // eligible legs are scanned/validated — unrelated historical rows never touch this obligation.
+  // LIMITATION (honest): weekly_tasks carries no durable model_year (fields: week_num, task_idx, completed,
+  // completed_at, completed_amount, action_key, completed_label). PLAN_YEAR therefore CANNOT be enforced at
+  // the leg level — it is a fingerprint component only. The enforceable boundary is the WEEK WINDOW
+  // (week_num ≥ origin_week) within the current-cycle taskData; durable per-leg year/origin → P2-2 / 5G-1B.
+  var eligible;
+  if(origins.length<=1){
+    eligible=allLegs.filter(function(l){return l.week_num>=originWeek;});
+  } else {
+    var minO=origins[0];
+    var inWin=allLegs.filter(function(l){return l.week_num>=minO;});
+    if(inWin.length>0)return _ctFail(originWeek,'multi_origin_unattributable_legs',totalC,inWin);
+    eligible=[];                                                       // only pre-origin legs (prior) ⇒ separable
+  }
+  for(var i=0;i<eligible.length;i++)if(eligible[i].cents==null)return _ctFail(originWeek,'malformed_executed_amount',totalC,eligible);
+  var seen=Object.create(null);
+  for(var j=0;j<eligible.length;j++){var id=eligible[j].week_num+'_'+eligible[j].task_idx; if(seen[id])return _ctFail(originWeek,'duplicate_executed_leg_identity',totalC,eligible); seen[id]=1;}
+  var execC=eligible.reduce(function(s,l){return s+l.cents;},0);
+  var over=execC-totalC, warn='none', remC;
+  if(over>overTolC)return _ctFail(originWeek,'over_credit_beyond_tolerance',totalC,eligible);
+  if(over>0){remC=0;warn='informational';}                            // within $1 over ⇒ remaining 0, informational
+  else remC=totalC-execC;
+  return {obligation_type:'commission_tax',plan_year:PLAN_YEAR,origin_week:originWeek,total_obligation:totalC/100,valid_executed_legs:eligible.map(_ctLegOut),executed_total:execC/100,remaining:remC/100,control_status:'ok',reason:null,warning_review_state:warn,candidate_context:_ctFingerprint(originWeek,totalC,eligible)};
+}
+function computeCommissionTaxObligations(opts){
+  opts=opts||{};
+  var effwd=_ctEffWD(opts);                                    // compute effective WD ONCE
+  var origins=_ctOriginWeeks(effwd);
+  var _o2=Object.assign({},opts,{effectiveWD:effwd});
+  var obl=Object.create(null), ambiguous=false;
+  for(var i=0;i<origins.length;i++){var o=computeCommissionTaxObligation(origins[i],_o2); obl[origins[i]]=o; if(o.control_status==='fail_closed'&&o.reason==='multi_origin_unattributable_legs')ambiguous=true;}
+  return {obligations:obl,origins:origins,origin_count:origins.length,multi_origin:origins.length>1,ambiguous:ambiguous,ambiguity_reason:ambiguous?'multi_origin_unattributable_legs':null};
+}
+// Consumer helper: resolve the SINGLE authoritative obligation for a B1 read/write surface.
+// Returns {ok:bool, remaining, candidate_context, fail:bool, reason}. Multi-origin ⇒ fail.
+function _ctResolveSingle(opts){
+  var all=computeCommissionTaxObligations(opts);
+  if(all.origin_count===0)return {ok:false,fail:false,reason:'no_obligation',remaining:null,candidate_context:null};
+  if(all.origin_count>1)return {ok:false,fail:true,reason:all.ambiguity_reason||'multi_origin',remaining:null,candidate_context:null};
+  var o=all.obligations[all.origins[0]];
+  if(o.control_status!=='ok')return {ok:false,fail:true,reason:o.reason,remaining:o.remaining,candidate_context:null};
+  return {ok:true,fail:false,reason:null,remaining:o.remaining,candidate_context:o.candidate_context,warning:o.warning_review_state};
+}
+// Pure write-time decision (partial-tolerant). Refuses: fail-closed obligation; non-positive/non-finite
+// amount; amount > remaining + tolerance; STALE/absent candidate_context (rejects a stale 365.32 by
+// version, NOT by magnitude); overwrite of a non-null completed_amount. A fresh partial (amount ≤
+// remaining + tol) is ALLOWED. Returns {allow, reason}. Not a commission_tax write ⇒ {allow:true}.
+function _ctWriteGuard(ctx,weekNum,opts){
+  opts=opts||{};
+  if(!ctx||ctx.actionKey!==ACTION_KEYS.COMMISSION_TAX)return {allow:true,reason:null};
+  var cg=_ctResolveSingle(opts);
+  if(!cg||cg.fail||!cg.ok)return {allow:false,reason:(cg&&cg.reason)||'unresolvable_obligation'};
+  var amt=ctx.amount;
+  if(!(typeof amt==='number'&&isFinite(amt)&&amt>0))return {allow:false,reason:'non_positive_or_nonfinite_amount'};
+  if(amt>cg.remaining+_NET_OVERCREDIT_TOL)return {allow:false,reason:'exceeds_remaining'};
+  if(!ctx.candidate_context||ctx.candidate_context!==cg.candidate_context)return {allow:false,reason:'stale_or_absent_candidate'};
+  var td=opts.taskData||(typeof taskData!=='undefined'?taskData:{});
+  var rows=opts.taskRows||((typeof _taskRowsForWeek==='function')?_taskRowsForWeek(weekNum):[]);
+  var tgt=(typeof _resolveWriteTarget==='function')?_resolveWriteTarget({checked:true,actionKey:ctx.actionKey,completedLabel:ctx.completedLabel,matchTaskIdx:ctx.matchTaskIdx,taskRows:rows}):{taskIdx:null};
+  if(tgt.taskIdx!=null){var ex=td[weekNum+'_'+tgt.taskIdx];if(ex&&ex.completed&&ex.completedAmount!=null)return {allow:false,reason:'would_overwrite_completed_amount'};}
+  return {allow:true,reason:null};
+}
 function computeGoalTransferNetting(weeks,opts){
   opts=opts||{};
   var _td=opts.taskData||(typeof taskData!=='undefined'?taskData:{});
