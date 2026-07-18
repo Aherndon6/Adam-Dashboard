@@ -1201,3 +1201,37 @@ resubmitted** for wk6 — resubmitting it would re-persist the short `7438.94` a
 Option B correction is the sole path to `7500.00`; the wrapper closeout is complete and must not be re-run
 for wk6. *(Proof A's idempotent re-submit occurs BEFORE the correction and is the sanctioned exception; the
 "no resubmit" rule binds AFTER Option B.)*
+
+### 14.7 Post-Phase-2 raw-matrix `weekly_reconciliations`×anon FALSE STOP — dispositioned (2026-07-18)
+
+At step 13 the operator ran the **raw** matrix (`-activation-grants-validation.sql`) at `post_phase_2` and
+hit a HARD STOP on one row:
+
+> `tbl-grant | public.weekly_reconciliations | anon | sel=T ins=T upd=T del=T` (operator expected all-F)
+
+**This is a FALSE STOP against a stale inline comment — NOT a Phase-2 failure, and NOT a security gap.**
+
+- **Exact source of the grants.** Supabase-**default** role grants applied to the public-schema table at
+  creation time; `weekly_reconciliations` was **never grant-normalized** by any committed migration (Gate C
+  register §2; rollback file §B note; revoke SQL lines 121–122 acknowledge "Supabase-default + RLS-gated").
+  Contrast `goal_funding_snapshots`, which E1 `REVOKE ALL`-normalized → anon all-F (scored as C-11).
+- **Baseline, not a revoke omission.** The anon bits are **stage-invariant**: present at `pre_phase_1` and
+  `post_phase_1`, unchanged by Phase 2. The revoke package (G-06/07/08) targets **`authenticated` only** by
+  design (Gate C scope); it was never scoped to touch anon. Phase 2 did **exactly** what it was scoped to —
+  every other raw row (fn-grant, `goal_funding_snapshots`, `weekly_reconciliations` authenticated, all five
+  body-MD5s, owner sweep) matches. **Phase 2 = PASS stands.**
+- **Why the operator saw "expected all-F."** The **raw** file's inline EXPECTED comment (line ~73, blanket
+  "anon all=F") predates the v6/Fable **C-13 correction** and does not distinguish the pinned
+  `goal_funding_snapshots` posture (anon all-F) from the **unpinned** `weekly_reconciliations` posture. The
+  **authoritative** expected matrix is v6 **§4 / §12** + the **consolidated C-13**, which emit these raw anon
+  ACL bits as **informational, never scored** (§12.2) and instead score the enforced control:
+  **RLS-inert for anon — RLS enabled AND zero policies naming anon/public.** C-13 **PASSED** at `pre_phase_1`
+  and `post_phase_1`; Phase 2 touched no RLS and no policy, so its inputs are unchanged.
+- **Remediation = NONE for this sitting.** Do **not** edit the approved `-activation-revokes.sql` (§12.5).
+  The optional defense-in-depth normalization (`REVOKE ALL FROM PUBLIC, anon` + narrow authenticated re-grant,
+  incl. TRUNCATE/REFERENCES/TRIGGER review) is the **§12.5 post-activation backlog** item under its own
+  future review — it MUST NOT alter this sitting's approved grant/revoke scope.
+- **Adjudication.** Run the **consolidated** validation at `post_phase_2` (the authoritative boolean gate,
+  paired with the raw file at step 13). Its **C-13 pass** + overall **17/17** is the on-record disposition of
+  this raw-row false alarm. Docs backlog: correct the raw file's stale inline EXPECTED comment to point at
+  C-13 (fold into the pending docs commit; the raw file is never edited mid-sitting).
