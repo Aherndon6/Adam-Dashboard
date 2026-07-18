@@ -1235,3 +1235,23 @@ hit a HARD STOP on one row:
   paired with the raw file at step 13). Its **C-13 pass** + overall **17/17** is the on-record disposition of
   this raw-row false alarm. Docs backlog: correct the raw file's stale inline EXPECTED comment to point at
   C-13 (fold into the pending docs commit; the raw file is never edited mid-sitting).
+
+### 14.8 B1 commission-tax netting — Fable REVISE→PROCEED; authoritative spec relocated (2026-07-18)
+
+The B1 scope sketched in **§14.6 D5** is superseded by the authoritative design record
+**`docs/phase-5g-1d-b1-commission-tax-netting-design-2026-07-18.md`** (Fable verdict REVISE → PROCEED).
+B1 = a narrowly scoped adapter / candidate-render / Edit-Week / write-guard remediation; it does **not**
+touch `runModel`, schema, or migrations. Operator-facing consequences that stay in force **until the
+corrected B1 build is deployed AND verified**:
+
+- The **never-answer control** (§14.5(A)) remains active — leave the synthetic tax candidate unanswered;
+  never persist `$843.51` / `$417.83` / a split / a tax commitment.
+- The **§2d prohibited-sequence restriction** remains binding — it is retired **only** when B1's Edit-Week
+  replacement (spec §8) lands (existing `completed_amount` never delta-PATCHed; `new_remaining = new_total
+  − Σ executed`).
+- The correct Week-7 / Cal Wk 29 Deep-South remainder is **`$417.83`** (`843.51 − 425.68`), **never
+  `$365.32`** (a `runModel` surplus-derived projection artifact, bound `$52.51`, deferred to Calc-Core
+  Extraction). If B1 slips past the **Jul 28** pre-freeze cutoff, execute the supervised **`$417.83`**
+  transfer under these controls; do not assume a freeze exception.
+
+See the spec for the full controls, write-time invariant, regression matrix, and timing gate.

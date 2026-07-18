@@ -10,6 +10,12 @@
 > 5G-1D row and `docs/phase-5g-1d-activation-closeout-2026-07-18.md`. A separate read-only Stage-2 audit
 > ("2026 Goal-Funding Projection and Waterfall Integrity Audit") is queued, not part of this phase.
 >
+> **B1 — Commission-Tax Obligation Netting (PRE-FREEZE URGENT, Fable REVISE→PROCEED 2026-07-18).** A
+> narrowly scoped adapter/candidate/Edit-Week/write-guard remediation (target Jul 23 / hard cutoff Jul 28,
+> before the Week-7/Cal Wk 29 closeout; retires §2d). Does not touch `runModel`/schema/migrations. Deferred
+> pieces → 5G-1B / P2-2 / Calc-Core Extraction. Authoritative spec:
+> `docs/phase-5g-1d-b1-commission-tax-netting-design-2026-07-18.md`.
+>
 > **OPERATING-STATE NOTE (2026-07-13, Adam-confirmed).** **Quicken parallel operation has ended;
 > the Quicken subscription is canceled; the historical Quicken data is retained as a historical
 > archive/reference only; the Herndon Financial OS is now the SOLE LIVE SYSTEM OF RECORD.** Quicken
