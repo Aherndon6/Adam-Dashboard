@@ -138,5 +138,45 @@ not close until explained.
   ($417.83 + $700.90 separate; completed_amount = actual transfer).
 
 ---
-**No production mutation, Week-28 edit, closeout, deploy, revoke, Phase 2, or push has occurred.** Gate 3
-remains HARD-STOPPED pending Adam's authorization of step 1 (and each subsequent step).
+
+## F. 🛑 STEP-6 HARD STOP (2026-07-18) — reconciliation BLOCKED
+
+Steps 1–5 executed and passed (re-ground; docs; outflow-only AMEX edit `$5,718.52 → $5,666.01` post-save
+PASS; AMEX submitted conf W3870). **Step 6 (atomic capture) does NOT pass — reconciliation is prohibited.**
+
+### F.1 Step-6 atomic capture (recorded)
+- `A` = Truist available balance = **`14,505.40`**
+- `M` = Week-28 projected balance = **`6,500.00`**
+- `V = A − M =` **`8,005.40`**
+- AMEX `5,666.01` = **`initiated`**, not posted (conf W3870; no posted/pending Truist debit)
+- Commission-tax `425.68` = executed but **not posted** (settles Mon 07/20)
+- Greenlight **`+120.00`** is **Week 29** (effective 2026-07-20) → **excluded** from the Week-28 decomposition
+
+### F.2 Variance-control FAILURE
+- Currently documented component sum (§C: income `1,752.26` + AMEX `5,666.01` + commission-tax `425.68`)
+  = **`7,843.95`**
+- **Unexplained residual = `161.45`** → **Step 6 FAILS the ≤ `$0.01` control as currently specified.**
+- **Reconciliation remains PROHIBITED** until the **complete Week-28 projected-transfer decomposition** is
+  enumerated (every modeled-but-unsettled Week-28 transfer, incl. goal-funding sweeps) and the residual
+  closes to ≤ `$0.01`. (§C omitted the modeled goal transfers, and the model's tax outflow is now `478.19`,
+  not `425.68`.)
+
+### F.3 Commission-tax re-split divergence
+- Executed reality remains **`425.68`**.
+- Model now displays **`478.19`** for Week 28 and **`365.32`** carry-forward (because the `52.51` AMEX
+  reduction was absorbed into the Week-28 tax allocation).
+- **Correct remaining Deep-South obligation (executed basis) remains `417.83`** (`= 843.51 − 425.68`).
+- **Week 29 must NOT be allowed to book only `365.32`** — that would **underfund the `843.51` obligation by
+  `52.51`.** The PATH-B* Week-29 Deep-South leg stays **`417.83`**.
+
+### F.4 Stop conditions preserved (all)
+**No** reconciliation · **no** wrapper · **no** commitment creation · **no** Phase 2 · **no** deploy ·
+**no** revoke · **no** push · **no** Week-28 Extra BK Pay entry · **no** Weeks 1–5 edits.
+
+### F.5 Disposition
+Escalated to Fable — see `docs/phase-5g-1d-gate3-fable-followup-step6-2026-07-18.md` (items A–D). Activation
+remains blocked pending Fable disposition + Adam authorization.
+
+---
+**No production mutation, closeout, deploy, revoke, Phase 2, or push has occurred beyond the recorded
+Steps 3 (outflow-only AMEX edit) and 5 (AMEX bank submission).** Gate 3 remains HARD-STOPPED.
