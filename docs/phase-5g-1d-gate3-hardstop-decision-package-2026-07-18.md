@@ -98,11 +98,18 @@ the model books `$700.90` alongside the `$417.83` carry-forward (combined `$1,11
 - **Effect on the already-scheduled `$425.68`:** **PRESERVED and untouched** — settles Mon 07/20.
 - **Exact remaining bank transfer:** **`$1,118.74`**, executed in **Week 29** (`$417.83` deferred +
   `$700.91` extra).
-- **Snapshot correct without fabricating history?** **YES for Week 28** (Deep-South-only is the true
-  Week-28 state; the 9-goal snapshot reflects actual balances; the extra income sits in checking as real
-  cash) — **but** it introduces a deliberate **timing approximation** (Extra BK Pay taxed/allocated
-  starting Week 29 though it posted Week 28) and anchors the first closeout with a large variance. No
-  history is fabricated; the trade is timing-fidelity vs a clean, deploy-free close.
+- **Snapshot correct without fabricating history?** **Only partially, and NOT posting-week-accurate.**
+  Option C **does not reflect the actual bank posting week.** The `$1,752.26` **posted 07/17 in Week 28**;
+  assigning its tax/allocation to Week 29 is a **deliberate model-timing exception**, not a faithful
+  representation. Consequences: (1) a **Week-28 bank/model variance** — the actual Truist balance carries
+  the full `$3,904.76` while the Week-28 model omits it; (2) a **potentially inaccurate FIRST frozen
+  snapshot** — the Week-6 closeout (the first supervised wrapper write, subsequently frozen through both
+  proofs) is anchored on a Week-28 state that knowingly excludes income that posted that week; (3) the
+  extra income's `$700.90` tax and `~$1,051.36` goal allocation are shifted a week off their actual
+  posting. C does **not** fabricate row identity, but it **does** encode a timing exception into the
+  first anchor. **C is NOT equivalent to A:** A models the income in its true week (Week 28) and produces
+  a posting-accurate close; C avoids a deploy at the cost of posting-week fidelity and a variance-laden
+  first snapshot. The deploy-avoidance is a convenience, not a correctness parity.
 
 ---
 
@@ -114,19 +121,24 @@ the model books `$700.90` alongside the `$417.83` carry-forward (combined `$1,11
 | Touches the `$425.68` completion | No (preserved) | **Yes (uncheck/rewrite)** | No (preserved) |
 | Runs on the defective build | No | **Yes** | No (avoids the trigger) |
 | Remaining transfer | `$1,118.74` | `$1,118.74` | `$1,118.74` (in Wk29) |
-| Fabricates/rewrites history | No | **Borderline** | No (but 1-wk timing shift) |
-| First-closeout variance | Clean | Clean | **Large positive (deposit)** |
+| Fabricates/rewrites history | No | **Borderline** | No — **but not posting-accurate** (deliberate Wk29 timing exception) |
+| Posting-week accurate | **Yes (income in Week 28)** | Yes | **No (income posted Wk28, modeled Wk29)** |
+| First-closeout variance | Clean | Clean | **Large positive (unmodeled deposit)** |
 | Identity/amount risk | Lowest | Highest | Low–medium |
 
 ## Recommendation (for Fable + owner)
 
-Lead candidate: **Option A** — it is the only path that both preserves the real `$425.68` completion
-**and** models the combined obligation correctly, with no history rewrite; its cost is one reviewed
-code-deploy cycle (appropriately a follow-up sitting, not an in-sitting improvisation). **Option C** is
-the strong deploy-free alternative if a one-week timing shift and a large first-closeout variance are
-acceptable to the owner; it never touches Week 28's completion. **Option B is not recommended** — it
-rewrites a real completion on the defective build. In all three, `$1,118.74` of additional Vio Tax
-Reserve transfer is owed, and the `$425.68` already scheduled for Mon 07/20 is preserved except under B.
+Lead candidate: **Option A** — it is the only path that preserves the real `$425.68` completion, models
+the combined obligation correctly, **and stays posting-week accurate** (income booked in Week 28, where it
+posted), with no history rewrite; its cost is one reviewed code-deploy cycle (appropriately a follow-up
+sitting, not an in-sitting improvisation). **Option C is a deploy-free FALLBACK, not a correctness peer of
+A:** it avoids a deploy and never touches the `$425.68`, but it **deliberately models Week-28 income in
+Week 29**, so it is **not posting-week accurate**, leaves a **large Week-28 bank/model variance**, and
+anchors the **first frozen snapshot** on a knowingly incomplete Week-28 state. C should be chosen only if
+the owner explicitly accepts that timing exception and variance; the deploy-avoidance alone does not make
+it equivalent to A. **Option B is not recommended** — it rewrites a real completion on the defective
+build. In all three, `$1,118.74` of additional Vio Tax Reserve transfer is owed, and the `$425.68`
+already scheduled for Mon 07/20 is preserved except under B.
 
 **Next step:** run §14.1 read-only verification, confirm the current production state, then Fable + owner
 select A / B / C. No implementation until that decision.
