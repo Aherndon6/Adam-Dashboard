@@ -23,6 +23,8 @@
 
 **Model-week arithmetic (confirmed; `getCalWeek(model)=model+22`):** persisted `week_num` is the **model week** (epoch Jun 7 2026). Model wk 6 = **Cal Wk 28**, first supervised closeout Sat **Jul 18**; wk 7 = Sat **Jul 25** (at home, pre-freeze); wk 8 = Cal Wk 30 = Sat **Aug 1** (inside freeze); wk 9 = Sat **Aug 8** (inside freeze); wk 10 = Sat **Aug 15**. RCCL payout ~Cal Wk 30 (~Aug 1, mid-trip); DCL ~Cal Wk 41 (~Oct 17). Model window ends **2027-01-09**. `weekly_reconciliations` has **no `model_year` column** and upserts on bare `week_num` — see §14 (AF-2) and §12 (D-11).
 
+**Active execution pointer (2026-07-19) — this roadmap is PAUSED until it clears.** Before the normal roadmap resumes, the controlling sequence is **Post-BKX Stabilization & Goal-Funding Validation** — `docs/phase-5g-1d-post-bkx-stabilization-2026-07-19.md` (State detail in `CODEX_STATUS.md`): (1) finish BKX settlement + R5–R7 verification → (2) Week 23/24 read-only diagnosis → (3) smallest-safe Week 23/24 repair → (4) pre/post goal-funding deep dive → (5) fix any defects → (6) finalize/push docs (after approval) → (7) **then** resume this roadmap. Advisory; balance-free.
+
 ---
 
 ## 1. Current-state baseline

@@ -1,5 +1,18 @@
 # Codex Status: Herndon Financial OS
 
+## CURRENCY NOTE (2026-07-19c) — ACTIVE EXECUTION POINTER: Post-BKX Stabilization & Goal-Funding Validation
+
+- **Current execution pointer:** **Post-BKX Stabilization & Goal-Funding Validation** → `docs/phase-5g-1d-post-bkx-stabilization-2026-07-19.md`. This **gates resumption of the canonical roadmap.** Required sequence before resuming the normal roadmap:
+  1. Finish BKX settlement and R5–R7 verification.
+  2. Complete the Week 23/24 read-only diagnosis.
+  3. Apply and verify the smallest-safe Week 23/24 repair.
+  4. Run the full pre/post goal-funding deep dive.
+  5. Address defects found by the deep dive.
+  6. Finalize and push the documentation commits after approval.
+  7. Resume the canonical roadmap.
+- **BKX current state (supersedes the 2026-07-19b "pending controlled task creation" language below).** The Week-29 `BKX-20260717` off-pool custom transfer task **exists once** and is **incomplete**. The **$700.90** transfer is **scheduled but not yet settled** (Vio; effective **2026-07-20**); settlement is **not yet verified**; the task **must not be marked complete until settlement is confirmed**. **No modeled cash event** was created. The live commission-tax pool remains **`control_status = ok`, remaining $0**.
+- **Remaining hold is narrow.** The ordinary commission-tax pool is **fully settled** (remaining $0) — there is **no general "commission-tax execution hold"** left. The only open holds are: **(a)** do not mark BKX complete before settlement is confirmed; **(b)** do not execute the **Wendy IRA** transfer until BKX settlement **and** checking capacity are verified.
+
 ## CURRENCY NOTE (2026-07-19b) — Wendy Extra BK Pay (BKX) off-model; RC-1b live; production restored & healthy
 
 - **Production is restored and healthy.** `main` = **`e4da0ff`** (RC-1b live; `BUILD_TS 2026-07-19T01:51:10`). Commission pool `control_status = ok`, **total tracked obligation $2,272.43**, **remaining $0.00**; completed commission-tax legs **Week 28 $425.68** and **Week 29 $417.83** intact; Week-28/Week-29 reconciled balance pins unchanged; no `$624.97` Wendy-IRA artifact; no duplicate commission-tax task. (The earlier S3 Week-28 Edit-Week attempt to add the Extra BK Pay was fully rolled back — see `docs/phase-5g-1d-bkx-income-adjustment-2026-07-19.md`.)
