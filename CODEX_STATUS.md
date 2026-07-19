@@ -1,5 +1,13 @@
 # Codex Status: Herndon Financial OS
 
+## CURRENCY NOTE (2026-07-19b) — Wendy Extra BK Pay (BKX) off-model; RC-1b live; production restored & healthy
+
+- **Production is restored and healthy.** `main` = **`e4da0ff`** (RC-1b live; `BUILD_TS 2026-07-19T01:51:10`). Commission pool `control_status = ok`, **total tracked obligation $2,272.43**, **remaining $0.00**; completed commission-tax legs **Week 28 $425.68** and **Week 29 $417.83** intact; Week-28/Week-29 reconciled balance pins unchanged; no `$624.97` Wendy-IRA artifact; no duplicate commission-tax task. (The earlier S3 Week-28 Edit-Week attempt to add the Extra BK Pay was fully rolled back — see `docs/phase-5g-1d-bkx-income-adjustment-2026-07-19.md`.)
+- **Wendy Extra BK Pay ($1,752.26, posted 7/17/2026) is OFF-MODEL and pending controlled task creation.** Fable: **PROCEED WITH CONDITIONS**. The obligation (tax reserve **$700.90** = `round(1752.26×0.40)`, per-origin basis; *not* the merged-artifact $700.91) will be represented **off-pool** as **one Week-29 `custom_tasks`** transfer, source **`BKX-20260717`** — created and executed later under §8 controls, not yet.
+- **`pool remaining = $0.00` is correct for the tracked WD-derived origins but does NOT yet include the off-pool BKX obligation.** BKX lives in the incident record + decision-log + this note, not in the pool.
+- **Standing law — NO cash event.** The $1,752.26 must **never** be added as a model cash event in Week 28, Week 29, or any week (the cash is already inherited through the reconciled Week-28 ending balance; only the obligation is represented operationally). The prior operator-package **PATH-B\*** "enter it in Week 29" instruction is **SUPERSEDED / PROHIBITED**.
+- **Next authorized operational step: R2 duplicate scan** (read-only, across `custom_tasks` / `weekly_tasks` / `cash_commitments` for `BKX-20260717` / `Wendy Extra BK Pay` / `700.90`) before any task creation. Long-term fix: a distinct **`source_id`** historical-taxable-income mechanism (separate code phase; migration must adopt the interim BKX completion as settled and never re-emit). Income classification is deferred to **TX-1.1** (display/reporting only; never re-triggers tax/cash).
+
 ## CURRENCY NOTE (2026-07-19) — B1-W7 durable-origin hotfix + RC-1 ACTIVATED to production
 
 - **`main` and production are DEPLOYED at `48afc4c`** — fast-forward `191cda5 → 54d032e → 094235b → 48afc4c` (linear, no merge commit, no force). **`BUILD_TS 2026-07-19T00:55:45`** live at dashboard.herndons.us. GitHub **Pages build** (run `29674091985`) **built** (error null, 34s).
