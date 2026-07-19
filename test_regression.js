@@ -13188,6 +13188,68 @@ console.log('\n── Section 5G-1D Slice 4c: half-close repair confirmation ─
     assert(!body.includes('reconData')&&!body.includes('weekly_reconciliations'),'B1 does not consume reconciliation tax');
     assert(!body.includes('cash_commitments'),'B1 creates no tax cash_commitment');
   });
+  // ── RC-1 (5G-1D B1-W7): OPEN commission_tax DISPLAY surfaces show the AUTHORIZED per-origin amount ──
+  // The Overview view-model (buildDashboardViewModel), the Ask-Claude model context, and the deferral
+  // narrative each route an OPEN commission_tax display through the durable-origin adapter
+  // (_ctOpenAuthority + _ctAuthorizedLabel). These pin that the authorized $417.83 is what those surfaces
+  // present, that no surface emits a bare actionable $365.32, and that the model amount only ever appears
+  // as labeled context. Fixture = production shape: pool 843.51 (wk6), durable wk6 425.68, model wk7
+  // 365.32 ⇒ wk7 authorized 417.83 (reuses _bopts / _bw7 above).
+  test('RC1-1: open-action adapter yields the AUTHORIZED 417.83 (origin wk6), not the model projection',function(){
+    var a=_ctOpenAuthority(7,_bopts);
+    assert(a.status==='actionable'&&a.primary.actionable_amount===417.83,'authorized 417.83, got '+JSON.stringify(a.primary||a));
+    assert(a.primary.origin_week===6&&a.primary.model_amount===365.32,'origin wk6, model context 365.32 carried separately');
+  });
+  test('RC1-2: no open commission_tax surface renders a bare actionable 365.32 — authorized label leads with 417.83',function(){
+    var lbl=_ctAuthorizedLabel(_ctOpenAuthority(7,_bopts).primary);
+    assert(lbl.indexOf('$417.83')>=0,'authorized amount present: '+lbl);
+    assert(/^Transfer \$417\.83\b/.test(lbl),'label leads with the authorized transfer amount, not the model amount: '+lbl);
+    assert(lbl.indexOf('365.32')<0||/365\.32 \(context only/.test(lbl),'365.32 only ever appears as labeled context: '+lbl);
+  });
+  test('RC1-3: where the model 365.32 remains visible it is explicitly labeled non-authoritative context',function(){
+    var lbl=_ctAuthorizedLabel(_ctOpenAuthority(7,_bopts).primary);
+    assert(/model projection \$365\.32 \(context only — known projection skew\)/.test(lbl),'model amount explicitly labeled context: '+lbl);
+  });
+  test('RC1-4: the weekly actionable slice remains 417.83 (adapter agrees with _ctWeekSlices)',function(){
+    var slices=_ctWeekSlices(7,Object.assign({},_bopts)).filter(function(r){return r.status==='actionable';});
+    assert(slices.length===1&&slices[0].actionable_amount===417.83,'weekly actionable row 417.83, got '+JSON.stringify(slices));
+    assert(_ctOpenAuthority(7,_bopts).primary.actionable_amount===slices[0].actionable_amount,'adapter matches the weekly slice');
+  });
+  test('RC1-5: exact-match write guard unchanged by RC-1 — accepts 417.83; rejects fresh 365.32; rejects partial 300.00',function(){
+    assert(_ctWriteGuard(ctx(417.83,_bw7.candidate_context),7,Object.assign({taskRows:[]},_bopts)).allow,'417.83 accepted');
+    var g1=_ctWriteGuard(ctx(365.32,_bw7.candidate_context),7,Object.assign({taskRows:[]},_bopts));
+    assert(!g1.allow&&g1.reason==='amount_mismatch_authorized','fresh 365.32 rejected by amount: '+g1.reason);
+    var g2=_ctWriteGuard(ctx(300.00,_bw7.candidate_context),7,Object.assign({taskRows:[]},_bopts));
+    assert(!g2.allow&&g2.reason==='amount_mismatch_authorized','partial 300.00 rejected by amount: '+g2.reason);
+  });
+  test('RC1-6: merged week — the adapter surfaces SEPARATE authorized slices 417.83 and 700.90',function(){
+    var mopts={effectiveWD:ewd([[6,843.51],[7,700.90]]),taskData:leg(6,1,425.68),schedule:[{week_num:6,model_amount:425.68},{week_num:7,model_amount:700.90}]};
+    var a=_ctOpenAuthority(7,mopts);
+    assert(a.status==='actionable'&&a.slices.length===2,'two authorized slices, got '+(a.slices?a.slices.length:0));
+    assert(a.slices[0].actionable_amount===417.83&&a.slices[1].actionable_amount===700.90,'417.83 + 700.90 separate, got '+JSON.stringify(a.slices.map(function(s){return s.actionable_amount;})));
+    var labels=a.slices.map(_ctAuthorizedLabel);
+    assert(labels[0].indexOf('$417.83')>=0&&labels[1].indexOf('$700.90')>=0,'each slice labelled with its own authorized amount');
+  });
+  test('RC1-7: no blended 1118.73 action appears on any open surface for the merged week',function(){
+    var mopts={effectiveWD:ewd([[6,843.51],[7,700.90]]),taskData:leg(6,1,425.68),schedule:[{week_num:6,model_amount:425.68},{week_num:7,model_amount:700.90}]};
+    var a=_ctOpenAuthority(7,mopts);
+    assert(!a.slices.some(function(s){return s.actionable_amount===1118.73;}),'no blended slice amount');
+    var joined=a.slices.map(_ctAuthorizedLabel).join(' | ');
+    assert(joined.indexOf('1,118.73')<0&&joined.indexOf('1118.73')<0,'no blended amount in any authorized label: '+joined);
+  });
+  test('RC1-8: non-commission-tax / no-open-authority weeks are untouched by the adapter (no authorized rewrite)',function(){
+    var none=_ctOpenAuthority(6,_bopts);   // wk6 completed by the durable leg — no open authority for it
+    assert(none.status==='none','completed/no-open week ⇒ status none, got '+none.status);
+    var reserved=_ctOpenAuthority(7,{effectiveWD:ewd([[6,843.51]]),taskData:leg(6,1,843.51),schedule:[{week_num:6,model_amount:478.19},{week_num:7,model_amount:365.32}]});
+    assert(reserved.status==='none','fully-reserved pool ⇒ no open authority (caller keeps its own label)');
+  });
+  test('RC1-9: runModel / computeGoalTransferNetting / resolveWeekTransfers byte-identical to 191cda5 (RC-1 did not touch them)',function(){
+    var crypto=require('crypto');
+    function bodyHash(tok){var i=html.indexOf(tok);var j=html.indexOf('\nfunction ',i+tok.length);var s=html.slice(i,j<0?html.length:j);return {len:s.length,sha:crypto.createHash('sha256').update(s).digest('hex').slice(0,16)};}
+    var EXPECT={'function runModel(':{len:32840,sha:'5181b79cbba47e68'},'function computeGoalTransferNetting(':{len:10309,sha:'4670447ce489dd8b'},'function resolveWeekTransfers(':{len:5583,sha:'20d17438996ac8ba'}};
+    Object.keys(EXPECT).forEach(function(tok){var h=bodyHash(tok);assert(h.len===EXPECT[tok].len&&h.sha===EXPECT[tok].sha,tok+' changed vs 191cda5: '+JSON.stringify(h)+' vs '+JSON.stringify(EXPECT[tok]));});
+    ['function runModel(','function computeGoalTransferNetting(','function resolveWeekTransfers('].forEach(function(tok){var i=html.indexOf(tok);var j=html.indexOf('\nfunction ',i+tok.length);var s=html.slice(i,j<0?html.length:j);assert(s.indexOf('_ctOpenAuthority')<0&&s.indexOf('_ctAuthorizedLabel')<0,'RC-1 adapter must not appear inside '+tok);});
+  });
 })();
 
 console.log('\n╔══════════════════════════════════════════════════════════════╗');

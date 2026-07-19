@@ -3422,6 +3422,12 @@ function computeCommissionTaxPool(opts){
   var remC=0,settledC=0;
   for(oi=0;oi<origins.length;oi++){remC+=origins[oi].remaining_cents;settledC+=origins[oi].settled_cents;}
   if(remC!==totalC-settledC)return _ctPoolFail('per_origin_aggregate_disagreement',inputs,eligible,totalC);   // agreement invariant
+  // RC-1 clarifying note: executed_total (execC) is the sum of ALL eligible task-legs — it reports task-leg
+  // INTEGRITY (what was recorded as executed across the pool window), NOT the authoritative settlement.
+  // Durable settlement authority lives in origins[].settled (per-origin, era-partitioned): a pre-anchor
+  // origin is closed by the reviewed attestation; a post-anchor origin only by its FIFO-placed legs. Any
+  // consumer deciding "what is settled / what remains to transfer" MUST read origins[].settled /
+  // authorized_remaining — never executed_total. No behavioral change to executed_total is made here.
   var execC=eligible.reduce(function(s,l){return s+l.cents;},0);
   var ctx='CTL|'+_ctAttFp(att)+'|OBL';
   for(oi=0;oi<origins.length;oi++)ctx+=':'+origins[oi].origin_week+'='+origins[oi].obligation_cents+'/'+origins[oi].settled_cents+'/'+origins[oi].remaining_cents;
@@ -3491,6 +3497,38 @@ function _ctWeekSlices(weekNum,opts){
   return out;
 }
 function _ctWeekRow(weekNum,opts){ var s=_ctWeekSlices(weekNum,opts); return s.length?s[0]:null; }
+// ── RC-1 (5G-1D B1-W7): durable-origin DISPLAY adapter for OPEN commission_tax surfaces ──────────────
+// Every operator surface OTHER than the Weekly "Transfers to execute" rows (which already normalize via
+// _ctWeekSlices) — the Overview view-model (buildDashboardViewModel), the Ask-Claude context, and the
+// deferral narrative — MUST route an OPEN commission_tax display through here so the operator sees the
+// AUTHORIZED per-origin remaining (e.g. $417.83), never the bare runModel projection (e.g. $365.32). The
+// model amount is returned SEPARATELY as clearly-labeled, non-authoritative context; it is never emitted
+// as an actionable amount. This intentionally does NOT mutate realActs — the model projection is still
+// parsed from the original label for context (see _ctScheduleFromWeeks/slot.modelC), and only the durable
+// per-origin ledger governs the authoritative figure.
+// Returns: {status:'blocked',reason} pool fail-closed; {status:'actionable',slices:[...],primary} one or
+// more authorized per-origin slices; {status:'none'} no open authority this week (reserved/completed).
+function _ctOpenAuthority(weekNum,opts){
+  opts=opts||{};
+  if(typeof computeCommissionTaxPool!=='function'||typeof _ctWeekSlices!=='function')return {status:'none'};
+  var pool=opts.pool||computeCommissionTaxPool(opts);
+  if(!pool)return {status:'none'};
+  if(pool.control_status!=='ok')return {status:'blocked',reason:pool.reason||'pool_unresolvable'};
+  var all=_ctWeekSlices(weekNum,Object.assign({pool:pool},opts)),act=[];
+  for(var i=0;i<all.length;i++)if(all[i].status==='actionable')act.push(all[i]);
+  if(!act.length)return {status:'none'};
+  return {status:'actionable',slices:act,primary:act[0]};
+}
+// Preferred RC-1 display string for ONE authorized commission_tax slice. The AUTHORIZED per-origin amount
+// is the instruction; the model projection (only when it diverges) is appended strictly as labeled
+// context. Never emits a bare or actionable model amount, and never a blended cross-origin sum.
+function _ctAuthorizedLabel(slice){
+  var s='Transfer $'+fc(slice.actionable_amount)+' from Truist Checking to Vio Bank – Tax Reserve — authorized commission-tax amount (origin wk '+slice.origin_week+')';
+  if(slice.model_amount!=null&&Math.abs(slice.model_amount-slice.actionable_amount)>0.01){
+    s+=' · model projection $'+fc(slice.model_amount)+' (context only — known projection skew)';
+  }
+  return s;
+}
 // Pure write-time decision — EXACT-MATCH amount authority (B1-W7). Recomputes the authorized per-origin
 // slice fresh from durable truth; accepts ONLY submitted == authorized (±$0.01) for the slice named by
 // candidate_context. Refuses: fail-closed ledger/pool; non-positive/non-finite amount; no actionable
@@ -4057,10 +4095,27 @@ function buildDashboardViewModel(weeks,goals){
   const retirementCompletion=weeks.find(function(w){return w.retRem<=0.01;})||null;
   const surplusCompletion=weeks.find(function(w){return w.surplusSwept>0;})||null;
   const lowestChecking=weeks.reduce(function(min,w){return w.chk<min.chk?w:min;},weeks[0]);
+  // RC-1: compute the commission-tax pool ONCE for the whole view-model build; every commission_tax open
+  // action's label is normalized to the durable AUTHORIZED per-origin amount (not the raw runModel
+  // projection) via the _ctOpenAuthority adapter. rawLabel is preserved for provenance; ctInfo carries the
+  // structured authorized/model figures for any consumer that needs them.
+  const _ctPoolVM=(typeof computeCommissionTaxPool==='function')?(function(){try{return computeCommissionTaxPool();}catch(_e){return null;}})():null;
   const allActions=weeks.flatMap(function(w){
     var modelActs=w.realActs.map(function(label,index){
       // 5G-1B B3: completion by resolver identity, not positional taskData[w.num+'_'+index]
-      return{weekNum:w.num,taskIdx:index,label:label,completed:_modelRowDone(w,index),netSuppressed:_xfrRowSuppressed(w.num,index),isCustom:false};
+      var _ak=w.realActKeys?w.realActKeys[index]:null;
+      var _dispLabel=label,_ctInfo=null;
+      if(_ak===ACTION_KEYS.COMMISSION_TAX&&typeof _ctOpenAuthority==='function'){
+        var _auth=_ctOpenAuthority(w.num,{pool:_ctPoolVM,weeks:weeks});
+        if(_auth.status==='actionable'){
+          _dispLabel=_ctAuthorizedLabel(_auth.primary);
+          _ctInfo={authorizedAmount:_auth.primary.actionable_amount,modelAmount:_auth.primary.model_amount,originWeek:_auth.primary.origin_week,slices:_auth.slices};
+        }else if(_auth.status==='blocked'){
+          _dispLabel='Commission-tax execution disabled — review required ('+_auth.reason+')';
+          _ctInfo={blocked:true,reason:_auth.reason};
+        } // status 'none' ⇒ reserved/completed authority; keep raw label (typically filtered as completed)
+      }
+      return{weekNum:w.num,taskIdx:index,label:_dispLabel,rawLabel:label,ctInfo:_ctInfo,completed:_modelRowDone(w,index),netSuppressed:_xfrRowSuppressed(w.num,index),isCustom:false};
     });
     var customActs=(customTaskData[w.num]||[]).map(function(ct){
       var _cm=getTaskMeta(ct.id,ct.label);
@@ -5002,7 +5057,12 @@ function renderWeekDetail(w,weeks){
           html+=deferred.map(function(x){
             var floorAmt=OP_FL;
             var why='Checking ('+f(w.chk)+') held above '+f(floorAmt)+' floor — transfer skipped this cycle';
-            return'<div class="xfr-row deferred"><span class="xi">⏸</span><div class="xtext"><div class="xlbl">'+x.l+'</div><div class="xrsn">'+x.rsn+'</div><div class="deferred-why">'+why+'</div></div></div>';
+            // RC-1: a deferred commission_tax narrative shows the runModel PROJECTION amount, which is not
+            // the authorized figure — flag it as non-authoritative context so it can never read as an
+            // instruction (the authorized per-origin amount is presented on the actionable week's
+            // Transfers-to-execute row). Non-commission-tax deferred rows are rendered exactly as before.
+            var _dxl=/commission 40%/i.test(x.l||'')?(esc(x.l)+' <span style="color:var(--muted)">(model projection — context only; authorized amount shown when actionable)</span>'):x.l;
+            return'<div class="xfr-row deferred"><span class="xi">⏸</span><div class="xtext"><div class="xlbl">'+_dxl+'</div><div class="xrsn">'+x.rsn+'</div><div class="deferred-why">'+why+'</div></div></div>';
           }).join('');
         }
         if(!done.length&&!pending.length&&!deferred.length){html='<div style="color:var(--muted);font-size:13px;padding:8px 0">No transfers this week.</div>';}
@@ -10863,6 +10923,8 @@ function _buildModelContext(){
   lines.push('=== ALL 31 WEEKS ===');
   lines.push('Format: Cal Wk | Dates | Events (IN/OUT) | Actions (TODO/DONE) | End balances | Goals progress');
   lines.push('');
+  // RC-1: the model context must present the AUTHORIZED commission-tax amount, never a bare projection.
+  var _ctPoolAsk=(typeof computeCommissionTaxPool==='function')?(function(){try{return computeCommissionTaxPool();}catch(_e){return null;}})():null;
   weeks.forEach(function(w){
     var calWk=getCalWeek(w.num);
     var isNow=w.num===currentW;
@@ -10875,7 +10937,20 @@ function _buildModelContext(){
     // Actions with completion status (5G-1B: identity-resolved; executed history preserved)
     if(w.realActs&&w.realActs.length){
       var _exRes=resolveWeekTransfers({realActs:w.realActs,realActKeys:w.realActKeys,taskRows:_taskRowsForWeek(w.num)});
-      _exRes.currentRows.forEach(function(_cr){
+      var _ctAuthAsk=(typeof _ctOpenAuthority==='function')?_ctOpenAuthority(w.num,{pool:_ctPoolAsk,weeks:weeks}):{status:'none'};
+      _exRes.currentRows.forEach(function(_cr,_ci){
+        var _ak=w.realActKeys?w.realActKeys[_ci]:null;
+        // RC-1: an OPEN commission_tax action is emitted at the durable AUTHORIZED per-origin amount(s) —
+        // one TODO line per authorized slice — never the bare model projection. DONE/EXECUTED rows already
+        // carry the durable executed amount via applyCompletionSnapshots and are left untouched.
+        if(!_cr.completed&&_ak===ACTION_KEYS.COMMISSION_TAX&&_ctAuthAsk.status==='actionable'){
+          _ctAuthAsk.slices.forEach(function(sl){lines.push('  ACTION [TODO]: '+_ctAuthorizedLabel(sl));});
+          return;
+        }
+        if(!_cr.completed&&_ak===ACTION_KEYS.COMMISSION_TAX&&_ctAuthAsk.status==='blocked'){
+          lines.push('  ACTION [REVIEW REQUIRED]: commission-tax execution disabled ('+_ctAuthAsk.reason+')');
+          return;
+        }
         lines.push('  ACTION ['+(_cr.completed?'DONE':'TODO')+']: '+_cr.label);
       });
       _exRes.executedHistory.forEach(function(_eh){
