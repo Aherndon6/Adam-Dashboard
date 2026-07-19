@@ -1203,7 +1203,7 @@ async function clickNav(page, id) {
         const enabledIraDup=rows.filter(r=>{const cb=r.querySelector('input.task-check');const t=r.textContent||'';return cb&&!cb.disabled&&t.indexOf('(Adam IRA)')>=0&&t.indexOf('Adam IRA seed')<0;});
         let ctx=null; for(const k in _xfrWriteCtx){ if(_xfrWriteCtx[k]&&_xfrWriteCtx[k].actionKey==='commission_tax'){ctx=_xfrWriteCtx[k];break;} }
         return { enabledCT:enabledCT.length, enabledIraDup:enabledIraDup.length,
-          narr425: html.indexOf('$425.68')>=0, narr417carry: html.indexOf('$417.83 carries forward')>=0,
+          narr425: html.indexOf('$425.68')>=0, narrAuth843: html.indexOf('$843.51')>=0&&html.indexOf('authorized commission-tax amount')>=0&&html.indexOf('origin wk 6')>=0,
           narr61bad: /Commission 40% \$61\.06/.test(html),
           ctxAmt: ctx?ctx.amount:null, ctxLabelOk: ctx?(String(ctx.completedLabel).indexOf('Vio Bank - Tax Reserve')>=0):false };
       } finally { goalSnapData=_s;reconData=_r;_goalSnapLoadStatus=_st;
@@ -1214,7 +1214,7 @@ async function clickNav(page, id) {
     assert(res.enabledCT===1, 'exactly one enabled AUTHORIZED $843.51 commission_tax checkbox (got '+res.enabledCT+')');
     assert(res.enabledIraDup===0, 'no enabled Adam IRA duplicate checkbox (got '+res.enabledIraDup+')');
     assert(res.narr425, 'model context still shows $425.68 (display only)');
-    assert(res.narr417carry, 'narrative shows $417.83 carries forward (model context)');
+    assert(res.narrAuth843, 'summary leads with AUTHORIZED $843.51 (origin wk 6); the pre-RC-1b "$417.83 carries forward" model-narrative is intentionally superseded');
     assert(!res.narr61bad, 'narrative must NOT show "Commission 40% $61.06"');
     assert(res.ctxAmt===843.51, 'commission_tax write ctx amount = AUTHORIZED 843.51 (got '+res.ctxAmt+')');
     assert(res.ctxLabelOk, 'commission_tax write ctx label is the Vio Tax Reserve label');

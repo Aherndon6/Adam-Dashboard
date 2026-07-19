@@ -5019,9 +5019,22 @@ function renderWeekDetail(w,weeks){
         });
         // Normalize done entries: replace model amount with actual completedAmount where available
         var done=w.tr.filter(function(x){return x.r==='done'||x.r==='info';}).map(function(x){
-          if(!x._key||_trAmts[x._key]==null)return x;
-          var newL=x.l.replace(/\$[0-9,]+(?:\.[0-9]+)?/,'$'+fc(_trAmts[x._key]));
-          return Object.assign({},x,{l:newL});
+          // Executed transfer with a persisted completed amount → normalize to the actual amount (unchanged).
+          if(x._key&&_trAmts[x._key]!=null){
+            var newL=x.l.replace(/\$[0-9,]+(?:\.[0-9]+)?/,'$'+fc(_trAmts[x._key]));
+            return Object.assign({},x,{l:newL});
+          }
+          // RC-1b: an OPEN (un-executed) commission_tax narrative row here carries the runModel PROJECTION
+          // amount ($365.32), not the authorized figure. Route it through the durable-origin adapter so the
+          // summary presents the AUTHORIZED per-origin amount(s) ($417.83), with the model projection shown
+          // only as labeled context — matching the lower "Transfers to execute" row. Multiple matured origins
+          // render as SEPARATE authorized slices (never a blended total). Non-commission rows are untouched.
+          if(x._key===ACTION_KEYS.COMMISSION_TAX&&typeof _ctOpenAuthority==='function'){
+            var _sa=_ctOpenAuthority(w.num,{weeks:weeks});
+            if(_sa.status==='actionable')return Object.assign({},x,{l:_sa.slices.map(_ctAuthorizedLabel).join(' · ')});
+            if(_sa.status==='blocked')return Object.assign({},x,{l:'Commission-tax execution disabled — review required ('+_sa.reason+')'});
+          }
+          return x;
         });
         // Append completed transfer-type custom tasks only (action tasks don't belong in this panel)
         var _allCTp=customTaskData[w.num]||[];

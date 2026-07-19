@@ -13252,6 +13252,68 @@ console.log('\n── Section 5G-1D Slice 4c: half-close repair confirmation ─
   });
 })();
 
+// ═══════════════════════════════════════════════════════════════════════════
+// RC-1b — Weekly "Transfers This Week" SUMMARY (renderWeekDetail done/info bucket) presents the
+// durable AUTHORIZED commission-tax amount, never the bare model projection. Behavioral render test
+// against the ACTUAL renderWeekDetail(w,weeks) output. Fixture drives the pool from globals
+// (overrideData ct + taskData durable leg) exactly like B1-POOL-12; wk7 is the rendered carry week.
+// ═══════════════════════════════════════════════════════════════════════════
+(function(){
+  // activeW is a `let` inside index.html (eval-scoped; not settable here) and only feeds a cosmetic
+  // summary-header date — the done-bucket adapter keys on w.num (=7 via the rendered week), so we drive
+  // overrideData + taskData only. renderWeekDetail tolerates the default activeW (existing render tests).
+  function withState(over,td,fn){
+    var _o=overrideData,_t=taskData;
+    try{ overrideData=over; taskData=td; return fn(); }
+    finally{ overrideData=_o; taskData=_t; }
+  }
+  // Clone WEEKS; control the wk6 (durable-leg source) and wk7 (open carry) commission labels + wk7's
+  // summary `tr` rows. wk7 (index 6) is the rendered week.
+  function scenarioWeeks(w7tr){
+    var W=WEEKS.map(function(x){return Object.assign({},x);});
+    W[5]=Object.assign({},WEEKS[5],{realActs:['Transfer $425.68 from Truist Checking to Vio Bank - Tax Reserve (commission 40%)'],realActKeys:['commission_tax']});
+    W[6]=Object.assign({},WEEKS[6],{realActs:['Transfer $365.32 from Truist Checking to Vio Bank - Tax Reserve (deferred commission 40%)'],realActKeys:['commission_tax'],tr:w7tr});
+    return W;
+  }
+  var CT_DONE={l:'Commission 40% $365.32 Checking → Vio Bank - Tax Reserve',r:'done',_key:'commission_tax',rsn:'Deferred commission tax'};
+  var NONCOMM={l:'Alaska fund $500.00 Checking → Truist Savings',r:'done',rsn:'surplus sweep'};
+
+  test('RC1b-1: Weekly summary shows AUTHORIZED $417.83 for an open commission_tax row; no bare $365.32 instruction; non-commission row unchanged',function(){
+    var html=withState({6:{ct:843.51}},{'6_1':{completed:true,actionKey:'commission_tax',completedAmount:425.68}},function(){
+      var W=scenarioWeeks([CT_DONE,NONCOMM]); return renderWeekDetail(W[6],W);
+    });
+    // (1) summary identifies authorized 417.83
+    assertIncludes(html,'417.83','summary must present authorized 417.83');
+    assertIncludes(html,'authorized commission-tax amount','summary must label the amount authorized');
+    // (2) no bare actionable "Commission 40% $365.32" (the raw model summary label)
+    assert(html.indexOf('Commission 40% $365.32')<0,'bare actionable Commission 40% $365.32 must not appear');
+    // (3) any 365.32 is labeled model-projection/context only
+    assert(html.indexOf('365.32')<0||/model projection \$365\.32 \(context only/.test(html),'365.32 only as labeled context');
+    assert(html.indexOf('Transfer $365.32')<0,'no bare Transfer $365.32 instruction anywhere');
+    // (4) lower "Transfers to execute" row remains 417.83
+    assertIncludes(html,'Authorized $417.83 (origin wk 6','lower execution row must retain authorized 417.83');
+    // (5) non-commission summary row rendered unchanged (text-equivalent)
+    assertIncludes(html,'Alaska fund $500.00 Checking → Truist Savings','non-commission summary row must render unchanged');
+  });
+
+  test('RC1b-2: merged commission-tax origins render as SEPARATE authorized slices (417.83 · 700.90), never a blended 1,118.73',function(){
+    var html=withState({6:{ct:843.51},7:{ct:700.90}},{'6_1':{completed:true,actionKey:'commission_tax',completedAmount:425.68}},function(){
+      var W=scenarioWeeks([CT_DONE]); return renderWeekDetail(W[6],W);
+    });
+    assertIncludes(html,'417.83','origin-6 authorized slice present in the summary');
+    assertIncludes(html,'700.90','origin-7 authorized slice present in the summary');
+    assert(html.indexOf('1,118.73')<0&&html.indexOf('1118.73')<0,'no blended 1,118.73 total in the summary');
+  });
+
+  test('RC1b-3: blocked commission-tax authority renders execution-disabled / review-required (no bare model label)',function(){
+    var html=withState({6:{ct:400}},{'6_1':{completed:true,actionKey:'commission_tax',completedAmount:402}},function(){
+      var W=scenarioWeeks([CT_DONE]); return renderWeekDetail(W[6],W);
+    });
+    assert(/execution disabled/i.test(html)&&/review required/i.test(html),'blocked authority must render execution-disabled / review-required');
+    assert(html.indexOf('Commission 40% $365.32')<0,'no bare model summary label under blocked authority');
+  });
+})();
+
 console.log('\n╔══════════════════════════════════════════════════════════════╗');
 console.log('║                       RESULTS                               ║');
 console.log('╚══════════════════════════════════════════════════════════════╝');
