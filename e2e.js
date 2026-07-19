@@ -1176,6 +1176,10 @@ async function clickNav(page, id) {
     var rc=function(chk){return{chk:chk,sav:7000.07,amx:8539.20,tax:1952.22,lc:14024.76,balance_basis:'posted_current_balance'};};
     reconData={1:rc(15000),2:rc(13000),3:rc(11000),4:rc(9500),5:rc(8382.92)};
     overrideData[6]={week_num:6,dates:'Jul 12-18',events_json:[{l:'AMEX Gold payment due 7/18',t:'ob',a:-5718.52},{l:'Wendy Deep South commission (7/15)',t:'in',a:2108.78,tx:true},{l:'Wendy paycheck (7/17)',t:'in',a:2152.50}],ct:843.51,ca:1265.27};
+    // ISOLATION: clear live production taskData so E1/E2 run the DECLARED NO-EXECUTION fixture — no
+    // commission_tax completed legs (the live account carries wk2/wk4/wk6 legs that would otherwise
+    // contaminate the "no-execution" premise). Only the Adam IRA rows below are seeded.
+    Object.keys(taskData).forEach(function(k){delete taskData[k];});
     taskData['6_0']={completed:true,completedAt:'2026-07-14T01:21:52Z',completedAmount:61.06,actionKey:'goal_adam_ira',completedLabel:'Transfer $61.06 from Truist Checking to AMEX Savings (Adam IRA)'};
     taskData['7_1']={completed:false,completedAt:null,completedAmount:null,actionKey:'goal_adam_ira',completedLabel:null};
   })()`;
@@ -1298,6 +1302,91 @@ async function clickNav(page, id) {
     });
     assert(res.iraKey==='goal_adam_ira', 'Adam IRA row action_key NOT rewritten by the commission edit (got '+res.iraKey+')');
     assert(!res.rewroteIraToComm, 'NO PATCH rewrote the Adam IRA row (task_idx 0) into commission_tax');
+    await context.close();
+  }, { tags: [] });
+
+  // Deterministic isolated base (no live taskData): wk6 ct=843.51, wk1-5 reconciled → model wk6/wk7 split.
+  const IDENT_BASE = `goalSnapData={5:{adam_ira:7438.94,wendy_ira:0,alaska:7000,bailey_529:0,bryce_529:0,preston_529:0,bryce_vehicle:0,christmas_cruise:0}};_goalSnapLoadStatus='loaded';var rc=function(chk){return{chk:chk,sav:7000.07,amx:8539.20,tax:1952.22,lc:14024.76,balance_basis:'posted_current_balance'};};reconData={1:rc(15000),2:rc(13000),3:rc(11000),4:rc(9500),5:rc(8382.92)};overrideData[6]={week_num:6,dates:'Jul 12-18',events_json:[{l:'AMEX Gold payment due 7/18',t:'ob',a:-5718.52},{l:'Wendy Deep South commission (7/15)',t:'in',a:2108.78,tx:true},{l:'Wendy paycheck (7/17)',t:'in',a:2152.50}],ct:843.51,ca:1265.27};Object.keys(taskData).forEach(function(k){delete taskData[k];});`;
+
+  // IDENT-E5 — DETERMINISTIC completed-leg fixture: a durable wk6 commission_tax 425.68 completion is
+  // immutable "Executed" history (read-only), and ONLY the remaining $417.83 later action is actionable
+  // (at Week 7). B1 is the sole completion authority (the durable leg is recognized regardless of label).
+  await test('5G1B-IDENT-E5: durable wk6 425.68 completion → immutable Executed history; only wk7 417.83 remains actionable', async () => {
+    const { page, context } = await openApp(browser);
+    await clickNav(page, 'weekly');
+    const res = await page.evaluate((BASE) => {
+      eval(BASE);
+      taskData['6_1']={completed:true,completedAt:'2026-07-18T03:20:38Z',completedAmount:425.68,actionKey:'commission_tax',completedLabel:'Transfer $425.68 from Truist Checking to Vio Bank - Tax Reserve (commission 40%)'};
+      function rows(){return Array.from(document.querySelectorAll('#weekly-content .task-row'));}
+      function ct(en,amt){return rows().filter(function(r){var cb=r.querySelector('input.task-check');var t=r.textContent||'';return cb&&(en?!cb.disabled:cb.disabled)&&t.indexOf('$'+amt)>=0&&t.indexOf('Tax Reserve')>=0;}).length;}
+      activeW=6; setSection('weekly'); renderApp();
+      var wk6ExecReadonly=ct(false,'425.68'), wk6EnabledDup=ct(true,'425.68');
+      var wk6Html=document.getElementById('weekly-content').innerHTML||'';
+      activeW=7; renderApp();
+      var wk7Enabled=ct(true,'417.83');
+      return { wk6ExecReadonly:wk6ExecReadonly, wk6EnabledDup:wk6EnabledDup, wk6ExecutedBadge:/>Executed</.test(wk6Html), wk7Enabled:wk7Enabled };
+    }, IDENT_BASE);
+    assert(res.wk6ExecReadonly===1, 'wk6 shows exactly one READ-ONLY Executed $425.68 row (got '+res.wk6ExecReadonly+')');
+    assert(res.wk6EnabledDup===0, 'wk6 shows NO enabled/actionable $425.68 duplicate (completion is immutable, got '+res.wk6EnabledDup+')');
+    assert(res.wk6ExecutedBadge, 'wk6 durable completion renders an "Executed" badge');
+    assert(res.wk7Enabled===1, 'wk7 shows exactly one enabled $417.83 commission_tax action (the remaining) (got '+res.wk7Enabled+')');
+    await context.close();
+  }, { tags: [] });
+
+  // IDENT-E6 — MALFORMED null-amount fixture: an eligible completed commission_tax row with a NULL amount
+  // is financially ambiguous ⇒ the pool fails closed ⇒ the commission-tax row is non-executable "Review
+  // required" (no enabled checkbox, no write context). Proves the fail-closed guard the D-DISP remediated.
+  await test('5G1B-IDENT-E6: eligible null-amount commission_tax leg → pool fail-closed → Review required (no executable row)', async () => {
+    const { page, context } = await openApp(browser);
+    await clickNav(page, 'weekly');
+    const res = await page.evaluate((BASE) => {
+      eval(BASE);
+      taskData['6_1']={completed:true,completedAt:'2026-07-18T03:20:38Z',completedAmount:null,actionKey:'commission_tax',completedLabel:'Transfer $425.68 from Truist Checking to Vio Bank - Tax Reserve (commission 40%)'};
+      activeW=6; setSection('weekly'); renderApp();
+      var html=document.getElementById('weekly-content').innerHTML||'';
+      var rows=Array.from(document.querySelectorAll('#weekly-content .task-row'));
+      var enabledCT=rows.filter(function(r){var cb=r.querySelector('input.task-check');var t=r.textContent||'';return cb&&!cb.disabled&&t.indexOf('Tax Reserve')>=0;}).length;
+      var poolStatus=(typeof computeCommissionTaxPool==='function')?computeCommissionTaxPool().control_status:'n/a';
+      var poolReason=(typeof computeCommissionTaxPool==='function')?computeCommissionTaxPool().reason:null;
+      return { enabledCT:enabledCT, reviewRequired: html.indexOf('Review required')>=0 && html.indexOf('Tax Reserve')>=0, poolStatus:poolStatus, poolReason:poolReason };
+    }, IDENT_BASE);
+    assert(res.poolStatus==='fail_closed' && res.poolReason==='malformed_executed_amount', 'pool fails closed on the null amount (got '+res.poolStatus+'/'+res.poolReason+')');
+    assert(res.enabledCT===0, 'NO enabled commission_tax checkbox while the pool is fail-closed (got '+res.enabledCT+')');
+    assert(res.reviewRequired, 'commission-tax row renders "Review required"');
+    await context.close();
+  }, { tags: [] });
+
+  // IDENT-E7 — executed-history authority: a durable commission_tax leg the LEGACY resolver leaves
+  // UNCONSUMED (its stored completed_label differs from the current model realAct label) must NOT render a
+  // second legacy "Executed earlier" row — B1 owns the single immutable "Executed" representation. Non-
+  // commission-tax unconsumed history is UNCHANGED. (6_1 matches the model label and binds; 6_2 is a
+  // superseded-label CT leg left unconsumed; 6_5 is a phantom non-CT completion that stays in legacy history.)
+  await test('5G1B-IDENT-E7: legacy executedHistory excludes commission_tax (no duplicate); B1 owns the one Executed row; non-CT history intact', async () => {
+    const { page, context } = await openApp(browser);
+    await clickNav(page, 'weekly');
+    const res = await page.evaluate((BASE) => {
+      eval(BASE);
+      taskData['6_1']={completed:true,completedAt:'2026-07-18T03:20:38Z',completedAmount:425.68,actionKey:'commission_tax',completedLabel:'Transfer $425.68 from Truist Checking to Vio Bank - Tax Reserve (commission 40%)'};
+      taskData['6_2']={completed:true,completedAt:'2026-06-01T00:00:00Z',completedAmount:0,actionKey:'commission_tax',completedLabel:'Transfer $478.19 from Truist Checking to Vio Bank - Tax Reserve (superseded model label)'};
+      taskData['6_5']={completed:true,completedAt:'2026-06-01T00:00:00Z',completedAmount:12.34,actionKey:'goal_phantom',completedLabel:'Transfer $12.34 from Truist Checking to AMEX Savings (Phantom Goal)'};
+      activeW=6; setSection('weekly'); renderApp();
+      var eh=Array.from(document.querySelectorAll('#weekly-content .task-row.exec-history'));
+      var rows=Array.from(document.querySelectorAll('#weekly-content .task-row'));
+      var execHistCT=eh.filter(function(r){return (r.textContent||'').indexOf('Tax Reserve')>=0;}).length;
+      var execHistNonCT=eh.filter(function(r){return (r.textContent||'').indexOf('Phantom Goal')>=0;}).length;
+      var b1Executed=rows.filter(function(r){var cb=r.querySelector('input.task-check');var t=r.textContent||'';return cb&&cb.disabled&&t.indexOf('Executed')>=0&&t.indexOf('Tax Reserve')>=0&&t.indexOf('$425.68')>=0;}).length;
+      var enabledCTwk6=rows.filter(function(r){var cb=r.querySelector('input.task-check');var t=r.textContent||'';return cb&&!cb.disabled&&t.indexOf('Tax Reserve')>=0;}).length;
+      var poolStatus=computeCommissionTaxPool().control_status;
+      activeW=7; renderApp();
+      var wk7Enabled=Array.from(document.querySelectorAll('#weekly-content .task-row')).filter(function(r){var cb=r.querySelector('input.task-check');var t=r.textContent||'';return cb&&!cb.disabled&&t.indexOf('$417.83')>=0&&t.indexOf('Tax Reserve')>=0;}).length;
+      return { execHistCT:execHistCT, execHistNonCT:execHistNonCT, b1Executed:b1Executed, enabledCTwk6:enabledCTwk6, poolStatus:poolStatus, wk7Enabled:wk7Enabled };
+    }, IDENT_BASE);
+    assert(res.poolStatus==='ok', 'pool remains ok (the extra unconsumed CT leg does not break the pool)');
+    assert(res.execHistCT===0, 'NO legacy "Executed earlier" commission_tax row — B1 owns it (got '+res.execHistCT+')');
+    assert(res.b1Executed===1, 'exactly ONE B1-owned immutable Executed $425.68 commission_tax row (got '+res.b1Executed+')');
+    assert(res.enabledCTwk6===0, 'no actionable/enabled commission_tax duplicate at wk6 (got '+res.enabledCTwk6+')');
+    assert(res.execHistNonCT===1, 'non-commission-tax phantom completion STILL renders in legacy executed history (unchanged) (got '+res.execHistNonCT+')');
+    assert(res.wk7Enabled===1, 'later remaining commission-tax allocation intact — wk7 one enabled $417.83 (got '+res.wk7Enabled+')');
     await context.close();
   }, { tags: [] });
 
