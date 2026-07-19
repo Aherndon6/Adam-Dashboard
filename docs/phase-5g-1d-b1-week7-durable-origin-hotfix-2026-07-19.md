@@ -70,7 +70,9 @@ aggregate remaining **417.83** (supersedes the deployed 1,035.44 cap).
 
 - Overview/History open-action labels still display model-context amounts (display-only summary
   surfaces; the actionable weekly rows + write path carry the authorized amounts). Cosmetic
-  follow-up candidate.
+  follow-up candidate. **⟶ RESOLVED by RC-1 (2026-07-19) — see §6; the open-action summary surfaces
+  now carry the authorized amount, with the model projection shown only as labeled context.
+  (History displays task counts only, no bare amount; Assumptions is static rule prose.)**
 - `runModel`'s internal cash projection remains surplus-derived (frozen): projected balances may skew
   by the executed-vs-surplus delta (**$52.51** here) until the next weekly anchor; deferred to
   Calc-Core per the standing decision.
@@ -84,3 +86,39 @@ aggregate remaining **417.83** (supersedes the deployed 1,035.44 cap).
   IDENT-E2 revised to the live-equivalent durable-leg fixture → authorized 417.83).
 - Byte-identity: `runModel` / `computeGoalTransferNetting` / `resolveWeekTransfers` extracted and
   diffed vs `191cda5` — identical. `BUILD_TS` unchanged (`2026-07-18T22:06:29`).
+
+## 6. RC-1 + activation record (2026-07-19)
+
+**RC-1 (Fable "READY WITH REQUIRED PRE-MERGE CHANGES") — commit `094235b`.** Every OPEN
+`commission_tax` display surface now routes through a durable-origin display adapter
+(`_ctOpenAuthority` + `_ctAuthorizedLabel`) so the operator sees the **authorized per-origin amount
+`417.83`**, never the bare model projection `365.32`; the model amount appears only as explicitly
+labeled, non-authoritative context. Surfaces normalized: `buildDashboardViewModel` (Overview view-
+model), `_buildModelContext` (Ask-Claude), `renderWeekDetail` deferral narrative. Added a clarifying
+comment that `executed_total` reports task-leg **integrity** while durable settlement authority lives
+in `origins[].settled` (no behavioral change). `realActs` are **not** mutated — the model projection
+is still parsed from the original label for context (`_ctScheduleFromWeeks`). New tests **RC1-1…RC1-9**.
+This **supersedes §4's first known-note** (open-action summary surfaces now carry the authorized amount).
+
+- **Verification:** static **1594 / 0**; full `node e2e.js` **158 / 0 / 0**; `runModel` /
+  `computeGoalTransferNetting` / `resolveWeekTransfers` byte-identical to `191cda5`
+  (sha `5181b79c…` / `4670447c…` / `20d17438…`).
+
+**Activation (2026-07-19, owner-authorized controlled sequence).**
+
+- Activation-stamp commit **`48afc4c`** — `BUILD_TS 2026-07-18T22:06:29 → 2026-07-19T00:55:45`
+  (BUILD_TS-only diff; the reviewed commits `54d032e`/`094235b` were not rewritten).
+- Branch pushed; **`main` fast-forwarded `191cda5 → 48afc4c`** (linear, no merge commit, no force push).
+- **GitHub Pages** build run `29674091985` **built** (error null, 34s); **`BUILD_TS 2026-07-19T00:55:45`
+  live** at dashboard.herndons.us.
+- **Post-deploy smoke — PARTIAL PASS.** App-health **PASS** (loads, console clean, expected BUILD_TS
+  live, adapter present in deployed bytes). Deployed-code deterministic probe **PASS** on production
+  bytes with production-shaped inputs: pool `ok`, remaining **`417.83`**, wk6 authorized `417.83`,
+  guard **accepts `417.83` / refuses fresh `365.32` (`amount_mismatch_authorized`) / refuses `300.00`**,
+  merged **`417.83` + `700.90`**, no blended `1,118.73`. **Owner-authenticated LIVE-DATA smoke PENDING**
+  (Week-29 UI slice / Overview / Ask-Claude against actual Supabase data — requires Adam's owner session;
+  the deployed anon session shows `isOwner:false`).
+- **Commission_tax execution hold REMAINS IN FORCE.** No `commission_tax` leg executed or persisted;
+  **no `417.83` or `700.90` executed; no `365.32` used or persisted.** The Week-29 controlled execution
+  (first leg `417.83` origin-wk6 → Extra BK Pay entry → verify two-origin `417.83` + `700.90` → second
+  leg `700.90`) is an owner-session action pending the live-data smoke.
