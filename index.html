@@ -1856,8 +1856,15 @@ function getTaggedWD(wdArray){
       var _b1amt=ct, _b1ctx=null, _b1emit=true;
       if(_b1pool){
         if(_b1pool.control_status!=='ok'){_b1emit=false;}
-        else if(_b1pool.remaining<=_NET_TOL){_b1emit=false;}
-        else {_b1amt=ct;_b1ctx=_b1pool.pool_context;}
+        else {
+          // B1-W7: the candidate amount is THIS origin's authorized remaining (era-partitioned ledger)
+          // — never the raw ct scalar. Pre-anchor origins are attested-closed (remaining 0 ⇒ suppressed);
+          // an executed post-anchor origin candidates only its durable remainder. eid UNCHANGED.
+          var _b1o=null,_b1oi;
+          for(_b1oi=0;_b1oi<(_b1pool.origins||[]).length;_b1oi++){if(_b1pool.origins[_b1oi].origin_week===num){_b1o=_b1pool.origins[_b1oi];break;}}
+          if(!_b1o||_b1o.authorized_remaining<=_NET_TOL){_b1emit=false;}
+          else {_b1amt=_b1o.authorized_remaining;_b1ctx=(_b1pool.pool_context||'')+'|O'+num+'|CAND';}
+        }
       }
       if(_b1emit){
         var wkStart=getWeekStartDate(num);
@@ -3323,13 +3330,43 @@ function _ctPoolWindow(effwd){ if(!effwd||!effwd.length)return null; var mn=Infi
 // total + remaining. Integer cents, explicit sort — never object iteration order.
 function _ctPoolContext(plan,inputs,legs,totalC,remC){ var s='CTPOOL|'+String(plan==null?'':plan); s+='|OBL'; for(var i=0;i<inputs.length;i++)s+=':'+inputs[i].week_num+'='+inputs[i].cents; s+='|EXE'; for(var j=0;j<legs.length;j++)s+=':'+legs[j].week_num+'_'+legs[j].task_idx+'='+legs[j].cents; return s+'|T'+totalC+'|R'+remC; }
 function _ctPoolFail(reason,inputs,legs,totalC){ return {obligation_type:'commission_tax_pool',plan_year:(typeof PLAN_YEAR!=='undefined'?PLAN_YEAR:null),pool_window:null,obligation_inputs:(inputs||[]).map(function(x){return {week_num:x.week_num,amount:(x.cents!=null?x.cents/100:null)};}),total_obligation:(totalC!=null?totalC/100:null),eligible_executed_legs:(legs||[]).map(_ctLegOut),executed_total:(legs||[]).reduce(function(s,l){return s+(l.cents||0);},0)/100,remaining:0,control_status:'fail_closed',reason:reason,warning_review_state:'review_required',pool_context:null,_remC:0}; }
-// 1) Pool-level pure control. Multiple ct>0 weeks are NORMAL — no origin attribution. Fails closed ONLY
-// for: no pool window/inputs, invalid total, malformed durable amount, duplicate durable identity, or
-// over-credit beyond tolerance.
+// ── B1-W7 (2026-07-18, Fable APPROVE WITH REQUIRED CHANGES): ERA-PARTITIONED durable-origin ledger ──
+// Exactly ONE evidence source per origin. Pre-anchor origins (origin_week <= anchor) are closed ONLY by
+// the reviewed legacy-settlement attestation below (evidence = reconciled tax-reserve deltas verified at
+// review time; the RUNTIME never reads the weekly-reconciliation reserve table). Post-anchor origins are governed ONLY by
+// structured completed commission_tax weekly_tasks legs (B1 sole completion authority makes them the
+// complete durable record), FIFO-attributed oldest-open-first. runModel amounts are planning/display
+// context ONLY and never enter the authorization or write path. Double counting is prevented
+// STRUCTURALLY: pre-anchor legs are subsumed by the attestation and never separately settlement-counted.
+var CT_ATTESTATION={
+  version:'2026-ATT-1',
+  plan_year:2026,
+  anchor_boundary_week:5,   // pre-anchor era = origin_week <= 5 (the §13 write-locked legacy weeks)
+  entries:[
+    // wk2: obligation 993.29 = task leg 375.68 + reconciled taskless carry 617.61 (wk2→3 reserve delta;
+    // exact identity 993.29−375.68=617.61; wk1→2 delta 897.04 = 375.68 + base tax 521.36 cross-check).
+    {origin_week:2,obligation_cents:99329,attested_settlement_cents:99329,
+     evidence:'task leg 37568c + reconciled carry 61761c (wk2->3 reserve delta, exact identity)'},
+    // wk4: obligation 435.63 settled exactly (wk4→5 reserve delta 435.63).
+    {origin_week:4,obligation_cents:43563,attested_settlement_cents:43563,
+     evidence:'settlement 43563c (wk4->5 reserve delta, exact)'}
+  ],
+  // Unattributed residue — NEVER assigned to any origin; no origin closure depends on it.
+  residue_notes:[{window:'wk3->wk4',amount_cents:194,
+    note:'probable interest/adjustment pending statement confirmation; recorded, unattributed'}]
+};
+function _ctAttFp(att){ var s='ATT|'+att.version+'|'+att.plan_year+'|B'+att.anchor_boundary_week; for(var i=0;i<att.entries.length;i++){var e=att.entries[i];s+='|'+e.origin_week+'='+e.obligation_cents+'/'+e.attested_settlement_cents;} return s; }
+// 1) Pool + PER-ORIGIN LEDGER (pure). Obligation identity = plan cycle + origin_week from structured
+// persisted ct inputs (integer cents; labels are NEVER identity). remaining = Σ per-origin authorized
+// remaining under the era partition — never a model amount, never a flat leg subtraction. Fails closed
+// for: no window/inputs, invalid total, attestation self-check failure, a pre-anchor origin not exactly
+// closed, malformed leg amount, duplicate leg identity, an unplaceable post-anchor leg (over-credit),
+// or a per-origin/aggregate agreement violation.
 function computeCommissionTaxPool(opts){
   opts=opts||{};
   var effwd=_ctEffWD(opts);
   var td=opts.taskData||(typeof taskData!=='undefined'?taskData:{});
+  var att=opts.attestation||CT_ATTESTATION;
   var overTolC=Math.round(((opts.overcreditTol!=null)?opts.overcreditTol:_NET_OVERCREDIT_TOL)*100);
   var win=_ctPoolWindow(effwd);
   var inputs=[];
@@ -3338,21 +3375,69 @@ function computeCommissionTaxPool(opts){
   if(!win||inputs.length===0)return _ctPoolFail('no_pool_window_or_inputs',inputs,[],null);
   var totalC=inputs.reduce(function(s,x){return s+x.cents;},0);
   if(totalC<=0)return _ctPoolFail('invalid_pool_total',inputs,[],totalC);
+  if(!att||!att.version||!isFinite(att.anchor_boundary_week)||att.plan_year!==(typeof PLAN_YEAR!=='undefined'?PLAN_YEAR:att.plan_year))
+    return _ctPoolFail('attestation_selfcheck',inputs,[],totalC);
+  var anchorW=att.anchor_boundary_week;
   var eligible=_ctExecutedLegs(td).filter(function(l){return l.week_num>=win.min&&l.week_num<=win.max;});   // pool-window boundary
   for(var e=0;e<eligible.length;e++)if(eligible[e].cents==null)return _ctPoolFail('malformed_executed_amount',inputs,eligible,totalC);
   var seen=Object.create(null);
   for(var j=0;j<eligible.length;j++){var id=eligible[j].week_num+'_'+eligible[j].task_idx; if(seen[id])return _ctPoolFail('duplicate_executed_leg_identity',inputs,eligible,totalC); seen[id]=1;}
+  // per-origin ledger: pre-anchor origins must be EXACTLY closed by attestation (an attestation entry
+  // with no matching origin is inapplicable and ignored — fixtures/cycles without that origin).
+  var origins=[],oi;
+  for(oi=0;oi<inputs.length;oi++){
+    var ow=inputs[oi].week_num,ob=inputs[oi].cents;
+    if(ow<=anchorW){
+      var ent=null,dup=false;
+      for(var ai=0;ai<att.entries.length;ai++){if(att.entries[ai].origin_week===ow){if(ent)dup=true;else ent=att.entries[ai];}}
+      if(!ent||dup)return _ctPoolFail('preanchor_origin_not_exactly_closed',inputs,eligible,totalC);
+      if(ent.obligation_cents!==ob)return _ctPoolFail('attestation_mismatch',inputs,eligible,totalC);
+      if(ent.attested_settlement_cents!==ent.obligation_cents)return _ctPoolFail('preanchor_origin_not_exactly_closed',inputs,eligible,totalC);
+      origins.push({origin_week:ow,era:'pre_anchor',obligation_cents:ob,settled_cents:ob,remaining_cents:0});
+    } else {
+      origins.push({origin_week:ow,era:'post_anchor',obligation_cents:ob,settled_cents:0,remaining_cents:ob});
+    }
+  }
+  // Post-anchor legs: FIFO oldest-open-first, single-origin placement (a leg fits the oldest open
+  // origin whose remaining accommodates it within ±$1 tolerance; a leg fitting NO single origin is
+  // over-credit/ambiguous ⇒ fail closed). Pre-anchor legs are subsumed by the attestation.
+  var warn='none';
+  for(var li=0;li<eligible.length;li++){
+    var lg=eligible[li];
+    if(lg.week_num<=anchorW)continue;
+    var placed=false;
+    for(oi=0;oi<origins.length;oi++){
+      var o=origins[oi];
+      if(o.era!=='post_anchor'||o.remaining_cents<=0)continue;
+      if(lg.cents<=o.remaining_cents+overTolC){
+        // within-tolerance overage is informational rounding, never settlement: settled caps at the
+        // obligation so the per-origin/aggregate agreement identity always holds exactly.
+        if(lg.cents>o.remaining_cents){warn='informational';o.settled_cents+=o.remaining_cents;o.remaining_cents=0;}
+        else {o.settled_cents+=lg.cents;o.remaining_cents-=lg.cents;}
+        placed=true;break;
+      }
+    }
+    if(!placed)return _ctPoolFail('over_credit_beyond_tolerance',inputs,eligible,totalC);
+  }
+  var remC=0,settledC=0;
+  for(oi=0;oi<origins.length;oi++){remC+=origins[oi].remaining_cents;settledC+=origins[oi].settled_cents;}
+  if(remC!==totalC-settledC)return _ctPoolFail('per_origin_aggregate_disagreement',inputs,eligible,totalC);   // agreement invariant
   var execC=eligible.reduce(function(s,l){return s+l.cents;},0);
-  var over=execC-totalC, warn='none', remC;
-  if(over>overTolC)return _ctPoolFail('over_credit_beyond_tolerance',inputs,eligible,totalC);
-  if(over>0){remC=0;warn='informational';} else remC=totalC-execC;
-  return {obligation_type:'commission_tax_pool',plan_year:(typeof PLAN_YEAR!=='undefined'?PLAN_YEAR:null),pool_window:{min:win.min,max:win.max},obligation_inputs:inputs.map(function(x){return {week_num:x.week_num,amount:x.cents/100};}),total_obligation:totalC/100,eligible_executed_legs:eligible.map(_ctLegOut),executed_total:execC/100,remaining:remC/100,control_status:'ok',reason:null,warning_review_state:warn,pool_context:_ctPoolContext((typeof PLAN_YEAR!=='undefined'?PLAN_YEAR:null),inputs,eligible,totalC,remC),_remC:remC,_legs:eligible};
+  var ctx='CTL|'+_ctAttFp(att)+'|OBL';
+  for(oi=0;oi<origins.length;oi++)ctx+=':'+origins[oi].origin_week+'='+origins[oi].obligation_cents+'/'+origins[oi].settled_cents+'/'+origins[oi].remaining_cents;
+  ctx+='|EXE';for(var j2=0;j2<eligible.length;j2++)ctx+=':'+eligible[j2].week_num+'_'+eligible[j2].task_idx+'='+eligible[j2].cents;
+  ctx+='|T'+totalC+'|R'+remC;
+  return {obligation_type:'commission_tax_pool',plan_year:(typeof PLAN_YEAR!=='undefined'?PLAN_YEAR:null),pool_window:{min:win.min,max:win.max},attestation_version:att.version,
+    obligation_inputs:inputs.map(function(x){return {week_num:x.week_num,amount:x.cents/100};}),
+    origins:origins.map(function(o){return {origin_week:o.origin_week,era:o.era,obligation:o.obligation_cents/100,settled:o.settled_cents/100,authorized_remaining:o.remaining_cents/100};}),
+    total_obligation:totalC/100,eligible_executed_legs:eligible.map(_ctLegOut),executed_total:execC/100,remaining:remC/100,
+    control_status:'ok',reason:null,warning_review_state:warn,pool_context:ctx,_remC:remC,_legs:eligible,_originsC:origins};
 }
-// 2) Week-scoped schedule allocation over the FULL ordered runModel commission_tax realActs. Completed
-// weeks = immutable durable history; each open week reconciles cumulative model schedule to cumulative
-// durable reservation (prior under-exec carries forward, prior over-exec reduces later action); the
-// cumulative open actionable is capped at pool remaining (so the last open row absorbs only bounded
-// cent residual and never over-credits); pool remaining 0 ⇒ all open rows suppressed. Pure.
+// 2) Week-scoped PER-ORIGIN slice emission. Completed weeks render immutable durable history. Each
+// matured origin with authorized remaining emits ONE independent slice at its earliest open schedule
+// week >= origin_week (a future origin never becomes actionable early; an origin with no open week at
+// or after it emits nothing here — the reconciliation-candidate surface still carries it). Model
+// amounts attach as display context ONLY. Pure; authority = the per-origin ledger, never cumModel.
 function _ctScheduleFromWeeks(weeks){
   var out=[];
   (weeks||[]).forEach(function(w){
@@ -3372,43 +3457,46 @@ function computeCommissionTaxSchedule(opts){
   var sched=(opts.schedule||_ctScheduleFromWeeks(opts.weeks)).slice().sort(function(a,b){return a.week_num-b.week_num;});
   var failed=(pool.control_status!=='ok');
   var tolC=Math.round(_NET_TOL*100);
-  var remC=failed?0:(pool._remC!=null?pool._remC:(_ctCents(pool.remaining)||0));
-  var schedFp=''; for(var f=0;f<sched.length;f++)schedFp+='|'+sched[f].week_num+':'+(_ctCents(sched[f].model_amount)||0);
-  var poolCtx=pool.pool_context||'';
-  var res={pool:pool,control_status:pool.control_status,aggregate_obligation:pool.total_obligation,aggregate_remaining:pool.remaining,rows:[]};
+  var res={pool:pool,control_status:pool.control_status,aggregate_obligation:pool.total_obligation,aggregate_remaining:pool.remaining,attestation_version:pool.attestation_version||null,rows:[]};
   var execByWeek=Object.create(null);
   (pool.eligible_executed_legs||[]).forEach(function(l){var c=_ctCents(l.amount);execByWeek[l.week_num]=(execByWeek[l.week_num]||0)+(c||0);});
-  var allocOpenC=0,cumReservedC=0,cumModelC=0;
+  var openWeeks=[];
   for(var i=0;i<sched.length;i++){
-    var wk=sched[i].week_num,modelC=_ctCents(sched[i].model_amount)||0;cumModelC+=modelC;
-    var execHereC=execByWeek[wk]||0;
-    var row={week_num:wk,model_amount:modelC/100,durable_executed_amount:(execHereC?execHereC/100:null),actionable_amount:0,status:null,candidate_context:null};
-    if(failed){row.status='fail_closed';}
-    else if(execHereC>0){row.status='completed';cumReservedC+=execHereC;}      // immutable durable history
-    else {
-      var actC=cumModelC-cumReservedC; if(actC<0)actC=0;                        // reconcile cum model → cum reserved
-      var capC=remC-allocOpenC; if(capC<0)capC=0; if(actC>capC)actC=capC;       // never exceed pool remaining
-      row.actionable_amount=actC/100;
-      row.status=(actC>tolC)?'actionable':'suppressed';
-      if(row.status==='actionable')row.candidate_context=poolCtx+schedFp+'|w'+wk+'|a'+actC;   // pool+schedule+week+amount ⇒ stale rejects
-      allocOpenC+=actC;cumReservedC+=actC;
-    }
-    res.rows.push(row);
+    var wk=sched[i].week_num,modelC=_ctCents(sched[i].model_amount)||0,execHereC=execByWeek[wk]||0;
+    if(failed){res.rows.push({week_num:wk,origin_week:null,model_amount:modelC/100,durable_executed_amount:(execHereC?execHereC/100:null),actionable_amount:0,status:'fail_closed',candidate_context:null});continue;}
+    if(execHereC>0){res.rows.push({week_num:wk,origin_week:null,model_amount:modelC/100,durable_executed_amount:execHereC/100,actionable_amount:0,status:'completed',candidate_context:null});continue;}
+    openWeeks.push({week_num:wk,modelC:modelC});
   }
+  if(failed)return res;
+  var origins=(pool._originsC||[]).filter(function(o){return o.remaining_cents>tolC;});
+  var usedWeek=Object.create(null);
+  for(var oi=0;oi<origins.length;oi++){
+    var o=origins[oi],slot=null;
+    for(var wi=0;wi<openWeeks.length;wi++){ if(openWeeks[wi].week_num>=o.origin_week){slot=openWeeks[wi];break;} }
+    if(!slot)continue;                                    // future origin (or no open slot at/after it): never early
+    var firstForWeek=!usedWeek[slot.week_num];usedWeek[slot.week_num]=1;
+    var actC=o.remaining_cents;
+    res.rows.push({week_num:slot.week_num,origin_week:o.origin_week,obligation_amount:o.obligation_cents/100,executed_amount:o.settled_cents/100,
+      model_amount:firstForWeek?slot.modelC/100:null,durable_executed_amount:null,actionable_amount:actC/100,status:'actionable',
+      candidate_context:(pool.pool_context||'')+'|O'+o.origin_week+'|W'+slot.week_num+'|A'+actC});
+  }
+  for(var wi2=0;wi2<openWeeks.length;wi2++){ if(!usedWeek[openWeeks[wi2].week_num])res.rows.push({week_num:openWeeks[wi2].week_num,origin_week:null,model_amount:openWeeks[wi2].modelC/100,durable_executed_amount:null,actionable_amount:0,status:'suppressed',candidate_context:null}); }
+  res.rows.sort(function(a,b){return (a.week_num-b.week_num)||((a.origin_week||0)-(b.origin_week||0));});
   return res;
 }
-// Consumer helper: the actionable allocation row for ONE rendered/reconciled week (or null).
-function _ctWeekRow(weekNum,opts){
-  var sc=computeCommissionTaxSchedule(opts);
-  for(var i=0;i<sc.rows.length;i++)if(sc.rows[i].week_num===weekNum)return sc.rows[i];
-  return null;
+// Consumer helpers: ALL slices for one week; and the first row (compat) for completed/suppressed checks.
+function _ctWeekSlices(weekNum,opts){
+  var sc=computeCommissionTaxSchedule(opts),out=[];
+  for(var i=0;i<sc.rows.length;i++)if(sc.rows[i].week_num===weekNum)out.push(sc.rows[i]);
+  return out;
 }
-// Pure write-time decision (POOL + week-scoped, partial-tolerant). Refuses: fail-closed pool; non-positive/
-// non-finite amount; no actionable allocation for THIS week; amount > this week's actionable + tol; amount
-// > aggregate pool remaining + tol; STALE/absent candidate_context (rejects a stale Week-7 365.32 because
-// the fresh Week-7 allocation is 417.83 — by version, NOT magnitude); overwrite of a non-null
-// completed_amount. A fresh partial (≤ week actionable) is ALLOWED. Needs opts.schedule (tests) or
-// opts.weeks (toggleTransfer). Not a commission_tax write ⇒ {allow:true}.
+function _ctWeekRow(weekNum,opts){ var s=_ctWeekSlices(weekNum,opts); return s.length?s[0]:null; }
+// Pure write-time decision — EXACT-MATCH amount authority (B1-W7). Recomputes the authorized per-origin
+// slice fresh from durable truth; accepts ONLY submitted == authorized (±$0.01) for the slice named by
+// candidate_context. Refuses: fail-closed ledger/pool; non-positive/non-finite amount; no actionable
+// slice this week; stale/absent context; AMOUNT MISMATCH — a fresh 365.32-class model amount or a 300.00
+// partial is rejected BY AMOUNT (floor-constrained partial execution is not writable through the app;
+// supervised owner decision only); overwrite of a non-null completed_amount. Not commission_tax ⇒ allow.
 function _ctWriteGuard(ctx,weekNum,opts){
   opts=opts||{};
   if(!ctx||ctx.actionKey!==ACTION_KEYS.COMMISSION_TAX)return {allow:true,reason:null};
@@ -3416,11 +3504,13 @@ function _ctWriteGuard(ctx,weekNum,opts){
   if(pool.control_status!=='ok')return {allow:false,reason:pool.reason||'unresolvable_pool'};
   var amt=ctx.amount;
   if(!(typeof amt==='number'&&isFinite(amt)&&amt>0))return {allow:false,reason:'non_positive_or_nonfinite_amount'};
-  var row=_ctWeekRow(weekNum,Object.assign({pool:pool},opts));
-  if(!row||row.status!=='actionable')return {allow:false,reason:'no_actionable_allocation_this_week'};
-  if(amt>row.actionable_amount+_NET_OVERCREDIT_TOL)return {allow:false,reason:'exceeds_week_actionable'};
-  if(amt>pool.remaining+_NET_OVERCREDIT_TOL)return {allow:false,reason:'exceeds_remaining'};
-  if(!ctx.candidate_context||ctx.candidate_context!==row.candidate_context)return {allow:false,reason:'stale_or_absent_candidate'};
+  var slices=_ctWeekSlices(weekNum,Object.assign({pool:pool},opts)).filter(function(r){return r.status==='actionable';});
+  if(!slices.length)return {allow:false,reason:'no_actionable_allocation_this_week'};
+  if(!ctx.candidate_context)return {allow:false,reason:'stale_or_absent_candidate'};
+  var slice=null;
+  for(var i=0;i<slices.length;i++)if(slices[i].candidate_context===ctx.candidate_context){slice=slices[i];break;}
+  if(!slice)return {allow:false,reason:'stale_or_absent_candidate'};
+  if(Math.abs(amt-slice.actionable_amount)>0.01)return {allow:false,reason:'amount_mismatch_authorized'};
   var td=opts.taskData||(typeof taskData!=='undefined'?taskData:{});
   var rows=opts.taskRows||((typeof _taskRowsForWeek==='function')?_taskRowsForWeek(weekNum):[]);
   var tgt=(typeof _resolveWriteTarget==='function')?_resolveWriteTarget({checked:true,actionKey:ctx.actionKey,completedLabel:ctx.completedLabel,matchTaskIdx:ctx.matchTaskIdx,taskRows:rows}):{taskIdx:null};
@@ -5099,7 +5189,7 @@ function renderWeekDetail(w,weeks){
         // actionable ⇒ display+write = the week allocation, done:=false, carrying the pool+week
         // candidate_context (write guard rejects a stale/absent candidate). Multiple commission weeks are
         // NORMAL — the pool never fails on that.
-        var _b1CtCtx=null;
+        var _b1CtCtx=null,_b1Note='',_b1Extra='';
         if(actionKey===ACTION_KEYS.COMMISSION_TAX){
           var _b1pool=(typeof computeCommissionTaxPool==='function')?computeCommissionTaxPool():null;
           if(!_b1pool||_b1pool.control_status!=='ok'){
@@ -5108,26 +5198,39 @@ function renderWeekDetail(w,weeks){
               '<div class="task-text"><span class="act-type-badge" style="background:var(--amber);border:none;color:#fff">Review required</span>'+esc(a)+
               '<div class="deferred-why">Commission-tax execution disabled — '+esc((_b1pool&&_b1pool.reason)||'pool unresolvable')+'. Owner review required (durable per-leg model year deferred).</div></div></div>';
           }
-          var _b1row=(typeof _ctWeekRow==='function')?_ctWeekRow(w.num,{pool:_b1pool,weeks:weeks}):null;
-          if(_b1row&&_b1row.status==='completed'){
+          var _b1all=(typeof _ctWeekSlices==='function')?_ctWeekSlices(w.num,{pool:_b1pool,weeks:weeks}):[];
+          var _b1done=null,_b1s=[],_b1k;
+          for(_b1k=0;_b1k<_b1all.length;_b1k++){ if(_b1all[_b1k].status==='completed')_b1done=_b1all[_b1k]; else if(_b1all[_b1k].status==='actionable')_b1s.push(_b1all[_b1k]); }
+          if(_b1done){
             // durable execution evidence — immutable read-only history at the durable amount (never reopened)
             return'<div class="task-row net-satisfied" style="opacity:.72">'+
               '<input type="checkbox" class="task-check" checked disabled title="Executed — durable commission-tax completion (immutable)">'+
-              '<div class="task-text done"><span class="act-type-badge" style="background:var(--green);border:none;color:#fff">Executed</span>'+esc(a.replace(/\$[0-9,]+(?:\.[0-9]+)?/,'$'+fc(_b1row.durable_executed_amount)))+
+              '<div class="task-text done"><span class="act-type-badge" style="background:var(--green);border:none;color:#fff">Executed</span>'+esc(a.replace(/\$[0-9,]+(?:\.[0-9]+)?/,'$'+fc(_b1done.durable_executed_amount)))+
               '<span class="task-date">Executed</span></div></div>';
           }
-          if(!_b1row||_b1row.status==='suppressed'){
-            // nothing left to reserve for THIS week (aggregate remaining consumed) ⇒ read-only reserved
+          if(!_b1s.length){
+            // no authorized slice for THIS week (obligations fully reserved/attested) ⇒ read-only reserved
             return'<div class="task-row net-satisfied" style="opacity:.68">'+
               '<input type="checkbox" class="task-check" checked disabled title="Commission-tax obligation fully reserved — not executable">'+
               '<div class="task-text done"><span class="act-type-badge" style="background:var(--green);border:none;color:#fff">Reserved</span>'+esc(a)+
               '<span class="task-date">Reserved</span></div></div>';
           }
-          // actionable ⇒ B1 owns amount + OPEN state (ignore any legacy label-resolver completion for this row)
-          a=a.replace(/\$[0-9,]+(?:\.[0-9]+)?/,'$'+fc(_b1row.actionable_amount));   // display this week's actionable
-          _ctAmt=_b1row.actionable_amount;                                           // write this week's actionable
-          _b1CtCtx=_b1row.candidate_context;
+          // actionable ⇒ the per-origin AUTHORIZED remaining owns display + write (model amount = context only)
+          var _s0=_b1s[0];
+          a=a.replace(/\$[0-9,]+(?:\.[0-9]+)?/,'$'+fc(_s0.actionable_amount));
+          _ctAmt=_s0.actionable_amount;
+          _b1CtCtx=_s0.candidate_context;
           done=false;                                                               // B1, not the legacy resolver, owns open/done
+          if(_s0.model_amount!=null&&Math.abs(_s0.model_amount-_s0.actionable_amount)>0.01){
+            _b1Note='<div class="deferred-why">Authorized $'+fc(_s0.actionable_amount)+' (origin wk '+_s0.origin_week+'; obligation $'+fc(_s0.obligation_amount)+', executed $'+fc(_s0.executed_amount)+') — model projects $'+fc(_s0.model_amount)+': known projection skew, deferred to Calc-Core.</div>';
+          }
+          for(_b1k=1;_b1k<_b1s.length;_b1k++){(function(sl){
+            var _bk=w.num+'_cto'+sl.origin_week;
+            var _bl='Transfer $'+fc(sl.actionable_amount)+' from Truist Checking to Vio Bank – Tax Reserve (commission 40%)';
+            _xfrWriteCtx[_bk]={actionKey:ACTION_KEYS.COMMISSION_TAX,completedLabel:_bl,amount:sl.actionable_amount,matchTaskIdx:null,candidate_context:sl.candidate_context};
+            _b1Extra+='<div class="task-row"><input type="checkbox" class="task-check"'+(canWriteFinancials()?'':' disabled')+' onchange="toggleTransfer('+w.num+',\''+_bk+'\',this.checked)">'+
+              '<div class="task-text"><span class="act-type-badge model">Planned</span>'+esc(_bl)+' <span style="color:var(--muted)">(origin wk '+sl.origin_week+')</span><span class="task-date">'+getWeekDate(w.num)+'</span></div></div>';
+          })(_b1s[_b1k]);}
         }
         // For a PARTIAL, the executable/write amount is the NET remaining (completed_label stays the
         // model recommendation so the resolver still matches it as this obligation on the next render).
@@ -5137,9 +5240,10 @@ function renderWeekDetail(w,weeks){
         _xfrWriteCtx[_ctxKey]={actionKey:actionKey||null,completedLabel:a,amount:_amtVal,matchTaskIdx:_cr.matchTaskIdx,candidate_context:_b1CtCtx};
         return'<div class="task-row'+(hasOv?' edited':'')+(_isPartial?' net-partial':'')+'">'+
           '<input type="checkbox" class="task-check" '+(done?'checked':'')+(canWriteFinancials()?'':' disabled')+' onchange="toggleTransfer('+w.num+',\''+_ctxKey+'\',this.checked)">'+
-          '<div class="task-text'+(done?' done':'')+'">'+badge+esc(a)+'<span class="task-date">'+getWeekDate(w.num)+'</span>'+noteHtml+_partialNote+'</div>'+
+          '<div class="task-text'+(done?' done':'')+'">'+badge+esc(a)+'<span class="task-date">'+getWeekDate(w.num)+'</span>'+noteHtml+_partialNote+_b1Note+'</div>'+
           controls+
         '</div>'+
+        _b1Extra+
         (actionKey?renderActionEditPanel(actionKey,a,w.num):'');
       }).join(''):'')+
       // 5G-1B: executed-history rows — persisted completions no longer in the recommended set.

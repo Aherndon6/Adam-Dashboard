@@ -1184,20 +1184,22 @@ async function clickNav(page, id) {
     taskData['7_1']={completed:false,completedAt:null,completedAmount:null,actionKey:'goal_adam_ira',completedLabel:null};
   })()`;
 
-  // IDENT-E1 — Week 28 must show ONE enabled $425.68 commission_tax task; the narrative must show
-  // $425.68 (not $61.06) with $417.83 carried forward; the Adam IRA $61.06 stays separate/non-executable;
-  // and the commission_tax write context carries 425.68 + the correct label.
-  await test('5G1B-IDENT-E1: Week 28 shows one enabled $425.68 commission_tax task, correct narrative, Adam IRA separate, write ctx 425.68', async () => {
+  // IDENT-E1 — B1-W7 authorized-amount semantics: with NO execution, Week 28 shows ONE enabled
+  // commission_tax task at the AUTHORIZED full remaining $843.51 (the model floor-split $425.68/$417.83
+  // is display context only; floor-constrained partials are the supervised owner path). The Adam IRA
+  // $61.06 stays separate/non-executable; the write context carries the authorized 843.51.
+  await test('5G1B-IDENT-E1: Week 28 shows one enabled AUTHORIZED $843.51 commission_tax task, model context intact, Adam IRA separate, write ctx 843.51', async () => {
     const { page, context } = await openApp(browser);
     await clickNav(page, 'weekly');
     const res = await page.evaluate((INJECT) => {
       const _s=goalSnapData,_r=reconData,_st=_goalSnapLoadStatus,_o=overrideData[6],_t0=taskData['6_0'],_t1=taskData['7_1'];
       try {
         eval(INJECT);
+        _xfrWriteCtx={};   // render-scoped transport: drop pre-inject live entries so the scan sees THIS render
         activeW=6; setSection('weekly'); renderApp();
         const html=document.getElementById('weekly-content').innerHTML||'';
         const rows=Array.from(document.querySelectorAll('#weekly-content .task-row'));
-        const enabledCT=rows.filter(r=>{const cb=r.querySelector('input.task-check');const t=r.textContent||'';return cb&&!cb.disabled&&t.indexOf('$425.68')>=0&&t.indexOf('Tax Reserve')>=0;});
+        const enabledCT=rows.filter(r=>{const cb=r.querySelector('input.task-check');const t=r.textContent||'';return cb&&!cb.disabled&&t.indexOf('$843.51')>=0&&t.indexOf('Tax Reserve')>=0;});
         const enabledIraDup=rows.filter(r=>{const cb=r.querySelector('input.task-check');const t=r.textContent||'';return cb&&!cb.disabled&&t.indexOf('(Adam IRA)')>=0&&t.indexOf('Adam IRA seed')<0;});
         let ctx=null; for(const k in _xfrWriteCtx){ if(_xfrWriteCtx[k]&&_xfrWriteCtx[k].actionKey==='commission_tax'){ctx=_xfrWriteCtx[k];break;} }
         return { enabledCT:enabledCT.length, enabledIraDup:enabledIraDup.length,
@@ -1209,24 +1211,26 @@ async function clickNav(page, id) {
         (_t0===undefined)?delete taskData['6_0']:taskData['6_0']=_t0;
         (_t1===undefined)?delete taskData['7_1']:taskData['7_1']=_t1; renderApp(); }
     }, IDENT_INJECT);
-    assert(res.enabledCT===1, 'exactly one enabled $425.68 commission_tax checkbox (got '+res.enabledCT+')');
+    assert(res.enabledCT===1, 'exactly one enabled AUTHORIZED $843.51 commission_tax checkbox (got '+res.enabledCT+')');
     assert(res.enabledIraDup===0, 'no enabled Adam IRA duplicate checkbox (got '+res.enabledIraDup+')');
-    assert(res.narr425, 'narrative shows $425.68');
-    assert(res.narr417carry, 'narrative shows $417.83 carries forward');
+    assert(res.narr425, 'model context still shows $425.68 (display only)');
+    assert(res.narr417carry, 'narrative shows $417.83 carries forward (model context)');
     assert(!res.narr61bad, 'narrative must NOT show "Commission 40% $61.06"');
-    assert(res.ctxAmt===425.68, 'commission_tax write ctx amount = 425.68 (got '+res.ctxAmt+')');
+    assert(res.ctxAmt===843.51, 'commission_tax write ctx amount = AUTHORIZED 843.51 (got '+res.ctxAmt+')');
     assert(res.ctxLabelOk, 'commission_tax write ctx label is the Vio Tax Reserve label');
     await context.close();
   }, { tags: [] });
 
-  // IDENT-E2 — Week 29 retains exactly one $417.83 commission_tax task; no cross-attribution / no $61.06.
-  await test('5G1B-IDENT-E2: Week 29 retains exactly one enabled $417.83 commission_tax task', async () => {
+  // IDENT-E2 — LIVE-EQUIVALENT (B1-W7 core case): durable wk6 leg 425.68 completed ⇒ Week 29 shows
+  // exactly one enabled commission_tax task at the AUTHORIZED remainder $417.83 (never the model 365.32).
+  await test('5G1B-IDENT-E2: with the durable 425.68 leg, Week 29 shows exactly one enabled AUTHORIZED $417.83 commission_tax task', async () => {
     const { page, context } = await openApp(browser);
     await clickNav(page, 'weekly');
     const res = await page.evaluate((INJECT) => {
-      const _s=goalSnapData,_r=reconData,_st=_goalSnapLoadStatus,_o=overrideData[6],_t0=taskData['6_0'],_t1=taskData['7_1'];
+      const _s=goalSnapData,_r=reconData,_st=_goalSnapLoadStatus,_o=overrideData[6],_t0=taskData['6_0'],_t1=taskData['7_1'],_t61=taskData['6_1'];
       try {
         eval(INJECT);
+        taskData['6_1']={completed:true,completedAt:'2026-07-18T03:20:38Z',completedAmount:425.68,actionKey:'commission_tax',completedLabel:'Transfer $425.68 from Truist Checking to Vio Bank - Tax Reserve (commission 40%)'};
         activeW=7; setSection('weekly'); renderApp();
         const rows=Array.from(document.querySelectorAll('#weekly-content .task-row'));
         const enabled417=rows.filter(r=>{const cb=r.querySelector('input.task-check');const t=r.textContent||'';return cb&&!cb.disabled&&t.indexOf('$417.83')>=0&&t.indexOf('Tax Reserve')>=0;});
@@ -1235,9 +1239,10 @@ async function clickNav(page, id) {
       } finally { goalSnapData=_s;reconData=_r;_goalSnapLoadStatus=_st;
         (_o===undefined)?delete overrideData[6]:overrideData[6]=_o;
         (_t0===undefined)?delete taskData['6_0']:taskData['6_0']=_t0;
-        (_t1===undefined)?delete taskData['7_1']:taskData['7_1']=_t1; renderApp(); }
+        (_t1===undefined)?delete taskData['7_1']:taskData['7_1']=_t1;
+        (_t61===undefined)?delete taskData['6_1']:taskData['6_1']=_t61; renderApp(); }
     }, IDENT_INJECT);
-    assert(res.enabled417===1, 'exactly one enabled $417.83 commission_tax task in Week 29 (got '+res.enabled417+')');
+    assert(res.enabled417===1, 'exactly one enabled AUTHORIZED $417.83 commission_tax task in Week 29 (got '+res.enabled417+')');
     assert(!res.has61inComm, 'Week 29 commission line not contaminated with $61.06');
     await context.close();
   }, { tags: [] });

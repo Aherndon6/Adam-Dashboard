@@ -12951,20 +12951,22 @@ console.log('\n── Section 5G-1D Slice 4c: half-close repair confirmation ─
     var p=pool([[6,843.51]],leg(6,1,425.68));
     assert(p.remaining===417.83&&p.control_status==='ok'&&p.total_obligation===843.51,'remaining '+p.remaining);
   });
-  test('B1-POOL-2: multiple commission events in ONE pool, no legs ⇒ NOT fail-closed, total = Σ ct',function(){
+  test('B1-POOL-2: multiple commission events — pre-anchor origins ATTESTED-CLOSED; remaining = post-anchor only',function(){
     var p=pool([[2,993.29],[4,435.63],[6,843.51]],{});
     assert(p.control_status==='ok','multi ct weeks are normal, not fail-closed');
-    assert(p.total_obligation===2272.43&&p.remaining===2272.43&&p.obligation_inputs.length===3,'pool total 2272.43, got '+p.total_obligation);
+    assert(p.total_obligation===2272.43&&p.remaining===843.51&&p.obligation_inputs.length===3,'total 2272.43, remaining 843.51 (wk2/wk4 attested), got '+p.remaining);
+    assert(p.origins[0].era==='pre_anchor'&&p.origins[0].authorized_remaining===0,'wk2 closed by attestation');
   });
-  test('B1-POOL-3: liability carries across later commission events — an in-window wk2 leg reduces the pool',function(){
+  test('B1-POOL-3: a pre-anchor leg is SUBSUMED by the attestation — never double-counted as settlement',function(){
     var p=pool([[2,993.29],[6,843.51]],leg(2,0,375.68));
-    assert(p.control_status==='ok'&&p.executed_total===375.68,'wk2 leg counted (same pool)');
-    assert(p.remaining===1461.12,'remaining 1836.80 − 375.68 = 1461.12, got '+p.remaining);
+    assert(p.control_status==='ok'&&p.executed_total===375.68,'wk2 leg integrity-tracked as a leg');
+    assert(p.remaining===843.51,'wk2 attested-closed (leg subsumed, no double count); remaining = wk6 843.51, got '+p.remaining);
   });
-  test('B1-POOL-4: earlier valid pool execution INCLUDED — wk2 375.68 is this cycle’s sweep, not legacy',function(){
+  test('B1-POOL-4: wk2+wk4 legs subsumed; attested origins exactly closed; remaining = post-anchor 843.51',function(){
     var p=pool([[2,993.29],[4,435.63],[6,843.51]],Object.assign(leg(2,0,375.68),leg(4,0,435.63)));
-    assert(p.eligible_executed_legs.length===2&&p.executed_total===811.31,'both in-window legs counted');
-    assert(p.remaining===1461.12,'2272.43 − 811.31 = 1461.12, got '+p.remaining);
+    assert(p.eligible_executed_legs.length===2&&p.executed_total===811.31,'both in-window legs integrity-tracked');
+    assert(p.remaining===843.51,'remaining = wk6 only (era partition), got '+p.remaining);
+    assert(p.origins.length===3&&p.origins[0].authorized_remaining===0&&p.origins[1].authorized_remaining===0,'pre-anchor origins closed');
   });
   test('B1-POOL-5: pre-pool historical execution EXCLUDED — a leg outside the effwd week span is dropped',function(){
     // effwd spans only week 6 (window [6,6]); a wk2 leg is out-of-cycle ⇒ excluded (not netted).
@@ -13006,6 +13008,10 @@ console.log('\n── Section 5G-1D Slice 4c: half-close repair confirmation ─
       var syn=(tw[4]||[]).find(function(e){return e.synthetic&&e.cc==='tax_transfer';});
       assert(syn&&Math.abs((-syn.a)-843.51)<0.005,'wk6 synthetic = this week’s ct 843.51, got '+(syn&&-syn.a));
       assert(/2026mw6_tax_transfer_vio/.test(syn.eid),'eid stable: '+syn.eid);
+      taskData={'6_1':{completed:true,actionKey:'commission_tax',completedAmount:425.68}};   // partial leg
+      var twR=getTaggedWD(reconEffectiveWD()).find(function(w){return w[0]===6;});
+      var synR=(twR[4]||[]).find(function(e){return e.synthetic&&e.cc==='tax_transfer';});
+      assert(synR&&Math.abs((-synR.a)-417.83)<0.005,'candidate re-bases to the AUTHORIZED remaining 417.83, got '+(synR&&-synR.a));
       taskData={'6_1':{completed:true,actionKey:'commission_tax',completedAmount:843.51}};   // pool fully reserved
       var tw2=getTaggedWD(reconEffectiveWD()).find(function(w){return w[0]===6;});
       assert(!(tw2[4]||[]).some(function(e){return e.synthetic&&e.cc==='tax_transfer';}),'pool remaining 0 suppresses synthetic');
@@ -13023,20 +13029,24 @@ console.log('\n── Section 5G-1D Slice 4c: half-close repair confirmation ─
   test('B1-B1: full 417.83 against a fresh WEEK-7 candidate is ALLOWED',function(){
     assert(_ctWriteGuard(ctx(417.83,_bw7.candidate_context),7,Object.assign({taskRows:[]},_bopts)).allow,'417.83 allowed at wk7');
   });
-  test('B1-B2: a fresh valid PARTIAL (200 ≤ week actionable) is allowed at the engine level',function(){
-    assert(_ctWriteGuard(ctx(200,_bw7.candidate_context),7,Object.assign({taskRows:[]},_bopts)).allow,'partial allowed at wk7');
+  test('B1-B2: a fresh PARTIAL (200) is REFUSED by exact-match amount authority (supervised-owner path only)',function(){
+    var g=_ctWriteGuard(ctx(200,_bw7.candidate_context),7,Object.assign({taskRows:[]},_bopts));
+    assert(!g.allow&&g.reason==='amount_mismatch_authorized','partial refused by amount: '+g.reason);
   });
-  test('B1-B3: STALE 365.32 (context mismatch) REFUSED — by staleness, not magnitude',function(){
-    // 365.32 ≤ the wk7 actionable 417.83, so it is NOT refused by magnitude — only by the stale context.
+  test('B1-B3: STALE 365.32 (context mismatch) REFUSED',function(){
     var g=_ctWriteGuard(ctx(365.32,'STALE-CONTEXT'),7,Object.assign({taskRows:[]},_bopts));
     assert(!g.allow&&g.reason==='stale_or_absent_candidate','refused stale: '+g.reason);
+  });
+  test('B1-B3b: FRESH 365.32 (current valid context) REFUSED BY AMOUNT — the model amount is never writable',function(){
+    var g=_ctWriteGuard(ctx(365.32,_bw7.candidate_context),7,Object.assign({taskRows:[]},_bopts));
+    assert(!g.allow&&g.reason==='amount_mismatch_authorized','fresh 365.32 refused by amount, not staleness: '+g.reason);
   });
   test('B1-B4: absent candidate_context refused',function(){
     assert(!_ctWriteGuard(ctx(417.83,null),7,Object.assign({taskRows:[]},_bopts)).allow,'absent context refused');
   });
-  test('B1-B5: amount > this week actionable + tolerance refused',function(){
+  test('B1-B5: amount above the authorized slice refused by exact match',function(){
     var g=_ctWriteGuard(ctx(500,_bw7.candidate_context),7,Object.assign({taskRows:[]},_bopts));
-    assert(!g.allow&&g.reason==='exceeds_week_actionable','over-week-actionable refused: '+g.reason);
+    assert(!g.allow&&g.reason==='amount_mismatch_authorized','over-authorized refused: '+g.reason);
   });
   test('B1-B6: zero / negative / NaN / non-finite refused',function(){
     [0,-5,NaN,Infinity].forEach(function(v){ assert(!_ctWriteGuard(ctx(v,_bw7.candidate_context),7,Object.assign({taskRows:[]},_bopts)).allow,'refused '+v); });
@@ -13052,22 +13062,30 @@ console.log('\n── Section 5G-1D Slice 4c: half-close repair confirmation ─
       .rows.map(function(x){return {w:x.week_num,act:x.actionable_amount,exec:x.durable_executed_amount,st:x.status};});
   }
   function openSum(rows){return Math.round(rows.filter(function(x){return x.st==='actionable';}).reduce(function(s,x){return s+x.act;},0)*100)/100;}
-  test('B1-SCHED-1: no execution — two-week schedule shows 425.68 / 417.83, NEVER 843.51 on either row, Σ=843.51',function(){
+  test('B1-SCHED-1: no execution — ONE authorized slice = full remaining 843.51 at the origin week; later open week suppressed',function(){
     var rows=schedAlloc([[6,843.51]],{},[{week_num:6,model_amount:425.68},{week_num:7,model_amount:417.83}]);
-    assert(rows[0].act===425.68&&rows[1].act===417.83,'per-week 425.68/417.83, got '+JSON.stringify(rows));
-    assert(!rows.some(function(x){return x.act===843.51;}),'never 843.51 on a row');
+    assert(rows[0].st==='actionable'&&rows[0].act===843.51,'wk6 authorized 843.51 (the model floor-split is context only; partials = supervised path), got '+JSON.stringify(rows));
+    assert(rows[1].st==='suppressed','wk7 suppressed (the single origin already sliced)');
     assert(openSum(rows)===843.51,'Σ open actionable = 843.51');
   });
-  test('B1-SCHED-2: production recalc (478.19/365.32), durable wk6 425.68 ⇒ wk7 actionable 417.83, Σ = aggregate remaining 417.83',function(){
+  test('B1-SCHED-2: production recalc (478.19/365.32), durable wk6 425.68 ⇒ wk7 authorized 417.83, Σ = aggregate remaining 417.83',function(){
     var rows=schedAlloc([[6,843.51]],leg(6,1,425.68),[{week_num:6,model_amount:478.19},{week_num:7,model_amount:365.32}]);
     assert(rows[0].st==='completed'&&rows[0].exec===425.68,'wk6 completed 425.68 history');
-    assert(rows[1].st==='actionable'&&rows[1].act===417.83,'wk7 actionable 417.83 (365.32 + carry 52.51), got '+JSON.stringify(rows[1]));
+    assert(rows[1].st==='actionable'&&rows[1].act===417.83,'wk7 authorized 417.83, got '+JSON.stringify(rows[1]));
     assert(openSum(rows)===417.83,'Σ open actionable = aggregate remaining 417.83');
   });
-  test('B1-SCHED-3: MULTI-COMMISSION schedule (wk2/wk4/wk6/wk7), no execution ⇒ each week its own model amount, no aggregate duplicated',function(){
+  test('B1-SCHED-2b: LIVE post-close re-anchor (model 425.68/365.32) ⇒ wk7 STILL authorized 417.83 (schedule-independent authority)',function(){
+    var rows=schedAlloc([[6,843.51]],leg(6,1,425.68),[{week_num:6,model_amount:425.68},{week_num:7,model_amount:365.32}]);
+    assert(rows[0].st==='completed'&&rows[1].st==='actionable'&&rows[1].act===417.83,'authorized 417.83 under the live schedule, got '+JSON.stringify(rows));
+    var rows2=schedAlloc([[6,843.51]],leg(6,1,425.68),[{week_num:6,model_amount:478.19},{week_num:7,model_amount:365.32}]);
+    assert(rows2[1].act===417.83,'identical under the pre-AMEX-edit schedule (the 52.51 shift is display context only)');
+  });
+  test('B1-SCHED-3: MULTI-COMMISSION — attested wk2/wk4 rows suppressed; wk6 slice = 843.51; the aggregate never lands on a row',function(){
     var rows=schedAlloc([[2,993.29],[4,435.63],[6,843.51]],{},[{week_num:2,model_amount:375.68},{week_num:4,model_amount:435.63},{week_num:6,model_amount:425.68},{week_num:7,model_amount:417.83}]);
-    assert(rows[2].act===425.68&&rows[3].act===417.83,'wk6=425.68 wk7=417.83 (not the 2272.43 aggregate), got '+JSON.stringify(rows));
+    assert(rows[0].st==='suppressed'&&rows[1].st==='suppressed','wk2/wk4 attested-closed ⇒ suppressed');
+    assert(rows[2].st==='actionable'&&rows[2].act===843.51,'wk6 authorized 843.51, got '+JSON.stringify(rows));
     assert(!rows.some(function(x){return x.act===2272.43;}),'aggregate never on a row');
+    assert(openSum(rows)===843.51,'Σ open = matured post-anchor remaining');
   });
   test('B1-SCHED-4: completed wk6 durable amount is immutable history (425.68), never re-surfaced as an actionable row',function(){
     var rows=schedAlloc([[6,843.51]],leg(6,1,425.68),[{week_num:6,model_amount:478.19},{week_num:7,model_amount:365.32}]);
@@ -13084,10 +13102,10 @@ console.log('\n── Section 5G-1D Slice 4c: half-close repair confirmation ─
     assert(rows[0].exec===500,'wk6 completed 500 (never rewritten)');
     assert(rows[1].act===343.51,'wk7 reduced to 343.51 (417.83 − 74.32), got '+rows[1].act);
   });
-  test('B1-SCHED-7: multiple open rows — deterministic cumulative allocation, no duplication, Σ = aggregate remaining',function(){
+  test('B1-SCHED-7: one origin, many open weeks — ONE slice at the earliest eligible week; deterministic; Σ = remaining',function(){
     var s=[{week_num:6,model_amount:300},{week_num:7,model_amount:300},{week_num:8,model_amount:243.51}];
     var a=schedAlloc([[6,843.51]],{},s), b=schedAlloc([[6,843.51]],{},s);
-    assert(a[0].act===300&&a[1].act===300&&a[2].act===243.51,'cumulative 300/300/243.51, got '+JSON.stringify(a));
+    assert(a[0].st==='actionable'&&a[0].act===843.51&&a[1].st==='suppressed'&&a[2].st==='suppressed','single 843.51 slice at wk6, got '+JSON.stringify(a));
     assert(JSON.stringify(a)===JSON.stringify(b),'deterministic');
     assert(openSum(a)===843.51,'Σ open actionable = 843.51');
   });
@@ -13096,12 +13114,67 @@ console.log('\n── Section 5G-1D Slice 4c: half-close repair confirmation ─
     assert(rows[0].st==='completed','wk6 completed');
     assert(rows[1].st==='suppressed'&&rows[1].act===0,'wk7 open row suppressed at remaining 0, got '+JSON.stringify(rows[1]));
   });
-  test('B1-SCHED-9: week candidate_context is week+amount specific — stale 365.32 ≠ fresh 417.83; recompute is stable',function(){
-    var w7=computeCommissionTaxSchedule({effectiveWD:ewd([[6,843.51]]),taskData:leg(6,1,425.68),schedule:[{week_num:6,model_amount:478.19},{week_num:7,model_amount:365.32}]}).rows.filter(function(x){return x.week_num===7;})[0];
-    assert(/\|w7\|a41783$/.test(w7.candidate_context),'wk7 ctx encodes 417.83 cents: '+w7.candidate_context);
-    assert(w7.candidate_context.indexOf('a36532')<0,'wk7 ctx must NOT encode a stale 365.32');
-    var w7b=computeCommissionTaxSchedule({effectiveWD:ewd([[6,843.51]]),taskData:leg(6,1,425.68),schedule:[{week_num:6,model_amount:478.19},{week_num:7,model_amount:365.32}]}).rows.filter(function(x){return x.week_num===7;})[0];
-    assert(w7.candidate_context===w7b.candidate_context,'candidate_context deterministic across recompute');
+  test('B1-SCHED-9: candidate_context = attestation + origin + week + authorized cents; never a model amount; deterministic',function(){
+    function w7(){return computeCommissionTaxSchedule({effectiveWD:ewd([[6,843.51]]),taskData:leg(6,1,425.68),schedule:[{week_num:6,model_amount:478.19},{week_num:7,model_amount:365.32}]}).rows.filter(function(x){return x.week_num===7&&x.status==='actionable';})[0];}
+    var a=w7(),b=w7();
+    assert(/\|O6\|W7\|A41783$/.test(a.candidate_context),'ctx encodes origin 6 / week 7 / 41783c: '+a.candidate_context);
+    assert(a.candidate_context.indexOf('ATT|2026-ATT-1')>=0,'ctx carries the attestation version');
+    assert(a.candidate_context.indexOf('A36532')<0,'ctx never encodes the stale model 365.32');
+    assert(a.candidate_context===b.candidate_context,'candidate_context deterministic across recompute');
+  });
+  // ATT / AGG / ERA / MERGE / LBL — era-partitioned durable-origin ledger (B1-W7 hotfix, Fable-approved)
+  test('B1-ATT-1: attestation closes wk2 (993.29) and wk4 (435.63) exactly; version + evidence recorded',function(){
+    var p=pool([[2,993.29],[4,435.63],[6,843.51]],{});
+    assert(p.attestation_version==='2026-ATT-1','version surfaced on the pool');
+    assert(p.origins[0].settled===993.29&&p.origins[1].settled===435.63,'attested settlements exact');
+    assert(CT_ATTESTATION.entries[0].evidence.length>0&&CT_ATTESTATION.entries[1].evidence.length>0,'evidence chains recorded');
+  });
+  test('B1-ATT-2: a perturbed attestation entry FAILS CLOSED; a missing entry FAILS CLOSED',function(){
+    var bad={version:'X',plan_year:2026,anchor_boundary_week:5,entries:[{origin_week:2,obligation_cents:99328,attested_settlement_cents:99328}],residue_notes:[]};
+    var p=computeCommissionTaxPool({effectiveWD:ewd([[2,993.29],[6,843.51]]),taskData:{},attestation:bad});
+    assert(p.control_status==='fail_closed'&&p.reason==='attestation_mismatch','perturbed → '+p.reason);
+    var none={version:'X',plan_year:2026,anchor_boundary_week:5,entries:[],residue_notes:[]};
+    var p2=computeCommissionTaxPool({effectiveWD:ewd([[2,993.29],[6,843.51]]),taskData:{},attestation:none});
+    assert(p2.control_status==='fail_closed'&&p2.reason==='preanchor_origin_not_exactly_closed','missing → '+p2.reason);
+  });
+  test('B1-ATT-3: an attestation-version change STALES every candidate context (fingerprint differs)',function(){
+    var alt={version:'2026-ATT-2',plan_year:2026,anchor_boundary_week:5,entries:CT_ATTESTATION.entries,residue_notes:[]};
+    var a=pool([[6,843.51]],leg(6,1,425.68)).pool_context;
+    var b=computeCommissionTaxPool({effectiveWD:ewd([[6,843.51]]),taskData:leg(6,1,425.68),attestation:alt}).pool_context;
+    assert(a!==b&&a.indexOf('ATT|2026-ATT-1')>=0&&b.indexOf('ATT|2026-ATT-2')>=0,'attestation version is part of the fingerprint');
+  });
+  test('B1-ATT-4: the 1.94 residue is RECORDED but UNATTRIBUTED — no closure depends on it',function(){
+    assert(CT_ATTESTATION.residue_notes.length===1&&CT_ATTESTATION.residue_notes[0].amount_cents===194,'residue recorded');
+    var p=pool([[2,993.29],[4,435.63],[6,843.51]],{});
+    assert(p.origins[0].authorized_remaining===0&&p.origins[1].authorized_remaining===0,'closures are exact without the residue');
+  });
+  test('B1-AGG-1: LIVE aggregate tightening — matured remaining 417.83 (never 1035.44); per-origin Σ == aggregate',function(){
+    var p=pool([[2,993.29],[4,435.63],[6,843.51]],Object.assign(leg(2,0,375.68),leg(4,0,435.63),leg(6,1,425.68)));
+    assert(p.control_status==='ok'&&p.remaining===417.83,'matured aggregate remaining 417.83, got '+p.remaining);
+    var s=Math.round(p.origins.reduce(function(t,o){return t+o.authorized_remaining;},0)*100)/100;
+    assert(s===p.remaining,'Σ per-origin authorized remaining equals the aggregate');
+  });
+  test('B1-ERA-1: era partition is STRUCTURAL — the engine consumes no reconciliation state, so later reserve absorption cannot alter remaining',function(){
+    var body=html.slice(html.indexOf('var CT_ATTESTATION'),html.indexOf('function computeGoalTransferNetting'));
+    assert(body.indexOf('reconData')<0,'no reconciliation-state read anywhere in the ct engine');
+  });
+  test('B1-MERGE-1: two matured origins in one allocation week ⇒ SEPARATE slices 417.83 + 700.90, distinct contexts, no blended row',function(){
+    var sc=computeCommissionTaxSchedule({effectiveWD:ewd([[6,843.51],[7,700.90]]),taskData:leg(6,1,425.68),schedule:[{week_num:6,model_amount:425.68},{week_num:7,model_amount:700.90}]});
+    var s7=sc.rows.filter(function(x){return x.week_num===7&&x.status==='actionable';});
+    assert(s7.length===2,'two independent slices at wk7, got '+s7.length);
+    assert(s7[0].origin_week===6&&s7[0].actionable_amount===417.83,'origin-6 slice 417.83');
+    assert(s7[1].origin_week===7&&s7[1].actionable_amount===700.90,'origin-7 slice 700.90');
+    assert(s7[0].candidate_context!==s7[1].candidate_context,'distinct candidate contexts');
+    assert(!sc.rows.some(function(x){return x.actionable_amount===1118.73;}),'no anonymous blended 1118.73 row');
+  });
+  test('B1-MERGE-2: a FUTURE origin never becomes actionable early',function(){
+    var sc=computeCommissionTaxSchedule({effectiveWD:ewd([[6,843.51],[9,500]]),taskData:leg(6,1,425.68),schedule:[{week_num:7,model_amount:365.32}]});
+    var act=sc.rows.filter(function(x){return x.status==='actionable';});
+    assert(act.length===1&&act[0].origin_week===6&&act[0].actionable_amount===417.83,'only the matured origin slices, got '+JSON.stringify(act));
+  });
+  test('B1-LBL-1: model schedule amounts are context ONLY — changing them never changes the authorized amount',function(){
+    var a=schedAlloc([[6,843.51]],leg(6,1,425.68),[{week_num:6,model_amount:1},{week_num:7,model_amount:9999}]);
+    assert(a[1].st==='actionable'&&a[1].act===417.83,'authorized 417.83 regardless of model amounts, got '+JSON.stringify(a));
   });
   // E — subsystem boundaries
   test('B1-E1: B1 pool is a SEPARATE computation — not merged into computeGoalTransferNetting',function(){
