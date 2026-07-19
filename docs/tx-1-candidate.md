@@ -100,3 +100,32 @@ Two rows, both correctly dated 2026-07-04, both correctly categorized **Extra**:
 - **Budget isolation:** relies on `budget_treatment='display_only'` to keep the category out of the recurring monthly budget baseline and salary actuals (same mechanism already used for `income.deep_south_commissions`).
 - **Tax path:** the weekly-model Edit Week "Tax?" 40/60 → `commission_tax` (operator package §2d) is the sole tax trigger; the Register category never re-triggers it (no duplicate inflow / tax rule / goal allocation).
 - **Do Not Touch:** no `runModel` / WD / effectiveWD / waterfall / `commission_tax` change (AGENTS.md).
+
+## Post-activation follow-up — TX-1.2: Structured custom-transfer task metadata (2026-07-19)
+
+**Status:** Post-activation backlog item; sub-item of TX-1 (operational-controls lane), scheduled within roadmap **P3b-1 Data Integrity** (the post-5G-1D data-integrity / operational-controls lane). **Docs/backlog capture only — no code, schema, UI, migration, or test change is made here.** **DEFERRED; NOT required for the current `BKX-20260717` remediation**, which is represented by the now-created Week-29 free-text interim custom task (present once; **incomplete**; bank transfer **unexecuted**) defined under `docs/phase-5g-1d-bkx-income-adjustment-2026-07-19.md` §8. Authoritative per Adam 2026-07-19.
+
+**Problem (what the BKX remediation exposed).** `custom_tasks` supports only a free-text `label` (columns today: `id, week_num, label, completed, created_at`). Operational transfer tasks must therefore encode the **amount, source account, destination account, purpose, and incident/source identity** inside the label string — e.g. the BKX interim task label:
+`Transfer $700.90 from Truist Checking to Vio Bank – Tax Reserve (Wendy Extra BK Pay commission tax; income posted 7/17/2026; BKX-20260717)`.
+This is brittle: no machine-checkable amount or account references, no stable identity for duplicate prevention, and audit/reporting must parse free text. `BKX-20260717` made the limitation concrete.
+
+**Future capability (design only — do not implement now).**
+- **Optional structured `amount`** (numeric), separate from the label.
+- **Optional `source_account`** reference (key into `accounts`).
+- **Optional `destination_account`** reference (key into `accounts`).
+- **Optional stable `source_id` / incident identity** (e.g. `BKX-20260717`) for dedup and cross-referencing.
+- **Preserve the existing free-text `label`** (human-readable; semantics unchanged).
+- **Owner-only creation rules** preserved (same `canWriteFinancials` / owner gate as today; Wendy no-touch where an item requires it).
+- **Duplicate prevention or warning** keyed on the stable `source_id` — a built-in pre-create scan / uniqueness check (the manual triple-table scan in the BKX incident §8 becomes native behavior).
+- **Backward compatibility** with existing custom tasks — all new fields optional/nullable; legacy free-text rows render and behave unchanged.
+- **Completion evidence + audit behavior** for transfer tasks defined: completion records the executed amount and a settlement/confirmation reference, with who/when/amount/`source_id` captured (mind the existing "no `updated_at` on write tables" platform gap, `index.html:10485`).
+
+**Hard invariants (binding on any future implementation).**
+1. Structured metadata **must NOT** convert a custom task into a **modeled cash event** — it never feeds `runModel` / WD / effectiveWD / a taxable-gross, and never adds cash to any week (a custom transfer moves *existing* checking; e.g. the BKX cash is already inside the reconciled Week-28 balance).
+2. Structured metadata **must NOT** convert a custom task into a **commission-tax pool obligation** — `custom_tasks` stays off-pool (`computeCommissionTaxPool` never reads `customTaskData`, `index.html:3326`); a structured `amount`/`source_id` creates no durable-origin origin and no `weekly_tasks` `commission_tax` leg.
+3. **Backward/interop safety** — a future migration must not retroactively reinterpret an existing free-text custom task (including the BKX interim task) as a structured obligation.
+
+**Cross-references.**
+- **BKX incident / interim design:** `docs/phase-5g-1d-bkx-income-adjustment-2026-07-19.md` (source identity **`BKX-20260717`**; §8 interim controls; §10 long-term `source_id` mechanism). TX-1.2 is the **custom-task-metadata** half (enriches operator tasks); the incident §10 `source_id` historical-taxable-income mechanism is the **commission-tax-ledger** half (integrates an off-model obligation into the durable pool) — related but distinct workstreams.
+- **Do not** modify the already-created Week-29 `BKX-20260717` interim task as part of this backlog item.
+- **Do Not Touch:** no `runModel` / WD / effectiveWD / waterfall / `commission_tax` change (AGENTS.md).
