@@ -1517,6 +1517,8 @@ async function saveCustomTask(weekNum,type){
 }
 async function toggleCustomTask(weekNum,id,checked){
   if(!canWriteFinancials())return;
+  // Step 5: bidirectional immutable-week guard (before the optimistic mutation) — no local write, no network.
+  if(_weekIsImmutable(weekNum)){_immutableWeekRefusal(weekNum);return;}
   if(!customTaskData[weekNum])return;
   var ct=customTaskData[weekNum].find(function(t){return t.id===id;});
   if(!ct)return;
@@ -3741,7 +3743,60 @@ function _weekResolved(w){
   return r;
 }
 function _modelRowDone(w,i){ var _cr=_weekResolved(w).currentRows[i]; return !!(_cr&&_cr.completed); }
-function _modelRowOpen(w,i){ if(!w)return false; if(_xfrRowSuppressed(w.num,i))return false; return !_modelRowDone(w,i); }
+// ── Step 5 (Week 1/2 legacy binding): immutable-week rule + post-resolver legacy-history classification ──
+// A week is immutable for task toggles when it is RECONCILED or PRE-ANCHOR (the §13 write-locked legacy
+// weeks — CT_ATTESTATION.anchor_boundary_week). The bidirectional write guard + legacy classification both
+// derive from this single rule.
+function _weekIsImmutable(n){
+  if(isWeekReconciled(n))return true;
+  var _anchor=(typeof CT_ATTESTATION!=='undefined'&&CT_ATTESTATION&&isFinite(CT_ATTESTATION.anchor_boundary_week))?CT_ATTESTATION.anchor_boundary_week:0;
+  return typeof n==='number'&&n<=_anchor;
+}
+// Pure POST-resolver adapter — does NOT modify resolveWeekTransfers/runModel/computeGoalTransferNetting.
+// Consumes the resolver output + persisted task rows + the immutable-week rule; classifies each
+// NON-commission model row (commission_tax is pool-owned and intentionally left untouched). Week-scoped +
+// cardinality-gated: legacy null-key completions attest the WEEK, never a per-row identity. Only COMPLETED
+// null-key rows attest (completed=false is ignored — it is not in the resolver's records set).
+//   'completed'        — bound by the resolver (genuine)
+//   'completed_legacy' — immutable week, #unbound-recs == #legacy-null-key-completions (cardinality match)
+//   'review_required'  — immutable week, legacy present but cardinality mismatch (never auto-bound/executable)
+//   'open'             — unbound, no legacy attestation (mutable-week actionable, or immutable past-open)
+var _legacyClassCache=(typeof WeakMap!=='undefined')?new WeakMap():null;
+function _legacyClassifyWeek(w){
+  if(!w||!w.realActs)return {classByIndex:{},immutable:false,legacyCount:0,unboundCount:0};
+  if(_legacyClassCache&&_legacyClassCache.has(w))return _legacyClassCache.get(w);
+  var res=_weekResolved(w);
+  var immutable=_weekIsImmutable(w.num);
+  var cls={},unboundIdx=[];
+  (res.currentRows||[]).forEach(function(cr,i){
+    if(cr.actionKey===ACTION_KEYS.COMMISSION_TAX)return;               // pool-owned — adapter does not classify
+    if(cr.completed){cls[i]='completed';return;}
+    unboundIdx.push(i);
+  });
+  var legacyCount=(res.executedHistory||[]).filter(function(r){return r.actionKey==null;}).length; // completed null-key only
+  var unboundCount=unboundIdx.length;
+  unboundIdx.forEach(function(i){
+    if(!immutable||legacyCount===0){cls[i]='open';return;}             // mutable actionable OR immutable past-open (no attestation)
+    cls[i]=(legacyCount===unboundCount)?'completed_legacy':'review_required';
+  });
+  var out={classByIndex:cls,immutable:immutable,legacyCount:legacyCount,unboundCount:unboundCount};
+  if(_legacyClassCache)_legacyClassCache.set(w,out);
+  return out;
+}
+function _modelRowOpen(w,i){
+  if(!w)return false;
+  if(_xfrRowSuppressed(w.num,i))return false;
+  if(_modelRowDone(w,i))return false;
+  var _lc=_legacyClassifyWeek(w).classByIndex[i];
+  if(_lc==='completed_legacy'||_lc==='review_required')return false;   // legacy / review states are NOT open actions
+  return true;
+}
+// Step 5: bidirectional immutable-week write-guard refusal — NO local mutation, NO network, NO upsert.
+function _immutableWeekRefusal(weekNum){
+  console.warn('toggle refused: Cal Wk '+getCalWeek(weekNum)+' (model wk '+weekNum+') is reconciled/pre-anchor — historical write-locked');
+  try{alert('Cal Wk '+getCalWeek(weekNum)+' is reconciled/historical (write-locked). Its tasks cannot be checked or unchecked here.');}catch(_e){}
+  renderApp();   // re-render from UNCHANGED state → resets the checkbox visual; no persistence write, no network request
+}
 function _firstFreeIdx(taskRows){
   var occ=Object.create(null);(taskRows||[]).forEach(function(r){occ[r.taskIdx]=1;});
   var i=0;while(occ[i])i++;return i;
@@ -3774,6 +3829,9 @@ function _buildWeeklyTaskPayload(week,taskIdx,checked,actionKey,completedLabel,a
 var _xfrWriteCtx={};  // render-time transport: ctxKey -> {actionKey, completedLabel, amount, matchTaskIdx}
 async function toggleTransfer(weekNum,ctxKey,checked){
   if(!canWriteFinancials())return;
+  // Step 5: bidirectional immutable-week guard — reject BOTH check and uncheck in a reconciled/pre-anchor
+  // week BEFORE any state mutation or network call (fires no upsert). Historical rows are write-locked.
+  if(_weekIsImmutable(weekNum)){_immutableWeekRefusal(weekNum);return;}
   // 5G-1B defense-in-depth: recompute the netting disposition at write time so a STALE UI cannot
   // execute an already-satisfied (suppressed) or ambiguous (blocked) obligation. Unchecking is always
   // allowed (it only clears state). If netting cannot be computed, the pre-existing identity write
@@ -4101,9 +4159,11 @@ function buildDashboardViewModel(weeks,goals){
   // structured authorized/model figures for any consumer that needs them.
   const _ctPoolVM=(typeof computeCommissionTaxPool==='function')?(function(){try{return computeCommissionTaxPool();}catch(_e){return null;}})():null;
   const allActions=weeks.flatMap(function(w){
+    var _lcw=(typeof _legacyClassifyWeek==='function')?_legacyClassifyWeek(w):{classByIndex:{}};
     var modelActs=w.realActs.map(function(label,index){
       // 5G-1B B3: completion by resolver identity, not positional taskData[w.num+'_'+index]
       var _ak=w.realActKeys?w.realActKeys[index]:null;
+      var _lci=_lcw.classByIndex[index];   // Step 5: legacy/review are non-open (excluded from openActions)
       var _dispLabel=label,_ctInfo=null;
       if(_ak===ACTION_KEYS.COMMISSION_TAX&&typeof _ctOpenAuthority==='function'){
         var _auth=_ctOpenAuthority(w.num,{pool:_ctPoolVM,weeks:weeks});
@@ -4115,7 +4175,7 @@ function buildDashboardViewModel(weeks,goals){
           _ctInfo={blocked:true,reason:_auth.reason};
         } // status 'none' ⇒ reserved/completed authority; keep raw label (typically filtered as completed)
       }
-      return{weekNum:w.num,taskIdx:index,label:_dispLabel,rawLabel:label,ctInfo:_ctInfo,completed:_modelRowDone(w,index),netSuppressed:_xfrRowSuppressed(w.num,index),isCustom:false};
+      return{weekNum:w.num,taskIdx:index,label:_dispLabel,rawLabel:label,ctInfo:_ctInfo,completed:_modelRowDone(w,index),netSuppressed:_xfrRowSuppressed(w.num,index),legacyNonOpen:(_lci==='completed_legacy'||_lci==='review_required'),isCustom:false};
     });
     var customActs=(customTaskData[w.num]||[]).map(function(ct){
       var _cm=getTaskMeta(ct.id,ct.label);
@@ -4149,7 +4209,7 @@ function buildDashboardViewModel(weeks,goals){
     retirementCompletion:retirementCompletion,   // backwards compat
     goalCompletion:goalCompletion,               // NEW: keyed by goal id
     surplusCompletion:surplusCompletion,lowestChecking:lowestChecking,
-    allActions:allActions,openActions:allActions.filter(function(a){return!a.completed&&!a.dismissed&&!a.netSuppressed;}),
+    allActions:allActions,openActions:allActions.filter(function(a){return!a.completed&&!a.dismissed&&!a.netSuppressed&&!a.legacyNonOpen;}),
     troughWeeks:weeks.filter(function(w){return w.trough;}),
     managedWeeks:weeks.filter(function(w){return w.managed;}),
     reconciledWeeks:weeks.filter(function(w){return w.reconciled;}),
@@ -5214,6 +5274,24 @@ function renderWeekDetail(w,weeks){
         // the legacy label-resolver dispositions are SKIPPED for commission_tax — a valid durable leg must
         // never be misread as an orphan, nor a legacy match suppress an open pool action.
         var _b1IsCT=(actionKey===ACTION_KEYS.COMMISSION_TAX);
+        // Step 5 (Week 1/2 legacy binding): immutable-week NON-commission rows are classified by the post-
+        // resolver adapter; legacy/review states render READ-ONLY (never executable), taking precedence over
+        // the netting dispositions below. commission_tax stays pool-owned (untouched).
+        if(!_b1IsCT){
+          var _lcCls=_legacyClassifyWeek(w).classByIndex[i];
+          if(_lcCls==='completed_legacy'){
+            return'<div class="task-row legacy-completed" style="opacity:.72">'+
+              '<input type="checkbox" class="task-check" checked disabled title="Completed (legacy history) — reconciled/pre-anchor week; write-locked">'+
+              '<div class="task-text done"><span class="act-type-badge" style="background:var(--muted);border:none;color:#fff">Completed (legacy)</span>'+esc(a)+
+              '<span class="task-date">Completed (legacy)</span></div></div>';
+          }
+          if(_lcCls==='review_required'){
+            return'<div class="task-row net-blocked" style="background:var(--amberSoft);border-radius:7px;padding:6px 8px">'+
+              '<span class="xi" style="color:var(--amber);font-weight:700">⚠</span>'+
+              '<div class="task-text"><span class="act-type-badge" style="background:var(--amber);border:none;color:#fff">Legacy history — review required</span>'+esc(a)+
+              '<div class="deferred-why">Cardinality mismatch between legacy completions and current recommendations — not auto-bound, not executable. Owner review required.</div></div></div>';
+          }
+        }
         // 5G-1B netting — an already-satisfied obligation renders read-only ("Satisfied by completed
         // transfer"), NEVER as an executable PLANNED row, and carries NO write context (cannot be toggled).
         if(!_b1IsCT&&_net&&_net.disposition==='suppressed'){

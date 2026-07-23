@@ -990,7 +990,10 @@ async function clickNav(page, id) {
     const setup = await page.evaluate(() => {
       const g = getGoals();
       const weeks = runModel(g.ak, g.rt);
-      const wkObj = weeks.find(w => w.realActs.length > 0) || weeks[0];
+      // Step 5: the write-path assertion needs a MUTABLE, non-commission, non-goal-netted row (week 1's
+      // SETUP actions are now pre-anchor write-locked). alaska_draw at wk15 is resolver-bound and unnetted.
+      const wkObj = weeks.find(w => w.realActs.length > 0 && !_weekIsImmutable(w.num) && w.realActKeys[0] && w.realActKeys[0].indexOf('commission_tax') < 0 && w.realActKeys[0].indexOf('goal_') !== 0)
+        || weeks.find(w => w.realActs.length > 0 && !_weekIsImmutable(w.num) && w.realActKeys[0] && w.realActKeys[0].indexOf('commission_tax') < 0) || weeks[0];
       const wk = wkObj.num, key0 = wkObj.realActKeys[0], lbl0 = wkObj.realActs[0];
       Object.keys(taskData).forEach(k => { if (k.indexOf(wk + '_') === 0) delete taskData[k]; });
       // matched completion for display row 0, stored at a MOVED task_idx 5
@@ -1392,6 +1395,69 @@ async function clickNav(page, id) {
     assert(res.enabledCTwk6===0, 'no actionable/enabled commission_tax duplicate at wk6 (got '+res.enabledCTwk6+')');
     assert(res.execHistNonCT===1, 'non-commission-tax phantom completion STILL renders in legacy executed history (unchanged) (got '+res.execHistNonCT+')');
     assert(res.wk7Enabled===1, 'later remaining commission-tax allocation intact — wk7 one enabled $417.83 (got '+res.wk7Enabled+')');
+    await context.close();
+  }, { tags: [] });
+
+  // ── Step 5: Week 1/2 legacy task-binding — render states + bidirectional immutable-week guard ──
+  await test('5G-S5-1: Week 1 legacy null-key completions render "Completed (legacy)"; zero open/enabled actions', async () => {
+    const { page, context } = await openApp(browser);
+    await clickNav(page, 'weekly');
+    const res = await page.evaluate(() => {
+      reconData = {};                                             // wk1 immutable via pre-anchor (<=5)
+      Object.keys(taskData).forEach(function(k){ if(k.indexOf('1_')===0) delete taskData[k]; });
+      var g=getGoals(); var W=runModel(g.ak,g.rt); var w1=W.find(function(x){return x.num===1;});
+      var n=w1.realActs.length;
+      for(var i=0;i<n;i++){ taskData['1_'+i]={completed:true}; }  // legacy: null action_key + null completed_label
+      activeW=1; setSection('weekly'); renderApp();
+      var legacyRows=document.querySelectorAll('#weekly-content .task-row.legacy-completed').length;
+      var enabled=Array.from(document.querySelectorAll('#weekly-content .task-row input.task-check')).filter(function(cb){return !cb.disabled;}).length;
+      var badge=/>Completed \(legacy\)</.test(document.getElementById('weekly-content').innerHTML||'');
+      return { n:n, legacyRows:legacyRows, enabled:enabled, badge:badge };
+    });
+    assert(res.n>=3, 'Week 1 produced its model recommendations (got '+res.n+')');
+    assert(res.legacyRows===res.n, 'all '+res.n+' Week-1 rows render as legacy-completed (got '+res.legacyRows+')');
+    assert(res.badge, 'the "Completed (legacy)" badge is present');
+    assert(res.enabled===0, 'Week 1 has ZERO enabled/open task checkboxes (all legacy read-only), got '+res.enabled);
+    await context.close();
+  }, { tags: [] });
+
+  await test('5G-S5-2: immutable-week guard refuses BOTH check and uncheck (model + custom) — zero network, zero mutation', async () => {
+    const { page, context } = await openApp(browser);
+    await clickNav(page, 'weekly');
+    let writes = 0;
+    page.on('request', function(req){ var u=req.url(); if((u.indexOf('/rest/v1/weekly_tasks')>=0||u.indexOf('/rest/v1/custom_tasks')>=0)&&req.method()!=='GET') writes++; });
+    const res = await page.evaluate(async () => {
+      window.alert = function(){};                                // no-op the guard's week-scoped message for the test
+      reconData = {};                                             // wk1 immutable via pre-anchor
+      taskData['1_0'] = {completed:true};
+      customTaskData[1] = [{id:'s5ct',label:'legacy custom',completed:false}];
+      var before = JSON.stringify({td:taskData['1_0'].completed, ct:customTaskData[1][0].completed});
+      await toggleTransfer(1,'1_0',false);                        // uncheck a historical completed row
+      await toggleTransfer(1,'1_0',true);                         // check
+      await toggleCustomTask(1,'s5ct',true);                      // check custom
+      await toggleCustomTask(1,'s5ct',false);                     // uncheck custom
+      var after = JSON.stringify({td:taskData['1_0'].completed, ct:customTaskData[1][0].completed});
+      return { unchanged: before===after, before:before, after:after };
+    });
+    await page.waitForTimeout(300);                               // allow any (erroneous) request to surface
+    assert(res.unchanged, 'immutable-week toggles caused NO local mutation ('+res.before+' → '+res.after+')');
+    assert(writes===0, 'immutable-week toggles fired ZERO weekly_tasks/custom_tasks writes (got '+writes+')');
+    await context.close();
+  }, { tags: [] });
+
+  await test('5G-S5-3 (control): Week 5 durable keyed completions render unchanged (never legacy)', async () => {
+    const { page, context } = await openApp(browser);
+    await clickNav(page, 'weekly');
+    const res = await page.evaluate(() => {
+      reconData = {5:{chk:8382.92,sav:7000.07,amx:8539.20,tax:1952.22,lc:14024.76,balance_basis:'posted_current_balance'}}; // wk5 reconciled (immutable, as in prod)
+      Object.keys(taskData).forEach(function(k){ if(k.indexOf('5_')===0) delete taskData[k]; });
+      var g=getGoals(); var W=runModel(g.ak,g.rt); var w5=W.find(function(x){return x.num===5;});
+      (w5.realActs||[]).forEach(function(lbl,i){ var k=w5.realActKeys[i]; if(k) taskData['5_'+i]={completed:true,actionKey:k,completedLabel:lbl}; }); // durable keyed → bind via resolver
+      activeW=5; setSection('weekly'); renderApp();
+      var legacyRows=document.querySelectorAll('#weekly-content .task-row.legacy-completed').length;
+      return { n:w5.realActs.length, legacyRows:legacyRows };
+    });
+    assert(res.legacyRows===0, 'Week 5 renders ZERO legacy-completed rows (durable keyed → normal completed), got '+res.legacyRows);
     await context.close();
   }, { tags: [] });
 

@@ -13314,6 +13314,80 @@ console.log('\n── Section 5G-1D Slice 4c: half-close repair confirmation ─
   });
 })();
 
+// ═══════════════════════════════════════════════════════════════════════════
+// Step 5 — Week 1/2 legacy task-binding: immutable-week rule + post-resolver classification adapter.
+// Weeks 1–5 are pre-anchor (immutable via CT_ATTESTATION.anchor_boundary_week=5) regardless of reconData.
+// ═══════════════════════════════════════════════════════════════════════════
+(function(){
+  function W(num,acts,keys){return {num:num,realActs:acts,realActKeys:keys};}
+  function withTd(td,fn){var _t=taskData;try{taskData=td;return fn();}finally{taskData=_t;}}
+  function legacyRow(){return {completed:true};}                      // null action_key + null completed_label = legacy
+  function keyedRow(k,lbl){return {completed:true,actionKey:k,completedLabel:lbl};}
+
+  test('S5-IMM-1: pre-anchor weeks (<= anchor_boundary_week=5) are immutable regardless of reconciliation',function(){
+    var _r=reconData;try{reconData={};[1,2,3,4,5].forEach(function(n){assert(_weekIsImmutable(n),'wk'+n+' pre-anchor immutable');});}finally{reconData=_r;}
+  });
+  test('S5-IMM-2: reconciled post-anchor week is immutable; unreconciled post-anchor week is mutable',function(){
+    var _r=reconData;try{reconData={6:{chk:1}};assert(_weekIsImmutable(6),'wk6 reconciled → immutable');assert(!_weekIsImmutable(7),'wk7 unreconciled post-anchor → mutable');}finally{reconData=_r;}
+  });
+  test('S5-WK1: four null-key legacy completions on four keyed recs → all completed_legacy; zero open',function(){
+    var w=W(1,['Move 2750 Savings to Checking','Move 1000 LC to Checking','Move 2250 LC to Checking','Costco Visa reminder'],['setup_sav_2750','setup_lc_1000','setup_lc_2250','costco_visa']);
+    withTd({'1_0':legacyRow(),'1_1':legacyRow(),'1_2':legacyRow(),'1_3':legacyRow()},function(){
+      var c=_legacyClassifyWeek(w).classByIndex;
+      assert([0,1,2,3].every(function(i){return c[i]==='completed_legacy';}),'all 4 completed_legacy: '+JSON.stringify(c));
+      assert([0,1,2,3].every(function(i){return _modelRowOpen(w,i)===false;}),'zero open actions');
+    });
+  });
+  test('S5-WK2: mixed week — commission_tax stays pool-owned (unclassified); tax_base → completed_legacy',function(){
+    var w=W(2,['Commission 40% 375.68 to Vio','Tax 521.36 to Vio'],['commission_tax','tax_base']);
+    withTd({'2_0':keyedRow('commission_tax','Commission 40% 375.68 to Vio'),'2_1':legacyRow()},function(){
+      var c=_legacyClassifyWeek(w).classByIndex;
+      assert(c[0]===undefined,'commission_tax index NOT adapter-classified (pool-owned): '+c[0]);
+      assert(c[1]==='completed_legacy','tax_base → completed_legacy: '+c[1]);
+      assert(_modelRowOpen(w,1)===false,'tax_base not open');
+    });
+  });
+  test('S5-MISMATCH: legacy count != unbound count → review_required (never auto-bound/executable)',function(){
+    var w=W(1,['A','B','C','D'],['setup_sav_2750','setup_lc_1000','setup_lc_2250','costco_visa']);
+    withTd({'1_0':legacyRow(),'1_1':legacyRow()},function(){                // 2 legacy vs 4 unbound
+      var c=_legacyClassifyWeek(w).classByIndex;
+      assert([0,1,2,3].every(function(i){return c[i]==='review_required';}),'all review_required: '+JSON.stringify(c));
+      assert([0,1,2,3].every(function(i){return _modelRowOpen(w,i)===false;}),'review_required rows are not open');
+    });
+  });
+  test('S5-INCOMPLETE: a completed=false null-key row provides no legacy attestation (excluded from cardinality)',function(){
+    var w=W(1,['A'],['setup_sav_2750']);
+    withTd({'1_0':{completed:false}},function(){
+      var lc=_legacyClassifyWeek(w);
+      assert(lc.legacyCount===0,'incomplete row not counted, legacyCount='+lc.legacyCount);
+      assert(lc.classByIndex[0]==='open','no attestation → open (immutable past-open)');
+    });
+  });
+  test('S5-MUTABLE: an unreconciled post-anchor week never legacy-classifies (unbound → open)',function(){
+    var _r=reconData;try{reconData={};var w=W(9,['A','B'],['goal_x','goal_y']);
+      withTd({'9_0':legacyRow(),'9_1':legacyRow()},function(){
+        var c=_legacyClassifyWeek(w).classByIndex;
+        assert(c[0]==='open'&&c[1]==='open','mutable week → open: '+JSON.stringify(c));
+      });
+    }finally{reconData=_r;}
+  });
+  test('S5-WK5-CONTROL: durable keyed completions render as completed (never legacy) — regression control',function(){
+    var w=W(5,['Alaska sweep 500','Adam IRA seed 100'],['goal_alaska','goal_adam_ira_seed']);
+    withTd({'5_0':keyedRow('goal_alaska','Alaska sweep 500'),'5_1':keyedRow('goal_adam_ira_seed','Adam IRA seed 100')},function(){
+      var c=_legacyClassifyWeek(w).classByIndex;
+      assert(c[0]==='completed'&&c[1]==='completed','keyed bound → completed (control): '+JSON.stringify(c));
+    });
+  });
+  test('S5-FROZEN: runModel / computeGoalTransferNetting / resolveWeekTransfers byte-identical to baseline; adapter+guard live outside them',function(){
+    var crypto=require('crypto');
+    function bh(tok){var i=html.indexOf(tok);var j=html.indexOf('\nfunction ',i+tok.length);var s=html.slice(i,j<0?html.length:j);return {len:s.length,sha:crypto.createHash('sha256').update(s).digest('hex').slice(0,16),body:s};}
+    var EXP={'function runModel(':{len:32840,sha:'5181b79cbba47e68'},'function computeGoalTransferNetting(':{len:10309,sha:'4670447ce489dd8b'},'function resolveWeekTransfers(':{len:5583,sha:'20d17438996ac8ba'}};
+    Object.keys(EXP).forEach(function(tok){var h=bh(tok);
+      assert(h.len===EXP[tok].len&&h.sha===EXP[tok].sha,tok+' changed: '+JSON.stringify({len:h.len,sha:h.sha}));
+      assert(h.body.indexOf('_legacyClassifyWeek')<0&&h.body.indexOf('_weekIsImmutable')<0&&h.body.indexOf('_immutableWeekRefusal')<0,'Step-5 adapter/guard must not appear inside '+tok);});
+  });
+})();
+
 console.log('\n╔══════════════════════════════════════════════════════════════╗');
 console.log('║                       RESULTS                               ║');
 console.log('╚══════════════════════════════════════════════════════════════╝');
