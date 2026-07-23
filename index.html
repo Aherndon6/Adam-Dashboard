@@ -1421,6 +1421,8 @@ function migrateCustomTaskMeta(){
 }
 async function flipCustomTaskType(weekNum,id){
   if(!canWriteFinancials())return;
+  // Step 5 F3: type flip mutates persisted task metadata — refused for immutable weeks.
+  if(_weekIsImmutable(weekNum)){_immutableWeekRefusal(weekNum);return;}
   var ct=(customTaskData[weekNum]||[]).find(function(t){return t.id===id;});
   if(!ct)return;
   var meta=getTaskMeta(id,ct.label);
@@ -1482,6 +1484,8 @@ function ensureAutoReminders(weekNum){
 // ── Custom task CRUD ───────────────────────────────────────────────────────
 async function saveCustomTask(weekNum,type){
   if(!canWriteFinancials())return;
+  // Step 5 F3: immutable weeks accept no new custom tasks — guard BEFORE input read/optimistic push/POST.
+  if(_weekIsImmutable(weekNum)){_immutableWeekRefusal(weekNum);return;}
   var inp=document.getElementById('ct-inp-'+weekNum);
   var label=inp?inp.value.trim():'';
   if(!label)return;
@@ -1540,6 +1544,8 @@ async function toggleCustomTask(weekNum,id,checked){
 }
 async function deleteCustomTask(weekNum,id){
   if(!canWriteFinancials())return;
+  // Step 5 F3: immutable-week custom rows are historical — guard BEFORE auth/DELETE (server-first path).
+  if(_weekIsImmutable(weekNum)){_immutableWeekRefusal(weekNum);return;}
   if(!customTaskData[weekNum])return;
   // Delete on server FIRST — only remove locally if it succeeds
   try{
@@ -1560,6 +1566,8 @@ async function deleteCustomTask(weekNum,id){
 }
 async function dismissAutoReminder(weekNum,id){
   if(!canWriteFinancials())return;
+  // Step 5 F3: dismissal persists a custom_tasks upsert + meta write — refused for immutable weeks.
+  if(_weekIsImmutable(weekNum)){_immutableWeekRefusal(weekNum);return;}
   if(!customTaskData[weekNum])return;
   var ct=customTaskData[weekNum].find(function(t){return t.id===id;});
   if(!ct)return;
@@ -3747,26 +3755,35 @@ function _modelRowDone(w,i){ var _cr=_weekResolved(w).currentRows[i]; return !!(
 // A week is immutable for task toggles when it is RECONCILED or PRE-ANCHOR (the §13 write-locked legacy
 // weeks — CT_ATTESTATION.anchor_boundary_week). The bidirectional write guard + legacy classification both
 // derive from this single rule.
+function _anchorBoundaryWeek(){
+  return (typeof CT_ATTESTATION!=='undefined'&&CT_ATTESTATION&&isFinite(CT_ATTESTATION.anchor_boundary_week))?CT_ATTESTATION.anchor_boundary_week:0;
+}
 function _weekIsImmutable(n){
   if(isWeekReconciled(n))return true;
-  var _anchor=(typeof CT_ATTESTATION!=='undefined'&&CT_ATTESTATION&&isFinite(CT_ATTESTATION.anchor_boundary_week))?CT_ATTESTATION.anchor_boundary_week:0;
-  return typeof n==='number'&&n<=_anchor;
+  return typeof n==='number'&&n<=_anchorBoundaryWeek();
 }
 // Pure POST-resolver adapter — does NOT modify resolveWeekTransfers/runModel/computeGoalTransferNetting.
 // Consumes the resolver output + persisted task rows + the immutable-week rule; classifies each
 // NON-commission model row (commission_tax is pool-owned and intentionally left untouched). Week-scoped +
 // cardinality-gated: legacy null-key completions attest the WEEK, never a per-row identity. Only COMPLETED
 // null-key rows attest (completed=false is ignored — it is not in the resolver's records set).
+// F2 (hardening round): 'completed_legacy' asserts a PROVABLE HISTORICAL ERA, not merely an immutable
+// state — it is only reachable for PRE-ANCHOR weeks (num <= anchor_boundary_week), where null-key rows
+// are the documented pre-identity-persistence class. A null-key completion in a POST-anchor week is an
+// anomaly (identity writers always persist keys there): reconciled → 'review_required'
+// (reason 'postanchor_nullkey'); unreconciled → the week stays actionable ('open').
 //   'completed'        — bound by the resolver (genuine)
-//   'completed_legacy' — immutable week, #unbound-recs == #legacy-null-key-completions (cardinality match)
-//   'review_required'  — immutable week, legacy present but cardinality mismatch (never auto-bound/executable)
+//   'completed_legacy' — PRE-ANCHOR week, #unbound-recs == #legacy-null-key-completions (cardinality match)
+//   'review_required'  — pre-anchor cardinality mismatch, OR reconciled post-anchor null-key anomaly
+//                        (never auto-bound/executable); week-level reviewReason names which
 //   'open'             — unbound, no legacy attestation (mutable-week actionable, or immutable past-open)
 var _legacyClassCache=(typeof WeakMap!=='undefined')?new WeakMap():null;
 function _legacyClassifyWeek(w){
-  if(!w||!w.realActs)return {classByIndex:{},immutable:false,legacyCount:0,unboundCount:0};
+  if(!w||!w.realActs)return {classByIndex:{},immutable:false,preAnchor:false,legacyCount:0,unboundCount:0,reviewReason:null};
   if(_legacyClassCache&&_legacyClassCache.has(w))return _legacyClassCache.get(w);
   var res=_weekResolved(w);
   var immutable=_weekIsImmutable(w.num);
+  var preAnchor=typeof w.num==='number'&&w.num<=_anchorBoundaryWeek();  // F2: the provable legacy ERA gate
   var cls={},unboundIdx=[];
   (res.currentRows||[]).forEach(function(cr,i){
     if(cr.actionKey===ACTION_KEYS.COMMISSION_TAX)return;               // pool-owned — adapter does not classify
@@ -3775,11 +3792,18 @@ function _legacyClassifyWeek(w){
   });
   var legacyCount=(res.executedHistory||[]).filter(function(r){return r.actionKey==null;}).length; // completed null-key only
   var unboundCount=unboundIdx.length;
+  var reviewReason=null;
   unboundIdx.forEach(function(i){
-    if(!immutable||legacyCount===0){cls[i]='open';return;}             // mutable actionable OR immutable past-open (no attestation)
-    cls[i]=(legacyCount===unboundCount)?'completed_legacy':'review_required';
+    if(legacyCount===0){cls[i]='open';return;}                         // no attestation: mutable actionable, or immutable past-open
+    if(preAnchor){                                                     // F2: legacy is only ever a pre-anchor-era claim
+      if(legacyCount===unboundCount){cls[i]='completed_legacy';}
+      else{cls[i]='review_required';reviewReason='cardinality_mismatch';}
+      return;
+    }
+    if(immutable){cls[i]='review_required';reviewReason='postanchor_nullkey';return;} // reconciled post-anchor anomaly — surface, never mask
+    cls[i]='open';                                                     // unreconciled post-anchor: week stays actionable
   });
-  var out={classByIndex:cls,immutable:immutable,legacyCount:legacyCount,unboundCount:unboundCount};
+  var out={classByIndex:cls,immutable:immutable,preAnchor:preAnchor,legacyCount:legacyCount,unboundCount:unboundCount,reviewReason:reviewReason};
   if(_legacyClassCache)_legacyClassCache.set(w,out);
   return out;
 }
@@ -3874,6 +3898,10 @@ async function toggleTransfer(weekNum,ctxKey,checked){
 }
 async function toggleTask(weekNum,taskIdx,checked,actionKey,amount){
   if(!canWriteFinancials())return;
+  // Step 5 F1: bidirectional immutable-week guard — dormant-writer closure. Fires BEFORE any optimistic
+  // taskData mutation, auth acquisition, or weekly_tasks upsert. (No call sites today; guarded so any
+  // future re-wire or console invocation cannot bypass the historical write-lock.)
+  if(_weekIsImmutable(weekNum)){_immutableWeekRefusal(weekNum);return;}
   const key=weekNum+'_'+taskIdx;const now=new Date().toISOString();
   var completedAmount=(checked&&amount!=null)?amount:null;
   var completedLabel=(checked&&actionKey)?(_actionLabelCache[key]||null):null;
@@ -5250,8 +5278,13 @@ function renderWeekDetail(w,weeks){
   var _doneAll=_doneModel+_doneXfr+_doneAct;
   var _totalAll=_totalXfr+_totalAct;
   var _weekIsRecon=isWeekReconciled(w.num);
-  var _addingXfr=customTaskState&&customTaskState.addingWeek===w.num&&customTaskState.addingType==='transfer';
-  var _addingAct=customTaskState&&customTaskState.addingWeek===w.num&&customTaskState.addingType==='action';
+  // Step 5 F3: immutable weeks (reconciled or pre-anchor) expose NO custom-task mutation surface —
+  // no add forms/buttons, no delete/dismiss, no type flip; checkboxes render disabled. The write-path
+  // guards are the enforcement; this hiding removes the invitation. A stale add-form state cannot
+  // render onto an immutable week either (_weekImm gates the _adding* flags).
+  var _weekImm=_weekIsImmutable(w.num);
+  var _addingXfr=!_weekImm&&customTaskState&&customTaskState.addingWeek===w.num&&customTaskState.addingType==='transfer';
+  var _addingAct=!_weekImm&&customTaskState&&customTaskState.addingWeek===w.num&&customTaskState.addingType==='action';
 
   // ── Transfers to Execute section ──────────────────────────────────────────
   {
@@ -5278,7 +5311,8 @@ function renderWeekDetail(w,weeks){
         // resolver adapter; legacy/review states render READ-ONLY (never executable), taking precedence over
         // the netting dispositions below. commission_tax stays pool-owned (untouched).
         if(!_b1IsCT){
-          var _lcCls=_legacyClassifyWeek(w).classByIndex[i];
+          var _lcRes=_legacyClassifyWeek(w);
+          var _lcCls=_lcRes.classByIndex[i];
           if(_lcCls==='completed_legacy'){
             return'<div class="task-row legacy-completed" style="opacity:.72">'+
               '<input type="checkbox" class="task-check" checked disabled title="Completed (legacy history) — reconciled/pre-anchor week; write-locked">'+
@@ -5289,7 +5323,9 @@ function renderWeekDetail(w,weeks){
             return'<div class="task-row net-blocked" style="background:var(--amberSoft);border-radius:7px;padding:6px 8px">'+
               '<span class="xi" style="color:var(--amber);font-weight:700">⚠</span>'+
               '<div class="task-text"><span class="act-type-badge" style="background:var(--amber);border:none;color:#fff">Legacy history — review required</span>'+esc(a)+
-              '<div class="deferred-why">Cardinality mismatch between legacy completions and current recommendations — not auto-bound, not executable. Owner review required.</div></div></div>';
+              '<div class="deferred-why">'+(_lcRes.reviewReason==='postanchor_nullkey'
+                ?'A key-less completion exists in this post-anchor reconciled week — identity writers always persist keys here, so this is an anomaly, not legacy history. Not auto-bound, not executable. Owner review required.'
+                :'Cardinality mismatch between legacy completions and current recommendations — not auto-bound, not executable. Owner review required.')+'</div></div></div>';
           }
         }
         // 5G-1B netting — an already-satisfied obligation renders read-only ("Satisfied by completed
@@ -5418,18 +5454,18 @@ function renderWeekDetail(w,weeks){
       (_xfrCT.length?_xfrCT.map(function(ct){
         var meta=getTaskMeta(ct.id,ct.label);
         var isAutoXfr=meta.source==='auto_reminder';
-        var _canFlipXfr=meta.source==='user'&&canWriteFinancials();
+        var _canFlipXfr=meta.source==='user'&&canWriteFinancials()&&!_weekImm;
         var typeBadge='<span class="act-type-badge" style="background:var(--surface);border:1px solid var(--line2);cursor:'+(_canFlipXfr?'pointer':'default')+'" '+(_canFlipXfr?'onclick="flipCustomTaskType('+w.num+',\''+ct.id+'\')" title="Click to reclassify as Action Item"':'')+'>Custom</span>';
         return'<div class="task-row">'+
-          '<input type="checkbox" class="task-check" '+(ct.completed?'checked':'')+' '+(canWriteFinancials()?'onchange="toggleCustomTask('+w.num+',\''+ct.id+'\',this.checked)"':'disabled')+'>'+
+          '<input type="checkbox" class="task-check" '+(ct.completed?'checked':'')+' '+(canWriteFinancials()&&!_weekImm?'onchange="toggleCustomTask('+w.num+',\''+ct.id+'\',this.checked)"':'disabled')+'>'+
           '<div class="task-text'+(ct.completed?' done':'')+'">'+typeBadge+esc(ct.label)+'<span class="task-date">'+(isAutoXfr?'Auto':'Custom')+'</span></div>'+
-          (canWriteFinancials()&&(!_weekIsRecon||isAutoXfr)?'<button class="custom-task-del" onclick="'+(isAutoXfr?'dismissAutoReminder':'deleteCustomTask')+'('+w.num+',\''+ct.id+'\')" title="'+(isAutoXfr?'Dismiss':'Remove')+'">✕</button>':'')+
+          (canWriteFinancials()&&!_weekImm?'<button class="custom-task-del" onclick="'+(isAutoXfr?'dismissAutoReminder':'deleteCustomTask')+'('+w.num+',\''+ct.id+'\')" title="'+(isAutoXfr?'Dismiss':'Remove')+'">✕</button>':'')+
         '</div>';
       }).join(''):'')+
       // Add Transfer form / button (writers only; guard stale customTaskState)
       (canWriteFinancials()&&_addingXfr?
         '<div class="custom-task-form"><input class="custom-task-input" id="ct-inp-'+w.num+'" type="text" placeholder="Transfer $X from A to B (reason)..." maxlength="200"><button class="custom-task-save-btn" onclick="saveCustomTask('+w.num+',\'transfer\')">Add</button><button class="custom-task-add-btn" onclick="customTaskState=null;renderApp()">Cancel</button></div>':
-        (canWriteFinancials()?'<button class="custom-task-add-btn" onclick="customTaskState={addingWeek:'+w.num+',addingType:\'transfer\'};renderApp()">+ Add transfer</button>':''))+
+        (canWriteFinancials()&&!_weekImm?'<button class="custom-task-add-btn" onclick="customTaskState={addingWeek:'+w.num+',addingType:\'transfer\'};renderApp()">+ Add transfer</button>':''))+
     '</div></div>';
   }
 
@@ -5441,18 +5477,18 @@ function renderWeekDetail(w,weeks){
       (_actCT.length?_actCT.map(function(ct){
         var meta=getTaskMeta(ct.id,ct.label);
         var isAutoAct=meta.source==='auto_reminder';
-        var _canFlipAct=meta.source==='user'&&canWriteFinancials();
+        var _canFlipAct=meta.source==='user'&&canWriteFinancials()&&!_weekImm;
         var typeBadge='<span class="act-type-badge" style="background:var(--surface);border:1px solid var(--line2);cursor:'+(_canFlipAct?'pointer':'default')+'" '+(_canFlipAct?'onclick="flipCustomTaskType('+w.num+',\''+ct.id+'\')" title="Click to reclassify as Transfer"':'')+'>Task</span>';
         return'<div class="task-row">'+
-          '<input type="checkbox" class="task-check" '+(ct.completed?'checked':'')+' '+(canWriteFinancials()?'onchange="toggleCustomTask('+w.num+',\''+ct.id+'\',this.checked)"':'disabled')+'>'+
+          '<input type="checkbox" class="task-check" '+(ct.completed?'checked':'')+' '+(canWriteFinancials()&&!_weekImm?'onchange="toggleCustomTask('+w.num+',\''+ct.id+'\',this.checked)"':'disabled')+'>'+
           '<div class="task-text'+(ct.completed?' done':'')+'">'+typeBadge+esc(ct.label)+'<span class="task-date">'+(isAutoAct?'Auto':'Custom')+'</span></div>'+
-          (canWriteFinancials()&&(!_weekIsRecon||isAutoAct)?'<button class="custom-task-del" onclick="'+(isAutoAct?'dismissAutoReminder':'deleteCustomTask')+'('+w.num+',\''+ct.id+'\')" title="'+(isAutoAct?'Dismiss':'Remove')+'">✕</button>':'')+
+          (canWriteFinancials()&&!_weekImm?'<button class="custom-task-del" onclick="'+(isAutoAct?'dismissAutoReminder':'deleteCustomTask')+'('+w.num+',\''+ct.id+'\')" title="'+(isAutoAct?'Dismiss':'Remove')+'">✕</button>':'')+
         '</div>';
       }).join(''):'<div style="color:var(--muted);font-size:13px;padding:4px 0 8px">No action items this week.</div>')+
       // Add Task form / button (writers only; guard stale customTaskState)
       (canWriteFinancials()&&_addingAct?
         '<div class="custom-task-form"><input class="custom-task-input" id="ct-inp-'+w.num+'" type="text" placeholder="Review / confirm / investigate..." maxlength="200"><button class="custom-task-save-btn" onclick="saveCustomTask('+w.num+',\'action\')">Add</button><button class="custom-task-add-btn" onclick="customTaskState=null;renderApp()">Cancel</button></div>':
-        (canWriteFinancials()?'<button class="custom-task-add-btn" onclick="customTaskState={addingWeek:'+w.num+',addingType:\'action\'};renderApp()">+ Add task</button>':''))+
+        (canWriteFinancials()&&!_weekImm?'<button class="custom-task-add-btn" onclick="customTaskState={addingWeek:'+w.num+',addingType:\'action\'};renderApp()">+ Add task</button>':''))+
     '</div></div>';
   }
   // Notes

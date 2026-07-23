@@ -13388,6 +13388,116 @@ console.log('\n── Section 5G-1D Slice 4c: half-close repair confirmation ─
   });
 })();
 
+// ═══════════════════════════════════════════════════════════════════════════
+// Step 5 HARDENING ROUND (F1–F3): dormant-writer closure, legacy-era truth,
+// immutable custom-task surface lockdown. Guard synchronicity property: every
+// guarded writer refuses BEFORE its first await, so a synchronous post-call
+// assert proves zero optimistic mutation AND (via the auth counter) that
+// execution never reached auth acquisition — the sole route to any fetch.
+// ═══════════════════════════════════════════════════════════════════════════
+(function(){
+  function W(num,acts,keys){return {num:num,realActs:acts,realActKeys:keys};}
+  function withTd(td,fn){var _t=taskData;try{taskData=td;return fn();}finally{taskData=_t;}}
+  function legacyRow(){return {completed:true};}
+  // Shared stub harness: owner role, refusal counter, never-resolving auth counter
+  // (a suspended promise leaves no rollback/renderApp microtask to fire post-test).
+  function withGuardStubs(recon,fn){
+    var _pRole=USER_ROLE,_pRef=_immutableWeekRefusal,_pAuth=getAuthHeaders,_pRec=reconData,_pRender=renderApp;
+    var c={refusals:0,authCalls:0};
+    try{
+      USER_ROLE='owner';reconData=recon;
+      _immutableWeekRefusal=function(){c.refusals++;};
+      getAuthHeaders=function(){c.authCalls++;return new Promise(function(){});};
+      renderApp=function(){};
+      return fn(c);
+    }finally{USER_ROLE=_pRole;_immutableWeekRefusal=_pRef;getAuthHeaders=_pAuth;reconData=_pRec;renderApp=_pRender;}
+  }
+
+  test('S5-F1: toggleTask immutable-week guard — check AND uncheck refused; zero taskData mutation; zero auth/network',function(){
+    withGuardStubs({},function(c){
+      var snap=JSON.stringify(taskData);
+      toggleTask(1,0,true,'setup_sav_2750',2750);   // check — wk1 immutable via pre-anchor
+      toggleTask(1,0,false,'setup_sav_2750',null);  // uncheck
+      assert(c.refusals===2,'both directions refused (got '+c.refusals+')');
+      assert(c.authCalls===0,'never reached auth acquisition → no fetch possible (got '+c.authCalls+')');
+      assert(JSON.stringify(taskData)===snap,'taskData byte-identical after refused toggles');
+    });
+  });
+  test('S5-F1b: toggleTask positive control — mutable week passes the guard (optimistic write occurs; auth reached)',function(){
+    withGuardStubs({},function(c){
+      toggleTask(9,3,true,'goal_x',100);            // wk9 unreconciled post-anchor → mutable
+      assert(c.refusals===0,'no refusal on a mutable week');
+      assert(c.authCalls===1,'guard passed → auth acquisition reached');
+      assert(taskData['9_3']&&taskData['9_3'].completed===true,'optimistic taskData write occurred');
+      delete taskData['9_3'];                       // suspended call never rolls back; clean manually
+    });
+  });
+  test('S5-F2a: reconciled POST-anchor null-key week → review_required even on EXACT cardinality match (never completed_legacy); reason=postanchor_nullkey',function(){
+    var _pRec=reconData;try{
+      reconData={6:{chk:1}};                        // wk6 immutable via reconciliation, NOT pre-anchor era
+      var w=W(6,['Some transfer'],['goal_x']);
+      withTd({'6_0':legacyRow()},function(){        // 1 legacy row vs 1 unbound rec — exact match
+        var out=_legacyClassifyWeek(w);
+        assert(out.classByIndex[0]==='review_required','post-anchor null-key must surface, not mask: '+out.classByIndex[0]);
+        assert(out.reviewReason==='postanchor_nullkey','reason names the anomaly class: '+out.reviewReason);
+        assert(out.preAnchor===false,'wk6 is not the legacy era');
+        assert(_modelRowOpen(w,0)===false,'review_required is not an open action');
+      });
+    }finally{reconData=_pRec;}
+  });
+  test('S5-F2b: UNreconciled post-anchor null-key week stays actionable (open) — never legacy, never review',function(){
+    var _pRec=reconData;try{
+      reconData={};
+      var w=W(9,['Some transfer'],['goal_x']);
+      withTd({'9_0':legacyRow()},function(){
+        var out=_legacyClassifyWeek(w);
+        assert(out.classByIndex[0]==='open','mutable week stays actionable: '+out.classByIndex[0]);
+        assert(out.reviewReason===null,'no review reason on a mutable week');
+      });
+    }finally{reconData=_pRec;}
+  });
+  test('S5-F2c: pre-anchor mismatch still reports reviewReason=cardinality_mismatch',function(){
+    var w=W(1,['A','B'],['setup_sav_2750','setup_lc_1000']);
+    withTd({'1_0':legacyRow()},function(){          // 1 legacy vs 2 unbound
+      var out=_legacyClassifyWeek(w);
+      assert(out.classByIndex[0]==='review_required'&&out.classByIndex[1]==='review_required','pre-anchor mismatch → review');
+      assert(out.reviewReason==='cardinality_mismatch','reason: '+out.reviewReason);
+    });
+  });
+  test('S5-F3: custom-task mutators (save/delete/dismiss/flip) all refused on an immutable week — zero data/metadata mutation; zero auth',function(){
+    withGuardStubs({},function(c){
+      customTaskData[1]=[{id:'s5u',label:'user task',completed:false},{id:'s5a',label:'auto reminder',completed:false}];
+      customTaskMeta['s5u']={type:'action',source:'user',reminderKey:null,lockedLabel:false,dismissed:false,version:1};
+      customTaskMeta['s5a']={type:'action',source:'auto_reminder',reminderKey:'rk_s5',lockedLabel:true,dismissed:false,version:1};
+      try{
+        var snap=JSON.stringify([taskData,customTaskData[1],customTaskMeta['s5u'],customTaskMeta['s5a'],customTaskState]);
+        saveCustomTask(1,'action');
+        deleteCustomTask(1,'s5u');
+        dismissAutoReminder(1,'s5a');
+        flipCustomTaskType(1,'s5u');
+        assert(c.refusals===4,'all four mutators refused (got '+c.refusals+')');
+        assert(c.authCalls===0,'no mutator reached auth acquisition (got '+c.authCalls+')');
+        assert(JSON.stringify([taskData,customTaskData[1],customTaskMeta['s5u'],customTaskMeta['s5a'],customTaskState])===snap,
+          'task data, custom rows, metadata, and add-form state all byte-identical');
+      }finally{delete customTaskData[1];delete customTaskMeta['s5u'];delete customTaskMeta['s5a'];}
+    });
+  });
+  test('S5-F3b: positive control — mutable-week flip passes the guard (meta type flips optimistically; meta save reached)',function(){
+    withGuardStubs({},function(c){
+      var _pMetaSave=saveCustomTaskMeta,metaSaves=0;
+      saveCustomTaskMeta=function(){metaSaves++;return new Promise(function(){});};
+      customTaskData[9]=[{id:'s5m',label:'flip me',completed:false}];
+      customTaskMeta['s5m']={type:'action',source:'user',reminderKey:null,lockedLabel:false,dismissed:false,version:1};
+      try{
+        flipCustomTaskType(9,'s5m');
+        assert(c.refusals===0,'no refusal on a mutable week');
+        assert(customTaskMeta['s5m'].type==='transfer','type flipped action→transfer (optimistic)');
+        assert(metaSaves===1,'meta persistence reached');
+      }finally{saveCustomTaskMeta=_pMetaSave;delete customTaskData[9];delete customTaskMeta['s5m'];}
+    });
+  });
+})();
+
 console.log('\n╔══════════════════════════════════════════════════════════════╗');
 console.log('║                       RESULTS                               ║');
 console.log('╚══════════════════════════════════════════════════════════════╝');

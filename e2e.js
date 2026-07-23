@@ -1421,27 +1421,80 @@ async function clickNav(page, id) {
     await context.close();
   }, { tags: [] });
 
-  await test('5G-S5-2: immutable-week guard refuses BOTH check and uncheck (model + custom) — zero network, zero mutation', async () => {
+  await test('5G-S5-2: immutable-week guard refuses ALL task writers (toggleTransfer/toggleCustomTask/toggleTask/save/delete/dismiss/flip) — zero network, zero mutation', async () => {
     const { page, context } = await openApp(browser);
     await clickNav(page, 'weekly');
     let writes = 0;
-    page.on('request', function(req){ var u=req.url(); if((u.indexOf('/rest/v1/weekly_tasks')>=0||u.indexOf('/rest/v1/custom_tasks')>=0)&&req.method()!=='GET') writes++; });
+    // Hardening round: also watch /rest/v1/goals — the custom-task META persistence path (saveCustomTaskMeta).
+    page.on('request', function(req){ var u=req.url(); if((u.indexOf('/rest/v1/weekly_tasks')>=0||u.indexOf('/rest/v1/custom_tasks')>=0||u.indexOf('/rest/v1/goals')>=0)&&req.method()!=='GET') writes++; });
     const res = await page.evaluate(async () => {
       window.alert = function(){};                                // no-op the guard's week-scoped message for the test
       reconData = {};                                             // wk1 immutable via pre-anchor
       taskData['1_0'] = {completed:true};
-      customTaskData[1] = [{id:'s5ct',label:'legacy custom',completed:false}];
-      var before = JSON.stringify({td:taskData['1_0'].completed, ct:customTaskData[1][0].completed});
+      customTaskData[1] = [{id:'s5ct',label:'user custom',completed:false},{id:'s5ar',label:'auto reminder',completed:false}];
+      customTaskMeta['s5ct']={type:'action',source:'user',reminderKey:null,lockedLabel:false,dismissed:false,version:1};
+      customTaskMeta['s5ar']={type:'action',source:'auto_reminder',reminderKey:'rk_s5',lockedLabel:true,dismissed:false,version:1};
+      function snap(){ return JSON.stringify({td:taskData['1_0'], ct:customTaskData[1], m1:customTaskMeta['s5ct'], m2:customTaskMeta['s5ar'], st:customTaskState||null}); }
+      var before = snap();
       await toggleTransfer(1,'1_0',false);                        // uncheck a historical completed row
       await toggleTransfer(1,'1_0',true);                         // check
       await toggleCustomTask(1,'s5ct',true);                      // check custom
       await toggleCustomTask(1,'s5ct',false);                     // uncheck custom
-      var after = JSON.stringify({td:taskData['1_0'].completed, ct:customTaskData[1][0].completed});
+      await toggleTask(1,0,true,'setup_sav_2750',2750);           // F1: dormant writer — check
+      await toggleTask(1,0,false,'setup_sav_2750',null);          // F1: dormant writer — uncheck
+      await saveCustomTask(1,'action');                           // F3: create
+      await deleteCustomTask(1,'s5ct');                           // F3: delete
+      await dismissAutoReminder(1,'s5ar');                        // F3: dismiss (custom_tasks upsert + meta)
+      await flipCustomTaskType(1,'s5ct');                         // F3: type flip (meta write)
+      var after = snap();
       return { unchanged: before===after, before:before, after:after };
     });
     await page.waitForTimeout(300);                               // allow any (erroneous) request to surface
-    assert(res.unchanged, 'immutable-week toggles caused NO local mutation ('+res.before+' → '+res.after+')');
-    assert(writes===0, 'immutable-week toggles fired ZERO weekly_tasks/custom_tasks writes (got '+writes+')');
+    assert(res.unchanged, 'immutable-week writers caused NO local/metadata mutation ('+res.before+' → '+res.after+')');
+    assert(writes===0, 'immutable-week writers fired ZERO weekly_tasks/custom_tasks/goals writes (got '+writes+')');
+    await context.close();
+  }, { tags: [] });
+
+  await test('5G-S5-4: immutable weeks expose NO mutation surface (add/delete/dismiss/flip hidden, checkboxes disabled); mutable weeks expose all controls', async () => {
+    const { page, context } = await openApp(browser);
+    await clickNav(page, 'weekly');
+    const res = await page.evaluate(() => {
+      reconData = {};                                             // immutability via pre-anchor only
+      var g=getGoals(); var W=runModel(g.ak,g.rt); var w1=W.find(function(x){return x.num===1;});
+      Object.keys(taskData).forEach(function(k){ if(k.indexOf('1_')===0) delete taskData[k]; });
+      for(var i=0;i<w1.realActs.length;i++){ taskData['1_'+i]={completed:true}; }   // legacy-complete the model rows
+      customTaskData[1]=[{id:'s5u1',label:'historic user task',completed:false}];
+      customTaskMeta['s5u1']={type:'action',source:'user',reminderKey:null,lockedLabel:false,dismissed:false,version:1};
+      customTaskData[7]=customTaskData[7]||[];customTaskData[7].push({id:'s5u7',label:'current user task',completed:false});
+      customTaskMeta['s5u7']={type:'action',source:'user',reminderKey:null,lockedLabel:false,dismissed:false,version:1};
+      activeW=1; setSection('weekly'); renderApp();
+      var h1=(document.getElementById('weekly-content')||{}).innerHTML||'';
+      var imm={
+        addBtns:document.querySelectorAll('#weekly-content .custom-task-add-btn').length,
+        delBtns:document.querySelectorAll('#weekly-content .custom-task-del').length,
+        flip:h1.indexOf('flipCustomTaskType(1,')>=0,
+        enabled:Array.from(document.querySelectorAll('#weekly-content input.task-check')).filter(function(cb){return !cb.disabled;}).length
+      };
+      activeW=7; renderApp();
+      var h7=(document.getElementById('weekly-content')||{}).innerHTML||'';
+      var mut={
+        addTransfer:h7.indexOf('+ Add transfer')>=0,
+        addTask:h7.indexOf('+ Add task')>=0,
+        delBtns:document.querySelectorAll('#weekly-content .custom-task-del').length,
+        flip:h7.indexOf('flipCustomTaskType(7,')>=0,
+        enabled:Array.from(document.querySelectorAll('#weekly-content input.task-check')).filter(function(cb){return !cb.disabled;}).length
+      };
+      customTaskData[7]=customTaskData[7].filter(function(t){return t.id!=='s5u7';});delete customTaskMeta['s5u7'];
+      return { imm:imm, mut:mut };
+    });
+    assert(res.imm.addBtns===0, 'immutable week: zero add-task/add-transfer buttons (got '+res.imm.addBtns+')');
+    assert(res.imm.delBtns===0, 'immutable week: zero delete/dismiss buttons (got '+res.imm.delBtns+')');
+    assert(!res.imm.flip, 'immutable week: no type-flip control');
+    assert(res.imm.enabled===0, 'immutable week: every task checkbox disabled (got '+res.imm.enabled+' enabled)');
+    assert(res.mut.addTransfer&&res.mut.addTask, 'mutable week exposes + Add transfer and + Add task');
+    assert(res.mut.delBtns>=1, 'mutable week exposes delete for the user custom task (got '+res.mut.delBtns+')');
+    assert(res.mut.flip, 'mutable week exposes the type-flip control');
+    assert(res.mut.enabled>=1, 'mutable week has enabled task checkboxes (got '+res.mut.enabled+')');
     await context.close();
   }, { tags: [] });
 
