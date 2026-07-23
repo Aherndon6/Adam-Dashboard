@@ -123,3 +123,33 @@ rule hid delete-only on reconciled weeks while leaving Dismiss exposed; the immu
   `resolveWeekTransfers` 5583/`20d17438996ac8ba` (independent extraction + in-suite S5-FROZEN).
 - `BUILD_TS` unchanged (`2026-07-19T01:51:10`; zero BUILD_TS lines in the branch diff). No SQL, no schema,
   no production data, no push, no deployment.
+
+---
+
+## 9. Deployment closeout (2026-07-22) — Step 5 COMPLETE
+
+**Deployed commit:** `c48d7ce` (code `5f82e92`; activation stamp `c48d7ce`) · **BUILD_TS:** `2026-07-22T23:19:24`
+**origin/main:** advanced `e4da0ff → c48d7ce` (clean fast-forward, no merge/squash/force) · **Pages:** built, error null, ~40s; live BUILD_TS matches; Step-5 + F1–F3 code and frozen fns byte-identical in deployed bytes.
+
+**Gate results:** static **1613/0**; full e2e **162/0/0** (readiness openApp 0 / clickNav 0); frozen `runModel 5181b79cbba47e68` / `computeGoalTransferNetting 4670447ce489dd8b` / `resolveWeekTransfers 20d17438996ac8ba` identical.
+
+**Section 7 authenticated production smoke — PASS:** Wk 1 = 4 Completed (legacy) / 0 enabled / 0 open / no immutable add-delete-dismiss-flip controls / no legacy open-chip; Wk 2 = commission_tax 375.68 executed history + tax_base Completed (legacy), neither executable; Wk 5 control = 5 keyed rows normal, 0 legacy; post-anchor reconciled null-key diagnostic → `review_required` `postanchor_nullkey` (never completed_legacy); all ten immutable-writer commands refused, **0** non-GET requests to weekly_tasks/custom_tasks/goals, Wk-1 state unchanged; Wk 29 (model wk 7) mutable positive control — Reconcile + Add transfer + editable controls present, not locked.
+
+**Section 8 post-deployment integrity — PASS (before == after, exact):**
+| Store | Count | Fingerprint |
+|---|---|---|
+| weekly_tasks | 16 | `0e2ce08542949d3b9a7456b693b743f5` |
+| custom_tasks | 15 | `41aca19d81f554763cafb9f3f0e1f6b1` |
+| goal_funding_snapshots | 20 | `0ba69cfafb1dae889fa42fa2bd5d3a6a` |
+
+Reconciled weeks **1,2,3,4,5,6**; commission-tax pool **ok / remaining 0 / total 2272.43**; legs wk2 **375.68** · wk4 **435.63** · wk6 **425.68** · wk7 **417.83** — all unchanged. No task checked/unchecked; no custom task created/deleted; no reimbursement; no Wendy IRA transfer; no SQL/schema/metadata backfill.
+
+**Cumulative diffstat `d41da89..5f82e92`:** `index.html` **+127/−13** · `test_regression.js` **+184/−0** · `e2e.js` **+120/−1** · this doc **+125/−0** · `docs/roadmap/canonical-roadmap.md` **+1/−1**. Activation stamp `c48d7ce`: `index.html` 1 line (BUILD_TS) + `CODEX_STATUS.md`.
+
+**F1–F7 final dispositions:** F1 (toggleTask guard) **CLOSED**; F2 (legacy-era truth: completed_legacy pre-anchor only; post-anchor null-key → review_required `postanchor_nullkey` / open) **CLOSED**; F3 (immutable custom-task surface lockdown, 7 writers + UI affordances) **CLOSED**; F4 (review_required excluded from open counts/chips, visible only in detail; zero review-state weeks in prod) **ACCEPTED**; F5 (Edit-Week correction writers → D-11, under §2d operator controls) **DEFERRED→D-11**; F6 (client immutability fails-open without recon state; pre-anchor locked via anchor constant; durable lock server-side, roadmap §12.1) **DEFERRED→D-11**; F7 (ALASKA_DRAW e2e-venue maintenance note) **RECORDED**.
+
+**`saveCustomTaskMeta` invariant (recorded):** the shared persistence helper is deliberately unguarded — **all callers must establish an authorized mutable-week context before invoking it**; every user-action entry point (`toggleTask`/`toggleTransfer`/`toggleCustomTask`/`saveCustomTask`/`deleteCustomTask`/`dismissAutoReminder`/`flipCustomTaskType`) is guarded upstream.
+
+**Interim "do not click Weeks 1–2" compensating control: RETIRED** — repair live and verified.
+
+**Step 5 status: COMPLETE.** Canonical next step = **Step 6 — post-activation goal-funding validation** (not started this sitting). D-11 roadmap addition preserved (`docs/roadmap/canonical-roadmap.md` §12.1).
