@@ -3821,6 +3821,22 @@ function _immutableWeekRefusal(weekNum){
   try{alert('Cal Wk '+getCalWeek(weekNum)+' is reconciled/historical (write-locked). Its tasks cannot be checked or unchecked here.');}catch(_e){}
   renderApp();   // re-render from UNCHANGED state → resets the checkbox visual; no persistence write, no network request
 }
+// Step 5 (History aggregation fix): the History card's transfer x/y count must adopt the SAME legacy
+// classification the Weekly Model uses — otherwise a legacy null-key completion is DOUBLE-COUNTED (once as
+// its unbound model row in the total, again as its orphaned executed-history in total+done → e.g. Wk 1 shows
+// 4/8, Wk 2 transfers 3/2). For an IMMUTABLE week the attested legacy null-key orphans ARE the model rows'
+// completions, not separate items: subtract them from the total and count the `completed_legacy` rows as
+// done. Mutable / keyed-immutable weeks are UNCHANGED (their legacy contribution is 0); genuine keyed
+// executed-history orphans and `review_required` rows keep their existing treatment. Does NOT touch
+// resolveWeekTransfers. Returns the MODEL-row + executed-history counts only (callers add custom transfers).
+function _historyXfrCounts(wx){
+  var res=_weekResolved(wx);
+  var lc=(typeof _legacyClassifyWeek==='function')?_legacyClassifyWeek(wx):{classByIndex:{},immutable:false,legacyCount:0};
+  var legAttest=lc.immutable?lc.legacyCount:0;                          // legacy null-key orphans = the rows' completions, not separate items
+  var legDone=0; for(var k in lc.classByIndex){ if(lc.classByIndex[k]==='completed_legacy')legDone++; }
+  var trueOrphans=res.executedCount-legAttest;                         // keyed / genuinely-orphaned executed-history (own done items)
+  return {total:(wx.realActs?wx.realActs.length:0)+trueOrphans, done:res.doneCount+legDone+trueOrphans};
+}
 function _firstFreeIdx(taskRows){
   var occ=Object.create(null);(taskRows||[]).forEach(function(r){occ[r.taskIdx]=1;});
   var i=0;while(occ[i])i++;return i;
@@ -6546,10 +6562,11 @@ function renderHistory(weeksArg){
     var _hXfrCT=_hAllCT.filter(function(ct){var m=getTaskMeta(ct.id,ct.label);return m.type==='transfer'&&!m.dismissed;});
     // Action counting includes dismissed — dismissed=resolved counts toward the badge (Option B)
     var _hActCTCount=_hAllCT.filter(function(ct){var m=getTaskMeta(ct.id,ct.label);return m.type==='action';});
-    // Transfer count: model tasks + executed-history + transfer custom tasks (5G-1B resolver)
-    var _hRes=resolveWeekTransfers({realActs:wx.realActs,realActKeys:wx.realActKeys,taskRows:_taskRowsForWeek(wx.num)});
-    var _hTotalXfr=wx.realActs.length+_hRes.executedCount+_hXfrCT.length;
-    var _hDoneXfr=_hRes.doneCount+_hRes.executedCount+_hXfrCT.filter(function(ct){return ct.completed;}).length;
+    // Transfer count: model rows (legacy-classification-aware, no double-count) + true executed-history
+    // orphans + transfer custom tasks. See _historyXfrCounts (Step 5 History aggregation fix).
+    var _hc=_historyXfrCounts(wx);
+    var _hTotalXfr=_hc.total+_hXfrCT.length;
+    var _hDoneXfr=_hc.done+_hXfrCT.filter(function(ct){return ct.completed;}).length;
     // Action count: all action tasks; dismissed counts as done (Option B)
     var _hTotalAct=_hActCTCount.length;
     var _hDoneAct=_hActCTCount.filter(function(ct){var m=getTaskMeta(ct.id,ct.label);return ct.completed||m.dismissed;}).length;

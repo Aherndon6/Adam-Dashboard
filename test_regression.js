@@ -13399,6 +13399,7 @@ console.log('\n── Section 5G-1D Slice 4c: half-close repair confirmation ─
   function W(num,acts,keys){return {num:num,realActs:acts,realActKeys:keys};}
   function withTd(td,fn){var _t=taskData;try{taskData=td;return fn();}finally{taskData=_t;}}
   function legacyRow(){return {completed:true};}
+  function keyedRow(k,lbl){return {completed:true,actionKey:k,completedLabel:lbl};}
   // Shared stub harness: owner role, refusal counter, never-resolving auth counter
   // (a suspended promise leaves no rollback/renderApp microtask to fire post-test).
   function withGuardStubs(recon,fn){
@@ -13494,6 +13495,45 @@ console.log('\n── Section 5G-1D Slice 4c: half-close repair confirmation ─
         assert(customTaskMeta['s5m'].type==='transfer','type flipped action→transfer (optimistic)');
         assert(metaSaves===1,'meta persistence reached');
       }finally{saveCustomTaskMeta=_pMetaSave;delete customTaskData[9];delete customTaskMeta['s5m'];}
+    });
+  });
+
+  // ── Step 5 (History aggregation fix): _historyXfrCounts adopts the legacy classification (no double-count) ──
+  test('S5-HIST-1: Week 1 legacy null-key completions → History transfers 4/4 (not the double-counted 4/8)',function(){
+    var w=W(1,['A','B','C','D'],['setup_sav_2750','setup_lc_1000','setup_lc_2250','costco_visa']);
+    withTd({'1_0':legacyRow(),'1_1':legacyRow(),'1_2':legacyRow(),'1_3':legacyRow()},function(){
+      var c=_historyXfrCounts(w);
+      assert(c.total===4&&c.done===4,'Wk1 transfers 4/4, not 4/8: '+JSON.stringify(c));
+    });
+  });
+  test('S5-HIST-2: Week 2 mixed → transfers 2/2 (commission_tax bound-done + tax_base legacy-done; orphan not double-counted)',function(){
+    var w=W(2,['Commission 40% 375.68 to Vio','Tax 521.36 to Vio'],['commission_tax','tax_base']);
+    withTd({'2_0':keyedRow('commission_tax','Commission 40% 375.68 to Vio'),'2_1':legacyRow()},function(){
+      var c=_historyXfrCounts(w);
+      assert(c.total===2&&c.done===2,'Wk2 transfers 2/2: '+JSON.stringify(c));
+    });
+  });
+  test('S5-HIST-3: Week 5 keyed completions → 2/2 UNCHANGED (no legacy orphans; identical to pre-fix)',function(){
+    var w=W(5,['Alaska sweep 500','Adam IRA seed 100'],['goal_alaska','goal_adam_ira_seed']);
+    withTd({'5_0':keyedRow('goal_alaska','Alaska sweep 500'),'5_1':keyedRow('goal_adam_ira_seed','Adam IRA seed 100')},function(){
+      var c=_historyXfrCounts(w);
+      assert(c.total===2&&c.done===2,'Wk5 control 2/2 unchanged: '+JSON.stringify(c));
+    });
+  });
+  test('S5-HIST-4: mutable week with a genuine keyed executed-history orphan → 2/2 UNCHANGED (no over-reach)',function(){
+    var _r=reconData;try{reconData={};
+      var w=W(9,['Sweep goal_x'],['goal_x']);
+      withTd({'9_0':keyedRow('goal_x','Sweep goal_x'),'9_5':keyedRow('goal_y','Old sweep goal_y')},function(){
+        var c=_historyXfrCounts(w);   // goal_x binds (done); goal_y keyed orphan counts as its own done executed-history
+        assert(c.total===2&&c.done===2,'mutable true-orphan 2/2 unchanged (matches pre-fix): '+JSON.stringify(c));
+      });
+    }finally{reconData=_r;}
+  });
+  test('S5-HIST-5: review_required (pre-anchor cardinality mismatch) → rows counted in total, NOT done (0/4)',function(){
+    var w=W(1,['A','B','C','D'],['setup_sav_2750','setup_lc_1000','setup_lc_2250','costco_visa']);
+    withTd({'1_0':legacyRow(),'1_1':legacyRow()},function(){                 // 2 legacy vs 4 unbound → review_required
+      var c=_historyXfrCounts(w);
+      assert(c.total===4&&c.done===0,'review_required rows in total, not done (0/4): '+JSON.stringify(c));
     });
   });
 })();
