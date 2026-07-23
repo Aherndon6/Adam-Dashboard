@@ -1,5 +1,9 @@
 # Codex Status: Herndon Financial OS
 
+## CURRENCY NOTE (2026-07-23) — Step 5 follow-on: History aggregation double-count FIXED + deployed
+
+- **History-tab completion counts corrected.** Legacy null-key completions were double-counted in the History card (Wk 23 showed 4/8, Wk 24 4/5). Fixed via `_historyXfrCounts` (reuses the deployed `_legacyClassifyWeek`; adapter/display-only, `renderHistory` only) → **Wk 23 = 4/4, Wk 24 = 4/4** (transfers 2/2). Code commit `21c6fc5` + this activation stamp; frozen surfaces byte-identical (`runModel 5181b79c` / `netting 4670447c` / `resolveWeekTransfers 20d17438`); **no SQL/schema/production-data change**. Weekly Model rendering, Week-5 control, mutable weeks, keyed executed-history orphans, and `review_required` rows all unchanged. Static **1618/0**, e2e **162/0/0**. Step 5 remains **COMPLETE**; canonical next = **Step 6**.
+
 ## CURRENCY NOTE (2026-07-22) — Step 5 (Week 1/2 legacy task-binding) ✅ COMPLETE + DEPLOYED + VERIFIED
 
 - **Step 5 is COMPLETE and LIVE in production.** Deployed at **`c48d7ce`** (code `5f82e92` = base `d84ec75` + F1–F3 hardening; activation stamp `c48d7ce`), **`BUILD_TS 2026-07-22T23:19:24`**, GitHub Pages built (error null, ~40s). Design/evidence `docs/phase-5g-1d-week1-2-legacy-binding-2026-07-21.md` §9. Adapter/display-only (post-resolver classification + bidirectional immutable-week write guard); **no SQL/schema/production-data change**.
