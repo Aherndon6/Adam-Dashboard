@@ -1,5 +1,15 @@
 # Codex Status: Herndon Financial OS
 
+## CURRENCY NOTE (2026-07-22) — Step 5 (Week 1/2 legacy task-binding) ACTIVATION
+
+- **Step 5 implementation passed the final local evidence gate** and is being **activated to production**. Commit **`5f82e92`** (base `d84ec75` + F1–F3 hardening); design/evidence `docs/phase-5g-1d-week1-2-legacy-binding-2026-07-21.md`. Adapter/display-only (post-resolver classification + bidirectional immutable-week write guard); **no SQL/schema/production-data change**.
+- **F1/F2/F3 CLOSED:** F1 dormant-writer (`toggleTask`) guard; F2 legacy-era truth (`completed_legacy` only pre-anchor; post-anchor null-key → `review_required` (`postanchor_nullkey`) / `open`, never legacy); F3 immutable custom-task surface lockdown (toggle/save/delete/dismiss/flip guarded; add/delete/dismiss/flip affordances hidden on immutable weeks).
+- **F4/F5/F6/F7 DISPOSITIONED:** F4 accepted (review_required excluded from open-action counts + week-chip dots; visible only in week detail; zero review-state weeks in prod today); F5 → **D-11** (Edit-Week correction writers stay under §2d operator controls + the B1 correction backlog); F6 → **D-11** (client immutability fails open without reconciliation state; pre-anchor stays locked via the anchor constant; durable lock is server-side — canonical roadmap §12.1 D-11 scope addition, 2026-07-22); F7 (ALASKA_DRAW e2e-venue maintenance note) recorded.
+- **`saveCustomTaskMeta` invariant:** the shared persistence helper is deliberately unguarded — **all callers must establish an authorized mutable-week context before invoking it**; every user-action entry point is guarded upstream.
+- **Local gates (`5f82e92`):** static **1613/0**; full e2e **162/0/0**, readiness openApp 0 / clickNav 0; frozen `runModel 5181b79cbba47e68` / `computeGoalTransferNetting 4670447ce489dd8b` / `resolveWeekTransfers 20d17438996ac8ba` byte-identical.
+- **Deployment IN PROGRESS** (activation stamp → push → fast-forward `main` → Pages). **Interim compensating control REMAINS ACTIVE until the post-deploy production integrity probes pass:** *"Weeks 1–2 (Cal Wk 23/24) contain a known historical-display defect — do not click, check, or uncheck any task in those weeks."*
+- **Post-BKX Stabilization sequence:** Step 4 (Diagnose Week 23/24) **COMPLETE**; **Step 5 (Repair Week 23/24) ACTIVE until deployment + production probes pass**; canonical next = **Step 6 — Run post-activation goal-funding validation**; then Step 7 (resolve material findings) → Step 8 (recalculate actual checking capacity).
+
 ## CURRENCY NOTE (2026-07-19c) — ACTIVE EXECUTION POINTER: Post-BKX Stabilization & Goal-Funding Validation
 
 - **Current execution pointer:** **Post-BKX Stabilization & Goal-Funding Validation** → `docs/phase-5g-1d-post-bkx-stabilization-2026-07-19.md`. This **gates resumption of the canonical roadmap.** Required sequence before resuming the normal roadmap:
