@@ -11,6 +11,7 @@
 | 2026-07-11 | `docs/phase-5g-1c-2-seed-anchor.sql` (E2 first-anchor seed, 9 rows) | (E2) | prod `usayoldrawwmjsmretin` | NO | `docs/phase-5g-1c-2-e2-closeout-2026-07-11.md` |
 | 2026-07-11 | `docs/phase-5g-1c-2.1-prod-holding-correction.sql` (2 Week-5 `correction` rows) | `b863266` | prod `usayoldrawwmjsmretin` | **NO — never rerun** (plain INSERT, no ON CONFLICT) | `docs/phase-5g-1c-2.1-hotfix.md` |
 | 2026-07-13 | `docs/phase-5g-1d-migration.sql` (Slice 6 inert deploy: 2 SECURITY DEFINER functions) | (Slice 6) | prod `usayoldrawwmjsmretin` | NO (DDL create) | `docs/phase-5g-1d-slice6-closeout-2026-07-13.md` |
+| 2026-07-23 | `docs/phase-5g-1d-taxonomy-remediation-pkg-tax-1-2026-07-23.sql` (PKG-TAX-1: 2 category INSERTs + 4 transaction recategorizations; L-4) | `5c65b35fbf005e2936636dd8be568dacca9ec5fc` | prod `usayoldrawwmjsmretin` | **NO — one-shot** (E0 idempotency gate raises ALREADY APPLIED on rerun and mutates nothing) | `docs/phase-5g-1d-taxonomy-remediation-closeout-2026-07-23.md` |
 
 *This is a seeded starting index reconstructed from committed closeouts — verify each row against its closeout before relying on it, and append every future production execution. Not a substitute for the closeout docs; a one-line index over them.*
 
