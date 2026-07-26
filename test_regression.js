@@ -14084,7 +14084,8 @@ console.log('\n── Section 5G-1D Slice 4c: half-close repair confirmation ─
   });
   // ── raw-WD inventory: classifiers read no week-data source ──
   test('AU11-CLS-RAWWD: classifier block references no raw WD / effectiveWD',function(){
-    var s=html.slice(html.indexOf('AU-11 Step 4A-2 — READ-ONLY QUALIFICATION CLASSIFIERS'),html.indexOf('// AU11-END')).replace(/\/\/[^\n]*/g,'');
+    // scope: the 4A-2 classifiers ONLY (bounded by the Step 5B header; Step 5B legitimately uses reconData[num]/goalSnapData for closeout provenance)
+    var s=html.slice(html.indexOf('AU-11 Step 4A-2 — READ-ONLY QUALIFICATION CLASSIFIERS'),html.indexOf('// ── AU-11 Step 5B')).replace(/\/\/[^\n]*/g,'');
     assert(!/\bWD\b/.test(s)&&!/reconEffectiveWD/.test(s)&&!/\breconData\b/.test(s)&&!/\boverrideData\b/.test(s),'classifiers must not touch WD/effectiveWD or global week-data stores');
   });
   // ── live-call-site inventory: classifiers used only inside the AU-11 block (Step 4B integration is in-block) ──
@@ -14339,6 +14340,254 @@ console.log('\n── Section 5G-1D Slice 4c: half-close repair confirmation ─
     assert(r.safeCeiling===3000&&r.safeCeilingActionable===true,'positive safe candidate → actionable ceiling, got '+r.safeCeiling);
   });
   test('AU11-4B-FROZEN: runModel / netting / resolver byte-frozen after Step 4B',function(){
+    var crypto2=require('crypto');
+    function bh(tok){var i=html.indexOf(tok);var j=html.indexOf('\nfunction ',i+tok.length);var s=html.slice(i,j<0?html.length:j);return s.length+'/'+crypto2.createHash('sha256').update(s).digest('hex').slice(0,16);}
+    assert(bh('function runModel(')==='32840/5181b79cbba47e68','runModel changed: '+bh('function runModel('));
+    assert(bh('function computeGoalTransferNetting(')==='10309/4670447ce489dd8b','netting changed');
+    assert(bh('function resolveWeekTransfers(')==='5583/20d17438996ac8ba','resolver changed');
+  });
+})();
+
+// ══════════════════ AU-11 STEP 5B — CUMULATIVE CROSS-GOAL CEILING + DEFER-AND-RETAIN ══════════════════
+// Pure allocator over one captured input; dormant, read-only, non-authoritative. Integer cents.
+(function(){
+  // A complete, structurally-valid captured input builder (safeCeiling in dollars). Two goals by priority.
+  function goodInput(over){
+    var base={
+      baselineWeek:7, closeoutState:'complete', snapLoadStatus:'loaded',
+      shadow:{qualificationComplete:true, safeCeiling:100.00, safeCeilingActionable:true, calculationError:null},
+      reservedCents:0,
+      waterfallRegular:['alpha','beta'], waterfallVariable:['alpha','beta'],
+      registry:[{id:'alpha',priority:1,target:1000},{id:'beta',priority:2,target:1000}],
+      akTargetDollars:7000,
+      snapshotEligibleGoalIds:['alpha','beta'],
+      fundedSnapshotDollars:{alpha:0, beta:0},
+      ownerDeferredIds:[], engineGatedIds:[]
+    };
+    if(over)Object.keys(over).forEach(function(k){base[k]=over[k];});
+    return base;
+  }
+  var byId=function(r,id){return r.perGoalAllocation.find(function(p){return p.id===id;});};
+
+  // 1. complete closeout with a valid $0 ceiling → complete, actionable, all zero_ceiling; null ≠ zero
+  test('AU11-5B-01: complete closeout, $0 ceiling → actionable; null distinct from zero',function(){
+    var r=au11CrossGoalAllocate(goodInput({shadow:{qualificationComplete:true,safeCeiling:0,safeCeilingActionable:true,calculationError:null}}));
+    assert(r.cumulativeCeilingCents===0&&r.crossGoalActionable===true&&r.crossGoalComplete===true,'$0 ceiling actionable');
+    assert(byId(r,'alpha').status==='zero_ceiling'&&byId(r,'beta').status==='zero_ceiling','all candidates zero_ceiling');
+    var blk=au11CrossGoalAllocate(goodInput({closeoutState:'unreconciled'}));
+    assert(blk.cumulativeCeilingCents===null&&r.cumulativeCeilingCents===0,'null (blocked) is distinct from a real $0 ceiling');
+  });
+  // 2. positive ceiling: priority allocation + exact conservation
+  test('AU11-5B-02: positive ceiling allocates by priority with exact conservation',function(){
+    var r=au11CrossGoalAllocate(goodInput({shadow:{qualificationComplete:true,safeCeiling:15.00,safeCeilingActionable:true,calculationError:null}}));
+    assert(byId(r,'alpha').allocatedCents===1500&&byId(r,'beta').allocatedCents===0,'senior gets the whole $15');
+    assert(r.conservation.balanced===true&&r.cumulativeCeilingCents===1500&&r.allocatedTotalCents+r.retainedHeadroomCents+r.unallocatedHeadroomCents===1500,'conservation exact');
+  });
+  // 3. D3 regression: deferring a senior goal retains its slice; junior allocation is byte-identical
+  test('AU11-5B-03: defer-and-retain — junior allocation unchanged whether senior executes or defers',function(){
+    var exec=au11CrossGoalAllocate(goodInput({shadow:{qualificationComplete:true,safeCeiling:12.00,safeCeilingActionable:true,calculationError:null}}));
+    var defer=au11CrossGoalAllocate(goodInput({shadow:{qualificationComplete:true,safeCeiling:12.00,safeCeilingActionable:true,calculationError:null},ownerDeferredIds:['alpha']}));
+    assert(byId(defer,'alpha').allocatedCents===0&&byId(defer,'alpha').retainedCents===byId(exec,'alpha').allocatedCents,'senior slice becomes retained (same amount)');
+    assert(JSON.stringify(byId(defer,'beta'))===JSON.stringify(byId(exec,'beta')),'junior allocation byte-identical (no reallocation)');
+    assert(byId(defer,'beta').allocatedCents<=byId(exec,'beta').allocatedCents,'junior allocation never increases on suppression');
+  });
+  // 4. registry-excluded goal consumes no slice / creates no retained amount (not in the waterfall)
+  test('AU11-5B-04: registry-excluded goal consumes nothing',function(){
+    var r=au11CrossGoalAllocate(goodInput({
+      registry:[{id:'alpha',priority:1,target:1000},{id:'beta',priority:2,target:1000},{id:'done',priority:3,target:1000,complete:true}],
+      shadow:{qualificationComplete:true,safeCeiling:5.00,safeCeilingActionable:true,calculationError:null}
+    }));
+    assert(!byId(r,'done'),'excluded goal absent from allocation walk');
+    assert(r.allocatedTotalCents===500&&r.conservation.balanced,'only waterfall goals consume ceiling');
+  });
+  // 5. engine-gated candidate → deferred_engine_gate; consumes + retains its slice
+  test('AU11-5B-05: engine-gated candidate retains (consume-but-do-not-spend)',function(){
+    var r=au11CrossGoalAllocate(goodInput({shadow:{qualificationComplete:true,safeCeiling:12.00,safeCeilingActionable:true,calculationError:null},engineGatedIds:['alpha']}));
+    assert(byId(r,'alpha').status==='deferred_engine_gate'&&byId(r,'alpha').allocatedCents===0&&byId(r,'alpha').retainedCents===1200,'engine-gate retains slice');
+    assert(byId(r,'beta').allocatedCents===0,'retained slice not available downstream');
+  });
+  // 6. need smaller than available slice
+  test('AU11-5B-06: need smaller than the available slice',function(){
+    var r=au11CrossGoalAllocate(goodInput({fundedSnapshotDollars:{alpha:995,beta:0},shadow:{qualificationComplete:true,safeCeiling:50.00,safeCeilingActionable:true,calculationError:null}}));
+    assert(byId(r,'alpha').allocatedCents===500&&byId(r,'alpha').remainingNeedCents===500,'alpha need $5 only');
+    assert(byId(r,'beta').allocatedCents===4500,'beta gets the remaining $45');
+  });
+  // 7. ceiling exhausted partway through the waterfall
+  test('AU11-5B-07: ceiling exhausted mid-waterfall → later goal zero_ceiling',function(){
+    var r=au11CrossGoalAllocate(goodInput({shadow:{qualificationComplete:true,safeCeiling:10.00,safeCeilingActionable:true,calculationError:null}}));
+    assert(byId(r,'alpha').allocatedCents===1000&&byId(r,'beta').status==='zero_ceiling'&&byId(r,'beta').allocatedCents===0,'ceiling exhausted by senior');
+  });
+  // 8. all needs satisfied → positive unallocatedHeadroomCents
+  test('AU11-5B-08: all needs satisfied leaves positive unallocated headroom',function(){
+    var r=au11CrossGoalAllocate(goodInput({fundedSnapshotDollars:{alpha:1000,beta:1000},shadow:{qualificationComplete:true,safeCeiling:30.00,safeCeilingActionable:true,calculationError:null}}));
+    assert(byId(r,'alpha').status==='zero_need'&&byId(r,'beta').status==='zero_need','both zero_need');
+    assert(r.unallocatedHeadroomCents===3000&&r.conservation.balanced,'full ceiling unallocated');
+  });
+  // 9. missing candidate baseline → entire result blocked
+  test('AU11-5B-09: missing candidate baseline blocks the whole result',function(){
+    var r=au11CrossGoalAllocate(goodInput({fundedSnapshotDollars:{alpha:0}})); // beta baseline missing
+    assert(r.cumulativeCeilingCents===null&&r.crossGoalActionable===false&&r.crossGoalBlockReasons.indexOf('goal_baseline_missing')>=0,'baseline missing → block');
+  });
+  // 10. non-snapshot goal in waterfall → distinct full-block reason
+  test('AU11-5B-10: non-snapshot goal in waterfall → distinct block reason',function(){
+    var r=au11CrossGoalAllocate(goodInput({snapshotEligibleGoalIds:['alpha']})); // beta not snapshot-eligible
+    assert(r.cumulativeCeilingCents===null&&r.crossGoalBlockReasons.indexOf('non_snapshot_goal_in_waterfall')>=0,'non-snapshot goal → distinct block');
+    assert(r.crossGoalBlockReasons.indexOf('goal_baseline_missing')<0,'distinct from goal_baseline_missing');
+  });
+  // 11. half-closed week → null, non-actionable
+  test('AU11-5B-11: half-closed week → null, non-actionable',function(){
+    var r=au11CrossGoalAllocate(goodInput({closeoutState:'half_closed'}));
+    assert(r.cumulativeCeilingCents===null&&r.crossGoalActionable===false&&r.crossGoalBlockReasons.indexOf('closeout_incomplete')>=0,'half-closed blocks');
+  });
+  // 12. unreconciled week → null, non-actionable
+  test('AU11-5B-12: unreconciled week → null, non-actionable',function(){
+    var r=au11CrossGoalAllocate(goodInput({closeoutState:'unreconciled'}));
+    assert(r.cumulativeCeilingCents===null&&r.crossGoalActionable===false&&r.crossGoalBlockReasons.indexOf('closeout_incomplete')>=0,'unreconciled blocks');
+  });
+  // 13. snapshot load uncertain → null, non-actionable
+  test('AU11-5B-13: snapshot load uncertain → null, non-actionable',function(){
+    var r=au11CrossGoalAllocate(goodInput({snapLoadStatus:'unknown'}));
+    assert(r.cumulativeCeilingCents===null&&r.crossGoalBlockReasons.indexOf('snapshot_uncertain')>=0,'uncertain snapshot blocks');
+  });
+  // 14. waterfall divergence → full block
+  test('AU11-5B-14: waterfall divergence → full block',function(){
+    var r=au11CrossGoalAllocate(goodInput({waterfallVariable:['beta','alpha']}));
+    assert(r.cumulativeCeilingCents===null&&r.crossGoalBlockReasons.indexOf('waterfall_divergence')>=0,'divergent waterfalls block');
+  });
+  // 15. absolute corrected snapshot used directly (no separate delta correction)
+  test('AU11-5B-15: corrected snapshot anchor used directly',function(){
+    var r=au11CrossGoalAllocate(goodInput({fundedSnapshotDollars:{alpha:250.75,beta:0},shadow:{qualificationComplete:true,safeCeiling:100,safeCeilingActionable:true,calculationError:null}}));
+    assert(byId(r,'alpha').fundedSnapshotCents===25075&&byId(r,'alpha').remainingNeedCents===74925,'corrected anchor consumed directly at face');
+  });
+  // 16. reservedCents reduces ceiling dollar-for-dollar; cannot go negative
+  test('AU11-5B-16: reservedCents reduces ceiling, floored at zero',function(){
+    var r=au11CrossGoalAllocate(goodInput({reservedCents:400,shadow:{qualificationComplete:true,safeCeiling:10.00,safeCeilingActionable:true,calculationError:null}}));
+    assert(r.cumulativeCeilingCents===600,'1000 − 400 = 600');
+    var r2=au11CrossGoalAllocate(goodInput({reservedCents:99999,shadow:{qualificationComplete:true,safeCeiling:10.00,safeCeilingActionable:true,calculationError:null}}));
+    assert(r2.cumulativeCeilingCents===0,'over-reserve floors ceiling at 0, never negative');
+  });
+  // 17. invalid reservedCents → fail closed
+  test('AU11-5B-17: invalid reservedCents → fail closed',function(){
+    [ -1, 1.5, NaN, Infinity, '100', null ].forEach(function(bad){
+      var r=au11CrossGoalAllocate(goodInput({reservedCents:bad}));
+      assert(r.cumulativeCeilingCents===null&&r.crossGoalBlockReasons.indexOf('invalid_reserved_cents')>=0,'invalid reservedCents '+String(bad)+' → block');
+    });
+  });
+  // 18. integer-cents edge cases — no float drift; conservation exact
+  test('AU11-5B-18: integer-cents arithmetic is exact',function(){
+    var r=au11CrossGoalAllocate(goodInput({registry:[{id:'alpha',priority:1,target:0.10},{id:'beta',priority:2,target:0.20}],fundedSnapshotDollars:{alpha:0,beta:0},shadow:{qualificationComplete:true,safeCeiling:0.29,safeCeilingActionable:true,calculationError:null}}));
+    assert(byId(r,'alpha').allocatedCents===10&&byId(r,'beta').allocatedCents===19,'10¢ then 19¢ of a 29¢ ceiling');
+    assert(r.conservation.balanced&&r.allocatedTotalCents+r.retainedHeadroomCents+r.unallocatedHeadroomCents===29,'exact, no drift');
+  });
+  // 19. input capture / purity — identical input → byte-identical result
+  test('AU11-5B-19: pure — identical input yields identical result',function(){
+    var a=au11CrossGoalAllocate(goodInput({shadow:{qualificationComplete:true,safeCeiling:17.50,safeCeilingActionable:true,calculationError:null}}));
+    var b=au11CrossGoalAllocate(goodInput({shadow:{qualificationComplete:true,safeCeiling:17.50,safeCeilingActionable:true,calculationError:null}}));
+    assert(JSON.stringify(a)===JSON.stringify(b)&&a.inputDigest===b.inputDigest,'deterministic + stable inputDigest');
+  });
+  // 4B authority boundary: null 4B ceiling propagates; calc error blocks
+  test('AU11-5B-BOUNDARY: null 4B safeCeiling propagates; 4B calc error blocks',function(){
+    var nul=au11CrossGoalAllocate(goodInput({shadow:{qualificationComplete:true,safeCeiling:null,safeCeilingActionable:false,calculationError:null}}));
+    assert(nul.cumulativeCeilingCents===null&&nul.crossGoalActionable===false&&nul.crossGoalBlockReasons.indexOf('shadow_not_actionable')>=0,'null 4B ceiling → null cross-goal');
+    var ce=au11CrossGoalAllocate(goodInput({shadow:{qualificationComplete:true,safeCeiling:100,safeCeilingActionable:true,calculationError:{status:'error',code:'x'}}}));
+    assert(ce.cumulativeCeilingCents===null&&ce.crossGoalBlockReasons.indexOf('shadow_calculation_error')>=0,'4B calc error blocks');
+  });
+  // au11ShadowValidate carries crossGoal additively (dormant): unreconciled base → blocked crossGoal, no throw
+  test('AU11-5B-WIRED: au11ShadowValidate attaches a (blocked) crossGoal for an unreconciled base',function(){
+    var _r=reconData,_f=reconEffectiveWD; reconData={}; reconEffectiveWD=function(){return [[8,'',[],[],[],0,0]];};
+    try{ var res=au11ShadowValidate(7,20000,0,OP_FL);
+      assert(res.crossGoal&&res.crossGoal.crossGoalActionable===false&&res.crossGoal.cumulativeCeilingCents===null,'crossGoal present + blocked (dormant), no throw');
+    } finally { reconData=_r; reconEffectiveWD=_f; }
+  });
+  // 23/24. zero outside-block callers + no raw-source/runModel/AMEX-lookahead bypass in the Step 5B block
+  test('AU11-5B-NOLIVE: Step 5B fns have zero callers outside the AU-11 block',function(){
+    var a=html.indexOf('// AU11-BEGIN'),b=html.indexOf('// AU11-END'); var outside=html.slice(0,a)+html.slice(b);
+    ['au11CrossGoalAllocate','au11BuildCrossGoalInput','au11CloseoutState','au11Digest'].forEach(function(fn){
+      assert(outside.indexOf(fn)<0,fn+' must not be referenced outside the AU-11 block');
+    });
+  });
+  test('AU11-5B-BYPASS: Step 5B block has no raw-WD / runModel / Register / AMEX-lookahead bypass; consumes canonical contracts',function(){
+    var blk=html.slice(html.indexOf('// ── AU-11 Step 5B'),html.indexOf('// AU11-END')).replace(/\/\/[^\n]*/g,'');
+    assert(!/\bWD\b/.test(blk),'no raw WD');
+    assert(!/runModel|maxSafeAmxSweep|amxSweepKeepsFloor|\blaFl\b/.test(blk),'no runModel / AMEX-lookahead bypass');
+    assert(!/\btransfers\b|Register|createReservation|cash_commitments/.test(blk),'no Register / reservation bypass');
+    assert(/closeoutState\(/.test(blk),'consumes the canonical closeoutState() adapter (no parallel closeout logic)');
+    assert(/SNAPSHOT_ELIGIBLE_GOAL_IDS/.test(blk),'consumes the canonical SNAPSHOT_ELIGIBLE_GOAL_IDS (approved nine)');
+    assert(!/Object\.keys\(goalSnapData\)\.forEach/.test(blk),'no historical-union eligibility derivation remains');
+  });
+  // ── Correction 1: canonical snapshot-eligibility (approved nine), not the historical union ──
+  test('AU11-5B-CANON-ELIG: built input eligibility = SNAPSHOT_ELIGIBLE_GOAL_IDS, independent of history',function(){
+    var _s=goalSnapData,_rl=_goalSnapLoadStatus;
+    try{
+      // historical rows include an OUTSIDER ('legacy_outsider') and OMIT most of the nine
+      goalSnapData={5:{legacy_outsider:1, adam_ira:100}}; _goalSnapLoadStatus='loaded';
+      var inp=au11BuildCrossGoalInput(7,{qualificationComplete:true,safeCeiling:0,safeCeilingActionable:true,calculationError:null},0);
+      assert(JSON.stringify(inp.snapshotEligibleGoalIds)===JSON.stringify(SNAPSHOT_ELIGIBLE_GOAL_IDS),'eligibility is exactly the canonical nine');
+      assert(inp.snapshotEligibleGoalIds.indexOf('legacy_outsider')<0,'historical outsider is NOT eligible');
+      assert(SNAPSHOT_ELIGIBLE_GOAL_IDS.every(function(id){return inp.snapshotEligibleGoalIds.indexOf(id)>=0;}),'every canonical id present regardless of prior history');
+    } finally { goalSnapData=_s; _goalSnapLoadStatus=_rl; }
+  });
+  test('AU11-5B-CANON-OUTSIDER: a structurally ineligible waterfall id → non_snapshot_goal_in_waterfall',function(){
+    var r=au11CrossGoalAllocate(goodInput({
+      waterfallRegular:['alaska','legacy_outsider'], waterfallVariable:['alaska','legacy_outsider'],
+      registry:[{id:'alaska',priority:1,target:7000},{id:'legacy_outsider',priority:2,target:100}],
+      snapshotEligibleGoalIds:SNAPSHOT_ELIGIBLE_GOAL_IDS.slice(),
+      fundedSnapshotDollars:{alaska:0, legacy_outsider:0},
+      akTargetDollars:7000, shadow:{qualificationComplete:true,safeCeiling:10,safeCeilingActionable:true,calculationError:null}
+    }));
+    assert(r.cumulativeCeilingCents===null&&r.crossGoalBlockReasons.indexOf('non_snapshot_goal_in_waterfall')>=0,'outsider (not in the nine) → full block');
+  });
+  test('AU11-5B-CANON-RECOGNIZED: a canonically eligible id is recognized with no prior history',function(){
+    // preston_529 is in the nine; brand-new with only a current-week baseline row (no earlier weeks)
+    var r=au11CrossGoalAllocate(goodInput({
+      waterfallRegular:['preston_529'], waterfallVariable:['preston_529'],
+      registry:[{id:'preston_529',priority:1,target:1000}],
+      snapshotEligibleGoalIds:SNAPSHOT_ELIGIBLE_GOAL_IDS.slice(),
+      fundedSnapshotDollars:{preston_529:0}, shadow:{qualificationComplete:true,safeCeiling:5,safeCeilingActionable:true,calculationError:null}
+    }));
+    assert(r.crossGoalComplete===true&&byId(r,'preston_529').allocatedCents===500,'eligible id recognized without historical rows');
+  });
+  test('AU11-5B-CANON-MISSING: canonically eligible candidate absent from the baseline → goal_baseline_missing',function(){
+    var r=au11CrossGoalAllocate(goodInput({
+      waterfallRegular:['alaska','wendy_ira'], waterfallVariable:['alaska','wendy_ira'],
+      registry:[{id:'alaska',priority:1,target:7000},{id:'wendy_ira',priority:2,target:7000}],
+      snapshotEligibleGoalIds:SNAPSHOT_ELIGIBLE_GOAL_IDS.slice(),
+      fundedSnapshotDollars:{alaska:0}, akTargetDollars:7000, shadow:{qualificationComplete:true,safeCeiling:10,safeCeilingActionable:true,calculationError:null}
+    })); // wendy_ira eligible but no baseline
+    assert(r.cumulativeCeilingCents===null&&r.crossGoalBlockReasons.indexOf('goal_baseline_missing')>=0,'eligible-but-missing → goal_baseline_missing');
+    assert(r.crossGoalBlockReasons.indexOf('non_snapshot_goal_in_waterfall')<0,'distinct from non_snapshot_goal_in_waterfall');
+  });
+  // ── Correction 2: au11CloseoutState is a thin adapter to the canonical closeoutState() ──
+  test('AU11-5B-CLOSEOUT-EQUIV: au11CloseoutState maps the canonical closeoutState invariant (nine rows)',function(){
+    var _r=reconData,_s=goalSnapData,_rl=_goalSnapLoadStatus;
+    function nine(overrides){var m={};SNAPSHOT_ELIGIBLE_GOAL_IDS.forEach(function(id){m[id]=100;});if(overrides)overrides(m);return m;}
+    try{
+      // recon present, snapshots absent → half_closed
+      reconData={6:{chk:1}}; goalSnapData={}; _goalSnapLoadStatus='loaded';
+      assert(au11CloseoutState(6)==='half_closed','recon + no snapshots → half_closed');
+      // recon present, fewer than nine → half_closed
+      goalSnapData={6:(function(){var m=nine();delete m['christmas_cruise'];return m;})()};
+      assert(_eligibleSnapCount(6)===8&&au11CloseoutState(6)==='half_closed','recon + 8/9 → half_closed');
+      // recon present, all nine, load certain → complete
+      goalSnapData={6:nine()};
+      assert(_eligibleSnapCount(6)===9&&au11CloseoutState(6)==='complete','recon + 9/9 + loaded → complete');
+      // snapshot load uncertain → not complete
+      _goalSnapLoadStatus='unknown';
+      assert(au11CloseoutState(6)==='half_closed','9/9 but load uncertain → not complete');
+      _goalSnapLoadStatus='loaded';
+      // unrelated/extra historical rows do not fake completeness (8 real of the nine + an outsider)
+      goalSnapData={6:(function(){var m=nine();delete m['christmas_cruise'];m['legacy_outsider']=999;return m;})()};
+      assert(_eligibleSnapCount(6)===8&&au11CloseoutState(6)==='half_closed','extra outsider row does not make it complete');
+      // a malformed expected row (undefined value) cannot falsely complete
+      goalSnapData={6:(function(){var m=nine();m['christmas_cruise']=undefined;return m;})()};
+      assert(_eligibleSnapCount(6)===8&&au11CloseoutState(6)==='half_closed','malformed (undefined) expected row → not counted → not complete');
+      // unreconciled → unreconciled
+      reconData={}; goalSnapData={};
+      assert(au11CloseoutState(6)==='unreconciled','no reconciliation → unreconciled');
+    } finally { reconData=_r; goalSnapData=_s; _goalSnapLoadStatus=_rl; }
+  });
+  // frozen surfaces unchanged after Step 5B
+  test('AU11-5B-FROZEN: runModel / netting / resolver byte-frozen after Step 5B',function(){
     var crypto2=require('crypto');
     function bh(tok){var i=html.indexOf(tok);var j=html.indexOf('\nfunction ',i+tok.length);var s=html.slice(i,j<0?html.length:j);return s.length+'/'+crypto2.createHash('sha256').update(s).digest('hex').slice(0,16);}
     assert(bh('function runModel(')==='32840/5181b79cbba47e68','runModel changed: '+bh('function runModel('));
