@@ -1768,6 +1768,71 @@ function au11Step1ProbeSweepCeiling(num, projectedChk, proposed, floor){
   var eff=reconEffectiveWD();               // effectiveWD only (D5) — no raw-WD consumer in this path
   return maxSafeAmxSweep(proposed, base, num, eff, floor, AMX_SWEEP_LOOKAHEAD_WEEKS);
 }
+
+// ── AU-11 STEP 2 — READ-ONLY FULL-HORIZON SHADOW VALIDATOR (non-authoritative, incomplete) ──
+// Evaluates discretionary-transfer floor safety across the FULL remaining model horizon (candidate
+// week → last modeled week) — NOT the AMX_SWEEP_LOOKAHEAD_WEEKS window. Reproduces the legacy
+// per-step projection semantics (add w[2] inflows, subtract w[3] obs) uncapped. Reads effectiveWD
+// only (D5) and the shared authoritative base (D1b). It renders nothing, writes nothing, and is
+// called by no live path. It is INCOMPLETE: candidate reflect-forward, ct/ca channels, per-week floor
+// overrides, cross-goal cumulative allocation, reservation withholding, estimate fail-closed, inflow
+// qualification, obligation-identity, write guards and promotion are all deferred to later approved
+// steps — so every result is labelled authoritative:false, complete:false.
+
+// Full-horizon floor predicate — legacy semantics, uncapped horizon. Returns per-week evidence.
+function au11ShadowKeepsFloor(candidate, base, num, eff, floor){
+  var future=eff.filter(function(w){return w[0]>num;}).sort(function(a,b){return a[0]-b[0];});
+  var proj=Math.round((base-candidate)*100)/100;   // legacy: candidate subtracted at the start
+  var minChk=proj, minWk=num, firstBreach=(proj<floor)?num:null;
+  var traj=[{wk:num,chk:proj,headroom:Math.round((proj-floor)*100)/100}];
+  for(var i=0;i<future.length;i++){
+    var w=future[i], inflows=w[2]||[], obs=w[3]||[], k;
+    for(k=0;k<inflows.length;k++) proj=Math.round((proj+inflows[k])*100)/100;
+    for(k=0;k<obs.length;k++)     proj=Math.round((proj-obs[k])*100)/100;
+    traj.push({wk:w[0],chk:proj,headroom:Math.round((proj-floor)*100)/100});
+    if(proj<minChk){minChk=proj;minWk=w[0];}
+    if(firstBreach===null&&proj<floor) firstBreach=w[0];
+  }
+  return {safe:firstBreach===null, firstBreach:firstBreach, minChk:minChk, minWk:minWk,
+    minHeadroom:Math.round((minChk-floor)*100)/100,
+    horizonStart:future.length?future[0][0]:num,
+    horizonEnd:future.length?future[future.length-1][0]:num, trajectory:traj};
+}
+// Full-horizon safe ceiling — binary search mirroring maxSafeAmxSweep, uncapped horizon.
+function au11ShadowCeiling(candidate, base, num, eff, floor){
+  if(au11ShadowKeepsFloor(candidate,base,num,eff,floor).safe) return candidate>=MIN_XFR?candidate:0;
+  var lo=0,hi=candidate,best=0;
+  for(var it=0;it<20;it++){var mid=(lo+hi)/2; if(au11ShadowKeepsFloor(mid,base,num,eff,floor).safe){best=mid;lo=mid;}else hi=mid;}
+  best=Math.floor(best*100)/100;
+  return best>=MIN_XFR?best:0;
+}
+// Read-only shadow validator entry point. NON-AUTHORITATIVE, INCOMPLETE (Step 2). Renders nothing.
+function au11ShadowValidate(num, projectedChk, candidate, floor){
+  var base=authoritativeCurrentChk(num, projectedChk);   // D1b shared base
+  var eff=reconEffectiveWD();                             // effectiveWD only (D5)
+  var ev=au11ShadowKeepsFloor(candidate, base, num, eff, floor);
+  var ceiling=au11ShadowCeiling(candidate, base, num, eff, floor);
+  return {
+    candidate: candidate,
+    candidateSafe: ev.safe,
+    safeCeiling: ceiling,
+    firstBreachWeek: ev.firstBreach,
+    minHeadroom: ev.minHeadroom,
+    minChk: ev.minChk,
+    minWeek: ev.minWk,
+    floorAtMinWeek: floor,                 // single floor for now — per-week overrides are a later step
+    reason: ev.safe
+      ? {status:'ok', code:'full_horizon_floor_safe'}
+      : {status:'block', code:'full_horizon_floor_breach', firstBreachWeek:ev.firstBreach, minWeek:ev.minWk, minChk:ev.minChk, minHeadroom:ev.minHeadroom},
+    horizonStart: ev.horizonStart,
+    horizonEnd: ev.horizonEnd,
+    base: base,
+    trajectory: ev.trajectory,
+    authoritative: false,                  // NEVER authoritative in Step 2
+    complete: false,                       // later controls not yet included
+    deferredControls: ['candidate_reflect_forward','ct_ca_channels','per_week_floor_overrides','cross_goal_cumulative','reservation_withholding','estimate_fail_closed','inflow_qualification','obligation_identity','write_guard','promotion']
+  };
+}
 // AU11-END
 // ═══════════════════════════════════════════════════════════════════════════════════════
 

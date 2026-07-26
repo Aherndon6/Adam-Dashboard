@@ -13598,6 +13598,90 @@ console.log('\n── Section 5G-1D Slice 4c: half-close repair confirmation ─
   });
 })();
 
+// ══════════════════ AU-11 STEP 2 — READ-ONLY FULL-HORIZON SHADOW VALIDATOR ══════════════════
+// Non-authoritative, read-only. runModel/laFl/CAE untouched; the Step 1 probe is unchanged.
+(function(){
+  // S2-WK7-BASE: the shadow validator evaluates from the reconciled $11,873.41 base (D1b reuse)
+  test('AU11-S2-WK7-BASE: shadow validator starts from the reconciled $11,873.41 base',function(){
+    var _r=reconData,_f=reconEffectiveWD; reconData={7:{chk:11873.41}}; reconEffectiveWD=function(){return [[8,'',[],[]]];};
+    try{ var res=au11ShadowValidate(7,17561.09,5000,OP_FL); assert(res.base===11873.41,'shadow base must be reconciled 11873.41, got '+res.base); }
+    finally{reconData=_r;reconEffectiveWD=_f;}
+  });
+  // S2-WK13: full-horizon detects a wk13 breach the legacy 5-week window (from wk7) MISSES
+  test('AU11-S2-WK13: full-horizon detects the wk13 breach outside the legacy five-week window',function(){
+    var _r=reconData,_f=reconEffectiveWD;
+    var eff=[[8,'',[],[]],[9,'',[],[]],[10,'',[],[]],[11,'',[],[]],[12,'',[],[]],[13,'',[],[9000]],[14,'',[],[]]];
+    reconData={7:{chk:11873.41}}; reconEffectiveWD=function(){return eff;};
+    try{
+      var legacy=amxSweepKeepsFloor(3000,11873.41,7,eff,OP_FL,AMX_SWEEP_LOOKAHEAD_WEEKS); // covers wk8-12 only
+      var res=au11ShadowValidate(7,17561.09,3000,OP_FL);
+      assert(legacy===true,'legacy 5-week must MISS the wk13 breach (expired horizon), got '+legacy);
+      assert(res.firstBreachWeek===13,'full-horizon must DETECT the wk13 breach, got '+res.firstBreachWeek);
+      assert(res.horizonEnd===14&&res.candidateSafe===false,'full horizon reached end 14 and flagged unsafe: '+JSON.stringify({e:res.horizonEnd,s:res.candidateSafe}));
+    }finally{reconData=_r;reconEffectiveWD=_f;}
+  });
+  // S2-WK26: A/B breach at wk26 detected; C (no breach) not blocked; legacy 5-week expires before wk26
+  test('AU11-S2-WK26: wk26 A/B breach detected while scenario C is not blocked (far-horizon discrimination)',function(){
+    var _r=reconData,_f=reconEffectiveWD; var base=11873.41;
+    var effAB=[],effC=[],wk;
+    for(wk=8;wk<=27;wk++) effAB.push([wk,'',[],[wk===26?7000:0]]);                 // A/B: wk26 breaches
+    for(wk=8;wk<=27;wk++) effC.push([wk,'',[wk===26?7000:0],[wk===26?7000:0]]);    // C: wk26 offset → no breach
+    reconData={7:{chk:base}};
+    try{
+      reconEffectiveWD=function(){return effAB;}; var resAB=au11ShadowValidate(7,17561.09,0,OP_FL);
+      var legacyAB=amxSweepKeepsFloor(0,base,7,effAB,OP_FL,AMX_SWEEP_LOOKAHEAD_WEEKS);
+      reconEffectiveWD=function(){return effC;};  var resC=au11ShadowValidate(7,17561.09,0,OP_FL);
+      assert(resAB.firstBreachWeek===26,'A/B wk26 breach must be detected, got '+resAB.firstBreachWeek);
+      assert(resC.firstBreachWeek===null&&resC.candidateSafe===true,'C must NOT be blocked at wk26, got '+JSON.stringify({fb:resC.firstBreachWeek,safe:resC.candidateSafe}));
+      assert(legacyAB===true,'legacy 5-week expires before wk26 → falsely passes A/B, got '+legacyAB);
+    }finally{reconData=_r;reconEffectiveWD=_f;}
+  });
+  // S2-EFFWD: the shadow validator consumes effectiveWD (swapping reconEffectiveWD changes the result)
+  test('AU11-S2-EFFWD: shadow validator consumes effectiveWD (not raw WD)',function(){
+    var _r=reconData,_f=reconEffectiveWD; reconData={7:{chk:20000}};
+    try{
+      reconEffectiveWD=function(){return [[8,'',[],[]],[9,'',[],[15000]]];}; var breach=au11ShadowValidate(7,20000,0,OP_FL);
+      reconEffectiveWD=function(){return [[8,'',[],[]],[9,'',[],[]]];};        var okr=au11ShadowValidate(7,20000,0,OP_FL);
+      assert(breach.firstBreachWeek===9&&okr.firstBreachWeek===null,'shadow result must respond to effectiveWD contents: '+JSON.stringify({b:breach.firstBreachWeek,o:okr.firstBreachWeek}));
+    }finally{reconData=_r;reconEffectiveWD=_f;}
+  });
+  // S2-RAWWD: the entire AU-11 block (Step 1 + Step 2) has zero raw-WD consumers in code
+  test('AU11-S2-RAWWD: AU-11 block (incl. shadow validator) has zero raw-WD consumers',function(){
+    var a=html.indexOf('// AU11-BEGIN'),b=html.indexOf('// AU11-END');
+    var code=html.slice(a,b).replace(/\/\/[^\n]*/g,'');
+    var stripped=code.replace(/reconEffectiveWD/g,'').replace(/effectiveWD/g,'');
+    assert(!/\bWD\b/.test(stripped),'AU-11 block must not reference raw WD');
+  });
+  // S2-NONAUTH: shadow results are non-authoritative + incomplete; Step 1 probe unchanged/diagnostic
+  test('AU11-S2-NONAUTH: shadow results labelled non-authoritative + incomplete; Step 1 probe intact',function(){
+    var _r=reconData,_f=reconEffectiveWD; reconData={7:{chk:11873.41}}; reconEffectiveWD=function(){return [[8,'',[],[]]];};
+    try{
+      var res=au11ShadowValidate(7,17561.09,1000,OP_FL);
+      assert(res.authoritative===false&&res.complete===false,'shadow result must be non-authoritative + incomplete');
+      assert(Array.isArray(res.deferredControls)&&res.deferredControls.indexOf('promotion')>=0,'deferredControls must list promotion');
+      assert(typeof au11Step1ProbeSweepCeiling(7,17561.09,1000,OP_FL)==='number','Step 1 probe must remain callable/unchanged');
+      var blk=html.slice(html.indexOf('// AU11-BEGIN'),html.indexOf('// AU11-END'));
+      assert(blk.indexOf('must never be promoted')>=0,'Step 1 probe diagnostic-only comment must remain');
+    }finally{reconData=_r;reconEffectiveWD=_f;}
+  });
+  // S2-NOLIVE: no live path in index.html invokes the shadow validator (defined-only)
+  test('AU11-S2-NOLIVE: shadow validator is invoked by no live path',function(){
+    var a=html.indexOf('// AU11-BEGIN'),b=html.indexOf('// AU11-END');
+    var outside=html.slice(0,a)+html.slice(b);
+    ['au11ShadowValidate','au11ShadowKeepsFloor','au11ShadowCeiling'].forEach(function(fn){
+      assert(outside.indexOf(fn)<0,fn+' must not be referenced outside the AU-11 block (found a live caller)');
+    });
+  });
+  // S2-FROZEN: frozen surfaces still byte-identical after the Step 2 insertion
+  test('AU11-S2-FROZEN: runModel / netting / resolver byte-frozen after Step 2 insertion',function(){
+    var crypto=require('crypto');
+    function bh(tok){var i=html.indexOf(tok);var j=html.indexOf('\nfunction ',i+tok.length);var s=html.slice(i,j<0?html.length:j);return s.length+'/'+crypto.createHash('sha256').update(s).digest('hex').slice(0,16);}
+    assert(bh('function runModel(')==='32840/5181b79cbba47e68','runModel changed: '+bh('function runModel('));
+    assert(bh('function computeGoalTransferNetting(')==='10309/4670447ce489dd8b','netting changed: '+bh('function computeGoalTransferNetting('));
+    assert(bh('function resolveWeekTransfers(')==='5583/20d17438996ac8ba','resolver changed: '+bh('function resolveWeekTransfers('));
+  });
+})();
+
 console.log('\n╔══════════════════════════════════════════════════════════════╗');
 console.log('║                       RESULTS                               ║');
 console.log('╚══════════════════════════════════════════════════════════════╝');
