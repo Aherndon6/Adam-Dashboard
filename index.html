@@ -1861,6 +1861,156 @@ function au11ShadowValidate(num, projectedChk, candidate, floorSpec){
     deferredControls: ['per_week_floor_override_governance','cross_goal_cumulative','reservation_withholding','estimate_fail_closed','inflow_qualification','obligation_identity','write_guard','promotion']
   };
 }
+
+// ── AU-11 Step 4A-2 — READ-ONLY QUALIFICATION CLASSIFIERS (non-authoritative; NOT wired to trajectory) ──
+// Pure functions over the interim Edit-Week event contract (Step 4A-1b eventId + explicit lifecycle
+// markers). NOT integrated into au11ShadowValidate (Step 4B), invoked by no live path, reading no raw WD.
+// Strict + fail-closed: nothing is accepted without explicit evidence; labels are never authoritative.
+function au11ValidCycleDate(s){
+  if(typeof s!=='string'||!/^\d{4}-\d{2}-\d{2}$/.test(s))return false;
+  var p=s.split('-'),y=+p[0],m=+p[1],d=+p[2];
+  if(m<1||m>12||d<1||d>31)return false;
+  var dt=new Date(s+'T00:00:00Z');
+  return dt.getUTCFullYear()===y&&(dt.getUTCMonth()+1)===m&&dt.getUTCDate()===d;
+}
+// Inflow classifier (strict, EVENT-LEVEL evidence only). ctx unused for qualification: a reconciled
+// containing week does NOT qualify individual events. A qualified inflow requires a non-empty valid
+// eventId AND explicit event lifecycle — 'posted_actual' or 'reconciled_actual' qualify; 'initiated'
+// requires initiatedProof===true; all else contributes $0. Missing eventId → ambiguous ($0). Duplicate
+// eventId: identical economic representations collapse to one (with evidence); conflicting representations
+// → identity conflict ($0). Identity is never label/amount/date/position.
+function au11InflowSig(e){ return JSON.stringify([e.t,e.a,e.d||'',e.lifecycle||'',e.tx===true,e.initiatedProof===true]); }
+function au11ClassifyInflows(events, ctx){
+  ctx=ctx||{}; var qualified=[],excluded=[],ambiguous=[],dropped=[],conflicts=[];
+  var ins=(events||[]).filter(function(e){return e&&e.t==='in';}), withId=[];
+  ins.forEach(function(e){
+    if(!(typeof e.eventId==='string'&&e.eventId))ambiguous.push({eventId:null,amount:0,reason:{code:'missing_event_id'}});
+    else withId.push(e);
+  });
+  var groups={}; withId.forEach(function(e){(groups[e.eventId]=groups[e.eventId]||[]).push(e);});
+  Object.keys(groups).forEach(function(id){
+    var grp=groups[id], reps={}; grp.forEach(function(e){reps[au11InflowSig(e)]=e;});
+    var distinct=Object.keys(reps);
+    if(distinct.length>1){conflicts.push({eventId:id,codes:['conflicting_duplicate_event_id'],count:grp.length});return;} // $0
+    var e=reps[distinct[0]];
+    if(grp.length>1)dropped.push({eventId:id,amount:e.a,reason:{code:'duplicate_inflow_dropped'},collapsed:grp.length});
+    var lc=e.lifecycle, reason;
+    if(lc==='reconciled_actual'){reason={code:'reconciled_actual'};}
+    else if(lc==='posted_actual'){reason={code:'posted_actual'};}
+    else if(lc==='initiated'){ if(e.initiatedProof===true){reason={code:'irrevocably_initiated'};} else {ambiguous.push({eventId:id,amount:0,reason:{code:'initiated_without_proof'}});return;} }
+    else if(e.tx===false){excluded.push({eventId:id,amount:0,reason:{code:'modeled_expected'}});return;}
+    else if(lc!=null){ambiguous.push({eventId:id,amount:0,reason:{code:'unknown_or_malformed_lifecycle',lifecycle:lc}});return;}
+    else {ambiguous.push({eventId:id,amount:0,reason:{code:'no_lifecycle_evidence'}});return;}
+    qualified.push({eventId:id,amount:e.a,reason:reason});
+  });
+  return {qualifiedInflows:qualified,excludedInflows:excluded,ambiguousInflows:ambiguous,duplicatesDropped:dropped,
+    identityConflicts:conflicts,qualifiedTotal:qualified.reduce(function(s,x){return Math.round((s+x.amount)*100)/100;},0)};
+}
+// Card-obligation classifier (strict, marker-required, fail-closed). ctx={modelWeek}.
+// Amount is validated with no coercion: present, typeof number, finite, and negative (obligation sign);
+// a zero-dollar card event is a clean exclusion (no_obligation_amount), never an accepted obligation.
+function au11ClassifyCardObligations(events, ctx){
+  ctx=ctx||{}; var accepted=[],estimated=[],excluded=[],ambiguous=[],conflicts=[],supEvidence=[],blocks=[];
+  var cards=(events||[]).filter(function(e){return e&&e.obligationKind==='card_statement';});
+  var idCount={}; (events||[]).forEach(function(e){if(e&&e.eventId)idCount[e.eventId]=(idCount[e.eventId]||0)+1;});
+  var valid=[];
+  cards.forEach(function(e){
+    var errs=[];
+    if(!e.eventId)errs.push('missing_event_id'); else if(idCount[e.eventId]>1)errs.push('duplicate_event_id');
+    if(!e.cardAccountKey)errs.push('missing_card_identity');
+    if(!au11ValidCycleDate(e.cycleCloseDate))errs.push('invalid_cycle_close_date');
+    if(e.cycleKey!==((e.cardAccountKey||'')+'|'+(e.cycleCloseDate||'')))errs.push('malformed_cycle_key');
+    if(e.lifecycle!=='closed_actual'&&e.lifecycle!=='estimate')errs.push('invalid_lifecycle');
+    if(e.modeledPaymentWeek!==ctx.modelWeek)errs.push('modeled_week_mismatch');
+    var amtZero=false;
+    if(typeof e.a!=='number')errs.push('invalid_amount_type');      // missing or non-numeric (no string coercion)
+    else if(!isFinite(e.a))errs.push('nonfinite_amount');           // NaN / Infinity
+    else if(e.a>0)errs.push('wrong_sign_amount');                   // obligations must be negative
+    else if(e.a===0)amtZero=true;                                   // zero → clean exclusion below
+    if(errs.length){conflicts.push({eventId:e.eventId||null,cycleKey:e.cycleKey||null,codes:errs});blocks.push.apply(blocks,errs);return;}
+    if(amtZero){excluded.push({eventId:e.eventId,cycleKey:e.cycleKey,reason:{code:'no_obligation_amount'}});blocks.push('no_obligation_amount');return;}
+    valid.push(e);
+  });
+  var byId={}; valid.forEach(function(e){byId[e.eventId]=e;});
+  var supersededBy={};
+  valid.forEach(function(e){
+    if(e.lifecycle==='closed_actual'&&e.supersedesEventId){
+      var tgt=byId[e.supersedesEventId];
+      if(!tgt){conflicts.push({eventId:e.eventId,codes:['dangling_supersedes']});blocks.push('dangling_supersedes');return;}
+      if(tgt.lifecycle!=='estimate'){conflicts.push({eventId:e.eventId,codes:['supersedes_non_estimate']});blocks.push('supersedes_non_estimate');return;}
+      if(tgt.cycleKey!==e.cycleKey){conflicts.push({eventId:e.eventId,codes:['supersede_cycle_mismatch']});blocks.push('supersede_cycle_mismatch');return;}
+      if(tgt.supersedesEventId===e.eventId){conflicts.push({eventId:e.eventId,codes:['supersession_cycle']});blocks.push('supersession_cycle');return;}
+      (supersededBy[e.supersedesEventId]=supersededBy[e.supersedesEventId]||[]).push(e.eventId);
+    }
+  });
+  var supersededSet={};
+  Object.keys(supersededBy).forEach(function(estId){
+    if(supersededBy[estId].length>1){conflicts.push({eventId:estId,codes:['multiple_actuals_supersede_one_estimate'],actuals:supersededBy[estId]});blocks.push('multiple_actuals_supersede_one_estimate');}
+    else supersededSet[estId]=true;
+  });
+  var conflictedIds={}; conflicts.forEach(function(c){if(c.eventId)conflictedIds[c.eventId]=true;});
+  var byCycle={}; valid.forEach(function(e){if(conflictedIds[e.eventId])return;(byCycle[e.cycleKey]=byCycle[e.cycleKey]||[]).push(e);});
+  Object.keys(byCycle).forEach(function(ck){
+    var grp=byCycle[ck];
+    var actuals=grp.filter(function(e){return e.lifecycle==='closed_actual';});
+    var estimates=grp.filter(function(e){return e.lifecycle==='estimate';});
+    var activeEst=estimates.filter(function(e){return !supersededSet[e.eventId];});
+    if(actuals.length>1){conflicts.push({cycleKey:ck,codes:['duplicate_closed_actuals'],eventIds:actuals.map(function(e){return e.eventId;})});blocks.push('duplicate_closed_actuals');return;}
+    if(actuals.length===1){
+      var act=actuals[0];
+      if(activeEst.length>0){conflicts.push({cycleKey:ck,codes:['conflicting_active_actual_and_estimate'],actual:act.eventId,estimates:activeEst.map(function(e){return e.eventId;})});blocks.push('conflicting_active_actual_and_estimate');return;}
+      accepted.push({eventId:act.eventId,cycleKey:ck,amount:act.a,week:act.modeledPaymentWeek,reason:{code:'closed_actual'}});
+      estimates.filter(function(e){return supersededSet[e.eventId];}).forEach(function(est){
+        excluded.push({eventId:est.eventId,cycleKey:ck,reason:{code:'superseded_by_actual',by:act.eventId}});
+        supEvidence.push({actualEventId:act.eventId,supersededEstimateEventId:est.eventId,cycleKey:ck});
+      });
+      return;
+    }
+    if(activeEst.length>1){conflicts.push({cycleKey:ck,codes:['multiple_active_estimates'],eventIds:activeEst.map(function(e){return e.eventId;})});blocks.push('multiple_active_estimates');return;}
+    if(activeEst.length===1){estimated.push({eventId:activeEst[0].eventId,cycleKey:ck,amount:activeEst[0].a,reason:{code:'estimate_only_fail_closed'}});return;}
+    ambiguous.push({cycleKey:ck,reason:{code:'no_active_record'}});
+  });
+  return {acceptedCardObligations:accepted,estimatedObligations:estimated,excludedObligations:excluded,ambiguousObligations:ambiguous,
+    identityConflicts:conflicts,supersessionEvidence:supEvidence,blockReasons:blocks};
+}
+// Fixed non-card obligation classifier (explicit reliable-fixed evidence only; labels never suffice).
+function au11ClassifyFixedObligations(events, ctx){
+  ctx=ctx||{}; var accepted=[],conflicts=[],blocks=[];
+  var fixeds=(events||[]).filter(function(e){return e&&e.obligationKind==='fixed_obligation';});
+  var idCount={}; fixeds.forEach(function(e){if(e.eventId)idCount[e.eventId]=(idCount[e.eventId]||0)+1;});
+  fixeds.forEach(function(e){
+    var errs=[];
+    if(!e.eventId)errs.push('missing_event_id'); else if(idCount[e.eventId]>1)errs.push('duplicate_fixed_identity');
+    if(typeof e.a!=='number')errs.push('invalid_amount_type'); else if(!isFinite(e.a))errs.push('nonfinite_amount'); else if(e.a>0)errs.push('wrong_sign_amount');
+    if(e.lifecycle!=='reliable_fixed')errs.push('not_reliable_fixed');
+    if(e.modeledPaymentWeek!==ctx.modelWeek)errs.push('modeled_week_mismatch');
+    if(errs.length){conflicts.push({eventId:e.eventId||null,codes:errs});blocks.push.apply(blocks,errs);}
+    else accepted.push({eventId:e.eventId,amount:e.a,week:e.modeledPaymentWeek,reason:{code:'reliable_fixed'}});
+  });
+  return {acceptedFixedObligations:accepted,fixedConflicts:conflicts,fixedBlockReasons:blocks};
+}
+// Combined read-only qualification for one week's events. NEVER authoritative; not wired to the trajectory.
+// acceptedObligations is the authoritative union of card+fixed accepted, each traceable to one eventId + one amount.
+function au11QualifyWeekEvents(events, ctx){
+  ctx=ctx||{};
+  var inf=au11ClassifyInflows(events,ctx), card=au11ClassifyCardObligations(events,ctx), fx=au11ClassifyFixedObligations(events,ctx);
+  var acceptedCard=card.acceptedCardObligations, acceptedFixed=fx.acceptedFixedObligations;
+  var identityConflicts=card.identityConflicts.concat(fx.fixedConflicts).concat(inf.identityConflicts);
+  var qualificationComplete = inf.ambiguousInflows.length===0 && inf.identityConflicts.length===0
+    && card.identityConflicts.length===0 && card.estimatedObligations.length===0 && card.ambiguousObligations.length===0
+    && fx.fixedConflicts.length===0;
+  return {
+    qualifiedInflows:inf.qualifiedInflows, excludedInflows:inf.excludedInflows, ambiguousInflows:inf.ambiguousInflows,
+    acceptedCardObligations:acceptedCard, acceptedFixedObligations:acceptedFixed,
+    acceptedObligations:acceptedCard.concat(acceptedFixed),
+    estimatedObligations:card.estimatedObligations, excludedObligations:card.excludedObligations,
+    ambiguousObligations:card.ambiguousObligations,
+    identityConflicts:identityConflicts, supersessionEvidence:card.supersessionEvidence,
+    qualificationComplete:qualificationComplete,
+    blockReasons:[].concat(card.blockReasons, fx.fixedBlockReasons, inf.identityConflicts.map(function(c){return (c.codes||[])[0];}).filter(Boolean)),
+    authoritative:false
+  };
+}
 // AU11-END
 // ═══════════════════════════════════════════════════════════════════════════════════════
 

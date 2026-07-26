@@ -13887,6 +13887,225 @@ console.log('\n── Section 5G-1D Slice 4c: half-close repair confirmation ─
   });
 })();
 
+// ══════════════════ AU-11 STEP 4A-2 — READ-ONLY QUALIFICATION CLASSIFIERS ══════════════════
+// Strict, fail-closed, marker-based. Non-authoritative; not wired to the trajectory.
+(function(){
+  var W=33, CTX={modelWeek:W};
+  var card=function(o){return Object.assign({t:'ob',obligationKind:'card_statement',cardAccountKey:'amex',cycleCloseDate:'2026-07-24',cycleKey:'amex|2026-07-24',lifecycle:'closed_actual',modeledPaymentWeek:W,a:-11501.12},o);};
+  // ── cycle-date validator ──
+  test('AU11-CLS-DATE: cycleCloseDate validity (real YYYY-MM-DD only)',function(){
+    assert(au11ValidCycleDate('2026-07-24')===true,'valid date');
+    assert(au11ValidCycleDate('2026-13-01')===false,'bad month');
+    assert(au11ValidCycleDate('2026-02-30')===false,'impossible day');
+    assert(au11ValidCycleDate('7/24/2026')===false,'wrong format');
+    assert(au11ValidCycleDate('')===false&&au11ValidCycleDate(null)===false,'empty/null');
+  });
+  // ── INFLOWS (8) — event-level evidence only ──
+  test('AU11-CLS-INF-1: posted_actual accepted',function(){
+    var r=au11ClassifyInflows([{t:'in',a:5000,lifecycle:'posted_actual',eventId:'i1'}],{reconciled:false});
+    assert(r.qualifiedInflows.length===1&&r.qualifiedTotal===5000&&r.qualifiedInflows[0].reason.code==='posted_actual','posted_actual must qualify');
+  });
+  test('AU11-CLS-INF-2: reconciled_actual accepted (event lifecycle, not week state)',function(){
+    var r=au11ClassifyInflows([{t:'in',a:5000,lifecycle:'reconciled_actual',eventId:'i2'}],{reconciled:false});
+    assert(r.qualifiedTotal===5000&&r.qualifiedInflows[0].reason.code==='reconciled_actual','reconciled_actual marker must qualify');
+  });
+  test('AU11-CLS-INF-2b: reconciled containing week does NOT qualify a modeled event (item 1)',function(){
+    var modeled=au11ClassifyInflows([{t:'in',a:2152.5,tx:false,eventId:'i2c'}],{reconciled:true});   // modeled inside reconciled week
+    var noEvid=au11ClassifyInflows([{t:'in',a:2152.5,eventId:'i2d'}],{reconciled:true});               // no lifecycle inside reconciled week
+    assert(modeled.qualifiedTotal===0&&modeled.excludedInflows.length===1,'modeled event stays excluded despite reconciled week');
+    assert(noEvid.qualifiedTotal===0&&noEvid.ambiguousInflows.length===1,'no-evidence event stays ambiguous despite reconciled week');
+  });
+  test('AU11-CLS-INF-3: irrevocably initiated accepted only with explicit proof',function(){
+    var withP=au11ClassifyInflows([{t:'in',a:5000,lifecycle:'initiated',initiatedProof:true,eventId:'i3'}],{});
+    var noP=au11ClassifyInflows([{t:'in',a:5000,lifecycle:'initiated',eventId:'i3b'}],{});
+    assert(withP.qualifiedTotal===5000&&withP.qualifiedInflows[0].reason.code==='irrevocably_initiated','initiated+proof qualifies');
+    assert(noP.qualifiedTotal===0&&noP.ambiguousInflows.length===1&&noP.ambiguousInflows[0].reason.code==='initiated_without_proof','initiated w/o proof → $0 ambiguous');
+  });
+  test('AU11-CLS-INF-4: future modeled payroll excluded ($0, no label heuristic)',function(){
+    var r=au11ClassifyInflows([{t:'in',a:2152.5,tx:false,l:'Wendy paycheck',eventId:'i4'}],{reconciled:false});
+    assert(r.qualifiedTotal===0&&r.excludedInflows.length===1&&r.excludedInflows[0].reason.code==='modeled_expected','payroll tx:false → excluded');
+  });
+  test('AU11-CLS-INF-5: tx:false expected inflow excluded',function(){
+    var r=au11ClassifyInflows([{t:'in',a:1000,tx:false,eventId:'i5'}],{reconciled:false});
+    assert(r.qualifiedTotal===0&&r.excludedInflows.length===1,'tx:false → excluded');
+  });
+  test('AU11-CLS-INF-6: ambiguous inflow contributes $0',function(){
+    var r=au11ClassifyInflows([{t:'in',a:1000,eventId:'i6'}],{reconciled:false});
+    assert(r.qualifiedTotal===0&&r.ambiguousInflows.length===1&&r.ambiguousInflows[0].reason.code==='no_lifecycle_evidence','no evidence → $0 ambiguous');
+  });
+  test('AU11-CLS-INF-7: duplicate economic inflow applied once',function(){
+    var r=au11ClassifyInflows([{t:'in',a:5000,lifecycle:'posted_actual',eventId:'dup'},{t:'in',a:5000,lifecycle:'posted_actual',eventId:'dup'}],{});
+    assert(r.qualifiedInflows.length===1&&r.qualifiedTotal===5000&&r.duplicatesDropped.length===1,'duplicate eventId counted once');
+  });
+  test('AU11-CLS-INF-8: malformed lifecycle blocked ($0)',function(){
+    var r=au11ClassifyInflows([{t:'in',a:5000,lifecycle:'bogus',eventId:'i8'}],{});
+    assert(r.qualifiedTotal===0&&r.ambiguousInflows.length===1&&r.ambiguousInflows[0].reason.code==='unknown_or_malformed_lifecycle','bad lifecycle → $0 ambiguous');
+  });
+  // ── INFLOW IDENTITY (item 2) — no qualification without a stable eventId ──
+  test('AU11-CLS-INFID-1: posted inflow without eventId blocked ($0 ambiguous)',function(){
+    var r=au11ClassifyInflows([{t:'in',a:5000,lifecycle:'posted_actual'}],{});
+    assert(r.qualifiedTotal===0&&r.ambiguousInflows.length===1&&r.ambiguousInflows[0].reason.code==='missing_event_id','posted w/o eventId → blocked');
+  });
+  test('AU11-CLS-INFID-2: reconciled inflow without eventId blocked ($0 ambiguous)',function(){
+    var r=au11ClassifyInflows([{t:'in',a:5000,lifecycle:'reconciled_actual',eventId:''}],{});
+    assert(r.qualifiedTotal===0&&r.ambiguousInflows.length===1&&r.ambiguousInflows[0].reason.code==='missing_event_id','reconciled w/o eventId → blocked');
+  });
+  test('AU11-CLS-INFID-3: identical duplicate representation applied once, with evidence',function(){
+    var e=function(){return {t:'in',a:5000,lifecycle:'posted_actual',d:'Jul 24',eventId:'same'};};
+    var r=au11ClassifyInflows([e(),e(),e()],{});
+    assert(r.qualifiedInflows.length===1&&r.qualifiedTotal===5000,'identical dup applied once');
+    assert(r.duplicatesDropped.length===1&&r.duplicatesDropped[0].collapsed===3&&r.identityConflicts.length===0,'structured collapse evidence, no conflict');
+  });
+  test('AU11-CLS-INFID-4: conflicting duplicate eventId blocked entirely',function(){
+    var r=au11ClassifyInflows([{t:'in',a:5000,lifecycle:'posted_actual',eventId:'c'},{t:'in',a:7000,lifecycle:'posted_actual',eventId:'c'}],{});
+    assert(r.qualifiedInflows.length===0&&r.qualifiedTotal===0&&r.identityConflicts.length===1&&r.identityConflicts[0].codes[0]==='conflicting_duplicate_event_id','conflicting dup → identity conflict, $0');
+    var q=au11QualifyWeekEvents([{t:'in',a:5000,lifecycle:'posted_actual',eventId:'c'},{t:'in',a:7000,lifecycle:'posted_actual',eventId:'c'}],{});
+    assert(q.qualificationComplete===false,'unresolved inflow identity conflict → incomplete');
+  });
+  // ── CARD OBLIGATIONS (12) ──
+  test('AU11-CLS-CARD-1: one valid closed actual accepted',function(){
+    var r=au11ClassifyCardObligations([card({eventId:'c1'})],CTX);
+    assert(r.acceptedCardObligations.length===1&&r.acceptedCardObligations[0].amount===-11501.12&&r.identityConflicts.length===0,'valid closed actual accepted');
+  });
+  test('AU11-CLS-CARD-2: estimate-only cycle fails closed',function(){
+    var r=au11ClassifyCardObligations([card({eventId:'c2',lifecycle:'estimate',a:-11416.50})],CTX);
+    assert(r.acceptedCardObligations.length===0&&r.estimatedObligations.length===1&&r.estimatedObligations[0].reason.code==='estimate_only_fail_closed','estimate-only → estimated, not accepted');
+    var q=au11QualifyWeekEvents([card({eventId:'c2',lifecycle:'estimate',a:-11416.50})],CTX);
+    assert(q.qualificationComplete===false,'estimate-only → qualification incomplete');
+  });
+  test('AU11-CLS-CARD-3: actual explicitly supersedes estimate (accept once, exclude estimate)',function(){
+    var est=card({eventId:'est1',lifecycle:'estimate',a:-11416.50});
+    var act=card({eventId:'act1',lifecycle:'closed_actual',a:-11501.12,supersedesEventId:'est1'});
+    var r=au11ClassifyCardObligations([est,act],CTX);
+    assert(r.acceptedCardObligations.length===1&&r.acceptedCardObligations[0].eventId==='act1','actual accepted once');
+    assert(r.excludedObligations.length===1&&r.excludedObligations[0].eventId==='est1','estimate excluded');
+    assert(r.supersessionEvidence.length===1&&r.supersessionEvidence[0].actualEventId==='act1'&&r.supersessionEvidence[0].supersededEstimateEventId==='est1','supersession evidence for both');
+  });
+  test('AU11-CLS-CARD-4: duplicate closed actuals blocked',function(){
+    var r=au11ClassifyCardObligations([card({eventId:'a1'}),card({eventId:'a2'})],CTX);
+    assert(r.acceptedCardObligations.length===0&&r.blockReasons.indexOf('duplicate_closed_actuals')>=0,'two actuals same cycle → blocked');
+  });
+  test('AU11-CLS-CARD-5: duplicate eventId blocked',function(){
+    var r=au11ClassifyCardObligations([card({eventId:'DUP',cycleCloseDate:'2026-07-24',cycleKey:'amex|2026-07-24'}),card({eventId:'DUP',cardAccountKey:'visa',cycleCloseDate:'2026-06-24',cycleKey:'visa|2026-06-24'})],CTX);
+    assert(r.acceptedCardObligations.length===0&&r.blockReasons.indexOf('duplicate_event_id')>=0,'duplicate eventId → blocked');
+  });
+  test('AU11-CLS-CARD-6: missing eventId blocked',function(){
+    var r=au11ClassifyCardObligations([card({eventId:''})],CTX);
+    assert(r.acceptedCardObligations.length===0&&r.blockReasons.indexOf('missing_event_id')>=0,'missing eventId → blocked');
+  });
+  test('AU11-CLS-CARD-7: malformed cycle key blocked',function(){
+    var r=au11ClassifyCardObligations([card({eventId:'c7',cycleKey:'WRONG'})],CTX);
+    assert(r.acceptedCardObligations.length===0&&r.blockReasons.indexOf('malformed_cycle_key')>=0,'cycleKey mismatch → blocked');
+  });
+  test('AU11-CLS-CARD-8: modeled-week mismatch blocked',function(){
+    var r=au11ClassifyCardObligations([card({eventId:'c8',modeledPaymentWeek:99})],CTX);
+    assert(r.acceptedCardObligations.length===0&&r.blockReasons.indexOf('modeled_week_mismatch')>=0,'week mismatch → blocked');
+  });
+  test('AU11-CLS-CARD-9: dangling supersession blocked',function(){
+    var r=au11ClassifyCardObligations([card({eventId:'c9',supersedesEventId:'GHOST'})],CTX);
+    assert(r.acceptedCardObligations.length===0&&r.blockReasons.indexOf('dangling_supersedes')>=0,'dangling supersedes → blocked');
+  });
+  test('AU11-CLS-CARD-10: supersession cycle blocked',function(){
+    var A=card({eventId:'A',lifecycle:'closed_actual',supersedesEventId:'B'});
+    var B=card({eventId:'B',lifecycle:'estimate',supersedesEventId:'A',a:-90});
+    var r=au11ClassifyCardObligations([A,B],CTX);
+    assert(r.acceptedCardObligations.length===0&&r.blockReasons.indexOf('supersession_cycle')>=0,'supersession cycle → blocked');
+  });
+  test('AU11-CLS-CARD-11: multiple actuals superseding one estimate blocked',function(){
+    var est=card({eventId:'E',lifecycle:'estimate',a:-90});
+    var a1=card({eventId:'A1',lifecycle:'closed_actual',supersedesEventId:'E'});
+    var a2=card({eventId:'A2',lifecycle:'closed_actual',supersedesEventId:'E'});
+    var r=au11ClassifyCardObligations([est,a1,a2],CTX);
+    assert(r.acceptedCardObligations.length===0&&r.blockReasons.indexOf('multiple_actuals_supersede_one_estimate')>=0,'two actuals → one estimate → blocked');
+  });
+  test('AU11-CLS-CARD-12: unidentified legacy card event blocked',function(){
+    var legacy={t:'ob',a:-11501.12,l:'AMEX Gold statement',obligationKind:'card_statement',cardAccountKey:'amex',cycleCloseDate:'2026-07-24',cycleKey:'amex|2026-07-24',lifecycle:'closed_actual',modeledPaymentWeek:W}; // NO eventId
+    var r=au11ClassifyCardObligations([legacy],CTX);
+    assert(r.acceptedCardObligations.length===0&&r.blockReasons.indexOf('missing_event_id')>=0,'legacy id-less card event → blocked');
+  });
+  // ── CARD AMOUNT VALIDATION (item 3) — no coercion; none may be accepted ──
+  test('AU11-CLS-AMT-MISSING: missing amount blocked',function(){
+    var r=au11ClassifyCardObligations([card({eventId:'m',a:undefined})],CTX);
+    assert(r.acceptedCardObligations.length===0&&r.blockReasons.indexOf('invalid_amount_type')>=0,'missing a → invalid_amount_type');
+  });
+  test('AU11-CLS-AMT-STRING: string amount blocked (no coercion)',function(){
+    var r=au11ClassifyCardObligations([card({eventId:'s',a:'-11501.12'})],CTX);
+    assert(r.acceptedCardObligations.length===0&&r.blockReasons.indexOf('invalid_amount_type')>=0,'string a → invalid_amount_type');
+  });
+  test('AU11-CLS-AMT-NONFINITE: NaN/Infinity amount blocked',function(){
+    var rn=au11ClassifyCardObligations([card({eventId:'n',a:NaN})],CTX);
+    var ri=au11ClassifyCardObligations([card({eventId:'inf',a:Infinity})],CTX);
+    assert(rn.acceptedCardObligations.length===0&&rn.blockReasons.indexOf('nonfinite_amount')>=0,'NaN → nonfinite_amount');
+    assert(ri.acceptedCardObligations.length===0&&ri.blockReasons.indexOf('nonfinite_amount')>=0,'Infinity → nonfinite_amount');
+  });
+  test('AU11-CLS-AMT-SIGN: wrong-sign (positive) amount blocked',function(){
+    var r=au11ClassifyCardObligations([card({eventId:'p',a:11501.12})],CTX);
+    assert(r.acceptedCardObligations.length===0&&r.blockReasons.indexOf('wrong_sign_amount')>=0,'positive a → wrong_sign_amount');
+  });
+  test('AU11-CLS-AMT-ZERO: zero-dollar card event excluded (no_obligation_amount), not accepted',function(){
+    var r=au11ClassifyCardObligations([card({eventId:'z',a:0})],CTX);
+    assert(r.acceptedCardObligations.length===0&&r.excludedObligations.length===1&&r.excludedObligations[0].reason.code==='no_obligation_amount','zero → excluded no_obligation_amount');
+  });
+  // ── FIXED NON-CARD OBLIGATIONS (3) ──
+  test('AU11-CLS-FIX-1: valid reliable fixed obligation accepted once',function(){
+    var r=au11ClassifyFixedObligations([{t:'ob',a:-2000,obligationKind:'fixed_obligation',eventId:'f1',lifecycle:'reliable_fixed',modeledPaymentWeek:W}],CTX);
+    assert(r.acceptedFixedObligations.length===1&&r.acceptedFixedObligations[0].amount===-2000&&r.fixedConflicts.length===0,'reliable fixed accepted');
+  });
+  test('AU11-CLS-FIX-2: label-only obligation rejected (marker required, not label)',function(){
+    var r=au11ClassifyFixedObligations([{t:'ob',a:-2000,l:'Rent',obligationKind:'fixed_obligation',eventId:'f2',modeledPaymentWeek:W}],CTX); // no lifecycle
+    assert(r.acceptedFixedObligations.length===0&&r.fixedBlockReasons.indexOf('not_reliable_fixed')>=0,'label alone → rejected');
+  });
+  test('AU11-CLS-FIX-3: duplicate fixed identity blocked',function(){
+    var f=function(){return {t:'ob',a:-100,obligationKind:'fixed_obligation',eventId:'fdup',lifecycle:'reliable_fixed',modeledPaymentWeek:W};};
+    var r=au11ClassifyFixedObligations([f(),f()],CTX);
+    assert(r.acceptedFixedObligations.length===0&&r.fixedBlockReasons.indexOf('duplicate_fixed_identity')>=0,'duplicate fixed identity → blocked');
+  });
+  // ── OBLIGATION RESULT CONTRACT (item 4) — explicit card/fixed lists + authoritative union ──
+  test('AU11-CLS-UNION: acceptedObligations is the union of card+fixed, each exactly once',function(){
+    var q=au11QualifyWeekEvents([card({eventId:'c1'}),{t:'ob',a:-2000,obligationKind:'fixed_obligation',eventId:'f1',lifecycle:'reliable_fixed',modeledPaymentWeek:W}],CTX);
+    assert(q.acceptedCardObligations.length===1&&q.acceptedFixedObligations.length===1,'explicit card+fixed lists');
+    assert(q.acceptedObligations.length===2,'union has both');
+    var ids=q.acceptedObligations.map(function(o){return o.eventId;});
+    assert(ids.indexOf('c1')>=0&&ids.indexOf('f1')>=0&&(new Set(ids)).size===2,'each accepted obligation traces to one unique eventId');
+    q.acceptedObligations.forEach(function(o){assert(typeof o.amount==='number'&&isFinite(o.amount)&&o.amount<0,'each has one validated amount');});
+  });
+  // ── RESULT SCHEMA (item 7) ──
+  test('AU11-CLS-SCHEMA: au11QualifyWeekEvents returns the full result schema',function(){
+    var q=au11QualifyWeekEvents([{t:'in',a:5000,lifecycle:'posted_actual',eventId:'i1'},card({eventId:'c1'}),{t:'ob',a:-2000,obligationKind:'fixed_obligation',eventId:'f1',lifecycle:'reliable_fixed',modeledPaymentWeek:W}],CTX);
+    ['qualifiedInflows','excludedInflows','ambiguousInflows','acceptedCardObligations','acceptedFixedObligations','acceptedObligations','estimatedObligations','excludedObligations','ambiguousObligations','identityConflicts','supersessionEvidence','qualificationComplete','blockReasons'].forEach(function(k){assert(k in q,'missing schema key '+k);});
+    assert(q.qualificationComplete===true&&q.authoritative===false,'clean set → complete=true, never authoritative');
+  });
+  // ── DUPLICATE-EVENT INVARIANT (item 10) ──
+  test('AU11-CLS-DUP-INV: duplicate eventId is unsafe for both inflows and obligations',function(){
+    var inf=au11ClassifyInflows([{t:'in',a:5000,lifecycle:'posted_actual',eventId:'x'},{t:'in',a:5000,lifecycle:'posted_actual',eventId:'x'}],{});
+    assert(inf.qualifiedInflows.length===1,'inflow identical dup counted once');
+    var ob=au11ClassifyCardObligations([card({eventId:'x'}),card({eventId:'x',cardAccountKey:'visa',cycleCloseDate:'2026-06-24',cycleKey:'visa|2026-06-24'})],CTX);
+    assert(ob.acceptedCardObligations.length===0&&ob.blockReasons.indexOf('duplicate_event_id')>=0,'obligation dup blocked');
+  });
+  // ── raw-WD inventory: classifiers read no week-data source ──
+  test('AU11-CLS-RAWWD: classifier block references no raw WD / effectiveWD',function(){
+    var s=html.slice(html.indexOf('AU-11 Step 4A-2 — READ-ONLY QUALIFICATION CLASSIFIERS'),html.indexOf('// AU11-END')).replace(/\/\/[^\n]*/g,'');
+    assert(!/\bWD\b/.test(s)&&!/reconEffectiveWD/.test(s)&&!/\breconData\b/.test(s)&&!/\boverrideData\b/.test(s),'classifiers must not touch WD/effectiveWD or global week-data stores');
+  });
+  // ── live-call-site inventory: classifiers invoked by no live path ──
+  test('AU11-CLS-NOLIVE: classifiers not referenced by runModel or au11ShadowValidate',function(){
+    var rm=html.slice(html.indexOf('function runModel('),html.indexOf('\nfunction ',html.indexOf('function runModel(')+20));
+    var sv=html.slice(html.indexOf('function au11ShadowValidate('),html.indexOf('\n// ── AU-11 Step 4A-2'));
+    ['au11ClassifyInflows','au11ClassifyCardObligations','au11ClassifyFixedObligations','au11QualifyWeekEvents','au11ValidCycleDate'].forEach(function(fn){
+      assert(rm.indexOf(fn)<0,fn+' must not appear in runModel');
+      assert(sv.indexOf(fn)<0,fn+' must not appear in the shadow trajectory');
+    });
+  });
+  // ── frozen surfaces unchanged ──
+  test('AU11-CLS-FROZEN: runModel / netting / resolver byte-frozen after Step 4A-2',function(){
+    var crypto2=require('crypto');
+    function bh(tok){var i=html.indexOf(tok);var j=html.indexOf('\nfunction ',i+tok.length);var s=html.slice(i,j<0?html.length:j);return s.length+'/'+crypto2.createHash('sha256').update(s).digest('hex').slice(0,16);}
+    assert(bh('function runModel(')==='32840/5181b79cbba47e68','runModel changed: '+bh('function runModel('));
+    assert(bh('function computeGoalTransferNetting(')==='10309/4670447ce489dd8b','netting changed');
+    assert(bh('function resolveWeekTransfers(')==='5583/20d17438996ac8ba','resolver changed');
+  });
+})();
+
 console.log('\n╔══════════════════════════════════════════════════════════════╗');
 console.log('║                       RESULTS                               ║');
 console.log('╚══════════════════════════════════════════════════════════════╝');
