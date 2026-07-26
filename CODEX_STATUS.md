@@ -1,5 +1,32 @@
 # Codex Status: Herndon Financial OS
 
+## CURRENCY NOTE (2026-07-25b) — AU-3 COMPLETE; AU-11 defect set confirmed (engine hold); discretionary transfers deferred
+
+- **AU-3 COMPLETE.** The Week 33 / model-week-11 AMEX Gold obligation was updated via the canonical
+  Edit Week path to the actual statement liability **$11,501.12, due 2026-08-18** (owner-executed; prior
+  ~$5,500 estimate replaced). Write validated: exactly one effective wk11 AMEX obligation; all unrelated
+  production fingerprints byte-unchanged; `model_week_overrides` 6→7 (wk11 only). **AU-3 audit
+  reconciliation CLOSED** — the $84.62 difference from the earlier cleared-through-07-23 reconstruction was
+  reconciled to four July-23 charges included because the statement closed July 24 (itemized in the
+  external AU-11 package).
+- **AU-11 defect set CONFIRMED against real production** (deployed model still recommends a discretionary
+  Wendy IRA sweep despite a later-horizon floor breach — Classification B): **D1** finite-horizon capacity
+  validation (a sweep can pass the local five-week test yet breach the floor later — wk13/wk26 examples);
+  **D1b** anchor-base divergence (`maxSafeAmxSweep` receives the pre-overlay projected current-week `chk`,
+  whereas `cashAvailability` uses the authoritative `_actualChkForEngine`); **D2** candidate transfer not
+  incorporated into its own validation trajectory; **D3** goal suppression permits downstream reallocation
+  unless capacity is withheld; **D5** `laFl` reads raw `WD`, ignoring Edit Week overrides (proven,
+  non-causal at wk7). **C4** floor breach proven as modeled; real household magnitude/timing provisional
+  pending goal-release and estimate resolution.
+- **Engine hold IN FORCE.** The current discretionary recommendation path is not authoritative for
+  transfers until AU-11 passes acceptance and production validation. **All discretionary goal transfers
+  (incl. Wendy IRA) remain DEFERRED** — do not act on the engine's recommendation. **AU-11 NOT implemented;
+  `runModel` remains frozen.**
+- **Evidence** (AU-11 review package + hashed reproducibility scripts) is in the external execution package
+  (balance-bearing — kept out of the repo). **Next step: final independent Fable design review of AU-11**
+  before any engine-adjacent change.
+- **No production change beyond the owner-entered Week-11 override.** No code/schema/deploy/BUILD_TS change.
+
 ## CURRENCY NOTE (2026-07-25) — AU-8 SETTLED; Alaska Goal Ledger final; FSA reconciled; AMEX Gold cycle reconstructed (AU-3 pending PDF)
 
 **Active execution pointer.** AU-8 is settled and the Alaska goal-consumption reconstruction is complete. AU-3 (Week 33 AMEX obligation) is parked pending the formal AMEX statement PDF; the next executable work is **AU-9 / AU-10 preparation** (fresh `pg_dump` / Friday backup, `repair_commitments_for_week` grant+callable verification, pre-authored AU-10 statement) plus the Week-7 checking-side categorization cleanup that gates a clean AU-9.
