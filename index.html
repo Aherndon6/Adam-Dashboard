@@ -1831,16 +1831,148 @@ function au11ShadowCeiling(candidate, base, num, eff, floorSpec){
   best=Math.floor(best*100)/100;
   return best>=MIN_XFR?best:0;
 }
-// Read-only shadow validator entry point. NON-AUTHORITATIVE, INCOMPLETE (Step 3). Renders nothing.
+// ── AU-11 Step 4B — QUALIFICATION INTEGRATION (read-only; non-authoritative; unrendered) ──
+// Per-week qualification via the Step 4A-2 classifier. Consumes ONLY qualifiedInflows + acceptedObligations
+// (the authoritative union of card+fixed). Every 'ob' event lacking a recognized obligationKind is an
+// unqualified legacy obligation → fails closed for that week (it must not silently vanish as "safe").
+function au11WeekQualification(w){
+  var wk=w[0];
+  var q=au11QualifyWeekEvents(w[4]||[],{modelWeek:wk});   // SOLE classification source — no raw re-inspection here
+  var qualifiedInflowTotal=q.qualifiedInflows.reduce(function(s,x){return Math.round((s+x.amount)*100)/100;},0);
+  var acceptedObligationTotal=q.acceptedObligations.reduce(function(s,x){return Math.round((s+Math.abs(x.amount))*100)/100;},0);
+  return {wk:wk, complete:q.qualificationComplete,
+    qualifiedInflowTotal:qualifiedInflowTotal, acceptedObligationTotal:acceptedObligationTotal,
+    blockReasons:q.blockReasons.slice(),
+    counts:{qualifiedInflows:q.qualifiedInflows.length, excludedInflows:q.excludedInflows.length,
+      ambiguousInflows:q.ambiguousInflows.length, acceptedCardObligations:q.acceptedCardObligations.length,
+      acceptedFixedObligations:q.acceptedFixedObligations.length, estimatedObligations:q.estimatedObligations.length,
+      excludedObligations:q.excludedObligations.length, ambiguousObligations:q.ambiguousObligations.length,
+      identityConflicts:q.identityConflicts.length}};
+}
+// Qualified full-horizon predicate — identical Step-3 mechanics (reflect-forward once, ct/ca, per-week floors),
+// but +qualifiedInflowTotal and −acceptedObligationTotal replace the raw w[2]/w[3] event arithmetic.
+function au11QualifiedKeepsFloor(candidate, base, num, future, weekQ, floorSpec){
+  var proj=Math.round((base-candidate)*100)/100;                 // candidate reflect-forward (exactly once)
+  var f0=au11FloorAt(floorSpec,num);
+  var minChk=proj, minChkWk=num, minHead=Math.round((proj-f0)*100)/100, minHeadWk=num, minHeadFloor=f0;
+  var firstBreach=(proj<f0)?num:null, breachFloor=(proj<f0)?f0:null;
+  var traj=[{wk:num,chk:proj,floor:f0,headroom:Math.round((proj-f0)*100)/100}];
+  for(var i=0;i<future.length;i++){
+    var w=future[i], wq=weekQ[w[0]], ct=w[5]||0, ca=w[6]||0;
+    proj=Math.round((proj+wq.qualifiedInflowTotal)*100)/100;     // + qualified inflows only
+    proj=Math.round((proj-wq.acceptedObligationTotal)*100)/100;  // − accepted obligations only
+    if(ct) proj=Math.round((proj-ct)*100)/100;                   // − ct (unchanged)
+    if(ca) proj=Math.round((proj-ca)*100)/100;                   // − ca (unchanged)
+    var fw=au11FloorAt(floorSpec,w[0]), hw=Math.round((proj-fw)*100)/100;
+    traj.push({wk:w[0],chk:proj,floor:fw,headroom:hw});
+    if(proj<minChk){minChk=proj;minChkWk=w[0];}
+    if(hw<minHead){minHead=hw;minHeadWk=w[0];minHeadFloor=fw;}
+    if(firstBreach===null&&proj<fw){firstBreach=w[0];breachFloor=fw;}
+  }
+  return {safe:firstBreach===null, firstBreach:firstBreach, breachFloor:breachFloor, minChk:minChk, minChkWk:minChkWk,
+    minHeadroom:minHead, minHeadWk:minHeadWk, minHeadFloor:minHeadFloor,
+    horizonStart:future.length?future[0][0]:num, horizonEnd:future.length?future[future.length-1][0]:num, trajectory:traj};
+}
+function au11QualifiedCeiling(candidate, base, num, future, weekQ, floorSpec){
+  if(au11QualifiedKeepsFloor(candidate,base,num,future,weekQ,floorSpec).safe) return candidate>=MIN_XFR?candidate:0;
+  var lo=0,hi=candidate,best=0;
+  for(var it=0;it<20;it++){var mid=(lo+hi)/2; if(au11QualifiedKeepsFloor(mid,base,num,future,weekQ,floorSpec).safe){best=mid;lo=mid;}else hi=mid;}
+  best=Math.floor(best*100)/100;
+  return best>=MIN_XFR?best:0;
+}
+// Read-only shadow validator entry point. NON-AUTHORITATIVE, unrendered, no live/write caller. Step 4B:
+// safety is now the QUALIFIED trajectory; the Step-3 raw trajectory is preserved as the diagnostic partial
+// trajectory. A horizon with unresolved event qualification is never declared floor-safe or actionable.
 function au11ShadowValidate(num, projectedChk, candidate, floorSpec){
   var base=authoritativeCurrentChk(num, projectedChk);   // D1b shared base
   var eff=reconEffectiveWD();                             // effectiveWD only (D5)
+  var future=eff.filter(function(w){return w[0]>num;}).sort(function(a,b){return a[0]-b[0];});
+  // ── BASE PROVENANCE (Step 4B correction) ──────────────────────────────────────────────────────
+  // A reconciled current week gives a settled authoritative ending base. An UNRECONCILED current week's
+  // base is projectedChk = runModel's raw modeled ending, which embeds non-event model cash movements
+  // (waterfall sweeps, savings→checking draws, budget-rule overlays, commission/base tax transfers) plus
+  // unqualified event effects. Those cannot be reconstructed as a qualified base from effectiveWD alone, so
+  // an unreconciled base is fail-closed (B2): projectedChk is diagnostic-only and never actionable.
+  var _reconCur=(typeof reconData!=='undefined')&&reconData[num]&&reconData[num].chk!=null;
+  var baseSource, currentBaseQualificationComplete, currentBaseBlockReasons=[], currentWeekQualification, qualifiedBase;
+  var diagnosticBase=base;
+  if(_reconCur){
+    baseSource='reconciled'; currentBaseQualificationComplete=true; qualifiedBase=base;
+    currentWeekQualification={source:'reconciled', complete:true, reason:{code:'reconciled_ending_authoritative'}};
+  }else{
+    baseSource='projected_unreconciled'; currentBaseQualificationComplete=false; currentBaseBlockReasons=['current_base_unqualified']; qualifiedBase=null;
+    currentWeekQualification={source:'projected_unreconciled', complete:false, reason:{code:'current_base_unqualified'},
+      missingContract:'a settled/reconciled current-week ending, OR an explicit qualified current-week base = prior authoritative ending + qualified current-week inflows − accepted current-week obligations − current-week ct − current-week ca (with explicit ct/ca lifecycle) + a qualified representation of all non-event model cash movements (waterfall sweeps, savings draws, budget-rule overlays, tax transfers) — none of which exist in effectiveWD today'};
+  }
+  // mathematically computed PARTIAL trajectory (Step-3 raw events) — diagnostic-only, NON-ACTIONABLE
   var ev=au11ShadowKeepsFloor(candidate, base, num, eff, floorSpec);
-  var ceiling=au11ShadowCeiling(candidate, base, num, eff, floorSpec);
+  var rawCeiling=au11ShadowCeiling(candidate, base, num, eff, floorSpec);
+  // qualification inventory across the FULL horizon — every contributing week, never short-circuited
+  var qualificationByWeek=future.map(function(w){return au11WeekQualification(w);});
+  var weekQ={}; qualificationByWeek.forEach(function(q){weekQ[q.wk]=q;});
+  var incomplete=qualificationByWeek.filter(function(q){return !q.complete;});
+  var futureComplete=incomplete.length===0;
+  var qualificationComplete=currentBaseQualificationComplete && futureComplete;   // base AND all future weeks
+  var firstQualificationFailureWeek=incomplete.length?incomplete[0].wk:null;   // future sorted asc → earliest
+  var qualificationBlockReasons=[];
+  function _addBR(r){if(qualificationBlockReasons.indexOf(r)<0)qualificationBlockReasons.push(r);}
+  currentBaseBlockReasons.forEach(_addBR);
+  qualificationByWeek.forEach(function(q){q.blockReasons.forEach(_addBR);});
+  // qualified safety trajectory (qualified inflows + accepted obligations only), wrapped for calc failure
+  var qEv=null, qCeiling=null, calculationError=null;
+  try{
+    qEv=au11QualifiedKeepsFloor(candidate, base, num, future, weekQ, floorSpec);
+    qCeiling=au11QualifiedCeiling(candidate, base, num, future, weekQ, floorSpec);
+    if(!isFinite(qCeiling) || qEv.trajectory.some(function(t){return !isFinite(t.chk);})) calculationError={status:'error', code:'trajectory_calculation_failed'};
+  }catch(e){ calculationError={status:'error', code:'trajectory_calculation_exception', message:String((e&&e.message)||e)}; }
+  var calcOk=!calculationError;
+  // Actionability rule: complete + calc-completed → actionable, INDEPENDENT of the ceiling value ($0 is a valid,
+  // actionable "no safe transfer" result) and INDEPENDENT of floorSafe (a qualified breach is still actionable).
+  var floorSafe = calcOk ? qEv.safe : null;
+  var floorSafeActionable = qualificationComplete && calcOk;
+  var safeCeilingActionable = qualificationComplete && calcOk;
+  var safeCeiling = (qualificationComplete && calcOk) ? qCeiling : null;   // null when incomplete or calc failed
   return {
     candidate: candidate,
+    // ── item-6 qualified / gated safety result ──
+    authoritative: false,                                // NEVER authoritative before promotion
+    baseSource: baseSource,                              // 'reconciled' | 'projected_unreconciled'
+    diagnosticBase: diagnosticBase,                      // always present (raw projectedChk when unreconciled)
+    qualifiedBase: qualifiedBase,                        // authoritative base when reconciled; null otherwise
+    currentBaseQualificationComplete: currentBaseQualificationComplete,
+    currentBaseBlockReasons: currentBaseBlockReasons,
+    currentWeekQualification: currentWeekQualification,
+    qualificationComplete: qualificationComplete,        // requires currentBase AND all future weeks
+    qualificationByWeek: qualificationByWeek,
+    qualificationBlockReasons: qualificationBlockReasons,
+    firstQualificationFailureWeek: firstQualificationFailureWeek,
+    partialTrajectory: ev.trajectory,                    // mathematical (Step-3 raw) — diagnostic
+    safeCeiling: safeCeiling,                            // qualified ceiling ($0 valid); null when blocked/failed
+    safeCeilingActionable: safeCeilingActionable,        // true iff qualificationComplete && calc completed
+    floorSafe: floorSafe,                                // qualified-trajectory floor safety (mathematical); null on calc failure
+    floorSafeActionable: floorSafeActionable,            // true iff qualificationComplete && calc completed
+    firstFloorBreachWeek: calcOk ? qEv.firstBreach : null,
+    calculationError: calculationError,                  // structured internal-calc failure (else null)
+    diagnostics: {
+      base: base,
+      qualifiedTrajectory: calcOk ? qEv.trajectory : null,
+      rawSafeCeiling: rawCeiling,
+      qualifiedCeiling: calcOk ? qCeiling : null,
+      qualifiedMinChk: calcOk ? qEv.minChk : null, qualifiedMinWeek: calcOk ? qEv.minChkWk : null,
+      qualifiedMinHeadroom: calcOk ? qEv.minHeadroom : null, qualifiedMinHeadroomWeek: calcOk ? qEv.minHeadWk : null,
+      horizonStart: future.length?future[0][0]:num, horizonEnd: future.length?future[future.length-1][0]:num,
+      calculationError: calculationError,
+      reason: calculationError
+        ? {status:'error', code:calculationError.code}
+        : (qualificationComplete
+          ? (floorSafe ? {status:'ok', code:'full_horizon_floor_safe_qualified'}
+                       : {status:'block', code:'full_horizon_floor_breach_qualified', firstFloorBreachWeek:qEv.firstBreach})
+          : {status:'block', code:'qualification_incomplete', firstQualificationFailureWeek:firstQualificationFailureWeek, reasons:qualificationBlockReasons}),
+      deferredControls: ['per_week_floor_override_governance','cross_goal_cumulative','reservation_withholding','write_guard','promotion']
+    },
+    // ── legacy Step-3 RAW (partial / diagnostic) fields — preserved; NON-ACTIONABLE ──
+    base: base,
     candidateSafe: ev.safe,
-    safeCeiling: ceiling,
     firstBreachWeek: ev.firstBreach,
     floorAtFirstBreach: ev.breachFloor,
     minChk: ev.minChk,
@@ -1854,11 +1986,9 @@ function au11ShadowValidate(num, projectedChk, candidate, floorSpec){
       : {status:'block', code:'full_horizon_floor_breach', firstBreachWeek:ev.firstBreach, floorAtFirstBreach:ev.breachFloor, minWeek:ev.minChkWk, minChk:ev.minChk, minHeadroom:ev.minHeadroom},
     horizonStart: ev.horizonStart,
     horizonEnd: ev.horizonEnd,
-    base: base,
     trajectory: ev.trajectory,
-    authoritative: false,                  // NEVER authoritative before promotion
     complete: false,                       // deferred controls remain
-    deferredControls: ['per_week_floor_override_governance','cross_goal_cumulative','reservation_withholding','estimate_fail_closed','inflow_qualification','obligation_identity','write_guard','promotion']
+    deferredControls: ['per_week_floor_override_governance','cross_goal_cumulative','reservation_withholding','write_guard','promotion']
   };
 }
 
@@ -1995,19 +2125,25 @@ function au11QualifyWeekEvents(events, ctx){
   ctx=ctx||{};
   var inf=au11ClassifyInflows(events,ctx), card=au11ClassifyCardObligations(events,ctx), fx=au11ClassifyFixedObligations(events,ctx);
   var acceptedCard=card.acceptedCardObligations, acceptedFixed=fx.acceptedFixedObligations;
+  // Obligation events with no recognized obligationKind (missing OR unknown) are unclassified/legacy →
+  // surfaced here in the pure layer as ambiguous + blocking. This is the SOLE obligation-kind rule; the
+  // Step 4B integration must not re-derive it from raw events.
+  var unclassified=(events||[]).filter(function(e){return e&&e.t==='ob'&&e.obligationKind!=='card_statement'&&e.obligationKind!=='fixed_obligation';})
+    .map(function(e){return {eventId:(typeof e.eventId==='string'&&e.eventId)?e.eventId:null, reason:{code:'unknown_or_missing_obligation_kind', obligationKind:(e.obligationKind!=null?e.obligationKind:null)}};});
+  var ambiguousObligations=card.ambiguousObligations.concat(unclassified);
   var identityConflicts=card.identityConflicts.concat(fx.fixedConflicts).concat(inf.identityConflicts);
   var qualificationComplete = inf.ambiguousInflows.length===0 && inf.identityConflicts.length===0
-    && card.identityConflicts.length===0 && card.estimatedObligations.length===0 && card.ambiguousObligations.length===0
+    && card.identityConflicts.length===0 && card.estimatedObligations.length===0 && ambiguousObligations.length===0
     && fx.fixedConflicts.length===0;
   return {
     qualifiedInflows:inf.qualifiedInflows, excludedInflows:inf.excludedInflows, ambiguousInflows:inf.ambiguousInflows,
     acceptedCardObligations:acceptedCard, acceptedFixedObligations:acceptedFixed,
     acceptedObligations:acceptedCard.concat(acceptedFixed),
     estimatedObligations:card.estimatedObligations, excludedObligations:card.excludedObligations,
-    ambiguousObligations:card.ambiguousObligations,
+    ambiguousObligations:ambiguousObligations,
     identityConflicts:identityConflicts, supersessionEvidence:card.supersessionEvidence,
     qualificationComplete:qualificationComplete,
-    blockReasons:[].concat(card.blockReasons, fx.fixedBlockReasons, inf.identityConflicts.map(function(c){return (c.codes||[])[0];}).filter(Boolean)),
+    blockReasons:[].concat(card.blockReasons, fx.fixedBlockReasons, inf.identityConflicts.map(function(c){return (c.codes||[])[0];}).filter(Boolean), unclassified.map(function(){return 'unknown_or_missing_obligation_kind';})),
     authoritative:false
   };
 }

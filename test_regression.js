@@ -14087,17 +14087,258 @@ console.log('\n── Section 5G-1D Slice 4c: half-close repair confirmation ─
     var s=html.slice(html.indexOf('AU-11 Step 4A-2 — READ-ONLY QUALIFICATION CLASSIFIERS'),html.indexOf('// AU11-END')).replace(/\/\/[^\n]*/g,'');
     assert(!/\bWD\b/.test(s)&&!/reconEffectiveWD/.test(s)&&!/\breconData\b/.test(s)&&!/\boverrideData\b/.test(s),'classifiers must not touch WD/effectiveWD or global week-data stores');
   });
-  // ── live-call-site inventory: classifiers invoked by no live path ──
-  test('AU11-CLS-NOLIVE: classifiers not referenced by runModel or au11ShadowValidate',function(){
+  // ── live-call-site inventory: classifiers used only inside the AU-11 block (Step 4B integration is in-block) ──
+  test('AU11-CLS-NOLIVE: classifiers never referenced by runModel or any path outside the AU-11 block',function(){
     var rm=html.slice(html.indexOf('function runModel('),html.indexOf('\nfunction ',html.indexOf('function runModel(')+20));
-    var sv=html.slice(html.indexOf('function au11ShadowValidate('),html.indexOf('\n// ── AU-11 Step 4A-2'));
+    var a=html.indexOf('// AU11-BEGIN'),b=html.indexOf('// AU11-END'); var outside=html.slice(0,a)+html.slice(b);
     ['au11ClassifyInflows','au11ClassifyCardObligations','au11ClassifyFixedObligations','au11QualifyWeekEvents','au11ValidCycleDate'].forEach(function(fn){
       assert(rm.indexOf(fn)<0,fn+' must not appear in runModel');
-      assert(sv.indexOf(fn)<0,fn+' must not appear in the shadow trajectory');
+      assert(outside.indexOf(fn)<0,fn+' must not be referenced outside the AU-11 block');
     });
   });
   // ── frozen surfaces unchanged ──
   test('AU11-CLS-FROZEN: runModel / netting / resolver byte-frozen after Step 4A-2',function(){
+    var crypto2=require('crypto');
+    function bh(tok){var i=html.indexOf(tok);var j=html.indexOf('\nfunction ',i+tok.length);var s=html.slice(i,j<0?html.length:j);return s.length+'/'+crypto2.createHash('sha256').update(s).digest('hex').slice(0,16);}
+    assert(bh('function runModel(')==='32840/5181b79cbba47e68','runModel changed: '+bh('function runModel('));
+    assert(bh('function computeGoalTransferNetting(')==='10309/4670447ce489dd8b','netting changed');
+    assert(bh('function resolveWeekTransfers(')==='5583/20d17438996ac8ba','resolver changed');
+  });
+})();
+
+// ══════════════════ AU-11 STEP 4B — QUALIFICATION INTEGRATED INTO THE SHADOW TRAJECTORY ══════════════════
+// Shadow safety now consumes ONLY qualified inflows + accepted obligations; fail-closed on incomplete
+// qualification. Read-only, non-authoritative, unrendered. runModel + Step-3 raw math preserved.
+(function(){
+  var _r=reconData,_f=reconEffectiveWD;
+  function withEff(eff, fn){ reconData={7:{chk:20000}}; reconEffectiveWD=function(){return eff;}; try{ return fn(); } finally{ reconData=_r; reconEffectiveWD=_f; } }
+  var qIn =function(a,id,lc){return {t:'in',a:a,lifecycle:lc||'posted_actual',eventId:id};};
+  var qFix=function(a,id,wk){return {t:'ob',a:a,obligationKind:'fixed_obligation',eventId:id,lifecycle:'reliable_fixed',modeledPaymentWeek:wk};};
+  var qCard=function(a,id,wk){return {t:'ob',a:a,obligationKind:'card_statement',cardAccountKey:'amex',cycleCloseDate:'2026-07-24',cycleKey:'amex|2026-07-24',lifecycle:'closed_actual',modeledPaymentWeek:wk,eventId:id};};
+  var wq=function(res,wk){return res.qualificationByWeek.find(function(q){return q.wk===wk;});};
+  var qt=function(res,wk){return res.diagnostics.qualifiedTrajectory.find(function(t){return t.wk===wk;}).chk;};
+
+  // ── A. Qualified flow integration ──
+  test('AU11-4B-A1: posted actual inflow increases candidate once',function(){
+    var r=withEff([[8,'',[],[],[qIn(5000,'a1')],0,0]],function(){return au11ShadowValidate(7,20000,0,OP_FL);});
+    assert(qt(r,8)===25000&&wq(r,8).qualifiedInflowTotal===5000,'wk8 must rise by exactly 5000 → 25000, got '+qt(r,8));
+  });
+  test('AU11-4B-A2: reconciled actual inflow increases candidate once',function(){
+    var r=withEff([[8,'',[],[],[qIn(5000,'a2','reconciled_actual')],0,0]],function(){return au11ShadowValidate(7,20000,0,OP_FL);});
+    assert(qt(r,8)===25000&&r.qualificationComplete===true,'reconciled_actual applied once → 25000');
+  });
+  test('AU11-4B-A3: reliable fixed obligation reduces candidate once',function(){
+    var r=withEff([[8,'',[],[],[qFix(-2000,'a3',8)],0,0]],function(){return au11ShadowValidate(7,20000,0,OP_FL);});
+    assert(qt(r,8)===18000&&wq(r,8).acceptedObligationTotal===2000,'wk8 must fall by 2000 → 18000, got '+qt(r,8));
+  });
+  test('AU11-4B-A4: valid closed card actual reduces candidate once',function(){
+    var r=withEff([[8,'',[],[],[qCard(-3000,'a4',8)],0,0]],function(){return au11ShadowValidate(7,20000,0,OP_FL);});
+    assert(qt(r,8)===17000&&wq(r,8).counts.acceptedCardObligations===1,'wk8 must fall by 3000 → 17000, got '+qt(r,8));
+  });
+  test('AU11-4B-A5: accepted card + accepted fixed both flow through acceptedObligations',function(){
+    var r=withEff([[8,'',[],[],[qCard(-3000,'a5c',8),qFix(-2000,'a5f',8)],0,0]],function(){return au11ShadowValidate(7,20000,0,OP_FL);});
+    assert(qt(r,8)===15000&&wq(r,8).acceptedObligationTotal===5000,'card+fixed both subtracted → 15000, got '+qt(r,8));
+    assert(wq(r,8).counts.acceptedCardObligations===1&&wq(r,8).counts.acceptedFixedObligations===1,'both explicit lists populated');
+  });
+
+  // ── B. Excluded / ambiguous events do not move candidate & block actionability where required ──
+  test('AU11-4B-B1: future modeled payroll does not increase candidate',function(){
+    var r=withEff([[8,'',[],[],[{t:'in',a:2152.5,tx:false,eventId:'b1'}],0,0]],function(){return au11ShadowValidate(7,20000,0,OP_FL);});
+    assert(qt(r,8)===20000&&wq(r,8).qualifiedInflowTotal===0,'modeled payroll must not raise candidate');
+  });
+  test('AU11-4B-B2: estimate-only card amount is not applied as an obligation, and blocks',function(){
+    var est=qCard(-3000,'b2',8); est.lifecycle='estimate';
+    var r=withEff([[8,'',[],[],[est],0,0]],function(){return au11ShadowValidate(7,20000,0,OP_FL);});
+    assert(qt(r,8)===20000&&wq(r,8).acceptedObligationTotal===0,'estimate amount must NOT be applied');
+    assert(r.qualificationComplete===false&&r.safeCeilingActionable===false&&r.safeCeiling===null,'estimate-only → blocked, not actionable');
+  });
+  test('AU11-4B-B3: missing eventId blocks actionability',function(){
+    var c=qCard(-3000,'',8);
+    var r=withEff([[8,'',[],[],[c],0,0]],function(){return au11ShadowValidate(7,20000,0,OP_FL);});
+    assert(r.qualificationComplete===false&&r.floorSafeActionable===false&&r.safeCeiling===null,'missing eventId → blocked');
+    assert(r.qualificationBlockReasons.indexOf('missing_event_id')>=0,'block reason traceable');
+  });
+  test('AU11-4B-B4: conflicting duplicate inflow ID blocks actionability',function(){
+    var r=withEff([[8,'',[],[],[qIn(5000,'dup'),qIn(7000,'dup')],0,0]],function(){return au11ShadowValidate(7,20000,0,OP_FL);});
+    assert(r.qualificationComplete===false&&r.safeCeilingActionable===false,'conflicting inflow id → blocked');
+    assert(r.qualificationBlockReasons.indexOf('conflicting_duplicate_event_id')>=0,'reason traceable');
+  });
+  test('AU11-4B-B5: duplicate card actual blocks actionability',function(){
+    var r=withEff([[8,'',[],[],[qCard(-3000,'d1',8),qCard(-3000,'d2',8)],0,0]],function(){return au11ShadowValidate(7,20000,0,OP_FL);});
+    assert(r.qualificationComplete===false&&r.floorSafeActionable===false,'duplicate closed actual → blocked');
+    assert(r.qualificationBlockReasons.indexOf('duplicate_closed_actuals')>=0,'reason traceable');
+  });
+  test('AU11-4B-B6: dangling supersession blocks actionability',function(){
+    var c=qCard(-3000,'b6',8); c.supersedesEventId='GHOST';
+    var r=withEff([[8,'',[],[],[c],0,0]],function(){return au11ShadowValidate(7,20000,0,OP_FL);});
+    assert(r.qualificationComplete===false&&r.safeCeilingActionable===false,'dangling supersedes → blocked');
+    assert(r.qualificationBlockReasons.indexOf('dangling_supersedes')>=0,'reason traceable');
+  });
+
+  // ── C. Fail-closed horizon semantics ──
+  test('AU11-4B-C1: a floor-safe qualified trajectory with one unresolved issue is NOT actionable',function(){
+    // unclassified obligation (no obligationKind) → not subtracted (trajectory stays high/safe) but blocks
+    var r=withEff([[8,'',[],[],[{t:'ob',a:-100,eventId:'leg8'}],0,0]],function(){return au11ShadowValidate(7,20000,0,OP_FL);});
+    assert(r.floorSafe===true,'qualified trajectory is mathematically floor-safe');
+    assert(r.qualificationComplete===false&&r.floorSafeActionable===false&&r.safeCeilingActionable===false&&r.safeCeiling===null,'unresolved qualification → not actionable');
+    assert(r.qualificationBlockReasons.indexOf('unknown_or_missing_obligation_kind')>=0,'legacy obligation flagged, not silently safe');
+  });
+  test('AU11-4B-C2: one unresolved FUTURE week blocks the full-horizon result',function(){
+    var est=qCard(-3000,'c2',20); est.lifecycle='estimate';
+    var r=withEff([[8,'',[],[],[qIn(5000,'c2ok')],0,0],[20,'',[],[],[est],0,0]],function(){return au11ShadowValidate(7,20000,0,OP_FL);});
+    assert(r.qualificationComplete===false&&r.firstQualificationFailureWeek===20&&r.safeCeilingActionable===false,'wk20 estimate blocks the horizon');
+  });
+  test('AU11-4B-C3: qualification scanning continues past an earlier floor breach',function(){
+    var est=qCard(-3000,'c3',20); est.lifecycle='estimate';
+    var r=withEff([[8,'',[],[],[qCard(-30000,'c3big',8)],0,0],[20,'',[],[],[est],0,0]],function(){return au11ShadowValidate(7,20000,0,OP_FL);});
+    assert(r.firstFloorBreachWeek===8,'qualified breach at wk8 (base 20000 − 30000)');
+    assert(wq(r,20)!=null&&r.firstQualificationFailureWeek===20,'scanning did not stop at the wk8 breach — wk20 still inventoried');
+  });
+  test('AU11-4B-C4: firstQualificationFailureWeek is deterministic (earliest incomplete)',function(){
+    var e10=qCard(-3000,'c4a',10); e10.lifecycle='estimate';
+    var e15=qCard(-3000,'c4b',15); e15.lifecycle='estimate';
+    var r=withEff([[10,'',[],[],[e10],0,0],[15,'',[],[],[e15],0,0]],function(){return au11ShadowValidate(7,20000,0,OP_FL);});
+    assert(r.firstQualificationFailureWeek===10,'earliest incomplete week wins, got '+r.firstQualificationFailureWeek);
+  });
+  test('AU11-4B-C5: qualificationByWeek covers the whole horizon; blockReasons stable',function(){
+    var r=withEff([[8,'',[],[],[qIn(5000,'c5')],0,0],[9,'',[],[],[{t:'ob',a:-50,eventId:'c5leg'}],0,0]],function(){return au11ShadowValidate(7,20000,0,OP_FL);});
+    assert(r.qualificationByWeek.length===2&&wq(r,8)&&wq(r,9),'every contributing week inventoried');
+    assert(r.qualificationBlockReasons.join(',')==='unknown_or_missing_obligation_kind','stable, traceable block reasons');
+  });
+
+  // ── D. Regression invariants — Step-3 mechanics intact under qualified inputs ──
+  test('AU11-4B-D1: reflect-forward occurs exactly once in the qualified trajectory',function(){
+    var eff=[[8,'',[],[],[qIn(100,'d1a')],0,0],[9,'',[],[],[qFix(-200,'d1b',9)],0,0],[10,'',[],[],[qIn(300,'d1c')],0,0]];
+    var c0=withEff(eff,function(){return au11ShadowValidate(7,20000,0,OP_FL);});
+    var cX=withEff(eff,function(){return au11ShadowValidate(7,20000,3000,OP_FL);});
+    assert(c0.diagnostics.qualifiedTrajectory.length===cX.diagnostics.qualifiedTrajectory.length,'same length');
+    for(var i=0;i<c0.diagnostics.qualifiedTrajectory.length;i++){
+      var d=Math.round((c0.diagnostics.qualifiedTrajectory[i].chk-cX.diagnostics.qualifiedTrajectory[i].chk)*100)/100;
+      assert(d===3000,'wk '+c0.diagnostics.qualifiedTrajectory[i].wk+' must differ by exactly the candidate 3000, got '+d);
+    }
+  });
+  test('AU11-4B-D2: ct/ca semantics intact in the qualified trajectory',function(){
+    var rCt=withEff([[8,'',[],[],[],500,0]],function(){return au11ShadowValidate(7,20000,0,OP_FL);});
+    var rCa=withEff([[8,'',[],[],[],0,700]],function(){return au11ShadowValidate(7,20000,0,OP_FL);});
+    assert(qt(rCt,8)===19500,'ct 500 → 19500, got '+qt(rCt,8));
+    assert(qt(rCa,8)===19300,'ca 700 → 19300, got '+qt(rCa,8));
+  });
+  test('AU11-4B-D3: per-week floors intact in the qualified trajectory',function(){
+    var eff=[[8,'',[],[],[qCard(-3000,'d3',8)],0,0]]; // base 20000 → wk8 17000
+    var constF=withEff(eff,function(){return au11ShadowValidate(7,20000,0,OP_FL);});
+    var perWk =withEff(eff,function(){return au11ShadowValidate(7,20000,0,{8:18000,default:OP_FL});});
+    assert(constF.floorSafe===true&&constF.floorSafeActionable===true,'17000 safe under OP_FL');
+    assert(perWk.floorSafe===false&&perWk.firstFloorBreachWeek===8,'wk8 floor 18000 → 17000 breaches');
+  });
+  test('AU11-4B-D4: no Step-4B / classifier fn referenced by runModel or outside the AU-11 block',function(){
+    var rm=html.slice(html.indexOf('function runModel('),html.indexOf('\nfunction ',html.indexOf('function runModel(')+20));
+    var a=html.indexOf('// AU11-BEGIN'),b=html.indexOf('// AU11-END'); var outside=html.slice(0,a)+html.slice(b);
+    ['au11WeekQualification','au11QualifiedKeepsFloor','au11QualifiedCeiling','au11QualifyWeekEvents','au11ShadowValidate'].forEach(function(fn){
+      assert(rm.indexOf(fn)<0,fn+' must not appear in runModel');
+      assert(outside.indexOf(fn)<0,fn+' must not be referenced outside the AU-11 block');
+    });
+  });
+  test('AU11-4B-D5: integration layer has no raw WD/reconData/overrideData bypass and no raw obligation-kind classification',function(){
+    // integration span = the 4B functions only (au11WeekQualification..au11ShadowValidate), NOT the 4A-2 classifiers
+    var integ=html.slice(html.indexOf('// ── AU-11 Step 4B'),html.indexOf('// ── AU-11 Step 4A-2')).replace(/\/\/[^\n]*/g,'');
+    var stripped=integ.replace(/reconEffectiveWD/g,'');
+    // reconData[num] is permitted for BASE PROVENANCE (reconciled-vs-not, same read as authoritativeCurrentChk);
+    // raw week arrays (WD) and overrideData event sources are forbidden. reconData must be used ONLY as base-source.
+    assert(!/\bWD\b/.test(stripped)&&!/\boverrideData\b/.test(stripped),'no raw week-array / overrideData bypass');
+    assert(!/reconData\[[^\]]*\]\.(?!chk)/.test(stripped),'reconData used only for the base-provenance chk check');
+    assert(!/obligationKind/.test(integ),'integration layer must not re-derive obligationKind');
+    assert(!/t:\s*['"]ob['"]|t===['"]ob['"]|\.t==='ob'/.test(integ),'integration layer must not branch on raw ob events');
+    var kf=html.slice(html.indexOf('function au11QualifiedKeepsFloor('),html.indexOf('function au11QualifiedCeiling('));
+    assert(/qualifiedInflowTotal/.test(kf)&&/acceptedObligationTotal/.test(kf),'trajectory uses qualified totals');
+    assert(!/excludedInflows|ambiguousInflows|estimatedObligations|excludedObligations|ambiguousObligations/.test(kf),'trajectory must not consume excluded/ambiguous/estimated');
+  });
+  // ── Correction 1: actionability truth table ($0 ceiling actionable; breach actionable; calc error) ──
+  test('AU11-4B-ACT-ZERO: fully qualified horizon with a $0 safe ceiling IS actionable',function(){
+    // base 6600 (floor 6500); wk8 qualified −50 leaves only $50 headroom < MIN_XFR → ceiling 0, but complete
+    var r=withEff([[8,'',[],[],[qFix(-50,'z8',8)],0,0]],function(){reconData={7:{chk:6600}};return au11ShadowValidate(7,6600,5000,OP_FL);});
+    assert(r.qualificationComplete===true&&r.safeCeiling===0,'qualified but no safe transfer → ceiling 0, got '+r.safeCeiling);
+    assert(r.safeCeilingActionable===true,'$0 qualified ceiling must be actionable (no safe transfer is a real answer)');
+  });
+  test('AU11-4B-ACT-BREACH: fully qualified floor breach → floorSafe false but floorSafeActionable true',function(){
+    var r=withEff([[8,'',[],[],[qFix(-50,'b8',8)],0,0]],function(){reconData={7:{chk:6600}};return au11ShadowValidate(7,6600,5000,OP_FL);});
+    assert(r.qualificationComplete===true&&r.floorSafe===false,'candidate 5000 breaches → floorSafe false');
+    assert(r.floorSafeActionable===true,'qualified + calc-complete → floorSafeActionable true even on a breach');
+  });
+  test('AU11-4B-ACT-INCOMPLETE: incomplete horizon remains non-actionable',function(){
+    var est=qCard(-3000,'ai',8); est.lifecycle='estimate';
+    var r=withEff([[8,'',[],[],[est],0,0]],function(){return au11ShadowValidate(7,20000,3000,OP_FL);});
+    assert(r.qualificationComplete===false&&r.safeCeiling===null&&r.safeCeilingActionable===false&&r.floorSafeActionable===false,'incomplete → non-actionable, ceiling null');
+  });
+  test('AU11-4B-ACT-CALCERR: internal calculation failure → non-actionable with structured calculationError',function(){
+    var r=(function(){reconData={};reconEffectiveWD=function(){return [];};try{return au11ShadowValidate(7,NaN,3000,OP_FL);}finally{reconData=_r;reconEffectiveWD=_f;}})();
+    assert(r.calculationError!=null&&r.calculationError.code==='trajectory_calculation_failed','structured calc error surfaced');
+    assert(r.safeCeiling===null&&r.safeCeilingActionable===false&&r.floorSafeActionable===false&&r.floorSafe===null,'calc failure → non-actionable');
+  });
+  // ── Correction 2: unclassified obligation handled by the pure classifier (not the integration layer) ──
+  test('AU11-4B-CLS-LEGACY: classifier returns a legacy (no obligationKind) obligation as ambiguous + blocking',function(){
+    var q=au11QualifyWeekEvents([{t:'ob',a:-100,eventId:'lg'}],{modelWeek:8});
+    assert(q.acceptedObligations.length===0&&q.ambiguousObligations.length===1&&q.ambiguousObligations[0].reason.code==='unknown_or_missing_obligation_kind','legacy ob → ambiguous');
+    assert(q.qualificationComplete===false&&q.blockReasons.indexOf('unknown_or_missing_obligation_kind')>=0,'legacy ob → blocking');
+  });
+  test('AU11-4B-CLS-UNKNOWN: classifier returns an unknown obligationKind as ambiguous + blocking',function(){
+    var q=au11QualifyWeekEvents([{t:'ob',a:-100,eventId:'uk',obligationKind:'mortgage'}],{modelWeek:8});
+    assert(q.acceptedObligations.length===0&&q.ambiguousObligations.length===1&&q.qualificationComplete===false,'unknown obligationKind → ambiguous + blocking');
+    assert(q.ambiguousObligations[0].reason.obligationKind==='mortgage','structured evidence carries the offending kind');
+  });
+  // ── Correction 3: current-week boundary — week num already in base, not re-applied or re-qualified ──
+  test('AU11-4B-BOUNDARY: current-week (w[0]===num) events are in base — not re-qualified, not re-subtracted',function(){
+    var r=withEff([[7,'',[],[],[qCard(-5000,'cur',7)],0,0],[8,'',[],[],[qIn(1000,'nx')],0,0]],function(){return au11ShadowValidate(7,20000,0,OP_FL);});
+    assert(r.qualificationByWeek.every(function(q){return q.wk>7;}),'week num (7) not in the qualification inventory (already reflected in base)');
+    assert(qt(r,8)===21000,'only future weeks applied (wk8 +1000 → 21000); the wk7 obligation is not re-subtracted (no double count)');
+  });
+  // ── Base-provenance defect fix: reconciled base actionable; unreconciled projected base fails closed ──
+  function unrecon(eff, projectedChk, candidate, floorSpec){ reconData={}; reconEffectiveWD=function(){return eff;}; try{ return au11ShadowValidate(7, projectedChk, candidate, floorSpec===undefined?OP_FL:floorSpec); } finally{ reconData=_r; reconEffectiveWD=_f; } }
+  test('AU11-4B-BASE-RECON: reconciled current-week ending is an authoritative, actionable base',function(){
+    var r=withEff([[8,'',[],[],[qIn(5000,'br')],0,0]],function(){return au11ShadowValidate(7,20000,3000,OP_FL);});
+    assert(r.baseSource==='reconciled'&&r.currentBaseQualificationComplete===true&&r.qualifiedBase===20000,'reconciled base authoritative');
+    assert(r.qualificationComplete===true&&r.safeCeiling===3000&&r.safeCeilingActionable===true,'reconciled base + clean future → actionable');
+  });
+  test('AU11-4B-BASE-UNRECON-PAYROLL: unreconciled projected base is NOT actionable by skipping week num',function(){
+    // future is fully qualified, yet the raw projected base blocks (it may embed modeled payroll / unqualified effects)
+    var r=unrecon([[8,'',[],[],[qIn(5000,'up')],0,0]],20000,3000,OP_FL);
+    assert(r.baseSource==='projected_unreconciled'&&r.currentBaseQualificationComplete===false,'unreconciled base flagged');
+    assert(r.qualificationComplete===false&&r.safeCeiling===null&&r.safeCeilingActionable===false&&r.floorSafeActionable===false,'raw projected base → non-actionable even with a clean future');
+    assert(r.currentBaseBlockReasons.indexOf('current_base_unqualified')>=0&&r.qualificationBlockReasons.indexOf('current_base_unqualified')>=0,'structured current_base_unqualified reason');
+  });
+  test('AU11-4B-BASE-UNRECON-ESTIMATE: unreconciled base + a future estimate → not qualification-complete',function(){
+    var est=qCard(-3000,'ue',20); est.lifecycle='estimate';
+    var r=unrecon([[20,'',[],[],[est],0,0]],20000,3000,OP_FL);
+    assert(r.qualificationComplete===false&&r.safeCeilingActionable===false,'base + future estimate both block');
+    assert(r.currentBaseBlockReasons.indexOf('current_base_unqualified')>=0,'base reason present');
+  });
+  test('AU11-4B-BASE-DIAGNOSTIC: projectedChk retained only as diagnostic base; qualifiedBase null when unreconciled',function(){
+    var r=unrecon([[8,'',[],[],[],0,0]],18250.75,0,OP_FL);
+    assert(r.diagnosticBase===18250.75&&r.qualifiedBase===null,'projectedChk is diagnostic-only, qualifiedBase null');
+    assert(r.partialTrajectory&&r.partialTrajectory.length>=1,'partial trajectory preserved for debugging');
+  });
+  test('AU11-4B-BASE-MISSING-CONTRACT: missing base-provenance contract names ct/ca and non-event movements',function(){
+    var r=unrecon([[8,'',[],[],[],0,0]],20000,0,OP_FL);
+    var mc=r.currentWeekQualification.missingContract;
+    assert(/ct/.test(mc)&&/ca/.test(mc)&&/non-event/.test(mc),'missing contract identifies ct/ca + non-event model cash movements');
+  });
+  test('AU11-4B-BASE-FUTURE-SCANNED: future weeks still fully scanned under an unreconciled base',function(){
+    var r=unrecon([[8,'',[],[],[qIn(1000,'f1')],0,0],[20,'',[],[],[qFix(-100,'f2',20)],0,0]],20000,0,OP_FL);
+    assert(r.qualificationByWeek.length===2&&r.qualificationByWeek.some(function(q){return q.wk===20;}),'full future horizon inventoried despite base block');
+  });
+  test('AU11-4B-BASE-COMPLETE-REQUIRES-BOTH: qualificationComplete requires currentBase AND future',function(){
+    var recon=withEff([[8,'',[],[],[qIn(1000,'g1')],0,0]],function(){return au11ShadowValidate(7,20000,0,OP_FL);});
+    var unre =unrecon([[8,'',[],[],[qIn(1000,'g1')],0,0]],20000,0,OP_FL);
+    assert(recon.currentBaseQualificationComplete===true&&recon.qualificationComplete===true,'reconciled base + clean future → complete');
+    assert(unre.currentBaseQualificationComplete===false&&unre.qualificationComplete===false,'same future but unreconciled base → incomplete');
+  });
+  test('AU11-4B-SCHEMA: result exposes the full item-6 gated schema',function(){
+    var r=withEff([[8,'',[],[],[qIn(5000,'sc')],0,0]],function(){return au11ShadowValidate(7,20000,3000,OP_FL);});
+    ['authoritative','baseSource','diagnosticBase','qualifiedBase','currentBaseQualificationComplete','currentBaseBlockReasons','currentWeekQualification','qualificationComplete','qualificationByWeek','qualificationBlockReasons','firstQualificationFailureWeek','partialTrajectory','safeCeiling','safeCeilingActionable','floorSafe','floorSafeActionable','firstFloorBreachWeek','calculationError','diagnostics'].forEach(function(k){assert(k in r,'missing schema key '+k);});
+    assert(r.authoritative===false,'never authoritative');
+    assert(r.qualificationComplete===true&&r.floorSafeActionable===true,'clean qualified horizon → floor-safe actionable');
+    assert(r.safeCeiling===3000&&r.safeCeilingActionable===true,'positive safe candidate → actionable ceiling, got '+r.safeCeiling);
+  });
+  test('AU11-4B-FROZEN: runModel / netting / resolver byte-frozen after Step 4B',function(){
     var crypto2=require('crypto');
     function bh(tok){var i=html.indexOf(tok);var j=html.indexOf('\nfunction ',i+tok.length);var s=html.slice(i,j<0?html.length:j);return s.length+'/'+crypto2.createHash('sha256').update(s).digest('hex').slice(0,16);}
     assert(bh('function runModel(')==='32840/5181b79cbba47e68','runModel changed: '+bh('function runModel('));
