@@ -1,5 +1,27 @@
 # Codex Status: Herndon Financial OS
 
+## CURRENCY NOTE (2026-07-26) — AU-11 Steps 1–6B pushed (dormant); Step 6C-D1 staging schema COMPLETE + GREEN (staging-only)
+
+- **AU-11 Steps 1–6B are COMPLETE and pushed** (HEAD `2666a8e` before D1-8; last feature commit `a3442bc`
+  `feat(au-11): add dormant reservation proposals`). AU-11 remains **dormant, non-authoritative, unrendered,
+  zero live callers**; `runModel`/`authoritativeCurrentChk`/`getCashAvailabilityEngine`/`isReservedAsOf`/frozen
+  RPCs/closeout wrapper/nine-goal closeout contract all byte-frozen (`runModel 5181b79c` / `netting 4670447c`
+  / `resolver 20d17438`). Prior AU-11 pushes: 4A-1b `b3ab93e`, 4A-2 `210af5e`, 4B `a977f34`, 5B `dd9b143`,
+  5C `07e1933`, 6B `a3442bc`; 6C-D0 decision `2666a8e`.
+- **Step 6C-D1 (staging additive reservation-persistence schema) COMPLETE + GREEN — STAGING ONLY.**
+  Executed by Adam in the Supabase SQL Editor against staging **`pkwotgqivgaapwuqgwqb`** (≠ prod
+  `usayoldrawwmjsmretin`), one gate at a time; **Claude ran no SQL**. Gates D1-1 preflight, D1-2 forward
+  migration, D1-3 validation, D1-4 rollback, D1-5 post-rollback validation, D1-6 reapply, D1-7 final
+  validation — **all PASS**. Final staging state = **migration applied (AU-11-ready)**. Adds (staging only):
+  additive nullable `cash_commitments` columns (reservation_batch_id/goal_id/destination_account_ref/
+  bank_reference/bank_submitted_at); +1 `commitment_class` (`discretionary_goal_transfer`) and +1
+  `commitment_source` (`au11_reservation`); bidirectional shape CHECK; `discretionary_reservation_batches`
+  control table with DB-enforced one-active-batch; FK; partial indexes; RLS (RPC-only writes). Package:
+  `docs/phase-au11-6c-d1-staging-{preflight,migration,validation,rollback,postrollback-validation}.sql` +
+  `docs/phase-au11-6c-d1-execution-record-2026-07-26.md`. **PRODUCTION UNTOUCHED; no RPC/client/D2 work.**
+- **Active gate: D1-8 (commit + push the D1 package).** Commit authorized; **push owner-gated**.
+- **Operational hold unchanged:** all discretionary goal transfers, incl. **Wendy IRA**, remain DEFERRED.
+
 ## CURRENCY NOTE (2026-07-25b) — AU-3 COMPLETE; AU-11 defect set confirmed (engine hold); discretionary transfers deferred
 
 - **AU-3 COMPLETE.** The Week 33 / model-week-11 AMEX Gold obligation was updated via the canonical
