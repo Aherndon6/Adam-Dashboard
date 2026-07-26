@@ -2174,6 +2174,12 @@ function au11BuildCrossGoalInput(num, shadow, reservedCents){
   var reg=(typeof GOALS_REGISTRY!=='undefined'?GOALS_REGISTRY:[]).map(function(g){return {id:g.id,priority:g.priority,target:g.target,auto:!!g.auto,complete:!!g.complete,stretch:!!g.stretch,status:g.status};});
   var snapWk=(typeof goalSnapData!=='undefined'&&goalSnapData[num])?goalSnapData[num]:{};
   var fundedSnapshotDollars={}; Object.keys(snapWk).forEach(function(k){fundedSnapshotDollars[k]=snapWk[k];});
+  // Step 5C: capture the authoritative LATEST funded snapshot (≤ baselineWeek) for each waterfall goal via
+  // the existing canonical accessor. Holding goals outside the nine (e.g. wewe_rccl/wewe_dcl) carry their
+  // one-time correction anchor here; the pure allocator reads only this captured map, never a global.
+  var wfIds=(typeof REGULAR_WATERFALL!=='undefined'?REGULAR_WATERFALL:[]);
+  var latestSnapshotDollarsByGoal={};
+  wfIds.forEach(function(id){ var v=(typeof _latestGoalSnapshot==='function')?_latestGoalSnapshot(id,num):undefined; if(typeof v==='number'&&isFinite(v))latestSnapshotDollarsByGoal[id]=v; });
   return {
     baselineWeek:num,
     closeoutState:au11CloseoutState(num),
@@ -2188,6 +2194,7 @@ function au11BuildCrossGoalInput(num, shadow, reservedCents){
     // NOT the historical union of observed snapshot rows. History cannot expand or contract eligibility.
     snapshotEligibleGoalIds:(typeof SNAPSHOT_ELIGIBLE_GOAL_IDS!=='undefined'?SNAPSHOT_ELIGIBLE_GOAL_IDS.slice():[]),
     fundedSnapshotDollars:fundedSnapshotDollars,
+    latestSnapshotDollarsByGoal:latestSnapshotDollarsByGoal,
     ownerDeferredIds:[],
     engineGatedIds:[]
   };
@@ -2221,14 +2228,24 @@ function au11CrossGoalAllocate(input){
   if(sh.calculationError)reasons.push('shadow_calculation_error');
   if(sh.qualificationComplete!==true||sh.safeCeilingActionable!==true||typeof sh.safeCeiling!=='number')reasons.push('shadow_not_actionable');
   if(reasons.length)return blocked();
-  // structural candidate-set validation (every canonical waterfall goal)
+  // structural candidate-set validation (every canonical waterfall goal). Step 5C: a goal OUTSIDE the
+  // eligible nine is a holding goal (e.g. wewe_rccl/wewe_dcl) — admissible ONLY when its authoritative
+  // latest funded snapshot ≥ target (held_complete_pre1b). Missing anchor / below-target → full block.
   var eligibleSet={}; (input.snapshotEligibleGoalIds||[]).forEach(function(id){eligibleSet[id]=true;});
   var regById={}; (input.registry||[]).forEach(function(g){regById[g.id]=g;});
+  var lsbg=input.latestSnapshotDollarsByGoal||{};
   var wf=wfR.slice();                                       // canonical, priority-ascending (sorted upstream)
   for(var s=0;s<wf.length;s++){
-    var sid=wf[s];
-    if(!eligibleSet[sid]){if(reasons.indexOf('non_snapshot_goal_in_waterfall')<0)reasons.push('non_snapshot_goal_in_waterfall');}
-    else if(input.fundedSnapshotDollars[sid]===undefined){if(reasons.indexOf('goal_baseline_missing')<0)reasons.push('goal_baseline_missing');}
+    var sid=wf[s], sg=regById[sid]||{};
+    if(eligibleSet[sid]){
+      if(input.fundedSnapshotDollars[sid]===undefined){if(reasons.indexOf('goal_baseline_missing')<0)reasons.push('goal_baseline_missing');}
+    }else{
+      var sAnchor=lsbg[sid];                                // authoritative latest snapshot (captured; ≤ baselineWeek)
+      var sTarget=(sid==='alaska'?input.akTargetDollars:sg.target);
+      if(typeof sAnchor!=='number'||!isFinite(sAnchor)||typeof sTarget!=='number'||!isFinite(sTarget)){if(reasons.indexOf('holding_anchor_missing')<0)reasons.push('holding_anchor_missing');}
+      else if(C(sAnchor)<C(sTarget)){if(reasons.indexOf('holding_anchor_below_target')<0)reasons.push('holding_anchor_below_target');}
+      // else held_complete_pre1b (handled in the walk; never allocates)
+    }
   }
   if(reasons.length)return blocked();
   // allocation walk — integer cents; consume-but-do-not-spend
@@ -2240,6 +2257,13 @@ function au11CrossGoalAllocate(input){
   for(var j=0;j<wf.length;j++){
     var gid=wf[j], g=regById[gid]||{};
     var targetCents=C(gid==='alaska'?input.akTargetDollars:g.target);
+    // Step 5C: outside-nine holding goal, anchor ≥ target (proven above) → held_complete_pre1b, never allocates.
+    if(!eligibleSet[gid]){
+      var heldCents=C(lsbg[gid]);
+      per.push({id:gid, priority:g.priority, targetCents:targetCents, fundedSnapshotCents:heldCents, remainingNeedCents:0,
+        sliceCents:0, allocatedCents:0, retainedCents:0, status:'held_complete_pre1b', reason:'held_complete_pre1b'});
+      continue;                                             // no ceiling consumption; never allocated/retained
+    }
     var fundedCents=C(input.fundedSnapshotDollars[gid]);
     var needCents=Math.max(0, targetCents-fundedCents);
     var sliceCents=Math.min(needCents, remaining);

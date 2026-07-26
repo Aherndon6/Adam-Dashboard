@@ -14429,9 +14429,9 @@ console.log('\n── Section 5G-1D Slice 4c: half-close repair confirmation ─
     assert(r.cumulativeCeilingCents===null&&r.crossGoalActionable===false&&r.crossGoalBlockReasons.indexOf('goal_baseline_missing')>=0,'baseline missing → block');
   });
   // 10. non-snapshot goal in waterfall → distinct full-block reason
-  test('AU11-5B-10: non-snapshot goal in waterfall → distinct block reason',function(){
-    var r=au11CrossGoalAllocate(goodInput({snapshotEligibleGoalIds:['alpha']})); // beta not snapshot-eligible
-    assert(r.cumulativeCeilingCents===null&&r.crossGoalBlockReasons.indexOf('non_snapshot_goal_in_waterfall')>=0,'non-snapshot goal → distinct block');
+  test('AU11-5B-10: outside-nine goal with no holding anchor → holding_anchor_missing (Step 5C)',function(){
+    var r=au11CrossGoalAllocate(goodInput({snapshotEligibleGoalIds:['alpha']})); // beta outside nine, no anchor captured
+    assert(r.cumulativeCeilingCents===null&&r.crossGoalBlockReasons.indexOf('holding_anchor_missing')>=0,'outside-nine, no anchor → block');
     assert(r.crossGoalBlockReasons.indexOf('goal_baseline_missing')<0,'distinct from goal_baseline_missing');
   });
   // 11. half-closed week → null, non-actionable
@@ -14511,8 +14511,11 @@ console.log('\n── Section 5G-1D Slice 4c: half-close repair confirmation ─
     assert(!/\bWD\b/.test(blk),'no raw WD');
     assert(!/runModel|maxSafeAmxSweep|amxSweepKeepsFloor|\blaFl\b/.test(blk),'no runModel / AMEX-lookahead bypass');
     assert(!/\btransfers\b|Register|createReservation|cash_commitments/.test(blk),'no Register / reservation bypass');
+    assert(!/goalSaved/.test(blk),'no runModel goalSaved authority (Step 5C)');
+    assert(!/\bamx\b|accountBalance|amxBalance/.test(blk),'no AMEX/account-balance per-goal authority (Step 5C)');
     assert(/closeoutState\(/.test(blk),'consumes the canonical closeoutState() adapter (no parallel closeout logic)');
     assert(/SNAPSHOT_ELIGIBLE_GOAL_IDS/.test(blk),'consumes the canonical SNAPSHOT_ELIGIBLE_GOAL_IDS (approved nine)');
+    assert(/_latestGoalSnapshot\(/.test(blk),'holding anchors consumed only via the canonical latest-snapshot accessor (Step 5C)');
     assert(!/Object\.keys\(goalSnapData\)\.forEach/.test(blk),'no historical-union eligibility derivation remains');
   });
   // ── Correction 1: canonical snapshot-eligibility (approved nine), not the historical union ──
@@ -14527,15 +14530,15 @@ console.log('\n── Section 5G-1D Slice 4c: half-close repair confirmation ─
       assert(SNAPSHOT_ELIGIBLE_GOAL_IDS.every(function(id){return inp.snapshotEligibleGoalIds.indexOf(id)>=0;}),'every canonical id present regardless of prior history');
     } finally { goalSnapData=_s; _goalSnapLoadStatus=_rl; }
   });
-  test('AU11-5B-CANON-OUTSIDER: a structurally ineligible waterfall id → non_snapshot_goal_in_waterfall',function(){
+  test('AU11-5B-CANON-OUTSIDER: an outside-nine id with no holding anchor → holding_anchor_missing (Step 5C)',function(){
     var r=au11CrossGoalAllocate(goodInput({
       waterfallRegular:['alaska','legacy_outsider'], waterfallVariable:['alaska','legacy_outsider'],
       registry:[{id:'alaska',priority:1,target:7000},{id:'legacy_outsider',priority:2,target:100}],
       snapshotEligibleGoalIds:SNAPSHOT_ELIGIBLE_GOAL_IDS.slice(),
-      fundedSnapshotDollars:{alaska:0, legacy_outsider:0},
+      fundedSnapshotDollars:{alaska:0, legacy_outsider:0},   // legacy_outsider has no latestSnapshotDollarsByGoal anchor
       akTargetDollars:7000, shadow:{qualificationComplete:true,safeCeiling:10,safeCeilingActionable:true,calculationError:null}
     }));
-    assert(r.cumulativeCeilingCents===null&&r.crossGoalBlockReasons.indexOf('non_snapshot_goal_in_waterfall')>=0,'outsider (not in the nine) → full block');
+    assert(r.cumulativeCeilingCents===null&&r.crossGoalBlockReasons.indexOf('holding_anchor_missing')>=0,'outside-nine, no anchor → full block');
   });
   test('AU11-5B-CANON-RECOGNIZED: a canonically eligible id is recognized with no prior history',function(){
     // preston_529 is in the nine; brand-new with only a current-week baseline row (no earlier weeks)
@@ -14555,7 +14558,7 @@ console.log('\n── Section 5G-1D Slice 4c: half-close repair confirmation ─
       fundedSnapshotDollars:{alaska:0}, akTargetDollars:7000, shadow:{qualificationComplete:true,safeCeiling:10,safeCeilingActionable:true,calculationError:null}
     })); // wendy_ira eligible but no baseline
     assert(r.cumulativeCeilingCents===null&&r.crossGoalBlockReasons.indexOf('goal_baseline_missing')>=0,'eligible-but-missing → goal_baseline_missing');
-    assert(r.crossGoalBlockReasons.indexOf('non_snapshot_goal_in_waterfall')<0,'distinct from non_snapshot_goal_in_waterfall');
+    assert(r.crossGoalBlockReasons.indexOf('holding_anchor_missing')<0,'in-nine baseline-missing is distinct from a holding-anchor block');
   });
   // ── Correction 2: au11CloseoutState is a thin adapter to the canonical closeoutState() ──
   test('AU11-5B-CLOSEOUT-EQUIV: au11CloseoutState maps the canonical closeoutState invariant (nine rows)',function(){
@@ -14585,6 +14588,90 @@ console.log('\n── Section 5G-1D Slice 4c: half-close repair confirmation ─
       reconData={}; goalSnapData={};
       assert(au11CloseoutState(6)==='unreconciled','no reconciliation → unreconciled');
     } finally { reconData=_r; goalSnapData=_s; _goalSnapLoadStatus=_rl; }
+  });
+  // ══════════ Step 5C — held-complete holding-goal anchors (outside the nine) ══════════
+  // Helper: a complete input whose waterfall includes an outside-nine holding goal (default fully anchored).
+  function heldInput(over){
+    var base=goodInput({
+      waterfallRegular:['alaska','wewe_rccl'], waterfallVariable:['alaska','wewe_rccl'],
+      registry:[{id:'alaska',priority:1,target:7000},{id:'wewe_rccl',priority:2,target:600}],
+      snapshotEligibleGoalIds:SNAPSHOT_ELIGIBLE_GOAL_IDS.slice(),  // alaska in nine; wewe_rccl outside
+      fundedSnapshotDollars:{alaska:0},                             // alaska baseline present
+      latestSnapshotDollarsByGoal:{wewe_rccl:600},                  // authoritative Week-5 correction anchor
+      akTargetDollars:7000,
+      shadow:{qualificationComplete:true,safeCeiling:100,safeCeilingActionable:true,calculationError:null}
+    });
+    if(over)Object.keys(over).forEach(function(k){base[k]=over[k];});
+    return base;
+  }
+  test('AU11-5C-01: outside-nine anchor == target → held_complete_pre1b, no block, alloc 0 / retained 0',function(){
+    var r=au11CrossGoalAllocate(heldInput());
+    var h=byId(r,'wewe_rccl');
+    assert(r.crossGoalComplete===true&&h.status==='held_complete_pre1b','held_complete_pre1b, allocator completes');
+    assert(h.allocatedCents===0&&h.retainedCents===0&&h.sliceCents===0&&h.remainingNeedCents===0&&h.fundedSnapshotCents===60000,'no allocation; funded = anchor');
+  });
+  test('AU11-5C-02: outside-nine anchor > target → held_complete_pre1b, no allocation',function(){
+    var r=au11CrossGoalAllocate(heldInput({latestSnapshotDollarsByGoal:{wewe_rccl:650}}));
+    var h=byId(r,'wewe_rccl');
+    assert(r.crossGoalComplete===true&&h.status==='held_complete_pre1b'&&h.allocatedCents===0&&h.retainedCents===0,'over-target anchor → held_complete, no allocation');
+  });
+  test('AU11-5C-03: outside-nine anchor missing → full block (holding_anchor_missing)',function(){
+    var r=au11CrossGoalAllocate(heldInput({latestSnapshotDollarsByGoal:{}}));
+    assert(r.cumulativeCeilingCents===null&&r.crossGoalActionable===false&&r.crossGoalBlockReasons.indexOf('holding_anchor_missing')>=0,'missing anchor → block');
+  });
+  test('AU11-5C-04: outside-nine anchor below target → full block (holding_anchor_below_target)',function(){
+    var r=au11CrossGoalAllocate(heldInput({latestSnapshotDollarsByGoal:{wewe_rccl:599.99}}));
+    assert(r.cumulativeCeilingCents===null&&r.crossGoalBlockReasons.indexOf('holding_anchor_below_target')>=0,'below-target anchor → block');
+  });
+  test('AU11-5C-05: outside-nine goal can NEVER be allocated (even fully anchored w/ ample ceiling)',function(){
+    var r=au11CrossGoalAllocate(heldInput({shadow:{qualificationComplete:true,safeCeiling:100000,safeCeilingActionable:true,calculationError:null}}));
+    var h=byId(r,'wewe_rccl');
+    assert(h.allocatedCents===0&&h.retainedCents===0,'outside-nine goal never receives a positive allocation or retention');
+    r.perGoalAllocation.forEach(function(p){ if(SNAPSHOT_ELIGIBLE_GOAL_IDS.indexOf(p.id)<0) assert(p.allocatedCents===0&&p.retainedCents===0,p.id+' outside-nine must stay 0/0'); });
+  });
+  test('AU11-5C-06: RCCL + DCL both anchored → both held_complete_pre1b; junior nine-goal alloc correct; conservation exact',function(){
+    var r=au11CrossGoalAllocate(goodInput({
+      waterfallRegular:['alaska','wewe_rccl','wewe_dcl','bailey_529'], waterfallVariable:['alaska','wewe_rccl','wewe_dcl','bailey_529'],
+      registry:[{id:'alaska',priority:1,target:7000},{id:'wewe_rccl',priority:2,target:600},{id:'wewe_dcl',priority:3,target:500},{id:'bailey_529',priority:4,target:1000}],
+      snapshotEligibleGoalIds:SNAPSHOT_ELIGIBLE_GOAL_IDS.slice(),
+      fundedSnapshotDollars:{alaska:7000, bailey_529:0},          // alaska complete; bailey needs funding
+      latestSnapshotDollarsByGoal:{wewe_rccl:600, wewe_dcl:500},
+      akTargetDollars:7000, shadow:{qualificationComplete:true,safeCeiling:15,safeCeilingActionable:true,calculationError:null}
+    }));
+    assert(byId(r,'wewe_rccl').status==='held_complete_pre1b'&&byId(r,'wewe_dcl').status==='held_complete_pre1b','both cruise goals held_complete');
+    assert(byId(r,'alaska').status==='zero_need'&&byId(r,'bailey_529').allocatedCents===1500,'junior eligible goal (bailey) gets the full $15; holding goals consumed no ceiling');
+    assert(r.cumulativeCeilingCents===1500&&r.allocatedTotalCents+r.retainedHeadroomCents+r.unallocatedHeadroomCents===1500&&r.conservation.balanced,'conservation exact');
+  });
+  test('AU11-5C-07: a future-week outsider row cannot qualify (capture uses latest ≤ baselineWeek)',function(){
+    var _s=goalSnapData,_rl=_goalSnapLoadStatus;
+    try{
+      goalSnapData={9:{wewe_rccl:600}}; _goalSnapLoadStatus='loaded';   // only a FUTURE (wk9) row exists
+      var inp=au11BuildCrossGoalInput(7,{qualificationComplete:true,safeCeiling:0,safeCeilingActionable:true,calculationError:null},0);
+      assert(inp.latestSnapshotDollarsByGoal.wewe_rccl===undefined,'future-week snapshot is NOT captured at baselineWeek 7');
+    } finally { goalSnapData=_s; _goalSnapLoadStatus=_rl; }
+  });
+  test('AU11-5C-08: latest-snapshot precedence — newest row ≤ baselineWeek wins in the capture',function(){
+    var _s=goalSnapData,_rl=_goalSnapLoadStatus;
+    try{
+      goalSnapData={5:{wewe_rccl:600}, 6:{wewe_rccl:620}, 9:{wewe_rccl:999}}; _goalSnapLoadStatus='loaded';
+      var inp=au11BuildCrossGoalInput(7,{qualificationComplete:true,safeCeiling:0,safeCeilingActionable:true,calculationError:null},0);
+      assert(inp.latestSnapshotDollarsByGoal.wewe_rccl===620,'newest ≤ baselineWeek (wk6=620) wins; future wk9 ignored');
+    } finally { goalSnapData=_s; _goalSnapLoadStatus=_rl; }
+  });
+  test('AU11-5C-09: allocator uses no runModel/goalSaved/Register/account-balance authority (captured input only)',function(){
+    // The pure allocator receives ONLY the captured input; holding funded comes from latestSnapshotDollarsByGoal.
+    var r=au11CrossGoalAllocate(heldInput({latestSnapshotDollarsByGoal:{wewe_rccl:600}}));
+    assert(byId(r,'wewe_rccl').fundedSnapshotCents===60000,'held funded sourced from captured snapshot anchor, not model/account state');
+    var src=au11CrossGoalAllocate.toString();
+    assert(!/goalSaved|runModel|reconData|goalSnapData|commitmentData/.test(src),'allocator body reads no runModel/goalSaved/global snapshot/Register state');
+  });
+  test('AU11-5C-10: recurring nine-goal closeout contract unchanged (constant + count sites intact)',function(){
+    assert(JSON.stringify(SNAPSHOT_ELIGIBLE_GOAL_IDS)===JSON.stringify(['adam_ira','wendy_ira','wendy_sep','alaska','bailey_529','bryce_529','preston_529','bryce_vehicle','christmas_cruise']),'the approved nine unchanged');
+    assert(SNAPSHOT_ELIGIBLE_GOAL_IDS.indexOf('wewe_rccl')<0&&SNAPSHOT_ELIGIBLE_GOAL_IDS.indexOf('wewe_dcl')<0,'RCCL/DCL NOT added to the nine');
+    var brm=html.slice(html.indexOf('function buildCloseoutSnapshotRows('),html.indexOf('function _eligibleSnapCount('));
+    assert(/rows\.length!==9/.test(brm),'buildCloseoutSnapshotRows still enforces exactly 9 rows');
+    assert(/p_expected_count:9/.test(html),'submitCloseout still sends p_expected_count:9');
+    assert(/snapshot_count===9/.test(html),'closeout success contract still requires snapshot_count===9');
   });
   // frozen surfaces unchanged after Step 5B
   test('AU11-5B-FROZEN: runModel / netting / resolver byte-frozen after Step 5B',function(){
