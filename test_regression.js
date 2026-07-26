@@ -13814,6 +13814,79 @@ console.log('\n── Section 5G-1D Slice 4c: half-close repair confirmation ─
   });
 })();
 
+// ══════════════════ AU-11 STEP 4A-1b — STABLE EDIT-WEEK EVENT IDENTITY ══════════════════
+// Pure identity primitive (write-path); no classifier, no trajectory, no authority change.
+(function(){
+  // GEN-1: a genuinely new event receives one opaque UUID eventId
+  test('AU11-EVID-GEN-1: au11NewEventId returns one opaque UUID',function(){
+    var id=au11NewEventId();
+    assert(typeof id==='string'&&/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id),'must be a UUID, got '+id);
+  });
+  // GEN-2: two new events receive different IDs
+  test('AU11-EVID-GEN-2: two new events get different IDs',function(){
+    assert(au11NewEventId()!==au11NewEventId(),'two generated IDs must differ');
+  });
+  // PRESERVE-1: an existing identified event retains its exact ID when a field changes (au11EventForSave)
+  test('AU11-EVID-PRESERVE-1: existing eventId preserved verbatim through an edit',function(){
+    var out=au11EventForSave({l:'Wendy paycheck (edited)',t:'in',a:2152.5,tx:false,d:'',eid:'abc-123'});
+    assert(out.eventId==='abc-123','eventId must be preserved verbatim, got '+out.eventId);
+  });
+  // PRESERVE-2: eventId is not regenerated — au11EventForSave never calls the generator
+  test('AU11-EVID-PRESERVE-2: identified event never gets a second/new ID',function(){
+    var out=au11EventForSave({l:'x',t:'ob',a:-100,tx:false,eid:'stable-XYZ'});
+    assert(out.eventId==='stable-XYZ','identified event must keep its ID (no regeneration)');
+  });
+  // SERIALIZE: eventId survives JSON serialization exactly (save → reload → resave)
+  test('AU11-EVID-SERIALIZE: eventId survives events_json serialization exactly',function(){
+    var ev=au11EventForSave({l:'AMEX Gold statement',t:'ob',a:-11501.12,tx:false,d:'Aug 18',eid:'uuid-keepme'});
+    var round=JSON.parse(JSON.stringify([ev]))[0];
+    assert(round.eventId==='uuid-keepme'&&round.a===-11501.12&&round.d==='Aug 18','round-trip must preserve eventId+fields: '+JSON.stringify(round));
+  });
+  // LEGACY-1: a legacy row (empty eid) is NOT backfilled — no eventId field added
+  test('AU11-EVID-LEGACY-1: legacy id-less event is not backfilled',function(){
+    var out=au11EventForSave({l:'Rent',t:'ob',a:-2000,tx:false,eid:''});
+    assert(!('eventId' in out),'empty eid must not create an eventId field (no backfill): '+JSON.stringify(out));
+  });
+  // LEGACY-2: rendering a legacy event stashes empty data-eid (so a mere open/save cannot backfill it)
+  test('AU11-EVID-LEGACY-2: au11EventIdForRow returns empty for a legacy event, its id for an identified one',function(){
+    assert(au11EventIdForRow({l:'x',t:'ob',a:-1})==='','legacy event → empty data-eid');
+    assert(au11EventIdForRow({l:'x',t:'ob',a:-1,eventId:'keep'})==='keep','identified event → its id');
+    assert(au11EventIdForRow({l:'x',t:'ob',a:-1,eventId:''})==='','empty-string id treated as none');
+  });
+  // DELETE-RECREATE: recreating an event yields a fresh id (generation is per new row)
+  test('AU11-EVID-DELETE-RECREATE: recreated event gets a new id',function(){
+    var first=au11NewEventId(); var recreated=au11NewEventId();
+    assert(first!==recreated,'recreated event must get a new id');
+  });
+  // WIRING: the DOM write path is wired to the pure primitive (source-structure inventory)
+  test('AU11-EVID-WIRING: addEditEvent/_readEditEvents/renderEditDrawer use the eventId primitive',function(){
+    var add=html.slice(html.indexOf('function addEditEvent('),html.indexOf('function _readEditEvents('));
+    assert(/au11NewEventId\(\)/.test(add)&&/data-eid/.test(add)&&/secure ID source/.test(add),'addEditEvent must generate via au11NewEventId, set data-eid, and fail safe');
+    assert(!/Date\.now\(|Math\.random\(/.test(add),'addEditEvent id path must not use Date.now/Math.random');
+    var read=html.slice(html.indexOf('function _readEditEvents('),html.indexOf('async function saveWeekEdits('));
+    assert(/getAttribute\('data-eid'\)/.test(read)&&/au11EventForSave\(/.test(read),'_readEditEvents must read data-eid and use au11EventForSave');
+    var render=html.slice(html.indexOf('function renderEditDrawer('),html.indexOf('function renderEditDrawer(')+4000);
+    assert(/data-eid="'\+au11EventIdForRow\(ev\)\+'"/.test(render),'renderEditDrawer must stash data-eid via au11EventIdForRow');
+  });
+  // NO-LIVE: the eventId primitive is not referenced by runModel or the AU-11 shadow validator
+  test('AU11-EVID-NOLIVE: eventId primitive not referenced by runModel or the AU-11 shadow block',function(){
+    var rm=html.slice(html.indexOf('function runModel('),html.indexOf('\nfunction ',html.indexOf('function runModel(')+20));
+    var shadow=html.slice(html.indexOf('// AU11-BEGIN'),html.indexOf('// AU11-END'));
+    ['au11NewEventId','au11EventForSave','au11EventIdForRow'].forEach(function(fn){
+      assert(rm.indexOf(fn)<0,fn+' must not appear in runModel');
+      assert(shadow.indexOf(fn)<0,fn+' must not appear in the AU-11 shadow block');
+    });
+  });
+  // FROZEN: frozen surfaces still byte-identical after the write-path change
+  test('AU11-EVID-FROZEN: runModel / netting / resolver byte-frozen after Step 4A-1b',function(){
+    var crypto2=require('crypto');
+    function bh(tok){var i=html.indexOf(tok);var j=html.indexOf('\nfunction ',i+tok.length);var s=html.slice(i,j<0?html.length:j);return s.length+'/'+crypto2.createHash('sha256').update(s).digest('hex').slice(0,16);}
+    assert(bh('function runModel(')==='32840/5181b79cbba47e68','runModel changed: '+bh('function runModel('));
+    assert(bh('function computeGoalTransferNetting(')==='10309/4670447ce489dd8b','netting changed');
+    assert(bh('function resolveWeekTransfers(')==='5583/20d17438996ac8ba','resolver changed');
+  });
+})();
+
 console.log('\n╔══════════════════════════════════════════════════════════════╗');
 console.log('║                       RESULTS                               ║');
 console.log('╚══════════════════════════════════════════════════════════════╝');

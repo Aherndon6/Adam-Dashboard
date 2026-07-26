@@ -4098,10 +4098,30 @@ function _weekDayOpts(weekNum,selectedD){
   }
   return opts;
 }
+// ── AU-11 Step 4A-1b — stable Edit-Week event identity primitive ────────────
+// AU11-EVID-BEGIN
+// Opaque eventId assigned ONCE to a genuinely-new Edit-Week event and preserved verbatim through
+// edits, recalcs, saves, reloads, and JSON serialization. Never derived from position/label/amount/
+// date/contents; never regenerated on reopen or resave. Legacy id-less events are NOT auto-backfilled
+// — they stay unidentified (and fail closed in the later AU-11 classifier). Write-path identity only:
+// touches no frozen surface, no model output, and no AU-11 authority behavior.
+function au11NewEventId(){
+  return (typeof crypto!=='undefined'&&crypto&&typeof crypto.randomUUID==='function')?crypto.randomUUID():null;
+}
+function au11EventIdForRow(ev){ return (ev&&typeof ev.eventId==='string'&&ev.eventId)?ev.eventId:''; }
+function au11EventForSave(vals){
+  var ev={l:vals.l,t:vals.t,a:vals.a,tx:vals.tx};
+  if(vals.d)ev.d=vals.d;
+  if(typeof vals.eid==='string'&&vals.eid)ev.eventId=vals.eid;   // preserve a non-empty id only — never backfill/regenerate
+  return ev;
+}
+// AU11-EVID-END
 function addEditEvent(){
   if(!canWriteFinancials())return;
   const list=document.getElementById('ev-edit-list');if(!list)return;
-  const i=list.querySelectorAll('.ev-edit-row').length;const div=document.createElement('div');div.className='ev-edit-row';div.setAttribute('data-idx',i);
+  const eid=au11NewEventId();
+  if(!eid){const de=document.getElementById('drawer-error');if(de){de.textContent='Cannot add event: a secure ID source (crypto.randomUUID) is unavailable.';de.style.display='block';}return;} // fail safe — never a weak/timestamp id
+  const i=list.querySelectorAll('.ev-edit-row').length;const div=document.createElement('div');div.className='ev-edit-row';div.setAttribute('data-idx',i);div.setAttribute('data-eid',eid);
   div.innerHTML='<input class="ev-edit-lbl" type="text" placeholder="Description (e.g. Wendy paycheck)">'+
     '<select class="ev-edit-type"><option value="in">Inflow</option><option value="ob">Outflow</option></select>'+
     '<input class="ev-edit-amt" type="number" step="0.01" min="0" value="0">'+
@@ -4120,8 +4140,8 @@ function _readEditEvents(){
     const t=typ.value;const raw=parseFloat(amt.value)||0;const a=t==='ob'?-Math.abs(raw):Math.abs(raw);
     const tx=t==='in'&&!!txCb&&txCb.checked;
     const d=dateSel?dateSel.value:'';
-    var ev={l,t,a,tx};if(d)ev.d=d;
-    events.push(ev);
+    const eid=(row.getAttribute&&row.getAttribute('data-eid'))||'';   // preserve existing eventId; '' → legacy/unidentified (not backfilled)
+    events.push(au11EventForSave({l:l,t:t,a:a,tx:tx,d:d,eid:eid}));
   });
   return events;
 }
@@ -6824,7 +6844,7 @@ function renderEditDrawer(){
     drawerEvs.forEach(function(ev,i){
       var safeL=(ev.l||'').replace(/"/g,'&quot;');
       var isPreTaxed=ev.tx||(ev.t==='in'&&grossFromCt>0&&Math.abs(Math.abs(ev.a)-grossFromCt)<1);
-      evRows+='<div class="ev-edit-row" data-idx="'+i+'">'+
+      evRows+='<div class="ev-edit-row" data-idx="'+i+'" data-eid="'+au11EventIdForRow(ev)+'">'+
         '<input class="ev-edit-lbl" type="text" value="'+safeL+'" placeholder="Description">'+
         '<select class="ev-edit-type"><option value="in"'+(ev.t==='in'?' selected':'')+'>Inflow</option><option value="ob"'+(ev.t==='ob'?' selected':'')+'>Outflow</option></select>'+
         '<input class="ev-edit-amt" type="number" step="0.01" min="0" value="'+Math.abs(ev.a)+'">'+
