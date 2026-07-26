@@ -1742,6 +1742,35 @@ function maxSafeAmxSweep(proposedAmt,curChk,weekNum,ewd,floor,ahead){
   return best>=MIN_XFR?best:0;
 }
 
+// ══════════════════ AU-11 ADAPTER — STEP 1 (authoritative base + D5) ══════════════════
+// AU11-BEGIN
+// NON-AUTHORITATIVE and NOT PROMOTED. These primitives are not called by runModel or by any live
+// recommendation / render / write path, so adding them changes no output (adapter-disabled identity).
+// runModel, computeGoalTransferNetting and resolveWeekTransfers remain byte-frozen; the legacy laFl
+// and the getCashAvailabilityEngine call-site inside runModel are deliberately left untouched — they
+// are the non-authoritative legacy path AU-11 will supersede in later, separately-approved steps.
+//
+// D1b — shared authoritative current-week checking base. Returns the reconciled ending when the week
+// is reconciled, else the caller's projected checking basis. Single decision the AU-11 immediate check,
+// shadow-validator start, and (a later step) the CAE base consume; mirrors the value CAE computes today.
+function authoritativeCurrentChk(num, projectedChk){
+  var rec=(typeof reconData!=='undefined'&&reconData)?reconData[num]:null;
+  return (rec!=null&&rec.chk!=null)?rec.chk:projectedChk;
+}
+// D5 — AU-11 STEP 1 DIAGNOSTIC PROBE (not the authoritative validator).
+// Diagnostic only. Uses the legacy five-week sweep walk to prove authoritative-base and effectiveWD
+// wiring. It is not the AU-11 authoritative validator and must never be promoted.
+// Consumes effectiveWD (override-aware) ONLY, never raw WD, and evaluates from the authoritative base
+// (D1b). The full-remaining-horizon validator that replaces the five-week walk is a later,
+// separately-approved step.
+function au11Step1ProbeSweepCeiling(num, projectedChk, proposed, floor){
+  var base=authoritativeCurrentChk(num, projectedChk);
+  var eff=reconEffectiveWD();               // effectiveWD only (D5) — no raw-WD consumer in this path
+  return maxSafeAmxSweep(proposed, base, num, eff, floor, AMX_SWEEP_LOOKAHEAD_WEEKS);
+}
+// AU11-END
+// ═══════════════════════════════════════════════════════════════════════════════════════
+
 // ── runModel — full waterfall-integrated model ─────────────────────────────
 // ── Phase 5F-1: Cash Availability Engine — helper functions ─────────────────
 // Verbatim from docs/phase-5f-1-spec.md "isReservedAsOf()" section. Do not

@@ -13538,6 +13538,66 @@ console.log('\n── Section 5G-1D Slice 4c: half-close repair confirmation ─
   });
 })();
 
+// ══════════════════ AU-11 STEP 1 — authoritative base (D1b) + D5 correction ══════════════════
+// Adapter-only: runModel/laFl/CAE call-site untouched; these test the NEW non-authoritative primitives.
+(function(){
+  // D1b-1: authoritativeCurrentChk returns the reconciled anchor when the week is reconciled
+  test('AU11-D1b-1: authoritativeCurrentChk returns reconciled ending for a reconciled week',function(){
+    var _r=reconData; reconData={7:{chk:11873.41}};
+    try{ assert(authoritativeCurrentChk(7,17561.09)===11873.41,'reconciled week must use reconData[num].chk, got '+authoritativeCurrentChk(7,17561.09)); }
+    finally{reconData=_r;}
+  });
+  // D1b-2: authoritativeCurrentChk falls back to the projected basis for an unreconciled week
+  test('AU11-D1b-2: authoritativeCurrentChk returns projected basis for an unreconciled week',function(){
+    var _r=reconData; reconData={};
+    try{ assert(authoritativeCurrentChk(7,17561.09)===17561.09,'unreconciled week must use projected chk, got '+authoritativeCurrentChk(7,17561.09)); }
+    finally{reconData=_r;}
+  });
+  // Synthetic effectiveWD: only wk11 carries a large obligation (net -9184.62), like the real cycle.
+  var SYNTH=[[8,'',[],[]],[9,'',[],[]],[10,'',[],[]],[11,'',[5816.5],[11501.12,3500]],[12,'',[2152.5],[]]];
+  // wk7 corrected-base fixture: the Step 1 PROBE returns $0 for this known fixture under the
+  // authoritative base; the projected (buggy) base returns >0 (proves D1b, not the final authority).
+  test('AU11-WK7-1: Step 1 probe returns $0 for the corrected-base known fixture; projected base returns >0 (D1b)',function(){
+    var _r=reconData,_f=reconEffectiveWD;
+    reconData={6:{chk:14505.40},7:{chk:11873.41}};
+    reconEffectiveWD=function(){return SYNTH;};
+    try{
+      var auth=au11Step1ProbeSweepCeiling(7,17561.09,7500,OP_FL);            // base=11873.41 (reconciled)
+      var projected=maxSafeAmxSweep(7500,17561.09,7,SYNTH,OP_FL,AMX_SWEEP_LOOKAHEAD_WEEKS); // buggy base
+      assert(auth===0,'Step 1 probe (authoritative base) must return $0 for this fixture, got '+auth);
+      assert(projected>0,'projected-base ceiling must be >0 (demonstrates the D1b defect), got '+projected);
+    }finally{reconData=_r;reconEffectiveWD=_f;}
+  });
+  // D5-1: the Step 1 probe consumes effectiveWD (swapping reconEffectiveWD changes the result)
+  test('AU11-D5-1: Step 1 probe consumes effectiveWD (not raw WD)',function(){
+    var _r=reconData,_f=reconEffectiveWD;
+    reconData={7:{chk:20000}};
+    try{
+      reconEffectiveWD=function(){return [[8,'',[],[]],[9,'',[],[]],[10,'',[],[]],[11,'',[],[11501.12]],[12,'',[],[]]];};
+      var withBigBill=au11Step1ProbeSweepCeiling(7,20000,5000,OP_FL);
+      reconEffectiveWD=function(){return [[8,'',[],[]],[9,'',[],[]],[10,'',[],[]],[11,'',[],[]],[12,'',[],[]]];};
+      var noBill=au11Step1ProbeSweepCeiling(7,20000,5000,OP_FL);
+      assert(noBill>withBigBill,'ceiling must respond to effectiveWD contents (noBill '+noBill+' must exceed withBigBill '+withBigBill+')');
+    }finally{reconData=_r;reconEffectiveWD=_f;}
+  });
+  // D5-2 (static): the AU-11 Step 1 block contains ZERO raw-WD consumers
+  test('AU11-D5-2: AU-11 Step 1 block has zero raw-WD consumers (inventory)',function(){
+    var a=html.indexOf('// AU11-BEGIN'),b=html.indexOf('// AU11-END');
+    assert(a>=0&&b>a,'AU11-BEGIN/END markers present');
+    var code=html.slice(a,b).replace(/\/\/[^\n]*/g,'');   // strip line comments — inventory checks CODE, not prose
+    var stripped=code.replace(/reconEffectiveWD/g,'').replace(/effectiveWD/g,'');
+    assert(!/\bWD\b/.test(stripped),'AU-11 authority path must not reference raw WD');
+  });
+  // FROZEN re-affirm: runModel/netting/resolver bodies unchanged by the AU-11 insertion
+  test('AU11-FROZEN-1: runModel / computeGoalTransferNetting / resolveWeekTransfers byte-frozen after AU-11 insertion',function(){
+    var crypto=require('crypto');
+    function bh(tok){var i=html.indexOf(tok);var j=html.indexOf('\nfunction ',i+tok.length);var s=html.slice(i,j<0?html.length:j);return s.length+'/'+crypto.createHash('sha256').update(s).digest('hex').slice(0,16);}
+    assert(bh('function runModel(')==='32840/5181b79cbba47e68','runModel changed: '+bh('function runModel('));
+    assert(bh('function computeGoalTransferNetting(')==='10309/4670447ce489dd8b','netting changed: '+bh('function computeGoalTransferNetting('));
+    assert(bh('function resolveWeekTransfers(')==='5583/20d17438996ac8ba','resolver changed: '+bh('function resolveWeekTransfers('));
+  });
+})();
+
 console.log('\n╔══════════════════════════════════════════════════════════════╗');
 console.log('║                       RESULTS                               ║');
 console.log('╚══════════════════════════════════════════════════════════════╝');
