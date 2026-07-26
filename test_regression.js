@@ -13682,6 +13682,138 @@ console.log('\n── Section 5G-1D Slice 4c: half-close repair confirmation ─
   });
 })();
 
+// ══════════════════ AU-11 STEP 3 — CORRECT FULL CANDIDATE TRAJECTORY ══════════════════
+// Adds candidate reflect-forward (once), ct/ca channels, and per-week effective floors.
+(function(){
+  // S3-WK7-BASE: still evaluates from the reconciled $11,873.41 base
+  test('AU11-S3-WK7-BASE: trajectory starts from the reconciled $11,873.41 base',function(){
+    var _r=reconData,_f=reconEffectiveWD; reconData={7:{chk:11873.41}}; reconEffectiveWD=function(){return [[8,'',[],[]]];};
+    try{ assert(au11ShadowValidate(7,17561.09,5000,OP_FL).base===11873.41,'base must be reconciled 11873.41'); }
+    finally{reconData=_r;reconEffectiveWD=_f;}
+  });
+  // S3-REFLECT: candidate reflect-forward EXACTLY ONCE — every future week differs by exactly the candidate
+  test('AU11-S3-REFLECT: candidate reflect-forward occurs exactly once (no omission, no duplicate)',function(){
+    var _r=reconData,_f=reconEffectiveWD; reconData={7:{chk:20000}};
+    reconEffectiveWD=function(){return [[8,'',[100],[50]],[9,'',[],[200]],[10,'',[300],[]]];};
+    try{
+      var c0=au11ShadowValidate(7,20000,0,OP_FL), cX=au11ShadowValidate(7,20000,3000,OP_FL);
+      assert(c0.trajectory.length===cX.trajectory.length,'same trajectory length');
+      for(var i=0;i<c0.trajectory.length;i++){
+        var d=Math.round((c0.trajectory[i].chk-cX.trajectory[i].chk)*100)/100;
+        assert(d===3000,'week '+c0.trajectory[i].wk+' must differ by exactly the candidate 3000, got '+d);
+      }
+    }finally{reconData=_r;reconEffectiveWD=_f;}
+  });
+  // S3-CT: ct-only decreases checking at the correct week by exactly ct
+  test('AU11-S3-CT: ct channel decreases checking at its week by exactly ct',function(){
+    var _r=reconData,_f=reconEffectiveWD; reconData={7:{chk:20000}};
+    try{
+      reconEffectiveWD=function(){return [[8,'',[],[],null,500,0]];}; var withCt=au11ShadowValidate(7,20000,0,OP_FL);
+      reconEffectiveWD=function(){return [[8,'',[],[],null,0,0]];};   var noCt=au11ShadowValidate(7,20000,0,OP_FL);
+      var w8c=withCt.trajectory.find(function(t){return t.wk===8;}).chk, w8n=noCt.trajectory.find(function(t){return t.wk===8;}).chk;
+      assert(w8c===19500&&Math.round((w8n-w8c)*100)/100===500,'ct must decrease wk8 by 500: '+JSON.stringify({withCt:w8c,noCt:w8n}));
+    }finally{reconData=_r;reconEffectiveWD=_f;}
+  });
+  // S3-CA: ca-only decreases checking at the correct week by exactly ca
+  test('AU11-S3-CA: ca channel decreases checking at its week by exactly ca',function(){
+    var _r=reconData,_f=reconEffectiveWD; reconData={7:{chk:20000}};
+    try{
+      reconEffectiveWD=function(){return [[8,'',[],[],null,0,700]];}; var withCa=au11ShadowValidate(7,20000,0,OP_FL);
+      var w8=withCa.trajectory.find(function(t){return t.wk===8;}).chk;
+      assert(w8===19300,'ca must decrease wk8 by 700 → 19300, got '+w8);
+    }finally{reconData=_r;reconEffectiveWD=_f;}
+  });
+  // S3-COMBINED: w[2]/w[3]/ct/ca applied once each — commission pass-through nets ~0, no double count
+  test('AU11-S3-COMBINED: combined w[2]/w[3]/ct/ca has no double counting',function(){
+    var _r=reconData,_f=reconEffectiveWD; reconData={7:{chk:20000}};
+    reconEffectiveWD=function(){return [[6,'',[1767.94,2152.5],[5500],null,707.18,1060.76]];}; // wk6-shaped
+    try{
+      var res=au11ShadowValidate(7,20000,0,OP_FL);
+      var w6=res.trajectory.find(function(t){return t.wk===6;});
+      // wk6 is not > num(7) → not projected; use num=5 so wk6 is a future week
+      reconData={5:{chk:20000}};
+      var res2=au11ShadowValidate(5,20000,0,OP_FL);
+      var e=res2.trajectory.find(function(t){return t.wk===6;}).chk;
+      // 20000 +1767.94 +2152.5 -5500 -707.18 -1060.76 = 16652.50 (commission nets 0; only paycheck-AMEX)
+      assert(e===16652.50,'combined channels must apply once each → 16652.50, got '+e);
+    }finally{reconData=_r;reconEffectiveWD=_f;}
+  });
+  // S3-FLOOR-UP: a per-week floor INCREASE creates a breach a constant floor would miss
+  test('AU11-S3-FLOOR-UP: per-week floor increase creates a breach a constant floor misses',function(){
+    var _r=reconData,_f=reconEffectiveWD; reconData={7:{chk:8000}}; reconEffectiveWD=function(){return [[8,'',[],[]]];};
+    try{
+      var constF=au11ShadowValidate(7,8000,0,OP_FL);                                  // floor 6500 → 8000 safe
+      var perWk=au11ShadowValidate(7,8000,0,{8:9000,default:OP_FL});                  // floor 9000 at wk8 → breach
+      assert(constF.firstBreachWeek===null,'constant floor must NOT breach, got '+constF.firstBreachWeek);
+      assert(perWk.firstBreachWeek===8&&perWk.floorAtFirstBreach===9000,'per-week floor 9000 must breach wk8: '+JSON.stringify({fb:perWk.firstBreachWeek,f:perWk.floorAtFirstBreach}));
+    }finally{reconData=_r;reconEffectiveWD=_f;}
+  });
+  // S3-FLOOR-DOWN: a per-week floor DECREASE does not preserve a stale higher-floor block
+  // Base 7000 is safe at the candidate week under both floors; wk8's floor is the sole discriminator.
+  test('AU11-S3-FLOOR-DOWN: per-week floor decrease does not preserve a stale higher-floor block',function(){
+    var _r=reconData,_f=reconEffectiveWD; reconData={7:{chk:7000}}; reconEffectiveWD=function(){return [[8,'',[],[]]];};
+    try{
+      var high=au11ShadowValidate(7,7000,0,{8:9000,default:6000});   // wk8 floor 9000 → 7000 breaches at wk8
+      var low =au11ShadowValidate(7,7000,0,{8:6000,default:6000});   // wk8 floor lowered to 6000 → 7000 safe
+      assert(high.firstBreachWeek===8&&high.floorAtFirstBreach===9000,'high wk8 floor must breach: '+JSON.stringify({fb:high.firstBreachWeek,f:high.floorAtFirstBreach}));
+      assert(low.firstBreachWeek===null,'lowering wk8 floor must remove the block (no stale higher-floor), got '+low.firstBreachWeek);
+    }finally{reconData=_r;reconEffectiveWD=_f;}
+  });
+  // S3-WK13: wk13 breach still detected under the upgraded trajectory (with new schema field)
+  test('AU11-S3-WK13: wk13 breach still detected under the upgraded trajectory',function(){
+    var _r=reconData,_f=reconEffectiveWD;
+    var eff=[[8,'',[],[]],[9,'',[],[]],[10,'',[],[]],[11,'',[],[]],[12,'',[],[]],[13,'',[],[9000]],[14,'',[],[]]];
+    reconData={7:{chk:11873.41}}; reconEffectiveWD=function(){return eff;};
+    try{ var res=au11ShadowValidate(7,17561.09,3000,OP_FL); assert(res.firstBreachWeek===13&&res.floorAtFirstBreach===OP_FL,'wk13 breach at floor OP_FL: '+JSON.stringify({fb:res.firstBreachWeek,f:res.floorAtFirstBreach})); }
+    finally{reconData=_r;reconEffectiveWD=_f;}
+  });
+  // S3-WK26: A/B breach detected; C not blocked — discrimination preserved under the upgraded trajectory
+  test('AU11-S3-WK26: wk26 A/B detected while C not blocked (upgraded trajectory)',function(){
+    var _r=reconData,_f=reconEffectiveWD; var effAB=[],effC=[],wk;
+    for(wk=8;wk<=27;wk++) effAB.push([wk,'',[],[wk===26?7000:0]]);
+    for(wk=8;wk<=27;wk++) effC.push([wk,'',[wk===26?7000:0],[wk===26?7000:0]]);
+    reconData={7:{chk:11873.41}};
+    try{
+      reconEffectiveWD=function(){return effAB;}; var ab=au11ShadowValidate(7,17561.09,0,OP_FL);
+      reconEffectiveWD=function(){return effC;};  var c=au11ShadowValidate(7,17561.09,0,OP_FL);
+      assert(ab.firstBreachWeek===26,'A/B wk26 breach must be detected, got '+ab.firstBreachWeek);
+      assert(c.firstBreachWeek===null&&c.candidateSafe===true,'C must not be blocked at wk26');
+    }finally{reconData=_r;reconEffectiveWD=_f;}
+  });
+  // S3-RAWWD: AU-11 block (Step 1+2+3) still has zero raw-WD consumers
+  test('AU11-S3-RAWWD: AU-11 block has zero raw-WD consumers after Step 3',function(){
+    var a=html.indexOf('// AU11-BEGIN'),b=html.indexOf('// AU11-END');
+    var code=html.slice(a,b).replace(/\/\/[^\n]*/g,'').replace(/reconEffectiveWD/g,'').replace(/effectiveWD/g,'');
+    assert(!/\bWD\b/.test(code),'AU-11 block must not reference raw WD');
+  });
+  // S3-NOLIVE: no live path invokes the Step 3 validator or its helpers
+  test('AU11-S3-NOLIVE: Step 3 validator + helpers invoked by no live path',function(){
+    var a=html.indexOf('// AU11-BEGIN'),b=html.indexOf('// AU11-END'); var outside=html.slice(0,a)+html.slice(b);
+    ['au11ShadowValidate','au11ShadowKeepsFloor','au11ShadowCeiling','au11FloorAt'].forEach(function(fn){
+      assert(outside.indexOf(fn)<0,fn+' must not be referenced outside the AU-11 block');
+    });
+  });
+  // S3-NONAUTH: still non-authoritative + incomplete; deferredControls updated accurately
+  test('AU11-S3-NONAUTH: result non-authoritative + incomplete; reflect-forward & ct/ca removed from deferred',function(){
+    var _r=reconData,_f=reconEffectiveWD; reconData={7:{chk:11873.41}}; reconEffectiveWD=function(){return [[8,'',[],[]]];};
+    try{
+      var res=au11ShadowValidate(7,17561.09,1000,OP_FL);
+      assert(res.authoritative===false&&res.complete===false,'must remain non-authoritative + incomplete');
+      var d=res.deferredControls;
+      assert(d.indexOf('candidate_reflect_forward')<0&&d.indexOf('ct_ca_channels')<0,'completed controls must be removed from deferredControls');
+      assert(d.indexOf('promotion')>=0&&d.indexOf('write_guard')>=0&&d.indexOf('cross_goal_cumulative')>=0,'still-deferred controls must remain');
+    }finally{reconData=_r;reconEffectiveWD=_f;}
+  });
+  // S3-FROZEN: frozen surfaces still byte-identical after Step 3
+  test('AU11-S3-FROZEN: runModel / netting / resolver byte-frozen after Step 3',function(){
+    var crypto=require('crypto');
+    function bh(tok){var i=html.indexOf(tok);var j=html.indexOf('\nfunction ',i+tok.length);var s=html.slice(i,j<0?html.length:j);return s.length+'/'+crypto.createHash('sha256').update(s).digest('hex').slice(0,16);}
+    assert(bh('function runModel(')==='32840/5181b79cbba47e68','runModel changed: '+bh('function runModel('));
+    assert(bh('function computeGoalTransferNetting(')==='10309/4670447ce489dd8b','netting changed');
+    assert(bh('function resolveWeekTransfers(')==='5583/20d17438996ac8ba','resolver changed');
+  });
+})();
+
 console.log('\n╔══════════════════════════════════════════════════════════════╗');
 console.log('║                       RESULTS                               ║');
 console.log('╚══════════════════════════════════════════════════════════════╝');

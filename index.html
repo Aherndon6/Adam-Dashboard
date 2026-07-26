@@ -1769,68 +1769,96 @@ function au11Step1ProbeSweepCeiling(num, projectedChk, proposed, floor){
   return maxSafeAmxSweep(proposed, base, num, eff, floor, AMX_SWEEP_LOOKAHEAD_WEEKS);
 }
 
-// ── AU-11 STEP 2 — READ-ONLY FULL-HORIZON SHADOW VALIDATOR (non-authoritative, incomplete) ──
-// Evaluates discretionary-transfer floor safety across the FULL remaining model horizon (candidate
-// week → last modeled week) — NOT the AMX_SWEEP_LOOKAHEAD_WEEKS window. Reproduces the legacy
-// per-step projection semantics (add w[2] inflows, subtract w[3] obs) uncapped. Reads effectiveWD
-// only (D5) and the shared authoritative base (D1b). It renders nothing, writes nothing, and is
-// called by no live path. It is INCOMPLETE: candidate reflect-forward, ct/ca channels, per-week floor
-// overrides, cross-goal cumulative allocation, reservation withholding, estimate fail-closed, inflow
-// qualification, obligation-identity, write guards and promotion are all deferred to later approved
-// steps — so every result is labelled authoritative:false, complete:false.
+// ── AU-11 STEP 3 — READ-ONLY FULL-HORIZON CANDIDATE TRAJECTORY (non-authoritative, incomplete) ──
+// Correct AU-11 candidate trajectory across the FULL remaining horizon (candidate week → last modeled
+// week) — NOT the AMX_SWEEP_LOOKAHEAD_WEEKS window. Upgrades Step 2's legacy-over-full-horizon to the
+// correct trajectory by adding: (1) candidate reflect-forward EXACTLY ONCE; (2) the ct/ca commission
+// channels; (3) per-week effective floors. Reads the shared authoritative base (D1b) and effectiveWD
+// only (D5); renders nothing, writes nothing, called by no live path. Still INCOMPLETE — per-week floor
+// override GOVERNANCE, cross-goal allocation, reservations, estimate fail-closed, inflow qualification,
+// obligation-identity, write guards and promotion remain deferred — so authoritative:false, complete:false.
+//
+// ct/ca semantics (verified against runModel; not duplicated with w[2]/w[3]):
+//   ct = tuple index 5 (COMM_TAX, 40% commission → Vio tax reserve): DECREASES checking at its week.
+//   ca = tuple index 6 (COMM_AK,  60% commission → Alaska goal/savings): DECREASES checking at its week.
+//   The gross commission arrives separately as a w[2] inflow; ct/ca are the split OUTFLOWS. Subtracting
+//   both nets the commission pass-through to ~0, matching runModel's checking effect.
+// candidate reflect-forward invariant: proj_withCandidate[w] === proj_noCandidate[w] − candidate for every
+//   week w ≥ num. The candidate is subtracted ONCE from the authoritative base and carried by the running
+//   balance; the shadow models no later goal sweeps, so it cannot double-count or interact with them.
 
-// Full-horizon floor predicate — legacy semantics, uncapped horizon. Returns per-week evidence.
-function au11ShadowKeepsFloor(candidate, base, num, eff, floor){
+// Per-week effective-floor resolver. Accepts a number (constant), a function (wk→floor), or a
+// {wk:floor,…,default:floor} map. Provides the per-week floor EVALUATION mechanism only; owner-gated,
+// logged floor-override GOVERNANCE is a later step.
+function au11FloorAt(floorSpec, wk){
+  if(typeof floorSpec==='function') return floorSpec(wk);
+  if(floorSpec&&typeof floorSpec==='object') return (floorSpec[wk]!=null?floorSpec[wk]:(floorSpec.default!=null?floorSpec.default:OP_FL));
+  return floorSpec;
+}
+// Full-horizon candidate-trajectory predicate. Per-week order: +w[2], −w[3], −ct(w[5]), −ca(w[6]); then
+// compare against the per-week effective floor. Uncapped horizon. Returns per-week evidence.
+function au11ShadowKeepsFloor(candidate, base, num, eff, floorSpec){
   var future=eff.filter(function(w){return w[0]>num;}).sort(function(a,b){return a[0]-b[0];});
-  var proj=Math.round((base-candidate)*100)/100;   // legacy: candidate subtracted at the start
-  var minChk=proj, minWk=num, firstBreach=(proj<floor)?num:null;
-  var traj=[{wk:num,chk:proj,headroom:Math.round((proj-floor)*100)/100}];
+  var proj=Math.round((base-candidate)*100)/100;                 // candidate reflect-forward (exactly once)
+  var f0=au11FloorAt(floorSpec,num);
+  var minChk=proj, minChkWk=num;
+  var minHead=Math.round((proj-f0)*100)/100, minHeadWk=num, minHeadFloor=f0;
+  var firstBreach=(proj<f0)?num:null, breachFloor=(proj<f0)?f0:null;
+  var traj=[{wk:num,chk:proj,floor:f0,headroom:Math.round((proj-f0)*100)/100}];
   for(var i=0;i<future.length;i++){
-    var w=future[i], inflows=w[2]||[], obs=w[3]||[], k;
-    for(k=0;k<inflows.length;k++) proj=Math.round((proj+inflows[k])*100)/100;
-    for(k=0;k<obs.length;k++)     proj=Math.round((proj-obs[k])*100)/100;
-    traj.push({wk:w[0],chk:proj,headroom:Math.round((proj-floor)*100)/100});
-    if(proj<minChk){minChk=proj;minWk=w[0];}
-    if(firstBreach===null&&proj<floor) firstBreach=w[0];
+    var w=future[i], inflows=w[2]||[], obs=w[3]||[], ct=w[5]||0, ca=w[6]||0, k;
+    for(k=0;k<inflows.length;k++) proj=Math.round((proj+inflows[k])*100)/100;   // + w[2] inflows
+    for(k=0;k<obs.length;k++)     proj=Math.round((proj-obs[k])*100)/100;       // − w[3] obligations
+    if(ct) proj=Math.round((proj-ct)*100)/100;                                  // − ct (40% → tax)
+    if(ca) proj=Math.round((proj-ca)*100)/100;                                  // − ca (60% → Alaska goal)
+    var fw=au11FloorAt(floorSpec,w[0]);
+    var hw=Math.round((proj-fw)*100)/100;
+    traj.push({wk:w[0],chk:proj,floor:fw,headroom:hw});
+    if(proj<minChk){minChk=proj;minChkWk=w[0];}
+    if(hw<minHead){minHead=hw;minHeadWk=w[0];minHeadFloor=fw;}
+    if(firstBreach===null&&proj<fw){firstBreach=w[0];breachFloor=fw;}
   }
-  return {safe:firstBreach===null, firstBreach:firstBreach, minChk:minChk, minWk:minWk,
-    minHeadroom:Math.round((minChk-floor)*100)/100,
+  return {safe:firstBreach===null, firstBreach:firstBreach, breachFloor:breachFloor,
+    minChk:minChk, minChkWk:minChkWk, minHeadroom:minHead, minHeadWk:minHeadWk, minHeadFloor:minHeadFloor,
     horizonStart:future.length?future[0][0]:num,
     horizonEnd:future.length?future[future.length-1][0]:num, trajectory:traj};
 }
-// Full-horizon safe ceiling — binary search mirroring maxSafeAmxSweep, uncapped horizon.
-function au11ShadowCeiling(candidate, base, num, eff, floor){
-  if(au11ShadowKeepsFloor(candidate,base,num,eff,floor).safe) return candidate>=MIN_XFR?candidate:0;
+// Full-horizon safe ceiling — binary search mirroring maxSafeAmxSweep, uncapped horizon, per-week floors.
+function au11ShadowCeiling(candidate, base, num, eff, floorSpec){
+  if(au11ShadowKeepsFloor(candidate,base,num,eff,floorSpec).safe) return candidate>=MIN_XFR?candidate:0;
   var lo=0,hi=candidate,best=0;
-  for(var it=0;it<20;it++){var mid=(lo+hi)/2; if(au11ShadowKeepsFloor(mid,base,num,eff,floor).safe){best=mid;lo=mid;}else hi=mid;}
+  for(var it=0;it<20;it++){var mid=(lo+hi)/2; if(au11ShadowKeepsFloor(mid,base,num,eff,floorSpec).safe){best=mid;lo=mid;}else hi=mid;}
   best=Math.floor(best*100)/100;
   return best>=MIN_XFR?best:0;
 }
-// Read-only shadow validator entry point. NON-AUTHORITATIVE, INCOMPLETE (Step 2). Renders nothing.
-function au11ShadowValidate(num, projectedChk, candidate, floor){
+// Read-only shadow validator entry point. NON-AUTHORITATIVE, INCOMPLETE (Step 3). Renders nothing.
+function au11ShadowValidate(num, projectedChk, candidate, floorSpec){
   var base=authoritativeCurrentChk(num, projectedChk);   // D1b shared base
   var eff=reconEffectiveWD();                             // effectiveWD only (D5)
-  var ev=au11ShadowKeepsFloor(candidate, base, num, eff, floor);
-  var ceiling=au11ShadowCeiling(candidate, base, num, eff, floor);
+  var ev=au11ShadowKeepsFloor(candidate, base, num, eff, floorSpec);
+  var ceiling=au11ShadowCeiling(candidate, base, num, eff, floorSpec);
   return {
     candidate: candidate,
     candidateSafe: ev.safe,
     safeCeiling: ceiling,
     firstBreachWeek: ev.firstBreach,
-    minHeadroom: ev.minHeadroom,
+    floorAtFirstBreach: ev.breachFloor,
     minChk: ev.minChk,
-    minWeek: ev.minWk,
-    floorAtMinWeek: floor,                 // single floor for now — per-week overrides are a later step
+    minWeek: ev.minChkWk,
+    minHeadroom: ev.minHeadroom,
+    minHeadroomWeek: ev.minHeadWk,
+    floorAtMinHeadroomWeek: ev.minHeadFloor,
+    effectiveFloorByWeek: ev.trajectory.map(function(t){return {wk:t.wk,floor:t.floor};}),
     reason: ev.safe
       ? {status:'ok', code:'full_horizon_floor_safe'}
-      : {status:'block', code:'full_horizon_floor_breach', firstBreachWeek:ev.firstBreach, minWeek:ev.minWk, minChk:ev.minChk, minHeadroom:ev.minHeadroom},
+      : {status:'block', code:'full_horizon_floor_breach', firstBreachWeek:ev.firstBreach, floorAtFirstBreach:ev.breachFloor, minWeek:ev.minChkWk, minChk:ev.minChk, minHeadroom:ev.minHeadroom},
     horizonStart: ev.horizonStart,
     horizonEnd: ev.horizonEnd,
     base: base,
     trajectory: ev.trajectory,
-    authoritative: false,                  // NEVER authoritative in Step 2
-    complete: false,                       // later controls not yet included
-    deferredControls: ['candidate_reflect_forward','ct_ca_channels','per_week_floor_overrides','cross_goal_cumulative','reservation_withholding','estimate_fail_closed','inflow_qualification','obligation_identity','write_guard','promotion']
+    authoritative: false,                  // NEVER authoritative before promotion
+    complete: false,                       // deferred controls remain
+    deferredControls: ['per_week_floor_override_governance','cross_goal_cumulative','reservation_withholding','estimate_fail_closed','inflow_qualification','obligation_identity','write_guard','promotion']
   };
 }
 // AU11-END
