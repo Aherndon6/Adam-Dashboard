@@ -14683,6 +14683,257 @@ console.log('\n── Section 5G-1D Slice 4c: half-close repair confirmation ─
   });
 })();
 
+// ══════════════════ AU-11 STEP 6B — RESERVATION PROPOSALS + PER-ROW OVERLAP ══════════════════
+// Pure, dormant. One proposal per actionable allocated goal; per-row overlap classification; per-row
+// (never scalar) deployable subtraction. Integer cents. No CAE/runModel/Register/global bypass.
+(function(){
+  var PY=PLAN_YEAR;
+  var ctx={modelYear:PY, originModelWeek:7, sourceAccount:'truist_checking',
+    destinationByGoal:{alaska:'truist_savings', bailey_529:'amex_savings', bryce_529:'amex_savings'},
+    actionKeyByGoal:{alaska:'goal_alaska', bailey_529:'goal_bailey_529', bryce_529:'goal_bryce_529'}};
+  // crossGoal factory
+  function cg(perGoal, over){
+    var alloc=perGoal.reduce(function(s,p){return s+(p.status==='allocated'?p.allocatedCents:0);},0);
+    var base={crossGoalActionable:true, cumulativeCeilingCents:100000, allocatedTotalCents:alloc, perGoalAllocation:perGoal};
+    if(over)Object.keys(over).forEach(function(k){base[k]=over[k];});
+    return base;
+  }
+  function A(id,cents){return {id:id,priority:1,status:'allocated',allocatedCents:cents,retainedCents:0,sliceCents:cents};}
+  function R(id,cents){return {id:id,priority:1,status:'deferred_owner',allocatedCents:0,retainedCents:cents,sliceCents:cents};}
+  function H(id){return {id:id,priority:1,status:'held_complete_pre1b',allocatedCents:0,retainedCents:0,sliceCents:0};}
+  function row(over){var r={modelYear:PY,commitmentClass:'discretionary_goal_transfer',batchId:'bX',goalId:'alaska',amountCents:1000,sourceAccount:'truist_checking',destinationAccount:'truist_savings',affectsDeployableCash:true,originModelWeek:5,status:'initiated',resolutionType:null,reflectedModelWeek:null,resolvedModelWeek:null};if(over)Object.keys(over).forEach(function(k){r[k]=over[k];});return r;}
+
+  // 1. one allocated goal → one proposal, exact amount, checksum
+  test('AU11-6B-01: one allocated goal → one proposal, exact amount + checksum',function(){
+    var p=au11BuildReservationProposals(cg([A('alaska',5000)]),ctx);
+    assert(p.proposals.length===1&&p.proposals[0].goalId==='alaska'&&p.proposals[0].amountCents===5000,'one proposal, exact amount');
+    assert(p.proposalTotalCents===5000&&p.allocatedTotalCents===5000&&p.checksumOk===true&&p.actionable===true,'checksum exact');
+    assert(p.proposals[0].destinationAccount==='truist_savings'&&p.proposals[0].actionKey==='goal_alaska'&&p.proposals[0].commitmentClass==='discretionary_goal_transfer','identity fields');
+  });
+  // 2. multiple allocated → one per goal, shared batchId, exact sum
+  test('AU11-6B-02: multiple allocated → one proposal each, shared batchId, exact sum',function(){
+    var p=au11BuildReservationProposals(cg([A('alaska',3000),A('bailey_529',2000)]),ctx);
+    assert(p.proposals.length===2&&p.proposals[0].batchId===p.proposals[1].batchId,'shared batchId');
+    assert(p.proposalTotalCents===5000&&p.allocatedTotalCents===5000&&p.checksumOk,'sum exact = checksum');
+  });
+  // 3. retained goal → no proposal; retained absent from totals
+  test('AU11-6B-03: retained goal produces no proposal (withheld allocation is not a reservation)',function(){
+    var p=au11BuildReservationProposals(cg([A('alaska',3000),R('bailey_529',2000)]),ctx);
+    assert(p.proposals.length===1&&p.proposals[0].goalId==='alaska','only the allocated goal is proposed');
+    assert(p.proposalTotalCents===3000&&p.allocatedTotalCents===3000&&p.checksumOk,'retained 2000 absent from reservation totals');
+  });
+  // 4. held_complete_pre1b → zero proposals, zero reservation effect
+  test('AU11-6B-04: held_complete_pre1b (RCCL/DCL) → zero proposals',function(){
+    var p=au11BuildReservationProposals(cg([H('wewe_rccl'),H('wewe_dcl'),A('alaska',1000)]),ctx);
+    assert(p.proposals.length===1&&p.proposals[0].goalId==='alaska','held-complete goals never proposed');
+  });
+  // 5. blocked/non-actionable crossGoal → zero proposals, fail-closed
+  test('AU11-6B-05: non-actionable crossGoal → zero proposals, fail-closed',function(){
+    var p=au11BuildReservationProposals(cg([A('alaska',5000)],{crossGoalActionable:false}),ctx);
+    assert(p.proposals.length===0&&p.actionable===false&&p.blockReasons.indexOf('crossgoal_not_actionable')>=0,'blocked → no proposals');
+    var p2=au11BuildReservationProposals(cg([A('alaska',5000)],{cumulativeCeilingCents:null}),ctx);
+    assert(p2.proposals.length===0&&p2.actionable===false,'null ceiling → no proposals');
+  });
+  // 6. equal dollar amounts, different goals → distinct obligations, never merged
+  test('AU11-6B-06: equal amounts for different goals stay distinct',function(){
+    var p=au11BuildReservationProposals(cg([A('alaska',2500),A('bailey_529',2500)]),ctx);
+    assert(p.proposals.length===2&&p.proposals[0].goalId!==p.proposals[1].goalId,'two distinct proposals despite equal amounts');
+    assert(p.proposalTotalCents===5000,'summed, not merged');
+  });
+  // 20. deterministic batch/proposal output from identical captured inputs
+  test('AU11-6B-20: deterministic proposals + batchId from identical inputs',function(){
+    var a=au11BuildReservationProposals(cg([A('alaska',3000),A('bailey_529',2000)]),ctx);
+    var b=au11BuildReservationProposals(cg([A('alaska',3000),A('bailey_529',2000)]),ctx);
+    assert(JSON.stringify(a)===JSON.stringify(b)&&a.batchId===b.batchId,'identical inputs → identical output');
+  });
+  // ── batchId identity audit (amount/dest/source/order EXCLUDED from cycle identity) ──
+  test('AU11-6B-BID-AMOUNT: changing amount under the same cycle preserves batchId AND fails amount validation',function(){
+    var p5=au11BuildReservationProposals(cg([A('alaska',5000)]),ctx);
+    var p4=au11BuildReservationProposals(cg([A('alaska',4000)]),ctx);
+    assert(p5.batchId===p4.batchId,'same cycle (week+goal) → identical batchId despite amount change');
+    // an active existing row at 5000; a re-proposal at 4000 must COLLIDE on identity and fail amount validation
+    var existing=au11ClassifyReservationRows([row({batchId:p5.batchId,goalId:'alaska',originModelWeek:9,amountCents:5000})],7,PY);
+    var res=au11ReservationBatchAdmissible(p4,existing,100000);
+    assert(res.blockReasons.indexOf('obligation_amount_conflict')>=0&&res.admissible===false,'amount change is caught as a conflict, not a new identity');
+  });
+  test('AU11-6B-BID-DEST: changing destination preserves batchId AND fails destination validation',function(){
+    var p=au11BuildReservationProposals(cg([A('alaska',5000)]),ctx);           // dest truist_savings
+    var pAlt=au11BuildReservationProposals(cg([A('alaska',5000)]),Object.assign({},ctx,{destinationByGoal:{alaska:'amex_savings'}}));
+    assert(p.batchId===pAlt.batchId,'destination is not part of batchId');
+    var existing=au11ClassifyReservationRows([row({batchId:p.batchId,goalId:'alaska',originModelWeek:9,amountCents:5000,destinationAccount:'truist_savings'})],7,PY);
+    var res=au11ReservationBatchAdmissible(pAlt,existing,100000);
+    assert(res.blockReasons.indexOf('obligation_destination_conflict')>=0,'destination change → conflict, not a new identity');
+  });
+  test('AU11-6B-BID-ORDER: proposal ordering does not change batchId',function(){
+    var ab=au11BuildReservationProposals(cg([A('alaska',3000),A('bailey_529',2000)]),ctx).batchId;
+    var ba=au11BuildReservationProposals(cg([A('bailey_529',2000),A('alaska',3000)]),ctx).batchId;
+    assert(ab===ba,'sorted goal-id set → order-independent batchId');
+  });
+  test('AU11-6B-BID-CYCLE: a genuinely different authorization cycle → different batchId',function(){
+    var wk7=au11BuildReservationProposals(cg([A('alaska',3000)]),ctx).batchId;
+    var wk8=au11BuildReservationProposals(cg([A('alaska',3000)]),Object.assign({},ctx,{originModelWeek:8})).batchId;
+    var goalset=au11BuildReservationProposals(cg([A('alaska',3000),A('bailey_529',1)]),ctx).batchId;
+    assert(wk7!==wk8,'different week → different cycle → different batchId');
+    assert(wk7!==goalset,'different goal set → different cycle → different batchId');
+  });
+  test('AU11-6B-BID-NOAMOUNT: batchId derivation excludes amount/dest/source in source',function(){
+    var bp=html.slice(html.indexOf('function au11BuildReservationProposals('),html.indexOf('function au11ReservationBatchAdmissible('));
+    var idb=bp.match(/var idBasis=\[[^\]]*\][^;]*;/)[0];
+    assert(/alloc\.map\(function\(p\)\{return p\.id;\}\)\.sort\(\)/.test(idb),'idBasis maps goal id ONLY');
+    assert(!/allocatedCents|amountCents|destination|source/.test(idb),'idBasis excludes amount/destination/source');
+  });
+  // ── per-row overlap classification ──
+  // CAE equivalence: au11CaeCountsRow mirrors isReservedAsOf across representative rows
+  test('AU11-6B-CAE-EQUIV: au11CaeCountsRow ≡ isReservedAsOf (captured mirror)',function(){
+    var cases=[
+      {oy:5,adc:true,st:'initiated',rt:null,rfl:null,rsv:null},   // B8: origin<basis, resolved missing → true
+      {oy:7,adc:true,st:'initiated',rt:null,rfl:null,rsv:null},   // B2 boundary: origin==basis → counted
+      {oy:9,adc:true,st:'initiated',rt:null,rfl:null,rsv:null},   // B2: origin>basis → false
+      {oy:5,adc:false,st:'initiated',rt:null,rfl:null,rsv:null},  // B3: affects_deployable_cash false → false
+      {oy:5,adc:true,st:'voided',rt:null,rfl:null,rsv:null},      // B4: status voided → false
+      {oy:5,adc:true,st:'initiated',rt:'voided',rfl:null,rsv:null},// B5: resolution_type voided → false
+      {oy:5,adc:true,st:'initiated',rt:'paid_from_other_account',rfl:null,rsv:null}, // B6: paid other → false
+      {oy:5,adc:true,st:'initiated',rt:null,rfl:6,rsv:null},       // B7: reflected<basis → false
+      {oy:5,adc:true,st:'initiated',rt:null,rfl:7,rsv:null},       // B7 boundary: reflected==basis → false
+      {oy:5,adc:true,st:'initiated',rt:null,rfl:8,rsv:null},       // B7: reflected>basis → continues → true
+      {oy:5,adc:true,st:'initiated',rt:null,rfl:null,rsv:6},       // B9: resolved<basis → false
+      {oy:5,adc:true,st:'initiated',rt:null,rfl:null,rsv:7},       // B9 boundary: resolved==basis → false
+      {oy:5,adc:true,st:'initiated',rt:null,rfl:null,rsv:9}        // B9: resolved>basis → true
+    ];
+    cases.forEach(function(k,i){
+      var snake={model_year:PY,origin_model_week:k.oy,affects_deployable_cash:k.adc,status:k.st,resolution_type:k.rt,reflected_model_week:k.rfl,resolved_model_week:k.rsv};
+      var camel={modelYear:PY,originModelWeek:k.oy,affectsDeployableCash:k.adc,status:k.st,resolutionType:k.rt,reflectedModelWeek:k.rfl,resolvedModelWeek:k.rsv};
+      assert(isReservedAsOf(snake,7)===au11CaeCountsRow(camel,7,PY),'case '+i+' mirror must equal CAE predicate');
+    });
+    // and wrong model_year
+    assert(au11CaeCountsRow(row({modelYear:9999}),7,PY)===false,'wrong modelYear → not counted');
+  });
+  // 7. existing matching row NOT counted by CAE → adapter_counted; subtracted exactly once
+  test('AU11-6B-07: adapter_counted row (pre-CAE-visibility) subtracts once',function(){
+    var rows=[row({originModelWeek:9,amountCents:1500})]; // origin>basis → not CAE-counted, still active
+    var cls=au11ClassifyReservationRows(rows,7,PY);
+    assert(cls[0].class==='adapter_counted','pre-visibility active row → adapter_counted');
+    assert(au11AdapterWithheldCents(cls)===1500&&au11RemainingDeployableCents(10000,1500)===8500,'subtracted once');
+  });
+  // 8. existing matching row counted by CAE → cae_counted; adapter subtracts zero
+  test('AU11-6B-08: cae_counted row → adapter subtracts zero',function(){
+    var cls=au11ClassifyReservationRows([row({originModelWeek:5,amountCents:1500})],7,PY);
+    assert(cls[0].class==='cae_counted'&&au11AdapterWithheldCents(cls)===0,'CAE-visible → adapter withholds 0 (no double subtraction)');
+  });
+  // 9. mixed rows → per-row classification; exact adapterWithheld sum
+  test('AU11-6B-09: mixed rows classified individually; exact adapterWithheld sum',function(){
+    var cls=au11ClassifyReservationRows([
+      row({goalId:'alaska',originModelWeek:9,amountCents:1000}),   // adapter
+      row({goalId:'bailey_529',originModelWeek:5,amountCents:2000}),// cae
+      row({goalId:'bryce_529',status:'voided',amountCents:3000}),   // inactive
+      row({goalId:'preston_529',originModelWeek:8,amountCents:400}) // adapter
+    ],7,PY);
+    assert(cls.map(function(c){return c.class;}).join(',')==='adapter_counted,cae_counted,inactive,adapter_counted','per-row classes');
+    assert(au11AdapterWithheldCents(cls)===1400,'adapterWithheld = 1000 + 400 only');
+  });
+  // 10. inactive/voided/cleared → no withholding
+  test('AU11-6B-10: voided/cleared/reflected/resolved → inactive, no withholding',function(){
+    ['voided','cleared'].forEach(function(st){var c=au11ClassifyReservationRow(row({status:st}),7,PY);assert(c==='inactive',st+' → inactive');});
+    assert(au11ClassifyReservationRow(row({reflectedModelWeek:6}),7,PY)==='inactive','reflected<=basis → inactive');
+    assert(au11ClassifyReservationRow(row({resolvedModelWeek:6}),7,PY)==='inactive','resolved<=basis → inactive');
+    assert(au11AdapterWithheldCents(au11ClassifyReservationRows([row({status:'voided'})],7,PY))===0,'no withholding from inactive');
+  });
+  // ── admissibility ──
+  function pset(perGoal){return au11BuildReservationProposals(cg(perGoal),ctx);}
+  // 15. proposal total exceeds remaining deployable → inadmissible
+  test('AU11-6B-15: proposal total exceeds remaining deployable → inadmissible',function(){
+    var res=au11ReservationBatchAdmissible(pset([A('alaska',9000)]),[],5000);
+    assert(res.admissible===false&&res.blockReasons.indexOf('exceeds_remaining_deployable')>=0,'9000 > 5000 → inadmissible');
+  });
+  // 16. proposal total equals remaining deployable → admissible to the cent
+  test('AU11-6B-16: proposal total == remaining deployable → admissible',function(){
+    var res=au11ReservationBatchAdmissible(pset([A('alaska',5000)]),[],5000);
+    assert(res.admissible===true&&res.remainingDeployableCents===5000&&res.proposalTotalCents===5000,'exact-fit admissible');
+  });
+  // adapter row reduces remaining before the fit test
+  test('AU11-6B-16b: adapter-counted existing row reduces remaining before admissibility',function(){
+    var rows=[row({goalId:'zzz',originModelWeek:9,amountCents:2000,batchId:'old'})]; // adapter_counted
+    var res=au11ReservationBatchAdmissible(pset([A('alaska',5000)]),au11ClassifyReservationRows(rows,7,PY),6000);
+    assert(res.adapterWithheldCents===2000&&res.remainingDeployableCents===4000&&res.admissible===false&&res.blockReasons.indexOf('exceeds_remaining_deployable')>=0,'6000-2000=4000 < 5000 → inadmissible');
+  });
+  // 11. identity collision — duplicate goal in one batch, and duplicate active existing rows
+  test('AU11-6B-11: identity collisions rejected',function(){
+    var dup=au11BuildReservationProposals(cg([A('alaska',1000),A('alaska',1000)]),ctx);
+    assert(dup.blockReasons.indexOf('duplicate_goal_in_batch')>=0&&dup.actionable===false,'duplicate goal in batch → not actionable');
+    var rows=[row({batchId:'b1',goalId:'alaska',originModelWeek:9}),row({batchId:'b1',goalId:'alaska',originModelWeek:9})];
+    var res=au11ReservationBatchAdmissible(pset([A('bailey_529',100)]),au11ClassifyReservationRows(rows,7,PY),100000);
+    assert(res.blockReasons.indexOf('duplicate_active_obligation')>=0&&res.admissible===false,'two active rows same identity → blocked');
+  });
+  // 17. cae-counted and adapter-counted versions of the same obligation cannot both survive
+  test('AU11-6B-17: cae + adapter of the same obligation cannot both survive',function(){
+    var rows=[row({batchId:'b1',goalId:'alaska',originModelWeek:5}),   // cae_counted
+              row({batchId:'b1',goalId:'alaska',originModelWeek:9})];  // adapter_counted, same identity
+    var res=au11ReservationBatchAdmissible(pset([A('bailey_529',100)]),au11ClassifyReservationRows(rows,7,PY),100000);
+    assert(res.blockReasons.indexOf('duplicate_active_obligation')>=0&&res.admissible===false,'same identity in two active classes → blocked');
+  });
+  // 12/13/14. amount/destination/source mismatch on same identity → fail closed (never merge by amount)
+  test('AU11-6B-12-14: proposal vs existing same-identity mismatches fail closed',function(){
+    var p=au11BuildReservationProposals(cg([A('alaska',5000)]),ctx);
+    var bid=p.proposals[0].batchId;
+    function ex(over){return au11ClassifyReservationRows([row(Object.assign({batchId:bid,goalId:'alaska',originModelWeek:9},over))],7,PY);}
+    var amt=au11ReservationBatchAdmissible(p,ex({amountCents:4000}),100000);
+    assert(amt.blockReasons.indexOf('obligation_amount_conflict')>=0,'amount mismatch → fail closed');
+    var dst=au11ReservationBatchAdmissible(p,ex({amountCents:5000,destinationAccount:'other'}),100000);
+    assert(dst.blockReasons.indexOf('obligation_destination_conflict')>=0,'destination mismatch → fail closed');
+    var src=au11ReservationBatchAdmissible(p,ex({amountCents:5000,sourceAccount:'other'}),100000);
+    assert(src.blockReasons.indexOf('obligation_source_conflict')>=0,'source mismatch → fail closed');
+  });
+  // 18. future/stale basis ambiguity → fail closed
+  test('AU11-6B-18: ambiguous basis week → invalid (fail closed)',function(){
+    assert(au11ClassifyReservationRow(row(),null,PY)==='invalid'&&au11ClassifyReservationRow(row(),NaN,PY)==='invalid','null/NaN basis → invalid');
+  });
+  // invalid row → invalid + blocks admissibility
+  test('AU11-6B-INVALID: malformed reservation row → invalid, blocks batch',function(){
+    var bad=au11ClassifyReservationRows([{modelYear:PY,commitmentClass:'discretionary_goal_transfer',batchId:'b',goalId:'alaska',amountCents:-5,sourceAccount:'x',destinationAccount:'y'}],7,PY);
+    assert(bad[0].class==='invalid','negative amount → invalid');
+    var res=au11ReservationBatchAdmissible(pset([A('alaska',100)]),bad,100000);
+    assert(res.blockReasons.indexOf('invalid_reservation_row')>=0&&res.admissible===false,'invalid row blocks batch');
+  });
+  // 19. no scalar overlap subtraction anywhere in Step 6B
+  test('AU11-6B-19: no scalar overlap subtraction (per-row adapter only)',function(){
+    var blk=html.slice(html.indexOf('// ── AU-11 Step 6B'),html.indexOf('// AU11-END')).replace(/\/\/[^\n]*/g,'');
+    assert(/adjustedDeployableSurplusCents - adapterWithheldCents/.test(blk),'remaining = deployable − adapterWithheld (per-row) only');
+    var subs=blk.match(/adjustedDeployableSurplusCents\s*-\s*[A-Za-z_][A-Za-z0-9_]*/g)||[];
+    assert(subs.length>0&&subs.every(function(s){return /-\s*adapterWithheldCents$/.test(s);}),'every deployable subtraction target is adapterWithheldCents (per-row), got '+JSON.stringify(subs));
+    assert(!/-\s*(reservationCents|reservationTotal|proposalTotalCents|allocatedTotalCents|cumulativeCeilingCents)\b/.test(blk),'no scalar reservation/ceiling subtraction from capacity');
+  });
+  // 21. no runModel/raw-WD/Register/account/goalSaved bypass in the 6B block
+  test('AU11-6B-21: Step 6B block has no runModel/raw-WD/Register/account/goalSaved bypass',function(){
+    var blk=html.slice(html.indexOf('// ── AU-11 Step 6B'),html.indexOf('// AU11-END')).replace(/\/\/[^\n]*/g,'');
+    assert(!/\bWD\b/.test(blk)&&!/runModel|goalSaved|maxSafeAmxSweep|\blaFl\b/.test(blk),'no runModel/raw-WD/lookahead/goalSaved');
+    assert(!/\btransfers\b|Register|cash_commitments|commitmentData/.test(blk),'no Register/commitment-store bypass');
+    assert(!/getCashAvailabilityEngine|reconData|goalSnapData/.test(blk),'no CAE invocation / raw snapshot-store read');
+  });
+  // dormant attach on au11ShadowValidate (no throw; blocked when crossGoal blocked)
+  test('AU11-6B-WIRED: au11ShadowValidate attaches dormant reservation proposals',function(){
+    var _r=reconData,_f=reconEffectiveWD; reconData={}; reconEffectiveWD=function(){return [[8,'',[],[],[],0,0]];};
+    try{ var res=au11ShadowValidate(7,20000,0,OP_FL);
+      assert(res.reservation&&Array.isArray(res.reservation.proposals)&&res.reservation.actionable===false&&res.reservation.proposals.length===0,'reservation present + fail-closed (dormant), no throw');
+    } finally { reconData=_r; reconEffectiveWD=_f; }
+  });
+  // 25. zero outside-block callers for the new 6B fns
+  test('AU11-6B-NOLIVE: Step 6B fns have zero callers outside the AU-11 block',function(){
+    var a=html.indexOf('// AU11-BEGIN'),b=html.indexOf('// AU11-END'); var outside=html.slice(0,a)+html.slice(b);
+    ['au11BuildReservationProposals','au11ClassifyReservationRow','au11ClassifyReservationRows','au11CaeCountsRow','au11AdapterWithheldCents','au11RemainingDeployableCents','au11ReservationBatchAdmissible','au11BuildReservationContext'].forEach(function(fn){
+      assert(outside.indexOf(fn)<0,fn+' must not be referenced outside the AU-11 block');
+    });
+  });
+  // 22/23/24. frozen surfaces + CAE + nine-contract byte-identical
+  test('AU11-6B-FROZEN: runModel/CAE/authoritativeCurrentChk/nine-contract intact after Step 6B',function(){
+    var crypto2=require('crypto');
+    function bh(tok){var i=html.indexOf(tok);var j=html.indexOf('\nfunction ',i+tok.length);var s=html.slice(i,j<0?html.length:j);return s.length+'/'+crypto2.createHash('sha256').update(s).digest('hex').slice(0,16);}
+    assert(bh('function runModel(')==='32840/5181b79cbba47e68','runModel changed');
+    assert(bh('function computeGoalTransferNetting(')==='10309/4670447ce489dd8b','netting changed');
+    assert(bh('function resolveWeekTransfers(')==='5583/20d17438996ac8ba','resolver changed');
+    assert(/p_expected_count:9/.test(html)&&/snapshot_count===9/.test(html)&&/rows\.length!==9/.test(html),'nine-contract intact');
+  });
+})();
+
 console.log('\n╔══════════════════════════════════════════════════════════════╗');
 console.log('║                       RESULTS                               ║');
 console.log('╚══════════════════════════════════════════════════════════════╝');

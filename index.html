@@ -1936,6 +1936,9 @@ function au11ShadowValidate(num, projectedChk, candidate, floorSpec){
   // Consumes the Step-4B result as an authority boundary; never recomputes trajectory/ceiling/qualification.
   var crossGoal=au11CrossGoalAllocate(au11BuildCrossGoalInput(num,
     {qualificationComplete:qualificationComplete, safeCeiling:safeCeiling, safeCeilingActionable:safeCeilingActionable, calculationError:calculationError}, 0));
+  // ── Step 6B: dormant per-goal reservation PROPOSALS (no scalar reservation; admissibility needs captured
+  // deployable + existing rows, supplied at a later stage — proposals here are the dormant reservation result).
+  var reservation=au11BuildReservationProposals(crossGoal, au11BuildReservationContext(num));
   return {
     candidate: candidate,
     // ── item-6 qualified / gated safety result ──
@@ -1958,6 +1961,7 @@ function au11ShadowValidate(num, projectedChk, candidate, floorSpec){
     firstFloorBreachWeek: calcOk ? qEv.firstBreach : null,
     calculationError: calculationError,                  // structured internal-calc failure (else null)
     crossGoal: crossGoal,                                // Step 5B dormant cumulative cross-goal control
+    reservation: reservation,                            // Step 6B dormant per-goal reservation proposals
     diagnostics: {
       base: base,
       qualifiedTrajectory: calcOk ? qEv.trajectory : null,
@@ -2297,6 +2301,130 @@ function au11CrossGoalAllocate(input){
     crossGoalBlockReasons:[],
     crossGoalActionable:true
   };
+}
+
+// ── AU-11 Step 6B — PURE RESERVATION PROPOSALS + PER-ROW OVERLAP CLASSIFICATION ──────────────────
+// Dormant, read-only, non-authoritative, unrendered, zero callers. Derives ONE reservation proposal per
+// actionable ALLOCATED goal (allocatedTotalCents is a checksum, never a scalar reservation), classifies
+// each existing reservation row individually against a captured mirror of the CAE inclusion predicate, and
+// computes remaining deployable by per-row adapter subtraction ONLY. No CAE/runModel/raw-WD/Register/
+// account-balance/goalSaved access; integer cents; deterministic over captured inputs.
+
+// Captured mirror of isReservedAsOf(c,weekNum): abstract camelCase row + captured planYear (proven equivalent by fixtures).
+function au11CaeCountsRow(row, basisWeek, planYear){
+  if(!row||typeof basisWeek!=='number'||!isFinite(basisWeek))return false;
+  if(row.modelYear!==planYear)return false;
+  if(row.originModelWeek>basisWeek)return false;
+  if(!row.affectsDeployableCash)return false;
+  if(row.status==='voided')return false;
+  if(row.resolutionType==='voided')return false;
+  if(row.resolutionType==='paid_from_other_account')return false;
+  if(row.reflectedModelWeek!=null&&row.reflectedModelWeek<=basisWeek)return false;
+  if(row.resolvedModelWeek==null)return true;
+  return row.resolvedModelWeek>basisWeek;
+}
+function au11ReservationRowValid(row){
+  return !!row&&typeof row.modelYear==='number'&&row.commitmentClass==='discretionary_goal_transfer'
+    &&typeof row.batchId==='string'&&!!row.batchId
+    &&typeof row.goalId==='string'&&!!row.goalId
+    &&typeof row.amountCents==='number'&&isFinite(row.amountCents)&&Math.floor(row.amountCents)===row.amountCents&&row.amountCents>=0
+    &&typeof row.sourceAccount==='string'&&!!row.sourceAccount
+    &&typeof row.destinationAccount==='string'&&!!row.destinationAccount;
+}
+function au11RowRetired(row, basisWeek){
+  return row.status==='voided'||row.status==='cleared'
+    ||row.resolutionType==='voided'||row.resolutionType==='paid_from_other_account'
+    ||(row.reflectedModelWeek!=null&&row.reflectedModelWeek<=basisWeek)
+    ||(row.resolvedModelWeek!=null&&row.resolvedModelWeek<=basisWeek);
+}
+// Classify ONE existing row (never aggregate first). Closed enum: invalid | inactive | cae_counted | adapter_counted.
+function au11ClassifyReservationRow(row, basisWeek, planYear){
+  if(typeof basisWeek!=='number'||!isFinite(basisWeek))return 'invalid';   // ambiguous/stale basis → fail closed
+  if(!au11ReservationRowValid(row))return 'invalid';
+  if(au11RowRetired(row,basisWeek))return 'inactive';
+  return au11CaeCountsRow(row,basisWeek,planYear)?'cae_counted':'adapter_counted';
+}
+function au11ClassifyReservationRows(rows, basisWeek, planYear){
+  return (rows||[]).map(function(row){return {row:row, class:au11ClassifyReservationRow(row,basisWeek,planYear)};});
+}
+function au11AdapterWithheldCents(classified){
+  return (classified||[]).reduce(function(s,c){return c.class==='adapter_counted'?s+c.row.amountCents:s;},0);
+}
+// Per-row identity only; CAE-counted rows are already netted in adjustedDeployableSurplusCents (never re-subtracted).
+function au11RemainingDeployableCents(adjustedDeployableSurplusCents, adapterWithheldCents){
+  return adjustedDeployableSurplusCents - adapterWithheldCents;
+}
+// Build the per-goal reservation proposal SET from a crossGoal result (checksum = allocatedTotalCents).
+function au11BuildReservationProposals(crossGoal, ctx){
+  ctx=ctx||{};
+  var out={proposals:[], proposalTotalCents:0,
+    allocatedTotalCents:(crossGoal&&typeof crossGoal.allocatedTotalCents==='number')?crossGoal.allocatedTotalCents:0,
+    checksumOk:false, batchId:null, actionable:false, blockReasons:[]};
+  if(!crossGoal||crossGoal.crossGoalActionable!==true||crossGoal.cumulativeCeilingCents===null){out.blockReasons.push('crossgoal_not_actionable');return out;}
+  // Only actionable ALLOCATED goals become proposals — never retained/deferred, held_complete_pre1b, zero_need/zero_ceiling.
+  var alloc=(crossGoal.perGoalAllocation||[]).filter(function(p){return p&&p.status==='allocated'&&p.allocatedCents>0;});
+  // batchId = the authorization CYCLE identity: modelYear + originModelWeek + the SET of goal ids (sorted).
+  // Deterministic; no Date/random. Deliberately EXCLUDES amount/destination/source/ordering — those are
+  // validated attributes that must surface as obligation conflicts, never escape identity by changing batchId.
+  var idBasis=[ctx.modelYear,ctx.originModelWeek,alloc.map(function(p){return p.id;}).sort()];
+  var batchId=au11Digest(JSON.stringify(idBasis));
+  var seen={};
+  alloc.forEach(function(p){
+    if(seen[p.id]){if(out.blockReasons.indexOf('duplicate_goal_in_batch')<0)out.blockReasons.push('duplicate_goal_in_batch');return;}
+    seen[p.id]=true;
+    out.proposals.push({
+      modelYear:ctx.modelYear, originModelWeek:ctx.originModelWeek, batchId:batchId, goalId:p.id,
+      commitmentClass:'discretionary_goal_transfer',
+      actionKey:(ctx.actionKeyByGoal&&ctx.actionKeyByGoal[p.id])||('goal_'+p.id),
+      sourceAccount:ctx.sourceAccount||'truist_checking',
+      destinationAccount:(ctx.destinationByGoal&&ctx.destinationByGoal[p.id])||null,
+      amountCents:p.allocatedCents
+    });
+  });
+  out.batchId=batchId;
+  out.proposalTotalCents=out.proposals.reduce(function(s,p){return s+p.amountCents;},0);
+  if(out.proposalTotalCents!==out.allocatedTotalCents&&out.blockReasons.indexOf('checksum_mismatch')<0)out.blockReasons.push('checksum_mismatch');
+  out.checksumOk=(out.proposalTotalCents===out.allocatedTotalCents)&&out.blockReasons.length===0;
+  out.actionable=out.checksumOk;
+  return out;
+}
+// Batch admissibility vs individually-classified existing rows + captured deployable surplus. Fail-closed.
+function au11ReservationBatchAdmissible(proposalSet, classifiedRows, adjustedDeployableSurplusCents){
+  var reasons=[], block=function(r){if(reasons.indexOf(r)<0)reasons.push(r);};
+  if(!proposalSet||proposalSet.actionable!==true||!proposalSet.checksumOk)block('proposal_not_actionable');
+  var classified=classifiedRows||[];
+  var activeById={};
+  classified.forEach(function(c){
+    if(c.class==='invalid')block('invalid_reservation_row');
+    if(c.class==='cae_counted'||c.class==='adapter_counted'){
+      var k=c.row.modelYear+'|'+c.row.commitmentClass+'|'+c.row.batchId+'|'+c.row.goalId;
+      if(activeById[k])block('duplicate_active_obligation'); else activeById[k]=c.row;  // cae+adapter of one obligation cannot both survive
+    }
+  });
+  var adapterWithheldCents=au11AdapterWithheldCents(classified);
+  var remainingDeployableCents=(typeof adjustedDeployableSurplusCents==='number'&&isFinite(adjustedDeployableSurplusCents))
+    ? au11RemainingDeployableCents(adjustedDeployableSurplusCents, adapterWithheldCents) : null;
+  if(remainingDeployableCents===null)block('deployable_unavailable');
+  ((proposalSet&&proposalSet.proposals)||[]).forEach(function(p){
+    var k=p.modelYear+'|'+p.commitmentClass+'|'+p.batchId+'|'+p.goalId, ex=activeById[k];
+    if(ex){                                                  // identity matches an already-active obligation → conflict (never merge by amount)
+      if(ex.amountCents!==p.amountCents)block('obligation_amount_conflict');
+      if(ex.sourceAccount!==p.sourceAccount)block('obligation_source_conflict');
+      if(ex.destinationAccount!==p.destinationAccount)block('obligation_destination_conflict');
+      block('duplicate_active_obligation');
+    }
+  });
+  var withinCapacity=(remainingDeployableCents!=null)&&(proposalSet&&proposalSet.proposalTotalCents<=remainingDeployableCents);
+  if(remainingDeployableCents!=null&&!withinCapacity)block('exceeds_remaining_deployable');
+  return {admissible:(reasons.length===0&&withinCapacity===true), adapterWithheldCents:adapterWithheldCents,
+    remainingDeployableCents:remainingDeployableCents, proposalTotalCents:(proposalSet?proposalSet.proposalTotalCents:0), blockReasons:reasons};
+}
+// Capture the reservation context (registry dest + action-key convention) — build-time global read; allocator stays pure.
+function au11BuildReservationContext(num){
+  var destBy={}, actBy={};
+  (typeof GOALS_REGISTRY!=='undefined'?GOALS_REGISTRY:[]).forEach(function(g){destBy[g.id]=g.dest||null;actBy[g.id]='goal_'+g.id;});
+  return {modelYear:(typeof PLAN_YEAR!=='undefined'?PLAN_YEAR:2026), originModelWeek:num, sourceAccount:'truist_checking',
+    destinationByGoal:destBy, actionKeyByGoal:actBy};
 }
 // AU11-END
 // ═══════════════════════════════════════════════════════════════════════════════════════
