@@ -1,5 +1,23 @@
 # Codex Status: Herndon Financial OS
 
+## CURRENCY NOTE (2026-07-27) — AU-11 Step 6C-D1 pushed; Step 6C-D2 staging validation A–I COMPLETE (staging-only, dormant)
+
+- **Step 6C-D1 committed + pushed** (HEAD `78538f9` `feat(au-11): add staging reservation persistence schema`);
+  supersedes the D1-8 "active gate" line in the 2026-07-26 note below.
+- **Step 6C-D2 (reservation lifecycle RPCs) — STAGING VALIDATION A–I COMPLETE + PASSED — STAGING ONLY.** Executed
+  by Adam in the Supabase SQL Editor / psql against staging **`pkwotgqivgaapwuqgwqb`** (≠ prod
+  `usayoldrawwmjsmretin`); **Claude ran no SQL**. Three owner-only SECURITY DEFINER RPCs
+  (create / mark_initiated / void_scheduled) + additive `goal_registry.reservable` metadata — all dormant, no
+  client wiring/callers. Checkpoints A (metadata) · B (catalog/security) · C (fixture) · D (functional matrix) ·
+  E (two-session psql concurrency proof) · F (asserted teardown) · G (rollback/reversibility) · H (clean
+  reapply/redeployability) · I (mechanically-enforced final-state) — **all PASSED**. Final staging state: D2
+  installed; D1 + frozen surfaces intact; fixture fully removed; zero D2 residue; reused owner intact. Package:
+  `docs/phase-au11-6c-d2-*` (10 .sql + execution record). R7 (D2 cannot cancel/release initiated; D3 composite
+  owns release with Register evidence) and R8 (registry-driven `reservable` eligibility) implemented. Frozen
+  surfaces byte-unchanged (`runModel 5181b79c` / `netting 4670447c` / `resolver 20d17438`); no BUILD_TS change.
+- **NOT done:** production promotion (separate later phase); Step 6C-D3 composite closeout (next, separately
+  authorized). **Engine hold + all operational holds, incl. Wendy IRA, remain IN FORCE.** Production untouched.
+
 ## CURRENCY NOTE (2026-07-26) — AU-11 Steps 1–6B pushed (dormant); Step 6C-D1 staging schema COMPLETE + GREEN (staging-only)
 
 - **AU-11 Steps 1–6B are COMPLETE and pushed** (HEAD `2666a8e` before D1-8; last feature commit `a3442bc`
