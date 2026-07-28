@@ -1,5 +1,13 @@
 # Codex Status: Herndon Financial OS
 
+## CURRENCY NOTE (2026-07-28c) — Step 8 Baselines A + B EXECUTED (owner-run, read-only, zero mutation); Baseline C drafted + frozen
+
+- **Active execution pointer:** **Step 8 — Execute Baseline C (Reconciliation & Week State) under the controlled read-only procedure** (owner-run; **Claude runs no SQL**). **Step 8 is NOT complete.**
+- **Baselines A + B EXECUTED against production `usayoldrawwmjsmretin`** by the owner under the controlled read-only procedure. Every statement is SELECT / read-only metadata inspection; **production mutation status = NONE**; **Claude executed no SQL**. **No A/B/C result is checking capacity or transfer authorization**; live bank snapshot (Baseline F) remains primary actual-balance truth; operational result stays **HOLD**.
+- **Baseline C drafted + FROZEN this session (NOT executed):** `docs/step8-actual-checking-capacity-C-reconciliation-week-state.sql` — SHA-256 `59240e542dbe2505d8c1cf11c7cb1c92db1a2492a83bbc55cf91f95b7daed5db` (289 lines; C0 schema preflight [self-gate for goal_funding_snapshots + weekly_reconciliations sav/amx/tax/lc columns A did not hard-validate], C1 reconciliation inventory, C2 week-state matrix, C3 ledger coverage by week, C4 reconciliation prerequisites). Read-only; **balance-free** (presence flags / counts / states only — no chk/sav/amx/tax/lc or funded_amount values); no DDL/DML/RPC; one result set per block; depends on A4 gate C (and gate B for C3) + its own C0 gate; AU-11 global stop + manual project confirmation still apply.
+- **Grounded constants (code-cited):** model-week domain 1..31; anchor boundary week 5 (`index.html:4041`); nine snapshot-eligible goals (`index.html:3760`); closeout-complete = reconciled ∧ ≥9 eligible snapshots (`index.html:2166`); week→date span JS-inferred from epoch 2026-06-07 (`index.html:3441`), NOT stored (C3 labels it INFERRED); `goal_funding_snapshots` model_year-scoped (C filters 2026), `weekly_reconciliations` week_num-unique with no model_year.
+- **Record:** `docs/step8-actual-checking-capacity-execution-record-2026-07-28.md` (updated: A/B EXECUTED, C FROZEN). **D, E, F, final capacity calculation, and final validation remain PENDING.** Engine hold + Wendy IRA hold + discretionary-transfer deferrals remain IN FORCE. Production untouched by Claude; no code/schema/data/BUILD_TS change.
+
 ## CURRENCY NOTE (2026-07-28b) — Post-BKX Stabilization Step 8 (Actual Checking Capacity Baseline): A/B design APPROVED + FROZEN, stored, NOT executed
 
 - **Active execution pointer:** **Step 8 — Execute Baseline A under controlled read-only procedure** (owner-run; **Claude runs no SQL**). **Step 8 is NOT complete.**
