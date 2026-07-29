@@ -18,7 +18,7 @@ operational result remains HOLD; checking capacity is NOT yet established.*
 | Baseline A execution | **EXECUTED** (owner-run, read-only, production `usayoldrawwmjsmretin`) |
 | Baseline B execution | **EXECUTED — PASS WITH DOCUMENTED OWNER-REVIEWED EXCEPTIONS** (owner-run, read-only; see Execution evidence) |
 | Baseline C status | **APPROVED / FROZEN / EXECUTED — PASS** (owner-run, read-only; C4.OVERALL = C_PREREQ_PASS; see Baseline C execution evidence) |
-| Baseline D status | **APPROVED / FROZEN — NOT EXECUTED** (owner-approved rev-3 after Fable review; frozen at the hash below; no capacity calculated) |
+| Baseline D status | **APPROVED / FROZEN / EXECUTED — D0–D9 PASS** (owner-run, read-only, 2026-07-28; D9 `D_HANDOFF_PASS`; authoritative reserve total $0.00; no capacity calculated) |
 | Production mutation status | **NONE** |
 | A/B execution parameters | **ADOPTED for the A/B run** — `cutoff_ts=2026-07-28 18:00:00-04:00`, `cutoff_business_date=2026-07-28`, `inspection_start_date=2026-06-30` (see Execution evidence) |
 | Live-bank snapshot (Baseline F) | **NOT CAPTURED** — the final synchronized capacity cutoff (SQL cutoff paired with a live bank snapshot) is therefore **not yet finalized** |
@@ -31,7 +31,7 @@ operational result remains HOLD; checking capacity is NOT yet established.*
 | Baseline A — Environment & Schema Safety (read-only) | `docs/step8-actual-checking-capacity-A-environment-schema-safety.sql` | `43e97e8c048c76473da561d3977b026859d3b6f3e96fb5d97cb0b609e9a13b9b` | **FROZEN · EXECUTED** |
 | Baseline B — Checking Account & Register State (read-only) | `docs/step8-actual-checking-capacity-B-checking-register-state.sql` | `df9962ceb10ea3c16b8b70d55a0d1a27e9f173750b99c77bc98abcca515796da` | **FROZEN · EXECUTED (pass w/ documented exceptions)** |
 | Baseline C — Reconciliation & Week State (read-only) | `docs/step8-actual-checking-capacity-C-reconciliation-week-state.sql` | `8b4169726b81b7b63185734399b969f5b83a4d965a8728ed07f5a3a3460996fb` | **APPROVED / FROZEN / EXECUTED — PASS** (owner-approved + owner-executed 2026-07-28; C4.OVERALL = C_PREREQ_PASS; pre-review draft was `59240e54…aed5db`) |
-| Baseline D — Obligations & Inflows (read-only) | `docs/step8-actual-checking-capacity-D-obligations-inflows.sql` | `6de0f8e554cb1a961f362229fa61d27ffa102a2d8240e4604aaeb1de75d8b893` | **APPROVED / FROZEN — NOT EXECUTED** (owner-approved rev-3 after Fable review; F5 fully applied + uncleared handoff tightened; rev-2 `9d2569c4…df235`; rev-1 `b3d3c97f…ded14c`) |
+| Baseline D — Obligations & Inflows (read-only) | `docs/step8-actual-checking-capacity-D-obligations-inflows.sql` | `6de0f8e554cb1a961f362229fa61d27ffa102a2d8240e4604aaeb1de75d8b893` | **APPROVED / FROZEN / EXECUTED — D0–D9 PASS** (owner-run read-only 2026-07-28; D9 `D_HANDOFF_PASS`; F5 fully applied + uncleared handoff tightened; rev-2 `9d2569c4…df235`; rev-1 `b3d3c97f…ded14c`) |
 
 - Baseline A: 167 lines / 19,071 bytes / 5 statements (A0 session metadata, A1 required tables,
   A2 required columns, A3 AU-11 production-absence, A4 phased gates).
@@ -142,14 +142,15 @@ contiguous reconciled prefix (weeks 1–7), a valid reconciled anchor (week 5), 
 closeouts (weeks 6–7). **This is a reconciliation/week-state integrity pass only — it establishes NO
 checking-capacity figure and authorizes no transfer.** Operational result remains **HOLD**.
 
-## Baseline D — design (APPROVED / FROZEN — NOT EXECUTED)
+## Baseline D — design (APPROVED / FROZEN / EXECUTED — D0–D9 PASS)
 
 *`docs/step8-actual-checking-capacity-D-obligations-inflows.sql` — **APPROVED / FROZEN** (owner-approved 2026-07-28)
 at SHA-256 `6de0f8e554cb1a961f362229fa61d27ffa102a2d8240e4604aaeb1de75d8b893`, **658 lines**, **11** read-only
-result sets (D0, D1, D2, D2B, D3, D4, D5, D6, D7, D8, D9). **NOT executed** — no capacity calculated, no transfer
-authorized, operational HOLD remains. Independently Fable-reviewed (**APPROVE-WITH-REQUIRED-CHANGES**); rev-2 applied
-F1/F2 + accuracy F3/F4/F6/F8; rev-3 (owner-required) fully applies **F5** and tightens the uncleared-Register handoff.
-Rev-2 `9d2569c4…df235`; rev-1 `b3d3c97f…ded14c`.*
+result sets (D0, D1, D2, D2B, D3, D4, D5, D6, D7, D8, D9). **EXECUTED read-only in production `usayoldrawwmjsmretin`
+on 2026-07-28 — D0–D9 all PASS, D9 `D_HANDOFF_PASS`** (see "Baseline D — execution evidence"). No capacity
+calculated, no transfer authorized, operational HOLD remains. Independently Fable-reviewed
+(**APPROVE-WITH-REQUIRED-CHANGES**); rev-2 applied F1/F2 + accuracy F3/F4/F6/F8; rev-3 (owner-required) fully applies
+**F5** and tightens the uncleared-Register handoff. Rev-2 `9d2569c4…df235`; rev-1 `b3d3c97f…ded14c`.*
 
 - **Fable review (APPROVE-WITH-REQUIRED-CHANGES), dispositions:** **F1 (MAJOR, applied)** — the engine's reserve
   set for an UNRECONCILED as-of week uses a stricter *projected branch* (`index.html:3166-3171`: `origin<w` +
@@ -232,19 +233,67 @@ Rev-2 `9d2569c4…df235`; rev-1 `b3d3c97f…ded14c`.*
 - **Target environment:** production Supabase `usayoldrawwmjsmretin` (read-only). Staging
   `pkwotgqivgaapwuqgwqb` and the AU-11 D1/D2/D3 objects are out of scope; A3 confirms their absence.
 
+## Baseline D — execution evidence (D0–D9 PASS)
+
+*Owner-run, read-only, statement-by-statement in the Supabase SQL Editor against production
+`usayoldrawwmjsmretin`, 2026-07-28. Frozen artifact `6de0f8e554cb1a961f362229fa61d27ffa102a2d8240e4604aaeb1de75d8b893`
+(658 lines). Claude ran no SQL. No production mutation. Amount-bearing where obligations/inflows require; no account balances.*
+
+**Verdict: D0–D9 all PASS; D9 `handoff_gate = D_HANDOFF_PASS`.**
+
+- **D0 — schema/environment gate: PASS** (`D_GATE_PASS`). All 49 required 5F-1 objects present; the 4 AU-11 objects
+  (`reservation_batch_id`/`goal_id`/`cleared_transaction_id`, `discretionary_reservation_batches`) absent → **production
+  remains pre-AU-11**.
+- **D1 — horizon/cutoff: PASS.** `model_year=2026`, `horizon=31`, `as_of_model_week=8`, `as_of_is_reconciled=false`,
+  reconciled weeks 1–7 contiguous → **the projected engine reservation branch applies**.
+- **D2 — DB inflows: PASS.** Alaska `transfers.goal_disbursement` **+$770.95** (2026-07-24, `posted_cleared`,
+  `informational`) — **already reflected in reconciled checking; NOT an additive Baseline E inflow** + one out-of-band
+  disclosure row.
+- **D2B — uncleared Register: PASS.** One uncleared **+$15.00** Bailey inflow (`entertainment.week_4`, 2026-07-25,
+  `uncleared_class=valid_candidate`, `informational`); **0 malformed, 0 overlap**. Sole valid_candidate; **requires a
+  fresh live-bank staleness check before Baseline E may consume it.**
+- **D3 — cash_commitments obligations: PASS.** 6 rows: **0 authoritative**, 5 excluded, 1 owner_review; no overlap row
+  classified authoritative; `as_of=8`/`as_of_is_reconciled=false`. The $435.63 tax_transfer flagged
+  `commission_tax_overlap=true`, `is_engine_reserved=false`.
+- **D4 — custom/off-pool: PASS.** All `custom_tasks` = owner_review; **BKX evidence only in `custom_tasks`**; completed
+  commission-tax legs `informational`/`tax_reserve_out`; **no** `bkx_text_in_commission_tax_leg`.
+- **D5 — exclusion state: PASS.** All 6 commitments `reflected_into_balance`; **0** `still_reserved_do_not_exclude`;
+  the $435.63 correctly excluded.
+- **D6 — duplicate/overlap diagnostics: PASS.** `DUP_EXPECTED_ITEM_ID=0`; `BKX_EVIDENCE_OUTSIDE_CUSTOM_TASKS=0`; two
+  non-authoritative `CC_VS_COMMISSION_TAX_NEAR` diagnostics for the $435.63 (matched legs `4_0`, `6_1` by the broad
+  ±1-week logic); no hard-stop trigger.
+- **D7 — authoritative candidate set: PASS.** **0 rows → authoritative DB-side reserved-obligation total = $0.00.**
+  No BKX / commission-tax / uncleared amount entered.
+- **D8 — unresolved-review inventory: PASS.** Exactly 15 static rows (seq/classifications intact). **Item 70's static
+  wording ("Alaska … NOT yet recorded") is SUPERSEDED by executed D2** — Alaska +$770.95 IS recorded, `posted_cleared`,
+  `informational`, already reflected; must not be re-added. The frozen SQL artifact and its item-70 text are preserved
+  as historical execution evidence (SQL not rewritten); this documentation records the supersession. No gate impact.
+- **D9 — handoff gate: PASS.** One row; counters `as_of_model_week=8`, `as_of_is_reconciled=false`,
+  `malformed_authoritative_candidates=0`, `duplicate_expected_item_ids=0`, `bkx_evidence_outside_custom_tasks=0`,
+  `engine_reserved_overlap_candidates=0`, `uncleared_malformed_count=0`, `uncleared_overlap_candidates=0`,
+  `uncleared_valid_candidates=1` (informational), `au11_objects_present=0`; **`handoff_gate=D_HANDOFF_PASS`** — all seven
+  blocking counters zero.
+
+**Authoritative conclusions:** authoritative DB reserved-obligation total **= $0.00**; one informational uncleared
+`valid_candidate` of **+$15.00** (live-bank check required); Alaska **+$770.95** already reflected and **not additive**;
+the **$435.63** commission-tax commitment is reflected/resolved (wk5), non-engine-reserved, does not enter D7, and does
+not block D9; production remains **pre-AU-11**. **Baseline D→E handoff is satisfied.** No checking-capacity calculation
+has been executed; no Wendy IRA decision made; **no transfer authorized**; **operational HOLD remains active**; a fresh
+actual-balance + live-bank reconciliation is required before any final capacity result.
+
 ## Pending (NOT started)
 
-- Baseline D (obligations & inflows) — **APPROVED / FROZEN; NOT executed** (owner-run execution pending; see "Baseline D — design").
-- Baseline E (model comparison & trough) — **not drafted**.
+- Baseline E (model comparison & trough / Actual Checking Capacity synthesis) — **not drafted; the next authorized work
+  (design + input assembly, then independent Fable review before any production execution or transfer decision).**
 - Baseline F (owner-supplied live bank snapshot) — **not captured**.
 - Final capacity calculation and final validation — **pending**, to be assembled in the external
   execution evidence package (values remain out of the repository per the balance-free policy).
-- (Baselines A, B, and C are executed — see Stored artifacts / execution-evidence sections.)
+- (Baselines A, B, C, and D are executed read-only — see Stored artifacts / execution-evidence sections.)
 
 ## Governance
 
 - Standing holds remain in force: engine hold, Wendy IRA hold, discretionary-transfer deferrals,
-  controlled goal-funding/disbursement rules. **Baselines A, B, and C were executed by the owner under the
+  controlled goal-funding/disbursement rules. **Baselines A, B, C, and D were executed by the owner under the
   controlled read-only procedure against production (`usayoldrawwmjsmretin`); every statement is
   SELECT / read-only metadata inspection, so production mutation status remains NONE.** **Claude has
   executed no SQL against production or staging.** No capacity figure has been established; no transfer is
@@ -252,9 +301,11 @@ Rev-2 `9d2569c4…df235`; rev-1 `b3d3c97f…ded14c`.*
 
 ## Next authorized action
 
-**Step 8 — Design Baseline D (obligations & inflows), obtain independent (Fable) review, freeze it, and
-only then seek authorization to execute it** (owner-run; Claude runs no SQL). Baselines A, B, and C are
-complete (executed, read-only, zero production mutation; C passed `C4.OVERALL = C_PREREQ_PASS`).
-**Checking capacity has NOT been established** — Baselines D and E, the Baseline F live-bank snapshot, the
-final capacity calculation, and final validation all remain pending, and **no transfer is authorized**.
+**Step 8 — Design Baseline E (Actual Checking Capacity synthesis & Wendy-IRA safety test) and assemble its
+inputs; obtain an independent Fable review before any production execution or transfer decision** (owner-run;
+Claude runs no SQL). Baselines A, B, C, and D are complete (executed, read-only, zero production mutation;
+Baseline D D0–D9 PASS, D9 `D_HANDOFF_PASS`, authoritative reserve total $0.00). **Checking capacity has NOT
+been established** — Baseline E, the Baseline F live-bank snapshot, the final capacity calculation, and final
+validation all remain pending; a fresh actual-balance + live-bank reconciliation is required before any capacity
+result; and **no transfer is authorized**.
 Operational result remains **HOLD**. Step 8 is **NOT complete**.
