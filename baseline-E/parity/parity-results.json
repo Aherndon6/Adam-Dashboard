@@ -1,0 +1,90 @@
+{
+  "generated_note": "machine-readable parity results (uncommitted). timestamps intentionally omitted (Date.now not pinned).",
+  "gate_verdict": "PARITY_PASS_WITH_NON_BLOCKING_CONDITIONS",
+  "hardening_pass": {
+    "date": "2026-07-29",
+    "F1_index_html_hash_fail_closed_enforced": true,
+    "F1_pinned_hash": "162f4caa5fb2cfc865389e070df3905079e9d24a766f91e3f404f21d9620309c",
+    "F3_mutation6_executable_end_exclusive_mutant": true,
+    "F5_dead_ternary_removed": true,
+    "existing_suite": "150/150",
+    "full_suite": "170/170",
+    "note": "index.html hash guard is now fail-closed in code (assertIndexHtmlIntegrity) with positive+negative tests; owner G-1 scope ruling unchanged."
+  },
+  "owner_ruling": {
+    "date": "2026-07-29",
+    "option": "c",
+    "getCurrentWeek_excluded_from_placement_surface": true,
+    "reason": "getCurrentWeek() is a UI/current-week cursor; it places no evidence. dateToModelWeek() is the evidence-placement oracle and is timezone-invariant and in full parity.",
+    "baseline_e_unchanged": true,
+    "pinned_america_new_york_contract_authoritative": true,
+    "g1_open_application_defect": "docs/get-current-week-timezone-defect.md",
+    "authorizes_live_execution": false
+  },
+  "node": "v24.15.0",
+  "timezone_matrix": [
+    "UTC",
+    "America/New_York",
+    "Asia/Kolkata",
+    "Pacific/Kiritimati"
+  ],
+  "per_tz": [
+    {
+      "tz": "UTC",
+      "summary": {
+        "EXACT_MATCH": 34,
+        "SEMANTIC_MATCH_REPR_DIFF": 1
+      },
+      "mismatches": []
+    },
+    {
+      "tz": "America/New_York",
+      "summary": {
+        "EXACT_MATCH": 34,
+        "SEMANTIC_MATCH_REPR_DIFF": 1
+      },
+      "mismatches": []
+    },
+    {
+      "tz": "Asia/Kolkata",
+      "summary": {
+        "EXACT_MATCH": 34,
+        "SEMANTIC_MATCH_REPR_DIFF": 1
+      },
+      "mismatches": []
+    },
+    {
+      "tz": "Pacific/Kiritimati",
+      "summary": {
+        "EXACT_MATCH": 34,
+        "SEMANTIC_MATCH_REPR_DIFF": 1
+      },
+      "mismatches": []
+    }
+  ],
+  "placement_hashes": {
+    "UTC": "b856e74d48625412664395cae0214ff79a1ada476ea93e67d3e7c31f85500e24",
+    "America/New_York": "b856e74d48625412664395cae0214ff79a1ada476ea93e67d3e7c31f85500e24",
+    "Asia/Kolkata": "b856e74d48625412664395cae0214ff79a1ada476ea93e67d3e7c31f85500e24",
+    "Pacific/Kiritimati": "b856e74d48625412664395cae0214ff79a1ada476ea93e67d3e7c31f85500e24"
+  },
+  "placement_timezone_invariant": true,
+  "repeatable": true,
+  "total_fixtures": 35,
+  "any_mismatch": false,
+  "getCurrentWeek_tz_sensitive": [
+    {
+      "label": "TZ-sensitive instant (local date flips by zone)",
+      "weeks_by_tz": {
+        "UTC": 2,
+        "America/New_York": 1,
+        "Asia/Kolkata": 2,
+        "Pacific/Kiritimati": 2
+      }
+    }
+  ],
+  "verdict_inputs": {
+    "placement_parity_full": true,
+    "getCurrentWeek_depends_on_uncontrolled_timezone": true
+  }
+}
