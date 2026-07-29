@@ -18,6 +18,7 @@ operational result remains HOLD; checking capacity is NOT yet established.*
 | Baseline A execution | **EXECUTED** (owner-run, read-only, production `usayoldrawwmjsmretin`) |
 | Baseline B execution | **EXECUTED — PASS WITH DOCUMENTED OWNER-REVIEWED EXCEPTIONS** (owner-run, read-only; see Execution evidence) |
 | Baseline C status | **APPROVED / FROZEN / EXECUTED — PASS** (owner-run, read-only; C4.OVERALL = C_PREREQ_PASS; see Baseline C execution evidence) |
+| Baseline D status | **APPROVED / FROZEN — NOT EXECUTED** (owner-approved rev-3 after Fable review; frozen at the hash below; no capacity calculated) |
 | Production mutation status | **NONE** |
 | A/B execution parameters | **ADOPTED for the A/B run** — `cutoff_ts=2026-07-28 18:00:00-04:00`, `cutoff_business_date=2026-07-28`, `inspection_start_date=2026-06-30` (see Execution evidence) |
 | Live-bank snapshot (Baseline F) | **NOT CAPTURED** — the final synchronized capacity cutoff (SQL cutoff paired with a live bank snapshot) is therefore **not yet finalized** |
@@ -30,6 +31,7 @@ operational result remains HOLD; checking capacity is NOT yet established.*
 | Baseline A — Environment & Schema Safety (read-only) | `docs/step8-actual-checking-capacity-A-environment-schema-safety.sql` | `43e97e8c048c76473da561d3977b026859d3b6f3e96fb5d97cb0b609e9a13b9b` | **FROZEN · EXECUTED** |
 | Baseline B — Checking Account & Register State (read-only) | `docs/step8-actual-checking-capacity-B-checking-register-state.sql` | `df9962ceb10ea3c16b8b70d55a0d1a27e9f173750b99c77bc98abcca515796da` | **FROZEN · EXECUTED (pass w/ documented exceptions)** |
 | Baseline C — Reconciliation & Week State (read-only) | `docs/step8-actual-checking-capacity-C-reconciliation-week-state.sql` | `8b4169726b81b7b63185734399b969f5b83a4d965a8728ed07f5a3a3460996fb` | **APPROVED / FROZEN / EXECUTED — PASS** (owner-approved + owner-executed 2026-07-28; C4.OVERALL = C_PREREQ_PASS; pre-review draft was `59240e54…aed5db`) |
+| Baseline D — Obligations & Inflows (read-only) | `docs/step8-actual-checking-capacity-D-obligations-inflows.sql` | `6de0f8e554cb1a961f362229fa61d27ffa102a2d8240e4604aaeb1de75d8b893` | **APPROVED / FROZEN — NOT EXECUTED** (owner-approved rev-3 after Fable review; F5 fully applied + uncleared handoff tightened; rev-2 `9d2569c4…df235`; rev-1 `b3d3c97f…ded14c`) |
 
 - Baseline A: 167 lines / 19,071 bytes / 5 statements (A0 session metadata, A1 required tables,
   A2 required columns, A3 AU-11 production-absence, A4 phased gates).
@@ -140,6 +142,70 @@ contiguous reconciled prefix (weeks 1–7), a valid reconciled anchor (week 5), 
 closeouts (weeks 6–7). **This is a reconciliation/week-state integrity pass only — it establishes NO
 checking-capacity figure and authorizes no transfer.** Operational result remains **HOLD**.
 
+## Baseline D — design (APPROVED / FROZEN — NOT EXECUTED)
+
+*`docs/step8-actual-checking-capacity-D-obligations-inflows.sql` — **APPROVED / FROZEN** (owner-approved 2026-07-28)
+at SHA-256 `6de0f8e554cb1a961f362229fa61d27ffa102a2d8240e4604aaeb1de75d8b893`, **658 lines**, **11** read-only
+result sets (D0, D1, D2, D2B, D3, D4, D5, D6, D7, D8, D9). **NOT executed** — no capacity calculated, no transfer
+authorized, operational HOLD remains. Independently Fable-reviewed (**APPROVE-WITH-REQUIRED-CHANGES**); rev-2 applied
+F1/F2 + accuracy F3/F4/F6/F8; rev-3 (owner-required) fully applies **F5** and tightens the uncleared-Register handoff.
+Rev-2 `9d2569c4…df235`; rev-1 `b3d3c97f…ded14c`.*
+
+- **Fable review (APPROVE-WITH-REQUIRED-CHANGES), dispositions:** **F1 (MAJOR, applied)** — the engine's reserve
+  set for an UNRECONCILED as-of week uses a stricter *projected branch* (`index.html:3166-3171`: `origin<w` +
+  origin-reconciled-or-`historical_repair`), not plain `isReservedAsOf`; D3/D7 now compute a branch-correct
+  `is_engine_reserved` and D9's E-contract states which branch applied so E does not double-count the WD base
+  schedule. **F2 (MAJOR, applied)** — added **D2B** enumerating uncleared `truist_checking` Register debits (a DB
+  obligation class D otherwise missed) + a `uncleared_register_items_count` in D9, so E cannot silently overstate
+  capacity. **F3 (applied)** — `as_of_model_week` echoed in D3/D5/D7/D9/D1. **F4 (applied)** — FSA cited to
+  `phase-5d-1-migration.sql:401,412`; "reminder-only" restricted to Jabian. **F6 (applied)** — amount-exposure
+  header corrected (D4 is amount-bearing for owner-review). **F8 (applied)** — D4 `direction` enum fixed; goal-snapshot
+  rows relabeled as context, not obligations. **F5 / F7 (DEFERRED, owner call)** — broaden BKX/near-amount dedup to
+  `$700.91` + payee match (F5); D6 class-1 grouping tidy (F7, moot under the UNIQUE constraint). Fable confirmed:
+  read-only, deterministic, SQL-valid, no capacity number, no transfer authorization, inflows not overstated.
+- **Rev-3 (owner-required, applied):** **F5 fully applied** — BKX evidence (amount `70090/70091` ±1¢, or payee/notes
+  `%bkx%`/`%extra bk%`) and commission-tax overlap (`commitment_class='tax_transfer'` with a completed `commission_tax`
+  leg within ±1 model week of origin/reflected OR ±1¢ of amount — catches carry-forward, partial-same-week, rounding)
+  are flagged in D3, **routed to `owner_review_required`, and EXCLUDED from the D7 authoritative total**; D6 classes
+  broadened + limitations documented; D9 emits `D_HANDOFF_FAIL_STOP` while any engine-reserved overlap candidate
+  exists. **Uncleared-Register handoff tightened** — D2B classifies each item `uncleared_class ∈ {valid_candidate,
+  overlap_owner_review, malformed}`; D9 fails on any malformed/overlap uncleared item and hands E the deterministic
+  `valid_candidate` set (not a bare count). **F7 stays DEFERRED** — operationally immaterial: `expected_item_id` is
+  UNIQUE (`phase-5f-1-migration.sql:50`), so D6 class-1's extra GROUP BY keys cannot mask a true duplicate and D9's
+  eid-only grouping is the authoritative duplicate gate.
+
+- **Purpose.** Establish the authoritative DB-representable near-term checking **obligations** and **inflows** that
+  must feed the actual-checking-capacity calculation (Baseline E / final). Baseline D computes **no capacity
+  figure** and authorizes **no transfer**.
+- **Authoritative obligation source (grounded).** `cash_commitments` (Phase 5F-1). The deployed Cash Availability
+  Engine (`index.html:2453-2463`) withholds capacity for `source_account='truist_checking'` rows where
+  `isReservedAsOf(c, weekN)` (`index.html:2438-2448`) is true; that predicate is encoded **verbatim** in D3/D5/D7/D9.
+  Floor `OP_FL=6500` (`index.html:896`) is handed to E, not applied here.
+- **Headline limitation (grounded).** The base modeled inflows/obligations — paychecks, rent, **all card payments**,
+  Kia, and the wk15 Alaska $7,000 draw — are **hardcoded in JS** (`WD` array, `index.html:909-941`; Alaska draw
+  `:3056-3068`) and are **invisible to SQL**. Baseline D inventories only the DB overlays and hands the code-side
+  base schedule + forward modeled inflows to E as **out-of-band** inputs (D1, D8, D9).
+- **Horizon & cutoff (derived, not assumed).** Horizon = **31 model weeks** = `WD` length (`index.html:909-941`);
+  wk1 = 2026-06-07 (`index.html:3441`) → wk31 ≈ 2027-01-09 (calendar spans INFERRED). Cutoff = the **model-week
+  integer** as-of (`getCurrentWeek`, `index.html:3441`) + `model_year=2026`; `due_date`/card-close dates are
+  descriptive-only and never gating. `transaction_date` is used only for the Register overlay (D2/D5) and never
+  mixed with the model-week cutoff. `p_as_of_model_week` is a parameter (illustrative default 8; owner-set at capture).
+- **Amount-exposure rationale.** D validates obligations/inflows, which are inherently amount-bearing. Amount-bearing
+  sets: **D2** (inflow magnitudes), **D3** (`amount_cents` reserve magnitudes — the exact values the engine sums),
+  **D6** (amounts used only to match duplicate candidates), **D7** (aggregated authoritative totals for the E handoff).
+  Amounts are minimized to obligation/inflow magnitude only; **no account balances** are exposed (balances are
+  Baseline B/C), no raw ledger dumps, and each amount is labeled modeled/posted/completed/cleared/inferred.
+  `custom_tasks` has **no amount column** (BKX $700.90 in label text) so D4 exposes no amount and routes to owner-review.
+- **Known unresolved review items (D8, must stay OUTSIDE the capacity calc until resolved).** Code-side WD base
+  schedule not in DB; forward modeled inflows code-side; **BKX $700.90** amount in `custom_tasks.label` text;
+  `custom_tasks` not read by the model (pre-AU-11 gap); `weekly_tasks` has no `model_year`; commission-tax **obligation
+  total** is client-side (only executed legs are in DB); Alaska reimbursement is a scheduled `goal_disbursement` not yet
+  recorded; Jabian & FSA reimbursements excluded (net-zero, reminder-only); Baseline B uncleared **+$15** Bailey inflow;
+  Baseline B `PAYMENT_LIKE_BUT_POSITIVE` (owner-resolved); Baseline C future weeks 8–31 zero checking txns (expected);
+  production is pre-AU-11 (discretionary reservations not represented).
+- **Operational HOLD remains.** No D result is a capacity figure or transfer authorization; engine + Wendy IRA + all
+  discretionary-transfer holds remain in force.
+
 ## Binding notes
 
 - **Cutoff status (reconciled).** The three cutoff parameters carried in the SQL artifacts as illustrative
@@ -168,7 +234,8 @@ checking-capacity figure and authorizes no transfer.** Operational result remain
 
 ## Pending (NOT started)
 
-- Baseline D (obligations & inflows), Baseline E (model comparison & trough) — **not drafted**.
+- Baseline D (obligations & inflows) — **APPROVED / FROZEN; NOT executed** (owner-run execution pending; see "Baseline D — design").
+- Baseline E (model comparison & trough) — **not drafted**.
 - Baseline F (owner-supplied live bank snapshot) — **not captured**.
 - Final capacity calculation and final validation — **pending**, to be assembled in the external
   execution evidence package (values remain out of the repository per the balance-free policy).
