@@ -7,16 +7,17 @@ client routing, disposition, role matrix) and is untouched here.
 
 ## Status
 
-*Updated 2026-07-28: Baselines A and B executed by the owner under the controlled read-only
-procedure against production; Baseline C is APPROVED / FROZEN (owner-approved after independent
-Fable review) — NOT executed. No production mutation occurred.*
+*Updated 2026-07-28: Baselines A, B, and C all executed by the owner under the controlled read-only
+procedure against production. Baseline C (frozen `8b4169726b81…`, 330 lines) executed
+statement-by-statement and PASSED (C4.OVERALL = C_PREREQ_PASS). No production mutation occurred;
+operational result remains HOLD; checking capacity is NOT yet established.*
 
 | Field | Value |
 |---|---|
 | A/B design review status | **APPROVED / FROZEN** |
 | Baseline A execution | **EXECUTED** (owner-run, read-only, production `usayoldrawwmjsmretin`) |
 | Baseline B execution | **EXECUTED — PASS WITH DOCUMENTED OWNER-REVIEWED EXCEPTIONS** (owner-run, read-only; see Execution evidence) |
-| Baseline C status | **APPROVED / FROZEN — NOT EXECUTED** (owner-approved after Fable review; frozen at the hash below) |
+| Baseline C status | **APPROVED / FROZEN / EXECUTED — PASS** (owner-run, read-only; C4.OVERALL = C_PREREQ_PASS; see Baseline C execution evidence) |
 | Production mutation status | **NONE** |
 | A/B execution parameters | **ADOPTED for the A/B run** — `cutoff_ts=2026-07-28 18:00:00-04:00`, `cutoff_business_date=2026-07-28`, `inspection_start_date=2026-06-30` (see Execution evidence) |
 | Live-bank snapshot (Baseline F) | **NOT CAPTURED** — the final synchronized capacity cutoff (SQL cutoff paired with a live bank snapshot) is therefore **not yet finalized** |
@@ -28,7 +29,7 @@ Fable review) — NOT executed. No production mutation occurred.*
 |---|---|---|---|
 | Baseline A — Environment & Schema Safety (read-only) | `docs/step8-actual-checking-capacity-A-environment-schema-safety.sql` | `43e97e8c048c76473da561d3977b026859d3b6f3e96fb5d97cb0b609e9a13b9b` | **FROZEN · EXECUTED** |
 | Baseline B — Checking Account & Register State (read-only) | `docs/step8-actual-checking-capacity-B-checking-register-state.sql` | `df9962ceb10ea3c16b8b70d55a0d1a27e9f173750b99c77bc98abcca515796da` | **FROZEN · EXECUTED (pass w/ documented exceptions)** |
-| Baseline C — Reconciliation & Week State (read-only) | `docs/step8-actual-checking-capacity-C-reconciliation-week-state.sql` | `8b4169726b81b7b63185734399b969f5b83a4d965a8728ed07f5a3a3460996fb` | **APPROVED / FROZEN — NOT EXECUTED** (owner-approved after Fable review; frozen hash; pre-review draft was `59240e54…aed5db`) |
+| Baseline C — Reconciliation & Week State (read-only) | `docs/step8-actual-checking-capacity-C-reconciliation-week-state.sql` | `8b4169726b81b7b63185734399b969f5b83a4d965a8728ed07f5a3a3460996fb` | **APPROVED / FROZEN / EXECUTED — PASS** (owner-approved + owner-executed 2026-07-28; C4.OVERALL = C_PREREQ_PASS; pre-review draft was `59240e54…aed5db`) |
 
 - Baseline A: 167 lines / 19,071 bytes / 5 statements (A0 session metadata, A1 required tables,
   A2 required columns, A3 AU-11 production-absence, A4 phased gates).
@@ -44,8 +45,8 @@ Fable review) — NOT executed. No production mutation occurred.*
   tax/lc or funded_amount value); no DDL/DML/RPC; one result set per block. Depends on A4 gate C
   (and gate B + Baseline B's B1a=TARGET_OK for C3) plus its own C0 self-gate; the AU-11 global stop and
   manual project confirmation still apply. **Revised per the Fable review (F1/F2 required + F3–F8
-  hardening); see "Baseline C — independent (Fable) review".** **APPROVED / FROZEN** (owner-approved
-  2026-07-28) at `8b4169726b81…` — **NOT executed**.
+  hardening); see "Baseline C — independent (Fable) review".** **APPROVED / FROZEN / EXECUTED — PASS**
+  (owner-approved + owner-executed 2026-07-28) at `8b4169726b81…`; see "Baseline C — execution evidence".
 - SHA-256 computed via `shasum -a 256 <file>` on the stored files.
 
 ## Execution evidence (Baselines A + B)
@@ -102,6 +103,43 @@ recommended hardening items (F3–F8) were raised; **all eight applied** in the 
 
 Fable-confirmed CORRECT (no change): Week-5 anchor treatment (#3), nine-goal completeness `DISTINCT eligible ≥9 ≡ =9` (#4), epoch date arithmetic with no off-by-one and DST-safe within the horizon (#6), and PostgreSQL syntactic validity of all constructs.
 
+## Baseline C — execution evidence (PASS)
+
+*Owner-run, read-only, statement-by-statement in the Supabase SQL Editor against production
+`usayoldrawwmjsmretin`, 2026-07-28. Frozen artifact `8b4169726b81b7b63185734399b969f5b83a4d965a8728ed07f5a3a3460996fb`
+(330 lines). Claude ran no SQL. No production mutation. Balance-free record — counts/states only; no balances.*
+
+- **C0 — environment / schema gate: PASS** (`C_GATE_PASS`). All 19 required table/column checks present:
+  `weekly_reconciliations` {week_num, chk, sav, amx, tax, lc, balance_basis, recorded_at};
+  `goal_funding_snapshots` {model_year, week_num, goal_id, source}; `transactions` {account_key,
+  transaction_date}; `accounts` {key}.
+- **C1 — reconciliation inventory: PASS.** Reconciliation rows exist for **weeks 1–7 only**; every row is
+  within domain 1..31 and has all five balances present (chk/sav/amx/tax/lc). `balance_basis`: weeks 1–3
+  NULL (legacy informational — not a gating defect), weeks 4–5 `posted_current_balance`, weeks 6–7
+  `available_balance`.
+- **C2 — week-state matrix: PASS.** Weeks 1–4 `legacy_pre_anchor` (reconciled, immutable, no snapshots);
+  week 5 `anchor` (reconciled, immutable, 9 distinct eligible / 11 total snapshot rows); weeks 6–7
+  `complete_db_derived` (reconciled, immutable, 9 distinct eligible / 9 total each); weeks 8–31
+  `open_or_blocked_db_derived` (unreconciled, not immutable, no snapshots). **No `half_closed` and no
+  `corrupt` state appeared.**
+- **C3 — checking ledger coverage (INFERRED spans): PASS.** `checking_account_present = 1` for all rows.
+  Checking transaction counts by inferred model-week span: wk1 0, wk2 0, wk3 0, wk4 8, wk5 12, wk6 9,
+  wk7 18; weeks 8–31 unreconciled, 0. Weeks 1–3 zero-activity is compatible with the Register's ~July-1
+  operational start (not a defect). No future-week activity. Spans inferred from epoch 2026-06-07; not
+  stored week boundaries.
+- **C4 — reconciliation prerequisite gate: `C4.OVERALL = C_PREREQ_PASS`.** All ten gating checks PASS —
+  C4.1 no duplicate week_num (0); C4.2 weeks in 1..31 (0 violations); C4.3 anchor week 5 reconciled (1);
+  C4.4 contiguous reconciled prefix (true); C4.5 post-anchor (≥6) non-NULL balance_basis (0 violations);
+  C4.6 post-anchor closeouts 9 distinct eligible (0 violations); C4.7 no snapshots on unreconciled ≥6 (0);
+  C4.8 snapshot weeks in 1..31 (0 violations); C4.9 no NULL-chk rows (0); C4.10 no snapshots on pre-anchor
+  ≤4 / unreconciled anchor 5 (0). **Informational (excluded from OVERALL):** C4.11 = 3 legacy (≤5) rows
+  with NULL balance_basis (matches the weeks 1–3 NULL basis); C4.12 = 0 recorded_at inversions.
+
+**Interpretation.** The reconciliation/closeout ledger is internally consistent through week 7: a clean
+contiguous reconciled prefix (weeks 1–7), a valid reconciled anchor (week 5), and complete post-anchor
+closeouts (weeks 6–7). **This is a reconciliation/week-state integrity pass only — it establishes NO
+checking-capacity figure and authorizes no transfer.** Operational result remains **HOLD**.
+
 ## Binding notes
 
 - **Cutoff status (reconciled).** The three cutoff parameters carried in the SQL artifacts as illustrative
@@ -130,24 +168,26 @@ Fable-confirmed CORRECT (no change): Week-5 anchor treatment (#3), nine-goal com
 
 ## Pending (NOT started)
 
-- Baseline C (reconciliation & week state) — **APPROVED / FROZEN; NOT executed** (owner-run execution pending; see Stored artifacts).
 - Baseline D (obligations & inflows), Baseline E (model comparison & trough) — **not drafted**.
 - Baseline F (owner-supplied live bank snapshot) — **not captured**.
 - Final capacity calculation and final validation — **pending**, to be assembled in the external
   execution evidence package (values remain out of the repository per the balance-free policy).
+- (Baselines A, B, and C are executed — see Stored artifacts / execution-evidence sections.)
 
 ## Governance
 
 - Standing holds remain in force: engine hold, Wendy IRA hold, discretionary-transfer deferrals,
-  controlled goal-funding/disbursement rules. **Baselines A and B were executed by the owner under the
+  controlled goal-funding/disbursement rules. **Baselines A, B, and C were executed by the owner under the
   controlled read-only procedure against production (`usayoldrawwmjsmretin`); every statement is
   SELECT / read-only metadata inspection, so production mutation status remains NONE.** **Claude has
-  executed no SQL against production or staging.** Baseline C has not been executed.
+  executed no SQL against production or staging.** No capacity figure has been established; no transfer is
+  authorized; the operational result remains **HOLD**.
 
 ## Next authorized action
 
-**Step 8 — Execute Baseline C (Reconciliation & Week State) under the controlled owner-run, read-only
-production procedure** (owner-run; Claude runs no SQL). Baseline C is APPROVED / FROZEN at
-`8b4169726b81b7b63185734399b969f5b83a4d965a8728ed07f5a3a3460996fb`. Baselines A and B are complete
-(executed, read-only, zero production mutation, B pass-with-documented-exceptions); Baselines D, E, F,
-the final capacity calculation, and final validation remain pending. Step 8 is **NOT complete**.
+**Step 8 — Design Baseline D (obligations & inflows), obtain independent (Fable) review, freeze it, and
+only then seek authorization to execute it** (owner-run; Claude runs no SQL). Baselines A, B, and C are
+complete (executed, read-only, zero production mutation; C passed `C4.OVERALL = C_PREREQ_PASS`).
+**Checking capacity has NOT been established** — Baselines D and E, the Baseline F live-bank snapshot, the
+final capacity calculation, and final validation all remain pending, and **no transfer is authorized**.
+Operational result remains **HOLD**. Step 8 is **NOT complete**.
