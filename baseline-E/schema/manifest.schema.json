@@ -1,0 +1,126 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "baseline-E-inputs.schema.json",
+  "title": "Baseline E execution input manifest (narrowest schema supported by approved rev-8 design)",
+  "description": "Closed enums appear ONLY where the approved text defines a closed vocabulary (verdict §12, direction, channel §1d, opening basis §5). Where the design does not fix a vocabulary (disposition, adjudication_status, match_method, source, classification) a constrained non-empty string is used and the executable validator applies semantic checks. All monetary fields are integer cents (§8). Required/optional derived directly from the approved contracts.",
+  "type": "object",
+  "additionalProperties": true,
+  "required": [
+    "model_year",
+    "as_of_model_week",
+    "coverage_horizon_end",
+    "operating_floor_cents",
+    "live_chk_selected_basis",
+    "live_chk_displayed_balance_cents",
+    "live_chk_capture_ts",
+    "normalized_opening_chk_cents",
+    "effective_schedule_events",
+    "wendy_ira_amount_cents",
+    "wendy_ira_intended_date",
+    "wendy_ira_expected_posting"
+  ],
+  "properties": {
+    "model_year": { "const": 2026 },
+    "as_of_model_week": { "type": "integer", "minimum": 1, "maximum": 31 },
+    "coverage_horizon_end": {
+      "type": "integer",
+      "minimum": 1,
+      "description": "Frontier-relative horizon end (§13/§14). Must be >= as_of_model_week (enforced semantically)."
+    },
+    "operating_floor_cents": { "type": "integer", "minimum": 0, "description": "§2 CONTROL, owner-confirmed (fail-closed)." },
+    "named_reserve_cents": { "type": "integer", "minimum": 0, "description": "Optional explicit named reserve (§2 CONTROL); never a silent buffer." },
+    "live_chk_selected_basis": { "type": "string", "enum": ["posted_current", "available"] },
+    "live_chk_displayed_balance_cents": { "type": "integer", "minimum": 0 },
+    "live_chk_capture_ts": { "type": "string", "description": "ISO-8601 America/New_York; within as_of_model_week (§16)." },
+    "normalized_opening_chk_cents": { "type": "integer", "minimum": 0 },
+    "pending_items": { "type": "array", "items": { "$ref": "#/$defs/pending_item" } },
+    "capture_week_seam": { "type": "array", "items": { "$ref": "#/$defs/seam_row" } },
+    "bank_to_schedule_reconciliation": { "type": "array", "items": { "$ref": "#/$defs/bank_to_schedule_row" } },
+    "effective_schedule_events": { "type": "array", "items": { "$ref": "#/$defs/event" } },
+    "wendy_ira_amount_cents": { "type": "integer", "exclusiveMinimum": 0 },
+    "wendy_ira_intended_date": { "type": "string" },
+    "wendy_ira_expected_posting": { "type": "string", "description": "date, or the literal 'conservative'." },
+    "verdict": { "type": "string", "enum": ["PASS-SAFE", "PASS-UNSAFE", "HOLD", "FAIL-STOP"] }
+  },
+  "$defs": {
+    "event": {
+      "type": "object",
+      "required": ["event_id", "model_week", "direction", "amount_cents", "channel", "content_digest"],
+      "properties": {
+        "event_id": { "type": "string", "minLength": 1 },
+        "model_week": { "type": "integer", "minimum": 1 },
+        "date_or_position": { "type": "string" },
+        "direction": { "type": "string", "enum": ["debit", "credit"] },
+        "amount_cents": { "type": "integer", "exclusiveMinimum": 0 },
+        "channel": { "type": "string", "enum": ["inflow", "obligation", "override_event", "ct", "ca", "budget_rule", "owner_committed", "conditional", "transfer_test"] },
+        "source": { "type": "string", "minLength": 1 },
+        "content_digest": { "type": "string", "minLength": 1 },
+        "classification": { "type": "string", "minLength": 1, "description": "§3 bucket or excluded:{rule} — constrained string, semantic check in validator." }
+      }
+    },
+    "pending_item": {
+      "type": "object",
+      "required": ["amount_cents", "direction", "status", "in_selected_basis", "in_forward_schedule", "treatment"],
+      "properties": {
+        "amount_cents": { "type": "integer" },
+        "direction": { "type": "string", "enum": ["debit", "credit"] },
+        "status": { "type": "string", "minLength": 1 },
+        "in_posted_balance": { "type": "boolean" },
+        "in_available_balance": { "type": "boolean" },
+        "in_selected_basis": { "type": "boolean" },
+        "in_forward_schedule": { "type": "boolean" },
+        "treatment": { "type": "string", "minLength": 1 }
+      }
+    },
+    "seam_row": {
+      "type": "object",
+      "required": ["event_id", "event_content_digest", "direction", "amount_cents", "posted_before_capture", "in_selected_basis", "schedule_disposition", "adjudication_status"],
+      "properties": {
+        "event_id": { "type": "string", "minLength": 1 },
+        "event_content_digest": { "type": "string", "minLength": 1 },
+        "expected_position": { "type": "string" },
+        "direction": { "type": "string", "enum": ["debit", "credit"] },
+        "amount_cents": { "type": "integer", "exclusiveMinimum": 0 },
+        "posted_before_capture": { "type": "boolean" },
+        "in_selected_basis": { "type": "boolean" },
+        "schedule_disposition": { "type": "string", "minLength": 1 },
+        "evidence_reference": { "type": "string" },
+        "adjudication_status": { "type": "string", "minLength": 1 }
+      }
+    },
+    "bank_to_schedule_row": {
+      "type": "object",
+      "required": ["bank_transaction_id", "bank_transaction_content_digest", "posted_at", "direction", "amount_cents", "in_selected_opening_basis", "disposition", "adjudication_status"],
+      "properties": {
+        "bank_transaction_id": { "type": "string", "minLength": 1 },
+        "bank_transaction_content_digest": { "type": "string", "minLength": 1 },
+        "posted_at": { "type": "string" },
+        "direction": { "type": "string", "enum": ["debit", "credit"] },
+        "amount_cents": { "type": "integer", "exclusiveMinimum": 0 },
+        "description_or_reference": { "type": "string" },
+        "in_selected_opening_basis": { "type": "boolean" },
+        "candidate_forward_matches": { "type": "array" },
+        "confirmed_matches": { "type": "array", "items": { "$ref": "#/$defs/confirmed_match" } },
+        "match_method": { "type": "string", "minLength": 1, "description": "constrained string; semantic check in validator (no closed vocabulary in design)." },
+        "disposition": { "type": "string", "minLength": 1, "description": "A|B|C|D|E|F|G|H — constrained string; semantic check in validator." },
+        "evidence_reference": { "type": "string" },
+        "adjudication_status": { "type": "string", "minLength": 1 }
+      }
+    },
+    "confirmed_match": {
+      "type": "object",
+      "required": ["event_id", "event_content_digest", "allocated_amount_cents", "resulting_disposition"],
+      "properties": {
+        "event_id": { "type": "string", "minLength": 1 },
+        "event_content_digest": { "type": "string", "minLength": 1 },
+        "allocated_amount_cents": { "type": "integer" },
+        "allocation_reason": { "type": "string" },
+        "expected_model_week_and_date": { "type": "string" },
+        "resulting_disposition": { "type": "string", "minLength": 1 },
+        "reflected_component_id": { "type": "string" },
+        "remaining_forward_component_id": { "type": "string" },
+        "original_event_amount_cents": { "type": "integer" }
+      }
+    }
+  }
+}
