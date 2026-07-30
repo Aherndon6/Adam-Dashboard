@@ -1,0 +1,963 @@
+{
+  "gate": "BASELINE_E_RUNMODEL_STATE_RESOLUTION_PARITY",
+  "gate_verdict": "STATE_PARITY_PASS_WITH_BLOCKING_BEFORE_LIVE_CONDITIONS",
+  "note": "machine-readable state-parity results (uncommitted). No date/timezone logic in the resolution surface -> classification is timezone-invariant by construction.",
+  "owner_ruling": {
+    "date": "2026-07-29",
+    "s1_option": "b",
+    "s1_rule": "Every material off-model obligation must be converted into an authoritative capacity deduction (promote to cash_commitment, OR explicit Baseline E capacity adjustment with stable identity + source account + amount + obligation type + effective date/interval + evidence ref + disposition + not-already-represented proof + deterministic inclusion in the reservation total) BEFORE any capacity number. Flag-only is insufficient. Baseline E must fail-stop/HOLD on a detected-but-unconverted material off-model obligation. No silent auto-promote/auto-reserve.",
+    "baseline_e_unchanged": true,
+    "index_html_change_required": false
+  },
+  "modeled_surface_parity": true,
+  "reservation_predicate_parity": true,
+  "unreconciled_prefilter_parity": true,
+  "reservation_clause_coverage_complete": true,
+  "reservation_cross_product_cases": 6912,
+  "reservation_cross_product_mismatches": 0,
+  "executable_mutation_coverage_complete": true,
+  "obligation_set_complete": false,
+  "obligation_set_completeness_attested": true,
+  "reserve_release_evidence_complete": true,
+  "c1_terminal_resolution_escape_closed": true,
+  "s7_evidence_type_required": true,
+  "s7_untyped_evidence_escape_closed": true,
+  "capacity_calculation_eligible": false,
+  "blocking_controls": [
+    "S-1",
+    "S-2",
+    "S-3",
+    "S-4",
+    "S-5",
+    "S-6",
+    "S-7"
+  ],
+  "remaining_blockers": [
+    "S-1..S-7 controls proven here against SYNTHETIC fixtures only; live-evidence preflight (RLS visibility, real obligation load, live-bank uncleared reconciliation) is a separate authorized gate",
+    "obligation_set_complete=false until a live obligation load is affirmatively attested complete",
+    "capacity_calculation_eligible=false"
+  ],
+  "fable_review": {
+    "date": "2026-07-29",
+    "verdict": "REVISE_STATE_PARITY_EVIDENCE_OR_CONTROLS",
+    "disposition": "ALL FINDINGS REMEDIATED (owner-authorized 2026-07-30): D-1 executable mutations, D-2 clause fixtures + embedded cross-product, D-3 unreconciled-branch prefilter modeled + fixtures, D-4 missing-chk fixture; S-6/S-7 adopted as blocking controls",
+    "substantive_conclusions_survive": true,
+    "independent_cross_product_cases": 6912,
+    "independent_cross_product_mismatches": 0,
+    "findings_remediation": {
+      "D-1": "REMEDIATED: 14 executable mutations run through runStateDifferential; each diverges the target classification/field deterministically.",
+      "D-2": "REMEDIATED: SP-51..SP-58 clause fixtures + embedded 6912-case cross-product test (0 mismatches) in the suite.",
+      "D-3": "REMEDIATED: two-branch prefilter (index.html:3159-3172) modeled with verbatim isReservedAsOf; SP-59..SP-68 fixtures; app==be over the unreconciled branch.",
+      "D-4": "REMEDIATED: SP-69 chk-missing fixture (NaN) distinct from SP-03 chk:null (0); both BE HOLD.",
+      "D-5": "ADOPTED as S-6.",
+      "D-6": "ADOPTED as S-7."
+    },
+    "re_review": {
+      "date": "2026-07-30",
+      "verdict": "APPROVE_WITH_NON_BLOCKING_CONDITIONS",
+      "d1_d4_genuinely_remediated": true,
+      "s6_sufficient_for_synthetic_harness": true,
+      "conditions": {
+        "C-1": "CLOSED (owner-authorized 2026-07-30): S-7 now enforces terminal-resolution evidence on ALL release/exclusion paths (status=voided / resolution_type in {voided,paid_from_other_account}) even with reflected AND resolved both null; missing/wrong-type/stale/duplicate/contradictory -> HOLD; bare cleared_transaction_id without amount+source flagged. Fixtures SP-89..SP-100; executable mutant M15 (c1Escape) caught deterministically.",
+        "C-2": "CLOSED: stale doc passages corrected (§3.D MODELED; §7 headline 59/26/3; §21 88/both-branches).",
+        "C-3": "CLOSED: §17 M14 wording clarified; M10 dropAffects noted as decorated constant-false."
+      },
+      "c1_disposition": "CLOSED",
+      "all_conditions_closed": true,
+      "focused_c1_reglance": {
+        "date": "2026-07-30",
+        "disposition": "CLOSED",
+        "adversarial_second_escape_hunt": "1112 otherwise-reservable release cases with zero evidence -> 0 with empty S7 disposition; every isReservedAsOf false-return path (voided status/resolution, paid_from_other, reflected<=week, resolved<=week) is evidence-gated",
+        "no_regression": "29/29 state, 199/199 full, 6912/0 cross-product, 0 defects",
+        "residual_non_blocking": [
+          "CLOSED (owner-authorized 2026-07-30): untyped resolution_evidence is NO LONGER accepted — terminal evidence now requires a supported, consistent resolution_evidence_type (void_cancellation / alternate_payment); absent/blank -> S7_TERMINAL_EVIDENCE_TYPE_MISSING, unsupported/inconsistent -> S7_TERMINAL_EVIDENCE_WRONG_TYPE. Fixtures SP-101..SP-107; mutant M16 (untypedEvidenceEscape) caught.",
+          "DEFERRED (cosmetic, non-blocking): the new S7 codes are classified INTENTIONAL via the differential fall-through rather than being listed in STRICTER; no behavioral gap."
+        ]
+      }
+    }
+  },
+  "blocking_controls_detail": {
+    "S-1": "Off-model obligations: every material off-model obligation converted to an authoritative capacity deduction; flag-only insufficient; fail-stop/HOLD if detected-but-unconverted.",
+    "S-2": "Null/missing/malformed/non-finite reconciliation chk must never be authoritative; fail-closed or explicit unresolved-evidence HOLD; must NOT silently produce a zero (chk:null) or NaN (chk-missing) actual balance.",
+    "S-3": "Duplicate/conflicting reconciliation rows for one model week must be detected; identical duplicates explicitly classified; conflicting values fail-stop; last-write-wins unacceptable.",
+    "S-4": "Negative/malformed/non-finite/unsupported commitment amounts rejected; zero-dollar explicitly classified and capacity-neutral; no negative reservation may increase deployable surplus.",
+    "S-5": "Material uncleared Register debits/credits reconciled against posted balance / available balance / pending-bank evidence / duplication with commitments-or-transfers before capacity; unresolved material uncleared debits require HOLD; no silent ignore or double-count.",
+    "S-6": "Obligation-set completeness attestation: no fetch/parse failure may default to an authoritative empty set; console warning insufficient; empty set requires affirmative attestation; failed/partial/malformed/rls_filtered/schema_mismatch/silent_empty/unattested -> HOLD; obligation_set_complete + capacity_calculation_eligible stay false until attestation passes.",
+    "S-7": "Reserve-release clearing evidence: a reserve released by reflected/resolved modeled state must carry durable clearing evidence (cleared_transaction_id, or paid_from_other_account/voided with evidence); missing/ambiguous/stale/duplicate linkage or amount/source mismatch -> HOLD; one transaction must not clear multiple commitments; modeled placement/reflected_model_week alone insufficient."
+  },
+  "node": "v24.15.0",
+  "total": 107,
+  "summary": {
+    "EXACT_MATCH": 65,
+    "INTENTIONAL_CONTROL_DIFFERENCE": 39,
+    "APPLICATION_GAP": 3
+  },
+  "timezone_invariant_classification": true,
+  "repeatable": true,
+  "application_gaps": [
+    "SP-27",
+    "SP-31",
+    "SP-50"
+  ],
+  "material_application_gaps": [
+    "SP-31",
+    "SP-50"
+  ],
+  "baseline_e_or_adapter_defects": [],
+  "reservation_math_parity_all_fixtures": true,
+  "protected_surfaces": {
+    "index_html_sha256": "162f4caa5fb2cfc865389e070df3905079e9d24a766f91e3f404f21d9620309c",
+    "index_html_matches_pin": true,
+    "frozen_sql": {
+      "A": "43e97e8c048c76473da561d3977b026859d3b6f3e96fb5d97cb0b609e9a13b9b",
+      "B": "df9962ceb10ea3c16b8b70d55a0d1a27e9f173750b99c77bc98abcca515796da",
+      "C": "8b4169726b81b7b63185734399b969f5b83a4d965a8728ed07f5a3a3460996fb",
+      "D": "6de0f8e554cb1a961f362229fa61d27ffa102a2d8240e4604aaeb1de75d8b893"
+    }
+  },
+  "rows": [
+    {
+      "id": "SP-01",
+      "cls": "unreconciled_projected",
+      "classification": "EXACT_MATCH",
+      "material": false,
+      "dispositions": []
+    },
+    {
+      "id": "SP-02",
+      "cls": "reconciled_override",
+      "classification": "EXACT_MATCH",
+      "material": false,
+      "dispositions": []
+    },
+    {
+      "id": "SP-03",
+      "cls": "recon_null_chk",
+      "classification": "INTENTIONAL_CONTROL_DIFFERENCE",
+      "material": false,
+      "dispositions": [
+        "BE_HOLD_NULL_CHK"
+      ]
+    },
+    {
+      "id": "SP-04",
+      "cls": "recon_posted_basis",
+      "classification": "EXACT_MATCH",
+      "material": false,
+      "dispositions": []
+    },
+    {
+      "id": "SP-05",
+      "cls": "recon_available_basis",
+      "classification": "EXACT_MATCH",
+      "material": false,
+      "dispositions": []
+    },
+    {
+      "id": "SP-06",
+      "cls": "recon_unknown_basis",
+      "classification": "INTENTIONAL_CONTROL_DIFFERENCE",
+      "material": false,
+      "dispositions": [
+        "BE_REVIEW_UNKNOWN_BASIS"
+      ]
+    },
+    {
+      "id": "SP-07",
+      "cls": "register_cleared_debit",
+      "classification": "EXACT_MATCH",
+      "material": false,
+      "dispositions": []
+    },
+    {
+      "id": "SP-08",
+      "cls": "register_uncleared_debit",
+      "classification": "INTENTIONAL_CONTROL_DIFFERENCE",
+      "material": false,
+      "dispositions": [
+        "BE_UNCLEARED_EXCLUDED_INFORMATIONAL"
+      ]
+    },
+    {
+      "id": "SP-09",
+      "cls": "register_cleared_credit",
+      "classification": "EXACT_MATCH",
+      "material": false,
+      "dispositions": []
+    },
+    {
+      "id": "SP-10",
+      "cls": "register_uncleared_credit",
+      "classification": "EXACT_MATCH",
+      "material": false,
+      "dispositions": []
+    },
+    {
+      "id": "SP-11",
+      "cls": "register_non_checking",
+      "classification": "EXACT_MATCH",
+      "material": false,
+      "dispositions": []
+    },
+    {
+      "id": "SP-12",
+      "cls": "register_duplicate",
+      "classification": "EXACT_MATCH",
+      "material": false,
+      "dispositions": []
+    },
+    {
+      "id": "SP-13",
+      "cls": "transfer_debit_only",
+      "classification": "INTENTIONAL_CONTROL_DIFFERENCE",
+      "material": false,
+      "dispositions": [
+        "BE_TRANSFER_NO_PAIR_ID"
+      ]
+    },
+    {
+      "id": "SP-14",
+      "cls": "transfer_credit_only",
+      "classification": "INTENTIONAL_CONTROL_DIFFERENCE",
+      "material": false,
+      "dispositions": [
+        "BE_TRANSFER_NO_PAIR_ID"
+      ]
+    },
+    {
+      "id": "SP-15",
+      "cls": "transfer_both_legs",
+      "classification": "EXACT_MATCH",
+      "material": false,
+      "dispositions": []
+    },
+    {
+      "id": "SP-16",
+      "cls": "transfer_no_pair_id",
+      "classification": "INTENTIONAL_CONTROL_DIFFERENCE",
+      "material": false,
+      "dispositions": [
+        "BE_TRANSFER_NO_PAIR_ID"
+      ]
+    },
+    {
+      "id": "SP-17",
+      "cls": "transfer_mismatch_amount",
+      "classification": "INTENTIONAL_CONTROL_DIFFERENCE",
+      "material": false,
+      "dispositions": [
+        "BE_TRANSFER_AMOUNT_MISMATCH"
+      ]
+    },
+    {
+      "id": "SP-18",
+      "cls": "open_commit_affects",
+      "classification": "EXACT_MATCH",
+      "material": false,
+      "dispositions": []
+    },
+    {
+      "id": "SP-19",
+      "cls": "open_commit_not_affects",
+      "classification": "EXACT_MATCH",
+      "material": false,
+      "dispositions": []
+    },
+    {
+      "id": "SP-20",
+      "cls": "executed_commit_cleared_evidence",
+      "classification": "EXACT_MATCH",
+      "material": false,
+      "dispositions": []
+    },
+    {
+      "id": "SP-21",
+      "cls": "cleared_commit_evidence",
+      "classification": "EXACT_MATCH",
+      "material": false,
+      "dispositions": []
+    },
+    {
+      "id": "SP-22",
+      "cls": "voided_commit",
+      "classification": "EXACT_MATCH",
+      "material": false,
+      "dispositions": []
+    },
+    {
+      "id": "SP-23",
+      "cls": "stale_commit",
+      "classification": "EXACT_MATCH",
+      "material": false,
+      "dispositions": []
+    },
+    {
+      "id": "SP-24",
+      "cls": "commit_other_source",
+      "classification": "EXACT_MATCH",
+      "material": false,
+      "dispositions": []
+    },
+    {
+      "id": "SP-25",
+      "cls": "commit_within_horizon",
+      "classification": "EXACT_MATCH",
+      "material": false,
+      "dispositions": []
+    },
+    {
+      "id": "SP-26",
+      "cls": "commit_outside_horizon",
+      "classification": "EXACT_MATCH",
+      "material": false,
+      "dispositions": []
+    },
+    {
+      "id": "SP-27",
+      "cls": "custom_task_obligation",
+      "classification": "APPLICATION_GAP",
+      "material": false,
+      "dispositions": [
+        "BE_OFF_MODEL_OBLIGATION_FLAG"
+      ]
+    },
+    {
+      "id": "SP-28",
+      "cls": "custom_task_complete",
+      "classification": "EXACT_MATCH",
+      "material": false,
+      "dispositions": []
+    },
+    {
+      "id": "SP-29",
+      "cls": "custom_task_no_transfer",
+      "classification": "EXACT_MATCH",
+      "material": false,
+      "dispositions": []
+    },
+    {
+      "id": "SP-30",
+      "cls": "reimbursement_task_paired",
+      "classification": "EXACT_MATCH",
+      "material": false,
+      "dispositions": []
+    },
+    {
+      "id": "SP-31",
+      "cls": "bkx_tax_reserve_offmodel",
+      "classification": "APPLICATION_GAP",
+      "material": true,
+      "dispositions": [
+        "BE_OFF_MODEL_OBLIGATION_FLAG"
+      ]
+    },
+    {
+      "id": "SP-32",
+      "cls": "goal_disbursement_transfer",
+      "classification": "EXACT_MATCH",
+      "material": false,
+      "dispositions": []
+    },
+    {
+      "id": "SP-33",
+      "cls": "multiple_obligations_same_cash",
+      "classification": "EXACT_MATCH",
+      "material": false,
+      "dispositions": []
+    },
+    {
+      "id": "SP-34",
+      "cls": "floor_exact",
+      "classification": "EXACT_MATCH",
+      "material": false,
+      "dispositions": []
+    },
+    {
+      "id": "SP-35",
+      "cls": "floor_one_cent_below",
+      "classification": "EXACT_MATCH",
+      "material": false,
+      "dispositions": []
+    },
+    {
+      "id": "SP-36",
+      "cls": "floor_one_cent_above",
+      "classification": "EXACT_MATCH",
+      "material": false,
+      "dispositions": []
+    },
+    {
+      "id": "SP-37",
+      "cls": "week_immutable",
+      "classification": "EXACT_MATCH",
+      "material": false,
+      "dispositions": []
+    },
+    {
+      "id": "SP-38",
+      "cls": "week_mutable",
+      "classification": "EXACT_MATCH",
+      "material": false,
+      "dispositions": []
+    },
+    {
+      "id": "SP-39",
+      "cls": "reconciled_prior_unreconciled_current",
+      "classification": "EXACT_MATCH",
+      "material": false,
+      "dispositions": []
+    },
+    {
+      "id": "SP-40",
+      "cls": "retained_horizon_complete",
+      "classification": "EXACT_MATCH",
+      "material": false,
+      "dispositions": []
+    },
+    {
+      "id": "SP-41",
+      "cls": "retained_horizon_incomplete",
+      "classification": "INTENTIONAL_CONTROL_DIFFERENCE",
+      "material": false,
+      "dispositions": [
+        "BE_RETAINED_HORIZON_INCOMPLETE"
+      ]
+    },
+    {
+      "id": "SP-42",
+      "cls": "unknown_account_identity",
+      "classification": "INTENTIONAL_CONTROL_DIFFERENCE",
+      "material": false,
+      "dispositions": [
+        "BE_FAILSTOP_UNKNOWN_ACCOUNT"
+      ]
+    },
+    {
+      "id": "SP-43",
+      "cls": "duplicate_recon_row",
+      "classification": "INTENTIONAL_CONTROL_DIFFERENCE",
+      "material": false,
+      "dispositions": [
+        "BE_FAILSTOP_DUPLICATE_RECON"
+      ]
+    },
+    {
+      "id": "SP-44",
+      "cls": "conflicting_recon_values",
+      "classification": "INTENTIONAL_CONTROL_DIFFERENCE",
+      "material": false,
+      "dispositions": [
+        "BE_FAILSTOP_CONFLICTING_RECON"
+      ]
+    },
+    {
+      "id": "SP-45",
+      "cls": "missing_commit_source",
+      "classification": "EXACT_MATCH",
+      "material": false,
+      "dispositions": []
+    },
+    {
+      "id": "SP-46",
+      "cls": "negative_malformed_amount",
+      "classification": "INTENTIONAL_CONTROL_DIFFERENCE",
+      "material": false,
+      "dispositions": [
+        "BE_FAILSTOP_MALFORMED_AMOUNT"
+      ]
+    },
+    {
+      "id": "SP-47",
+      "cls": "zero_dollar",
+      "classification": "EXACT_MATCH",
+      "material": false,
+      "dispositions": []
+    },
+    {
+      "id": "SP-48",
+      "cls": "model_week_31_endpoint",
+      "classification": "EXACT_MATCH",
+      "material": false,
+      "dispositions": []
+    },
+    {
+      "id": "SP-49",
+      "cls": "evidence_after_horizon",
+      "classification": "EXACT_MATCH",
+      "material": false,
+      "dispositions": [
+        "BE_EVIDENCE_AFTER_HORIZON_EXCLUDED"
+      ]
+    },
+    {
+      "id": "SP-50",
+      "cls": "combined_high_risk",
+      "classification": "APPLICATION_GAP",
+      "material": true,
+      "dispositions": [
+        "BE_OFF_MODEL_OBLIGATION_FLAG",
+        "BE_UNCLEARED_EXCLUDED_INFORMATIONAL",
+        "BE_TRANSFER_NO_PAIR_ID"
+      ]
+    },
+    {
+      "id": "SP-51",
+      "cls": "clause_model_year_mismatch",
+      "classification": "EXACT_MATCH",
+      "material": false,
+      "dispositions": []
+    },
+    {
+      "id": "SP-52",
+      "cls": "clause_resolution_voided",
+      "classification": "EXACT_MATCH",
+      "material": false,
+      "dispositions": []
+    },
+    {
+      "id": "SP-53",
+      "cls": "clause_resolution_paid_other",
+      "classification": "EXACT_MATCH",
+      "material": false,
+      "dispositions": []
+    },
+    {
+      "id": "SP-54",
+      "cls": "clause_resolved_after_week",
+      "classification": "EXACT_MATCH",
+      "material": false,
+      "dispositions": []
+    },
+    {
+      "id": "SP-55",
+      "cls": "clause_resolved_le_week",
+      "classification": "EXACT_MATCH",
+      "material": false,
+      "dispositions": []
+    },
+    {
+      "id": "SP-56",
+      "cls": "clause_reflected_after_week",
+      "classification": "EXACT_MATCH",
+      "material": false,
+      "dispositions": []
+    },
+    {
+      "id": "SP-57",
+      "cls": "clause_reflected_eq_week",
+      "classification": "EXACT_MATCH",
+      "material": false,
+      "dispositions": []
+    },
+    {
+      "id": "SP-58",
+      "cls": "clause_reflected_before_week",
+      "classification": "EXACT_MATCH",
+      "material": false,
+      "dispositions": []
+    },
+    {
+      "id": "SP-59",
+      "cls": "unrec_origin_reconciled",
+      "classification": "EXACT_MATCH",
+      "material": false,
+      "dispositions": []
+    },
+    {
+      "id": "SP-60",
+      "cls": "unrec_origin_unreconciled",
+      "classification": "EXACT_MATCH",
+      "material": false,
+      "dispositions": []
+    },
+    {
+      "id": "SP-61",
+      "cls": "unrec_historical_repair",
+      "classification": "EXACT_MATCH",
+      "material": false,
+      "dispositions": []
+    },
+    {
+      "id": "SP-62",
+      "cls": "unrec_strict_origin_equal",
+      "classification": "EXACT_MATCH",
+      "material": false,
+      "dispositions": []
+    },
+    {
+      "id": "SP-63",
+      "cls": "unrec_model_year_mismatch",
+      "classification": "EXACT_MATCH",
+      "material": false,
+      "dispositions": []
+    },
+    {
+      "id": "SP-64",
+      "cls": "unrec_mixed_outcomes",
+      "classification": "EXACT_MATCH",
+      "material": false,
+      "dispositions": []
+    },
+    {
+      "id": "SP-65",
+      "cls": "unrec_multiple_reconciled_origins",
+      "classification": "EXACT_MATCH",
+      "material": false,
+      "dispositions": []
+    },
+    {
+      "id": "SP-66",
+      "cls": "unrec_admitted_but_voided",
+      "classification": "EXACT_MATCH",
+      "material": false,
+      "dispositions": []
+    },
+    {
+      "id": "SP-67",
+      "cls": "unrec_historical_repair_not_affects",
+      "classification": "EXACT_MATCH",
+      "material": false,
+      "dispositions": []
+    },
+    {
+      "id": "SP-68",
+      "cls": "unrec_no_commitments",
+      "classification": "EXACT_MATCH",
+      "material": false,
+      "dispositions": []
+    },
+    {
+      "id": "SP-69",
+      "cls": "recon_missing_chk_key",
+      "classification": "INTENTIONAL_CONTROL_DIFFERENCE",
+      "material": false,
+      "dispositions": [
+        "BE_HOLD_MISSING_CHK"
+      ]
+    },
+    {
+      "id": "SP-70",
+      "cls": "s6_complete_attested",
+      "classification": "EXACT_MATCH",
+      "material": false,
+      "dispositions": []
+    },
+    {
+      "id": "SP-71",
+      "cls": "s6_verified_empty",
+      "classification": "EXACT_MATCH",
+      "material": false,
+      "dispositions": []
+    },
+    {
+      "id": "SP-72",
+      "cls": "s6_failed_fetch",
+      "classification": "INTENTIONAL_CONTROL_DIFFERENCE",
+      "material": false,
+      "dispositions": [
+        "S6_OBLIGATION_SET_INCOMPLETE_HOLD",
+        "S6_FAILED_FETCH"
+      ]
+    },
+    {
+      "id": "SP-73",
+      "cls": "s6_partial",
+      "classification": "INTENTIONAL_CONTROL_DIFFERENCE",
+      "material": false,
+      "dispositions": [
+        "S6_OBLIGATION_SET_INCOMPLETE_HOLD",
+        "S6_PARTIAL_LOAD"
+      ]
+    },
+    {
+      "id": "SP-74",
+      "cls": "s6_malformed",
+      "classification": "INTENTIONAL_CONTROL_DIFFERENCE",
+      "material": false,
+      "dispositions": [
+        "S6_OBLIGATION_SET_INCOMPLETE_HOLD",
+        "S6_MALFORMED_RESULT"
+      ]
+    },
+    {
+      "id": "SP-75",
+      "cls": "s6_silent_empty",
+      "classification": "INTENTIONAL_CONTROL_DIFFERENCE",
+      "material": false,
+      "dispositions": [
+        "S6_OBLIGATION_SET_INCOMPLETE_HOLD",
+        "S6_SILENT_EMPTY_DEFAULT"
+      ]
+    },
+    {
+      "id": "SP-76",
+      "cls": "s6_unattested",
+      "classification": "INTENTIONAL_CONTROL_DIFFERENCE",
+      "material": false,
+      "dispositions": [
+        "S6_OBLIGATION_SET_INCOMPLETE_HOLD"
+      ]
+    },
+    {
+      "id": "SP-77",
+      "cls": "s6_rls_filtered",
+      "classification": "INTENTIONAL_CONTROL_DIFFERENCE",
+      "material": false,
+      "dispositions": [
+        "S6_OBLIGATION_SET_INCOMPLETE_HOLD",
+        "S6_RLS_FILTERED"
+      ]
+    },
+    {
+      "id": "SP-78",
+      "cls": "s6_schema_mismatch",
+      "classification": "INTENTIONAL_CONTROL_DIFFERENCE",
+      "material": false,
+      "dispositions": [
+        "S6_OBLIGATION_SET_INCOMPLETE_HOLD",
+        "S6_SCHEMA_MISMATCH"
+      ]
+    },
+    {
+      "id": "SP-79",
+      "cls": "s7_reflected_no_evidence",
+      "classification": "INTENTIONAL_CONTROL_DIFFERENCE",
+      "material": false,
+      "dispositions": [
+        "S7_RESERVE_RELEASE_NO_CLEARING_EVIDENCE"
+      ]
+    },
+    {
+      "id": "SP-80",
+      "cls": "s7_reflected_valid_linkage",
+      "classification": "EXACT_MATCH",
+      "material": false,
+      "dispositions": []
+    },
+    {
+      "id": "SP-81",
+      "cls": "s7_clearing_before_reflect",
+      "classification": "EXACT_MATCH",
+      "material": false,
+      "dispositions": []
+    },
+    {
+      "id": "SP-82",
+      "cls": "s7_duplicate_linkage",
+      "classification": "INTENTIONAL_CONTROL_DIFFERENCE",
+      "material": false,
+      "dispositions": [
+        "S7_DUPLICATE_CLEARING_LINKAGE"
+      ]
+    },
+    {
+      "id": "SP-83",
+      "cls": "s7_amount_mismatch",
+      "classification": "INTENTIONAL_CONTROL_DIFFERENCE",
+      "material": false,
+      "dispositions": [
+        "S7_CLEARING_AMOUNT_MISMATCH"
+      ]
+    },
+    {
+      "id": "SP-84",
+      "cls": "s7_source_mismatch",
+      "classification": "INTENTIONAL_CONTROL_DIFFERENCE",
+      "material": false,
+      "dispositions": [
+        "S7_CLEARING_SOURCE_MISMATCH"
+      ]
+    },
+    {
+      "id": "SP-85",
+      "cls": "s7_paid_other_evidence",
+      "classification": "EXACT_MATCH",
+      "material": false,
+      "dispositions": []
+    },
+    {
+      "id": "SP-86",
+      "cls": "s7_voided_evidence",
+      "classification": "EXACT_MATCH",
+      "material": false,
+      "dispositions": []
+    },
+    {
+      "id": "SP-87",
+      "cls": "s7_stale_resolution",
+      "classification": "INTENTIONAL_CONTROL_DIFFERENCE",
+      "material": false,
+      "dispositions": [
+        "S7_STALE_RESOLUTION"
+      ]
+    },
+    {
+      "id": "SP-88",
+      "cls": "s7_one_txn_multi_obligation",
+      "classification": "INTENTIONAL_CONTROL_DIFFERENCE",
+      "material": false,
+      "dispositions": [
+        "S7_DUPLICATE_CLEARING_LINKAGE"
+      ]
+    },
+    {
+      "id": "SP-89",
+      "cls": "c1_voided_res_no_evidence",
+      "classification": "INTENTIONAL_CONTROL_DIFFERENCE",
+      "material": false,
+      "dispositions": [
+        "S7_TERMINAL_RESOLUTION_NO_EVIDENCE"
+      ]
+    },
+    {
+      "id": "SP-90",
+      "cls": "c1_voided_status_no_evidence",
+      "classification": "INTENTIONAL_CONTROL_DIFFERENCE",
+      "material": false,
+      "dispositions": [
+        "S7_TERMINAL_RESOLUTION_NO_EVIDENCE"
+      ]
+    },
+    {
+      "id": "SP-91",
+      "cls": "c1_voided_valid_evidence",
+      "classification": "EXACT_MATCH",
+      "material": false,
+      "dispositions": []
+    },
+    {
+      "id": "SP-92",
+      "cls": "c1_paid_other_no_evidence",
+      "classification": "INTENTIONAL_CONTROL_DIFFERENCE",
+      "material": false,
+      "dispositions": [
+        "S7_TERMINAL_RESOLUTION_NO_EVIDENCE"
+      ]
+    },
+    {
+      "id": "SP-93",
+      "cls": "c1_paid_other_valid_evidence",
+      "classification": "EXACT_MATCH",
+      "material": false,
+      "dispositions": []
+    },
+    {
+      "id": "SP-94",
+      "cls": "c1_wrong_evidence_type",
+      "classification": "INTENTIONAL_CONTROL_DIFFERENCE",
+      "material": false,
+      "dispositions": [
+        "S7_TERMINAL_EVIDENCE_WRONG_TYPE"
+      ]
+    },
+    {
+      "id": "SP-95",
+      "cls": "c1_stale_terminal_evidence",
+      "classification": "INTENTIONAL_CONTROL_DIFFERENCE",
+      "material": false,
+      "dispositions": [
+        "S7_STALE_RESOLUTION"
+      ]
+    },
+    {
+      "id": "SP-96",
+      "cls": "c1_duplicate_terminal_evidence",
+      "classification": "INTENTIONAL_CONTROL_DIFFERENCE",
+      "material": false,
+      "dispositions": [
+        "S7_DUPLICATE_CLEARING_LINKAGE"
+      ]
+    },
+    {
+      "id": "SP-97",
+      "cls": "c1_contradictory_status_resolution",
+      "classification": "INTENTIONAL_CONTROL_DIFFERENCE",
+      "material": false,
+      "dispositions": [
+        "S7_CONTRADICTORY_STATUS_RESOLUTION"
+      ]
+    },
+    {
+      "id": "SP-98",
+      "cls": "c1_both_weeks_null_valid_evidence",
+      "classification": "EXACT_MATCH",
+      "material": false,
+      "dispositions": []
+    },
+    {
+      "id": "SP-99",
+      "cls": "c1_release_week_present_same_rule",
+      "classification": "EXACT_MATCH",
+      "material": false,
+      "dispositions": []
+    },
+    {
+      "id": "SP-100",
+      "cls": "c1_one_evidence_multi_commitment",
+      "classification": "INTENTIONAL_CONTROL_DIFFERENCE",
+      "material": false,
+      "dispositions": [
+        "S7_DUPLICATE_CLEARING_LINKAGE"
+      ]
+    },
+    {
+      "id": "SP-101",
+      "cls": "s7type_voided_evidence_type_absent",
+      "classification": "INTENTIONAL_CONTROL_DIFFERENCE",
+      "material": false,
+      "dispositions": [
+        "S7_TERMINAL_EVIDENCE_TYPE_MISSING"
+      ]
+    },
+    {
+      "id": "SP-102",
+      "cls": "s7type_voided_blank_type",
+      "classification": "INTENTIONAL_CONTROL_DIFFERENCE",
+      "material": false,
+      "dispositions": [
+        "S7_TERMINAL_EVIDENCE_TYPE_MISSING"
+      ]
+    },
+    {
+      "id": "SP-103",
+      "cls": "s7type_voided_unsupported_type",
+      "classification": "INTENTIONAL_CONTROL_DIFFERENCE",
+      "material": false,
+      "dispositions": [
+        "S7_TERMINAL_EVIDENCE_WRONG_TYPE"
+      ]
+    },
+    {
+      "id": "SP-104",
+      "cls": "s7type_paid_evidence_type_absent",
+      "classification": "INTENTIONAL_CONTROL_DIFFERENCE",
+      "material": false,
+      "dispositions": [
+        "S7_TERMINAL_EVIDENCE_TYPE_MISSING"
+      ]
+    },
+    {
+      "id": "SP-105",
+      "cls": "s7type_paid_unsupported_type",
+      "classification": "INTENTIONAL_CONTROL_DIFFERENCE",
+      "material": false,
+      "dispositions": [
+        "S7_TERMINAL_EVIDENCE_WRONG_TYPE"
+      ]
+    },
+    {
+      "id": "SP-106",
+      "cls": "s7type_valid_void",
+      "classification": "EXACT_MATCH",
+      "material": false,
+      "dispositions": []
+    },
+    {
+      "id": "SP-107",
+      "cls": "s7type_valid_alt_payment",
+      "classification": "EXACT_MATCH",
+      "material": false,
+      "dispositions": []
+    }
+  ]
+}
