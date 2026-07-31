@@ -1,0 +1,2128 @@
+{
+  "gate": "BASELINE_E_LIVE_INPUT_PREFLIGHT",
+  "contract_version": "live-preflight-v1",
+  "note": "SYNTHETIC-ONLY local proof of the fail-closed live-input preflight. A synthetic PASS does NOT imply live readiness or that any live package was collected.",
+  "synthetic_only": true,
+  "live_access_performed": false,
+  "sql_executed": false,
+  "operational_hold": true,
+  "capacity_calculation_eligible": false,
+  "obligation_set_complete": false,
+  "live_ready": false,
+  "package_admissible": true,
+  "fable_re_review_verdict": "APPROVE_WITH_NON_BLOCKING_CONDITIONS",
+  "fable_re_glance_verdict": "APPROVE_WITH_NON_BLOCKING_CONDITIONS",
+  "fable_re_glance_scope": "OBS-5 (empty/whitespace ids, source/target existence, orphan linkages) + PF-115 + independent RG-3 mutation",
+  "prior_rg_re_glance_verdict": "APPROVE_WITH_NON_BLOCKING_CONDITIONS",
+  "fable_re_glance_capacity_overstating_escape_found": false,
+  "obs5_re_glance_new_residuals": [
+    {
+      "id": "R-1",
+      "direction": "inert_consistency",
+      "capacity_overstating": false,
+      "summary": "A linkage whose source carries a direct economic_event_id different from the linkage target is validated but never applied (resolve() prefers the direct id) and is marked consumed because the source row is a deduction. Count-preserving (each deduction counted once), not capacity-overstating; a dead/contradictory linkage rides along. Suggested tightening: HOLD P7_LINKAGE_DIRECT_ID_CONFLICT when a linkage source also carries a differing direct economic_event_id."
+    },
+    {
+      "id": "R-2",
+      "direction": "capacity_understating",
+      "capacity_overstating": false,
+      "summary": "Unicode format chars (e.g. U+200B zero-width space) pass isValidId (not trimmed, outside the \\u0000-\\u001F\\u007F screen). Establishment still requires an exact-match real record so no phantom target is established; the residual is visually-twin ids (T vs T\\u200B) counting as two events -> extra deduction = understating (OBS-1 family). Optional: extend the screen to \\u200B-\\u200D\\u2060\\uFEFF."
+    }
+  ],
+  "rg_residuals_closed": {
+    "RG1": true,
+    "RG2": true,
+    "RG3": true,
+    "RG4": true,
+    "RG5": true,
+    "RG6": true
+  },
+  "rg_all_residuals_closed": true,
+  "declared_aggregations_removed": true,
+  "linkage_namespace_vocabulary_closed": true,
+  "event_commitment_identity_unified": true,
+  "linkage_graph_indirection_rejected": true,
+  "linkage_target_authoritative_only": true,
+  "unsupported_authority_field_reason_code": true,
+  "obs_5_closed": true,
+  "empty_identity_rejected": true,
+  "linkage_source_existence_verified": true,
+  "linkage_target_existence_verified": true,
+  "authoritative_event_target_established": true,
+  "authoritative_commitment_target_resolved": true,
+  "orphan_linkages_rejected": true,
+  "pf_115_corrected": true,
+  "rg3_graph_guard_independently_mutated": true,
+  "all_p7_identity_bypasses_closed": true,
+  "obs5_detail": {
+    "empty_identity_rejected": true,
+    "linkage_source_existence_verified": true,
+    "linkage_target_existence_verified": true,
+    "authoritative_event_target_established": true,
+    "authoritative_commitment_target_resolved": true,
+    "orphan_linkages_rejected": true,
+    "pf_115_corrected": true,
+    "rg3_graph_guard_independently_mutated": true
+  },
+  "remaining_non_blocking_observations": [
+    {
+      "id": "OBS-1",
+      "direction": "capacity_understating",
+      "summary": "RG-2 closes literal event/commitment id equality only; distinct id strings are distinct events without an authoritative event registry (understating)."
+    },
+    {
+      "id": "OBS-2",
+      "direction": "over_blocking",
+      "summary": "A legitimate many-to-one split-payment aggregation is inexpressible (intended by RG-5)."
+    },
+    {
+      "id": "OBS-3",
+      "direction": "over_blocking",
+      "summary": "Cross-id-space textual collision over-blocks (intended consequence of the one-id-space ruling)."
+    },
+    {
+      "id": "OBS-4",
+      "direction": "inert_structural",
+      "summary": "Unknown top-level sections ride unhashed; inert today (no control reads them; the authoritative universe is built only from known sections). A section allowlist would close the class."
+    }
+  ],
+  "new_f_closed": true,
+  "linkage_authoritative_identity_resolved": true,
+  "linkage_target_deduplication_enforced": true,
+  "linkage_within_path_double_count_closed": true,
+  "local_row_id_fallback_prohibited": true,
+  "section_g_cash_impact_authority_required": true,
+  "package_builder_cash_impact_exemption_closed": true,
+  "self_asserted_non_cash_exemption_closed": true,
+  "authoritative_non_cash_proof_present": false,
+  "all_identity_family_findings_closed": true,
+  "all_known_preflight_findings_closed": true,
+  "original_fable_findings_closed": true,
+  "new_a_closed": true,
+  "new_b_closed": true,
+  "new_c_closed": true,
+  "new_d_closed": true,
+  "new_e_closed": true,
+  "all_capacity_overstatement_findings_closed": true,
+  "duplicate_manifest_relation_closed": true,
+  "materiality_self_assertion_closed": true,
+  "referenced_deduction_liveness_enforced": true,
+  "full_integrity_domain_covered": true,
+  "within_path_deduplication_enforced": true,
+  "required_control_ids": [
+    "environment_certified",
+    "as_of_coherent",
+    "schema_compatible",
+    "evidence_integrity_verified",
+    "cardinality_reconciled",
+    "query_provenance_complete",
+    "identity_unique",
+    "economic_identity_authoritative",
+    "transfer_treatment_valid",
+    "balance_authoritative",
+    "authoritative_checking_anchor_present",
+    "off_model_obligations_authoritative",
+    "reconciliation_not_null",
+    "reconciliation_unique",
+    "commitments_valid",
+    "uncleared_items_reconciled",
+    "obligation_set_complete",
+    "reserve_release_evidence_complete",
+    "cross_control_consistency_verified"
+  ],
+  "executed_control_ids": [
+    "environment_certified",
+    "as_of_coherent",
+    "schema_compatible",
+    "evidence_integrity_verified",
+    "cardinality_reconciled",
+    "query_provenance_complete",
+    "identity_unique",
+    "economic_identity_authoritative",
+    "transfer_treatment_valid",
+    "balance_authoritative",
+    "authoritative_checking_anchor_present",
+    "off_model_obligations_authoritative",
+    "reconciliation_not_null",
+    "reconciliation_unique",
+    "commitments_valid",
+    "uncleared_items_reconciled",
+    "obligation_set_complete",
+    "reserve_release_evidence_complete",
+    "cross_control_consistency_verified"
+  ],
+  "missing_control_ids": [],
+  "duplicate_control_ids": [],
+  "unknown_control_ids": [],
+  "all_required_controls_executed": true,
+  "control_flow_complete": true,
+  "admissibility_derived_only": true,
+  "alternate_success_path_detected": false,
+  "executable_mutation_coverage_complete": true,
+  "all_fable_findings_closed": true,
+  "open_findings": [],
+  "repeatable": true,
+  "blocking_controls": [
+    "environment_certified",
+    "as_of_coherent",
+    "schema_compatible",
+    "evidence_integrity_verified",
+    "cardinality_reconciled",
+    "query_provenance_complete",
+    "identity_unique",
+    "economic_identity_authoritative",
+    "transfer_treatment_valid",
+    "balance_authoritative",
+    "authoritative_checking_anchor_present",
+    "off_model_obligations_authoritative",
+    "reconciliation_not_null",
+    "reconciliation_unique",
+    "commitments_valid",
+    "uncleared_items_reconciled",
+    "obligation_set_complete",
+    "reserve_release_evidence_complete",
+    "cross_control_consistency_verified",
+    "contract_version_supported",
+    "required_sections_present",
+    "META"
+  ],
+  "golden_controls": {
+    "contract_version_supported": true,
+    "required_sections_present": true,
+    "environment_certified": true,
+    "as_of_coherent": true,
+    "schema_compatible": true,
+    "evidence_integrity_verified": true,
+    "cardinality_reconciled": true,
+    "query_provenance_complete": true,
+    "identity_unique": true,
+    "economic_identity_authoritative": true,
+    "transfer_treatment_valid": true,
+    "balance_authoritative": true,
+    "authoritative_checking_anchor_present": true,
+    "off_model_obligations_authoritative": true,
+    "reconciliation_not_null": true,
+    "reconciliation_unique": true,
+    "commitments_valid": true,
+    "uncleared_items_reconciled": true,
+    "obligation_set_complete": true,
+    "reserve_release_evidence_complete": true,
+    "cross_control_consistency_verified": true
+  },
+  "control_results": [
+    {
+      "key": "contract_version_supported",
+      "id": "CV",
+      "disposition": "PASS",
+      "reason_code": null,
+      "detail": "live-preflight-v1"
+    },
+    {
+      "key": "required_sections_present",
+      "id": "SEC",
+      "disposition": "PASS",
+      "reason_code": null,
+      "detail": []
+    },
+    {
+      "key": "environment_certified",
+      "id": "P-1",
+      "disposition": "PASS",
+      "reason_code": null,
+      "detail": null
+    },
+    {
+      "key": "as_of_coherent",
+      "id": "P-2",
+      "disposition": "PASS",
+      "reason_code": null,
+      "detail": null
+    },
+    {
+      "key": "schema_compatible",
+      "id": "P-3",
+      "disposition": "PASS",
+      "reason_code": null,
+      "detail": null
+    },
+    {
+      "key": "evidence_integrity_verified",
+      "id": "P-4",
+      "disposition": "PASS",
+      "reason_code": null,
+      "detail": null
+    },
+    {
+      "key": "cardinality_reconciled",
+      "id": "P-5",
+      "disposition": "PASS",
+      "reason_code": null,
+      "detail": null
+    },
+    {
+      "key": "query_provenance_complete",
+      "id": "PQ",
+      "disposition": "PASS",
+      "reason_code": null,
+      "detail": null
+    },
+    {
+      "key": "identity_unique",
+      "id": "P-6",
+      "disposition": "PASS",
+      "reason_code": null,
+      "detail": null
+    },
+    {
+      "key": "economic_identity_authoritative",
+      "id": "P-7",
+      "disposition": "PASS",
+      "reason_code": null,
+      "detail": null
+    },
+    {
+      "key": "transfer_treatment_valid",
+      "id": "P-8",
+      "disposition": "PASS",
+      "reason_code": null,
+      "detail": null
+    },
+    {
+      "key": "balance_authoritative",
+      "id": "P-9",
+      "disposition": "PASS",
+      "reason_code": null,
+      "detail": null
+    },
+    {
+      "key": "authoritative_checking_anchor_present",
+      "id": "AN",
+      "disposition": "PASS",
+      "reason_code": null,
+      "detail": null
+    },
+    {
+      "key": "off_model_obligations_authoritative",
+      "id": "S-1",
+      "disposition": "PASS",
+      "reason_code": null,
+      "detail": null
+    },
+    {
+      "key": "reconciliation_not_null",
+      "id": "S-2",
+      "disposition": "PASS",
+      "reason_code": null,
+      "detail": null
+    },
+    {
+      "key": "reconciliation_unique",
+      "id": "S-3",
+      "disposition": "PASS",
+      "reason_code": null,
+      "detail": null
+    },
+    {
+      "key": "commitments_valid",
+      "id": "S-4",
+      "disposition": "PASS",
+      "reason_code": null,
+      "detail": null
+    },
+    {
+      "key": "uncleared_items_reconciled",
+      "id": "S-5",
+      "disposition": "PASS",
+      "reason_code": null,
+      "detail": null
+    },
+    {
+      "key": "obligation_set_complete",
+      "id": "S-6",
+      "disposition": "PASS",
+      "reason_code": null,
+      "detail": null
+    },
+    {
+      "key": "reserve_release_evidence_complete",
+      "id": "S-7",
+      "disposition": "PASS",
+      "reason_code": null,
+      "detail": null
+    },
+    {
+      "key": "cross_control_consistency_verified",
+      "id": "XC",
+      "disposition": "PASS",
+      "reason_code": null,
+      "detail": null
+    }
+  ],
+  "fixture_totals": {
+    "total": 140,
+    "expected_admissible": 22,
+    "expected_not_admissible": 118,
+    "mismatches": 0
+  },
+  "fixtures": [
+    {
+      "id": "PF-01",
+      "cls": "fully_admissible",
+      "expect_admissible": true,
+      "package_admissible": true,
+      "worst_disposition": "PASS",
+      "reasons": []
+    },
+    {
+      "id": "PF-02",
+      "cls": "missing_required_section",
+      "expect_admissible": false,
+      "package_admissible": false,
+      "worst_disposition": "FAIL_STOP",
+      "reasons": [
+        "SEC_MISSING_REQUIRED_SECTION"
+      ]
+    },
+    {
+      "id": "PF-03",
+      "cls": "wrong_environment",
+      "expect_admissible": false,
+      "package_admissible": false,
+      "worst_disposition": "FAIL_STOP",
+      "reasons": [
+        "P1_ENV_MISMATCH",
+        "PQ_ENV_MISMATCH"
+      ]
+    },
+    {
+      "id": "PF-04",
+      "cls": "environment_identity_mismatch",
+      "expect_admissible": false,
+      "package_admissible": false,
+      "worst_disposition": "FAIL_STOP",
+      "reasons": [
+        "P1_PROJECT_MISMATCH"
+      ]
+    },
+    {
+      "id": "PF-05",
+      "cls": "unsupported_contract_version",
+      "expect_admissible": false,
+      "package_admissible": false,
+      "worst_disposition": "FAIL_STOP",
+      "reasons": [
+        "CV_UNSUPPORTED_CONTRACT_VERSION"
+      ]
+    },
+    {
+      "id": "PF-06",
+      "cls": "null_checking_reconciliation",
+      "expect_admissible": false,
+      "package_admissible": false,
+      "worst_disposition": "HOLD",
+      "reasons": [
+        "S2_NULL_CHK"
+      ]
+    },
+    {
+      "id": "PF-07",
+      "cls": "missing_checking_field",
+      "expect_admissible": false,
+      "package_admissible": false,
+      "worst_disposition": "HOLD",
+      "reasons": [
+        "S2_MISSING_CHK"
+      ]
+    },
+    {
+      "id": "PF-08",
+      "cls": "duplicate_reconciliation_row",
+      "expect_admissible": false,
+      "package_admissible": false,
+      "worst_disposition": "FAIL_STOP",
+      "reasons": [
+        "S3_DUPLICATE_RECON"
+      ]
+    },
+    {
+      "id": "PF-09",
+      "cls": "stale_reconciliation",
+      "expect_admissible": false,
+      "package_admissible": false,
+      "worst_disposition": "HOLD",
+      "reasons": [
+        "P2_INCOHERENT_AS_OF"
+      ]
+    },
+    {
+      "id": "PF-10",
+      "cls": "invalid_balance_basis",
+      "expect_admissible": false,
+      "package_admissible": false,
+      "worst_disposition": "HOLD",
+      "reasons": [
+        "S2_UNUSABLE_BASIS"
+      ]
+    },
+    {
+      "id": "PF-11",
+      "cls": "failed_commitment_fetch",
+      "expect_admissible": false,
+      "package_admissible": false,
+      "worst_disposition": "HOLD",
+      "reasons": [
+        "S6_FAILED_FETCH"
+      ]
+    },
+    {
+      "id": "PF-12",
+      "cls": "silent_empty_commitment_fetch",
+      "expect_admissible": false,
+      "package_admissible": false,
+      "worst_disposition": "HOLD",
+      "reasons": [
+        "S6_SILENT_EMPTY"
+      ]
+    },
+    {
+      "id": "PF-13",
+      "cls": "verified_empty_commitments_attested",
+      "expect_admissible": true,
+      "package_admissible": true,
+      "worst_disposition": "PASS",
+      "reasons": []
+    },
+    {
+      "id": "PF-14",
+      "cls": "partial_commitment_load",
+      "expect_admissible": false,
+      "package_admissible": false,
+      "worst_disposition": "HOLD",
+      "reasons": [
+        "S6_PARTIAL_LOAD"
+      ]
+    },
+    {
+      "id": "PF-15",
+      "cls": "rls_filtered_uncertainty",
+      "expect_admissible": false,
+      "package_admissible": false,
+      "worst_disposition": "HOLD",
+      "reasons": [
+        "S6_RLS_FILTERED"
+      ]
+    },
+    {
+      "id": "PF-16",
+      "cls": "schema_mismatch",
+      "expect_admissible": false,
+      "package_admissible": false,
+      "worst_disposition": "FAIL_STOP",
+      "reasons": [
+        "P3_UNSUPPORTED_SCHEMA",
+        "PQ_SCHEMA_MISMATCH"
+      ]
+    },
+    {
+      "id": "PF-17",
+      "cls": "negative_commitment",
+      "expect_admissible": false,
+      "package_admissible": false,
+      "worst_disposition": "FAIL_STOP",
+      "reasons": [
+        "S4_NEGATIVE_AMOUNT"
+      ]
+    },
+    {
+      "id": "PF-18",
+      "cls": "duplicate_commitment_identity",
+      "expect_admissible": false,
+      "package_admissible": false,
+      "worst_disposition": "FAIL_STOP",
+      "reasons": [
+        "P6_DUPLICATE_IDENTITY",
+        "P7_LINKAGE_WITHIN_PATH_DOUBLE_COUNT"
+      ]
+    },
+    {
+      "id": "PF-19",
+      "cls": "duplicate_clearing_linkage",
+      "expect_admissible": false,
+      "package_admissible": false,
+      "worst_disposition": "FAIL_STOP",
+      "reasons": [
+        "S4_DUPLICATE_CLEARING_LINKAGE"
+      ]
+    },
+    {
+      "id": "PF-20",
+      "cls": "material_offmodel_absent_from_deduction",
+      "expect_admissible": false,
+      "package_admissible": false,
+      "worst_disposition": "HOLD",
+      "reasons": [
+        "S1_OFF_MODEL_DEDUCTION_MISSING"
+      ]
+    },
+    {
+      "id": "PF-21",
+      "cls": "material_offmodel_promoted_to_commitment",
+      "expect_admissible": true,
+      "package_admissible": true,
+      "worst_disposition": "PASS",
+      "reasons": []
+    },
+    {
+      "id": "PF-22",
+      "cls": "material_offmodel_as_baseline_adjustment",
+      "expect_admissible": true,
+      "package_admissible": true,
+      "worst_disposition": "PASS",
+      "reasons": []
+    },
+    {
+      "id": "PF-23",
+      "cls": "uncleared_debit_unreflected",
+      "expect_admissible": false,
+      "package_admissible": false,
+      "worst_disposition": "HOLD",
+      "reasons": [
+        "S5_UNCLEARED_UNRECONCILED"
+      ]
+    },
+    {
+      "id": "PF-24",
+      "cls": "uncleared_debit_as_deduction",
+      "expect_admissible": true,
+      "package_admissible": true,
+      "worst_disposition": "PASS",
+      "reasons": []
+    },
+    {
+      "id": "PF-25",
+      "cls": "transfer_mirror_double_counted",
+      "expect_admissible": false,
+      "package_admissible": false,
+      "worst_disposition": "FAIL_STOP",
+      "reasons": [
+        "P8_TRANSFER_DOUBLE_COUNT"
+      ]
+    },
+    {
+      "id": "PF-26",
+      "cls": "transfer_pair_neutralized",
+      "expect_admissible": true,
+      "package_admissible": true,
+      "worst_disposition": "PASS",
+      "reasons": []
+    },
+    {
+      "id": "PF-27",
+      "cls": "terminal_valid_typed_evidence",
+      "expect_admissible": true,
+      "package_admissible": true,
+      "worst_disposition": "PASS",
+      "reasons": []
+    },
+    {
+      "id": "PF-28",
+      "cls": "terminal_missing_evidence",
+      "expect_admissible": false,
+      "package_admissible": false,
+      "worst_disposition": "HOLD",
+      "reasons": [
+        "S7_RELEASE_NO_EVIDENCE"
+      ]
+    },
+    {
+      "id": "PF-29",
+      "cls": "terminal_missing_evidence_type",
+      "expect_admissible": false,
+      "package_admissible": false,
+      "worst_disposition": "HOLD",
+      "reasons": [
+        "S7_EVIDENCE_TYPE_MISSING"
+      ]
+    },
+    {
+      "id": "PF-30",
+      "cls": "terminal_stale_evidence",
+      "expect_admissible": false,
+      "package_admissible": false,
+      "worst_disposition": "HOLD",
+      "reasons": [
+        "S7_STALE_RESOLUTION"
+      ]
+    },
+    {
+      "id": "PF-31",
+      "cls": "terminal_contradictory_status_type",
+      "expect_admissible": false,
+      "package_admissible": false,
+      "worst_disposition": "FAIL_STOP",
+      "reasons": [
+        "S4_CONTRADICTORY_STATE",
+        "S7_CONTRADICTORY_STATE"
+      ]
+    },
+    {
+      "id": "PF-32",
+      "cls": "evidence_reused_across_commitments",
+      "expect_admissible": false,
+      "package_admissible": false,
+      "worst_disposition": "HOLD",
+      "reasons": [
+        "S7_DUPLICATE_EVIDENCE"
+      ]
+    },
+    {
+      "id": "PF-33",
+      "cls": "manifest_rowcount_mismatch",
+      "expect_admissible": false,
+      "package_admissible": false,
+      "worst_disposition": "HOLD",
+      "reasons": [
+        "P5_MANIFEST_COUNT_MISMATCH"
+      ]
+    },
+    {
+      "id": "PF-34",
+      "cls": "evidence_hash_mismatch",
+      "expect_admissible": false,
+      "package_admissible": false,
+      "worst_disposition": "FAIL_STOP",
+      "reasons": [
+        "P4_EVIDENCE_HASH_MISMATCH"
+      ]
+    },
+    {
+      "id": "PF-35",
+      "cls": "incoherent_as_of",
+      "expect_admissible": false,
+      "package_admissible": false,
+      "worst_disposition": "HOLD",
+      "reasons": [
+        "P2_INCOHERENT_AS_OF"
+      ]
+    },
+    {
+      "id": "PF-36",
+      "cls": "duplicate_stable_identity",
+      "expect_admissible": false,
+      "package_admissible": false,
+      "worst_disposition": "FAIL_STOP",
+      "reasons": [
+        "P6_DUPLICATE_IDENTITY"
+      ]
+    },
+    {
+      "id": "PF-37",
+      "cls": "same_obligation_commitment_and_adjustment",
+      "expect_admissible": false,
+      "package_admissible": false,
+      "worst_disposition": "FAIL_STOP",
+      "reasons": [
+        "P7_DUPLICATE_LINKED_ECONOMIC_EVENT"
+      ]
+    },
+    {
+      "id": "PF-38",
+      "cls": "missing_source_query_manifest",
+      "expect_admissible": false,
+      "package_admissible": false,
+      "worst_disposition": "FAIL_STOP",
+      "reasons": [
+        "SEC_MISSING_REQUIRED_SECTION"
+      ]
+    },
+    {
+      "id": "PF-39",
+      "cls": "missing_completeness_attestation",
+      "expect_admissible": false,
+      "package_admissible": false,
+      "worst_disposition": "HOLD",
+      "reasons": [
+        "S6_MISSING_ATTESTATION"
+      ]
+    },
+    {
+      "id": "PF-40",
+      "cls": "hold_cannot_be_admissible",
+      "expect_admissible": false,
+      "package_admissible": false,
+      "worst_disposition": "HOLD",
+      "reasons": [
+        "S2_NULL_CHK"
+      ]
+    },
+    {
+      "id": "PF-41",
+      "cls": "s7_reflected_release_no_j",
+      "expect_admissible": false,
+      "package_admissible": false,
+      "worst_disposition": "HOLD",
+      "reasons": [
+        "S7_RELEASE_NO_EVIDENCE"
+      ]
+    },
+    {
+      "id": "PF-42",
+      "cls": "s7_resolved_release_no_j",
+      "expect_admissible": false,
+      "package_admissible": false,
+      "worst_disposition": "HOLD",
+      "reasons": [
+        "S7_RELEASE_NO_EVIDENCE"
+      ]
+    },
+    {
+      "id": "PF-43",
+      "cls": "s7_reflected_release_valid_j",
+      "expect_admissible": true,
+      "package_admissible": true,
+      "worst_disposition": "PASS",
+      "reasons": []
+    },
+    {
+      "id": "PF-44",
+      "cls": "s7_bare_cleared_txn_no_meta",
+      "expect_admissible": false,
+      "package_admissible": false,
+      "worst_disposition": "HOLD",
+      "reasons": [
+        "S7_CLEARING_METADATA_MISSING"
+      ]
+    },
+    {
+      "id": "PF-45",
+      "cls": "s7_clearing_amount_mismatch",
+      "expect_admissible": false,
+      "package_admissible": false,
+      "worst_disposition": "HOLD",
+      "reasons": [
+        "S7_CLEARING_AMOUNT_MISMATCH"
+      ]
+    },
+    {
+      "id": "PF-46",
+      "cls": "s7_clearing_source_mismatch",
+      "expect_admissible": false,
+      "package_admissible": false,
+      "worst_disposition": "HOLD",
+      "reasons": [
+        "S7_CLEARING_SOURCE_MISMATCH"
+      ]
+    },
+    {
+      "id": "PF-47",
+      "cls": "s7_orphan_evidence",
+      "expect_admissible": false,
+      "package_admissible": false,
+      "worst_disposition": "HOLD",
+      "reasons": [
+        "S7_ORPHAN_EVIDENCE"
+      ]
+    },
+    {
+      "id": "PF-48",
+      "cls": "s1_dangling_reference",
+      "expect_admissible": false,
+      "package_admissible": false,
+      "worst_disposition": "HOLD",
+      "reasons": [
+        "S1_DANGLING_REFERENCE"
+      ]
+    },
+    {
+      "id": "PF-49",
+      "cls": "s1_matching_commitment",
+      "expect_admissible": true,
+      "package_admissible": true,
+      "worst_disposition": "PASS",
+      "reasons": []
+    },
+    {
+      "id": "PF-50",
+      "cls": "s1_matching_adjustment",
+      "expect_admissible": true,
+      "package_admissible": true,
+      "worst_disposition": "PASS",
+      "reasons": []
+    },
+    {
+      "id": "PF-51",
+      "cls": "s1_reference_amount_mismatch",
+      "expect_admissible": false,
+      "package_admissible": false,
+      "worst_disposition": "HOLD",
+      "reasons": [
+        "S1_REFERENCE_AMOUNT_MISMATCH"
+      ]
+    },
+    {
+      "id": "PF-52",
+      "cls": "s1_reference_source_mismatch",
+      "expect_admissible": false,
+      "package_admissible": false,
+      "worst_disposition": "HOLD",
+      "reasons": [
+        "S1_REFERENCE_SOURCE_MISMATCH"
+      ]
+    },
+    {
+      "id": "PF-53",
+      "cls": "s1_shared_deduction",
+      "expect_admissible": false,
+      "package_admissible": false,
+      "worst_disposition": "HOLD",
+      "reasons": [
+        "S1_SHARED_DEDUCTION"
+      ]
+    },
+    {
+      "id": "PF-54",
+      "cls": "s5_self_asserted_threshold",
+      "expect_admissible": false,
+      "package_admissible": false,
+      "worst_disposition": "HOLD",
+      "reasons": [
+        "S5_UNAUTHORIZED_THRESHOLD"
+      ]
+    },
+    {
+      "id": "PF-55",
+      "cls": "s5_uncleared_neither",
+      "expect_admissible": false,
+      "package_admissible": false,
+      "worst_disposition": "HOLD",
+      "reasons": [
+        "S5_UNCLEARED_UNRECONCILED"
+      ]
+    },
+    {
+      "id": "PF-56",
+      "cls": "anchor_d_and_e_empty",
+      "expect_admissible": false,
+      "package_admissible": false,
+      "worst_disposition": "HOLD",
+      "reasons": [
+        "ANCHOR_MISSING_AUTHORITATIVE_CHECKING"
+      ]
+    },
+    {
+      "id": "PF-57",
+      "cls": "anchor_projected_only",
+      "expect_admissible": false,
+      "package_admissible": false,
+      "worst_disposition": "HOLD",
+      "reasons": [
+        "P9_NON_AUTHORITATIVE_BALANCE",
+        "ANCHOR_MISSING_AUTHORITATIVE_CHECKING",
+        "S2_UNUSABLE_BASIS"
+      ]
+    },
+    {
+      "id": "PF-58",
+      "cls": "anchor_valid",
+      "expect_admissible": true,
+      "package_admissible": true,
+      "worst_disposition": "PASS",
+      "reasons": []
+    },
+    {
+      "id": "PF-59",
+      "cls": "anchor_competing_unresolved",
+      "expect_admissible": false,
+      "package_admissible": false,
+      "worst_disposition": "FAIL_STOP",
+      "reasons": [
+        "P6_DUPLICATE_IDENTITY",
+        "P9_AMBIGUOUS_BALANCE",
+        "ANCHOR_AMBIGUOUS_COMPETING"
+      ]
+    },
+    {
+      "id": "PF-60",
+      "cls": "s6_verified_empty_no_rows_visible",
+      "expect_admissible": false,
+      "package_admissible": false,
+      "worst_disposition": "HOLD",
+      "reasons": [
+        "S6_NO_ROWS_VISIBLE"
+      ]
+    },
+    {
+      "id": "PF-61",
+      "cls": "s6_zero_not_verified",
+      "expect_admissible": false,
+      "package_admissible": false,
+      "worst_disposition": "HOLD",
+      "reasons": [
+        "S6_ZERO_NOT_VERIFIED"
+      ]
+    },
+    {
+      "id": "PF-62",
+      "cls": "s6_pending_unattested",
+      "expect_admissible": false,
+      "package_admissible": false,
+      "worst_disposition": "HOLD",
+      "reasons": [
+        "S6_UNATTESTED"
+      ]
+    },
+    {
+      "id": "PF-63",
+      "cls": "s6_terminal_unattested",
+      "expect_admissible": false,
+      "package_admissible": false,
+      "worst_disposition": "HOLD",
+      "reasons": [
+        "S6_UNATTESTED"
+      ]
+    },
+    {
+      "id": "PF-64",
+      "cls": "s6_all_attested",
+      "expect_admissible": true,
+      "package_admissible": true,
+      "worst_disposition": "PASS",
+      "reasons": []
+    },
+    {
+      "id": "PF-65",
+      "cls": "p8_three_leg_group",
+      "expect_admissible": false,
+      "package_admissible": false,
+      "worst_disposition": "HOLD",
+      "reasons": [
+        "P8_MALFORMED_LEG_COUNT"
+      ]
+    },
+    {
+      "id": "PF-66",
+      "cls": "p8_one_cent_skew",
+      "expect_admissible": false,
+      "package_admissible": false,
+      "worst_disposition": "HOLD",
+      "reasons": [
+        "P8_UNEQUAL_AMOUNTS"
+      ]
+    },
+    {
+      "id": "PF-67",
+      "cls": "p8_same_direction",
+      "expect_admissible": false,
+      "package_admissible": false,
+      "worst_disposition": "HOLD",
+      "reasons": [
+        "P8_SAME_DIRECTION"
+      ]
+    },
+    {
+      "id": "PF-68",
+      "cls": "p8_valid_two_leg",
+      "expect_admissible": true,
+      "package_admissible": true,
+      "worst_disposition": "PASS",
+      "reasons": []
+    },
+    {
+      "id": "PF-69",
+      "cls": "p8_missing_transfer_identity",
+      "expect_admissible": false,
+      "package_admissible": false,
+      "worst_disposition": "HOLD",
+      "reasons": [
+        "P8_MISSING_TRANSFER_IDENTITY"
+      ]
+    },
+    {
+      "id": "PF-70",
+      "cls": "p7_freetext_only_identity",
+      "expect_admissible": false,
+      "package_admissible": false,
+      "worst_disposition": "HOLD",
+      "reasons": [
+        "P7_LINKAGE_AUTHORITATIVE_IDENTITY_REQUIRED"
+      ]
+    },
+    {
+      "id": "PF-71",
+      "cls": "p7_authoritative_event_id",
+      "expect_admissible": true,
+      "package_admissible": true,
+      "worst_disposition": "PASS",
+      "reasons": []
+    },
+    {
+      "id": "PF-72",
+      "cls": "p7_duplicate_linkage",
+      "expect_admissible": false,
+      "package_admissible": false,
+      "worst_disposition": "HOLD",
+      "reasons": [
+        "P7_DUPLICATE_LINKAGE"
+      ]
+    },
+    {
+      "id": "PF-73",
+      "cls": "p7_linkage_to_commitment_double",
+      "expect_admissible": false,
+      "package_admissible": false,
+      "worst_disposition": "FAIL_STOP",
+      "reasons": [
+        "P7_DUPLICATE_LINKED_ECONOMIC_EVENT"
+      ]
+    },
+    {
+      "id": "PF-74",
+      "cls": "pq_missing_query_link",
+      "expect_admissible": false,
+      "package_admissible": false,
+      "worst_disposition": "HOLD",
+      "reasons": [
+        "PQ_MISSING_QUERY_LINK"
+      ]
+    },
+    {
+      "id": "PF-75",
+      "cls": "pq_orphan_manifest",
+      "expect_admissible": false,
+      "package_admissible": false,
+      "worst_disposition": "HOLD",
+      "reasons": [
+        "PQ_ORPHAN_MANIFEST"
+      ]
+    },
+    {
+      "id": "PF-76",
+      "cls": "pq_rowcount_mismatch",
+      "expect_admissible": false,
+      "package_admissible": false,
+      "worst_disposition": "FAIL_STOP",
+      "reasons": [
+        "P4_MANIFEST_DIGEST_MISMATCH",
+        "PQ_ROWCOUNT_MISMATCH",
+        "XC_COUNT_CONTRADICTION"
+      ]
+    },
+    {
+      "id": "PF-77",
+      "cls": "p2_invalid_timestamp",
+      "expect_admissible": false,
+      "package_admissible": false,
+      "worst_disposition": "HOLD",
+      "reasons": [
+        "P2_INVALID_OR_NON_UTC_TIMESTAMP"
+      ]
+    },
+    {
+      "id": "PF-78",
+      "cls": "p2_non_utc_timestamp",
+      "expect_admissible": false,
+      "package_admissible": false,
+      "worst_disposition": "HOLD",
+      "reasons": [
+        "P2_INVALID_OR_NON_UTC_TIMESTAMP"
+      ]
+    },
+    {
+      "id": "PF-79",
+      "cls": "p2_record_outside_window",
+      "expect_admissible": false,
+      "package_admissible": false,
+      "worst_disposition": "HOLD",
+      "reasons": [
+        "P2_INCOHERENT_AS_OF"
+      ]
+    },
+    {
+      "id": "PF-80",
+      "cls": "p2_freshness_no_policy",
+      "expect_admissible": false,
+      "package_admissible": false,
+      "worst_disposition": "HOLD",
+      "reasons": [
+        "P2_FRESHNESS_POLICY_NOT_AUTHORIZED"
+      ]
+    },
+    {
+      "id": "PF-81",
+      "cls": "xc_transfer_also_deducted",
+      "expect_admissible": false,
+      "package_admissible": false,
+      "worst_disposition": "FAIL_STOP",
+      "reasons": [
+        "XC_TRANSFER_ALSO_DEDUCTED"
+      ]
+    },
+    {
+      "id": "PF-82",
+      "cls": "newA_duplicate_relation_entry",
+      "expect_admissible": false,
+      "package_admissible": false,
+      "worst_disposition": "FAIL_STOP",
+      "reasons": [
+        "PQ_DUPLICATE_RELATION_ENTRY"
+      ]
+    },
+    {
+      "id": "PF-83",
+      "cls": "newA_conflicting_row_count",
+      "expect_admissible": false,
+      "package_admissible": false,
+      "worst_disposition": "FAIL_STOP",
+      "reasons": [
+        "P4_MANIFEST_DIGEST_MISMATCH",
+        "PQ_CONFLICTING_RELATION_COUNT"
+      ]
+    },
+    {
+      "id": "PF-84",
+      "cls": "newA_conflicting_scope",
+      "expect_admissible": false,
+      "package_admissible": false,
+      "worst_disposition": "FAIL_STOP",
+      "reasons": [
+        "PQ_CONFLICTING_RELATION_SCOPE"
+      ]
+    },
+    {
+      "id": "PF-85",
+      "cls": "newA_conflicting_digest",
+      "expect_admissible": false,
+      "package_admissible": false,
+      "worst_disposition": "FAIL_STOP",
+      "reasons": [
+        "PQ_CONFLICTING_RELATION_DIGEST"
+      ]
+    },
+    {
+      "id": "PF-86",
+      "cls": "newA_duplicate_query_id",
+      "expect_admissible": false,
+      "package_admissible": false,
+      "worst_disposition": "FAIL_STOP",
+      "reasons": [
+        "PQ_DUPLICATE_QUERY_ID"
+      ]
+    },
+    {
+      "id": "PF-87",
+      "cls": "newA_success_plus_partial",
+      "expect_admissible": false,
+      "package_admissible": false,
+      "worst_disposition": "FAIL_STOP",
+      "reasons": [
+        "PQ_DUPLICATE_RELATION_ENTRY"
+      ]
+    },
+    {
+      "id": "PF-88",
+      "cls": "newB_material_false_no_deduction",
+      "expect_admissible": false,
+      "package_admissible": false,
+      "worst_disposition": "HOLD",
+      "reasons": [
+        "S1_SELF_ASSERTED_IMMATERIALITY"
+      ]
+    },
+    {
+      "id": "PF-89",
+      "cls": "newB_material_missing_no_deduction",
+      "expect_admissible": false,
+      "package_admissible": false,
+      "worst_disposition": "HOLD",
+      "reasons": [
+        "S1_MATERIALITY_UNRESOLVED"
+      ]
+    },
+    {
+      "id": "PF-90",
+      "cls": "newB_material_false_with_live_deduction",
+      "expect_admissible": true,
+      "package_admissible": true,
+      "worst_disposition": "PASS",
+      "reasons": []
+    },
+    {
+      "id": "PF-91",
+      "cls": "newB_completed_task_no_deduction",
+      "expect_admissible": false,
+      "package_admissible": false,
+      "worst_disposition": "HOLD",
+      "reasons": [
+        "S1_OFF_MODEL_DEDUCTION_MISSING"
+      ]
+    },
+    {
+      "id": "PF-92",
+      "cls": "newC_linked_voided_commitment",
+      "expect_admissible": false,
+      "package_admissible": false,
+      "worst_disposition": "HOLD",
+      "reasons": [
+        "S1_REFERENCED_COMMITMENT_NOT_RESERVING"
+      ]
+    },
+    {
+      "id": "PF-93",
+      "cls": "newC_linked_affects_false",
+      "expect_admissible": false,
+      "package_admissible": false,
+      "worst_disposition": "HOLD",
+      "reasons": [
+        "S1_REFERENCED_DEDUCTION_NOT_LIVE"
+      ]
+    },
+    {
+      "id": "PF-94",
+      "cls": "newC_linked_already_reflected",
+      "expect_admissible": false,
+      "package_admissible": false,
+      "worst_disposition": "HOLD",
+      "reasons": [
+        "S1_REFERENCED_DEDUCTION_ALREADY_REFLECTED"
+      ]
+    },
+    {
+      "id": "PF-95",
+      "cls": "newC_inactive_adjustment",
+      "expect_admissible": false,
+      "package_admissible": false,
+      "worst_disposition": "HOLD",
+      "reasons": [
+        "S1_REFERENCED_ADJUSTMENT_INACTIVE"
+      ]
+    },
+    {
+      "id": "PF-96",
+      "cls": "newC_linked_valid_active",
+      "expect_admissible": true,
+      "package_admissible": true,
+      "worst_disposition": "PASS",
+      "reasons": []
+    },
+    {
+      "id": "PF-97",
+      "cls": "newD_tamper_adjustment",
+      "expect_admissible": false,
+      "package_admissible": false,
+      "worst_disposition": "FAIL_STOP",
+      "reasons": [
+        "P4_SECTION_DIGEST_MISMATCH"
+      ]
+    },
+    {
+      "id": "PF-98",
+      "cls": "newD_tamper_linkage",
+      "expect_admissible": false,
+      "package_admissible": false,
+      "worst_disposition": "FAIL_STOP",
+      "reasons": [
+        "P4_LINKAGE_DIGEST_MISMATCH",
+        "P7_LINKAGE_SOURCE_NOT_FOUND"
+      ]
+    },
+    {
+      "id": "PF-99",
+      "cls": "newD_tamper_attestation",
+      "expect_admissible": false,
+      "package_admissible": false,
+      "worst_disposition": "FAIL_STOP",
+      "reasons": [
+        "P4_ATTESTATION_DIGEST_MISMATCH",
+        "S6_COUNT_MISMATCH",
+        "XC_COUNT_CONTRADICTION"
+      ]
+    },
+    {
+      "id": "PF-100",
+      "cls": "newD_tamper_manifest",
+      "expect_admissible": false,
+      "package_admissible": false,
+      "worst_disposition": "FAIL_STOP",
+      "reasons": [
+        "P4_MANIFEST_DIGEST_MISMATCH"
+      ]
+    },
+    {
+      "id": "PF-101",
+      "cls": "newD_tamper_eval_window",
+      "expect_admissible": false,
+      "package_admissible": false,
+      "worst_disposition": "FAIL_STOP",
+      "reasons": [
+        "P4_PACKAGE_DIGEST_MISMATCH"
+      ]
+    },
+    {
+      "id": "PF-102",
+      "cls": "newE_two_pending_same_event",
+      "expect_admissible": false,
+      "package_admissible": false,
+      "worst_disposition": "FAIL_STOP",
+      "reasons": [
+        "P7_LINKAGE_WITHIN_PATH_DOUBLE_COUNT"
+      ]
+    },
+    {
+      "id": "PF-103",
+      "cls": "newE_two_adjustments_same_event",
+      "expect_admissible": false,
+      "package_admissible": false,
+      "worst_disposition": "FAIL_STOP",
+      "reasons": [
+        "P7_LINKAGE_WITHIN_PATH_DOUBLE_COUNT"
+      ]
+    },
+    {
+      "id": "PF-104",
+      "cls": "newE_same_label_distinct_ids",
+      "expect_admissible": true,
+      "package_admissible": true,
+      "worst_disposition": "PASS",
+      "reasons": []
+    },
+    {
+      "id": "PF-105",
+      "cls": "newF_two_pending_linked_same_target",
+      "expect_admissible": false,
+      "package_admissible": false,
+      "worst_disposition": "FAIL_STOP",
+      "reasons": [
+        "P7_LINKAGE_WITHIN_PATH_DOUBLE_COUNT"
+      ]
+    },
+    {
+      "id": "PF-106",
+      "cls": "newF_two_adjustments_linked_same_target",
+      "expect_admissible": false,
+      "package_admissible": false,
+      "worst_disposition": "FAIL_STOP",
+      "reasons": [
+        "P7_LINKAGE_WITHIN_PATH_DOUBLE_COUNT"
+      ]
+    },
+    {
+      "id": "PF-107",
+      "cls": "newF_pending_and_adjustment_same_target",
+      "expect_admissible": false,
+      "package_admissible": false,
+      "worst_disposition": "FAIL_STOP",
+      "reasons": [
+        "P7_DUPLICATE_LINKED_ECONOMIC_EVENT"
+      ]
+    },
+    {
+      "id": "PF-108",
+      "cls": "newF_direct_and_linked_same_target",
+      "expect_admissible": false,
+      "package_admissible": false,
+      "worst_disposition": "FAIL_STOP",
+      "reasons": [
+        "P7_LINKAGE_WITHIN_PATH_DOUBLE_COUNT"
+      ]
+    },
+    {
+      "id": "PF-109",
+      "cls": "newF_distinct_targets",
+      "expect_admissible": true,
+      "package_admissible": true,
+      "worst_disposition": "PASS",
+      "reasons": []
+    },
+    {
+      "id": "PF-110",
+      "cls": "newF_linkage_ambiguous_target",
+      "expect_admissible": false,
+      "package_admissible": false,
+      "worst_disposition": "HOLD",
+      "reasons": [
+        "P7_LINKAGE_TARGET_AMBIGUOUS"
+      ]
+    },
+    {
+      "id": "PF-111",
+      "cls": "newF_duplicate_linkage",
+      "expect_admissible": false,
+      "package_admissible": false,
+      "worst_disposition": "HOLD",
+      "reasons": [
+        "P7_DUPLICATE_LINKAGE"
+      ]
+    },
+    {
+      "id": "PF-112",
+      "cls": "newF_many_to_one_no_aggregation",
+      "expect_admissible": false,
+      "package_admissible": false,
+      "worst_disposition": "FAIL_STOP",
+      "reasons": [
+        "P7_LINKAGE_WITHIN_PATH_DOUBLE_COUNT"
+      ]
+    },
+    {
+      "id": "PF-113",
+      "cls": "newF_rename_label_same_target",
+      "expect_admissible": false,
+      "package_admissible": false,
+      "worst_disposition": "FAIL_STOP",
+      "reasons": [
+        "P7_LINKAGE_WITHIN_PATH_DOUBLE_COUNT"
+      ]
+    },
+    {
+      "id": "PF-114",
+      "cls": "newF_unresolved_identity",
+      "expect_admissible": false,
+      "package_admissible": false,
+      "worst_disposition": "HOLD",
+      "reasons": [
+        "P7_LINKAGE_AUTHORITATIVE_IDENTITY_REQUIRED"
+      ]
+    },
+    {
+      "id": "PF-115",
+      "cls": "newF_valid_single_linkage_established_target",
+      "expect_admissible": true,
+      "package_admissible": true,
+      "worst_disposition": "PASS",
+      "reasons": []
+    },
+    {
+      "id": "PF-116",
+      "cls": "secG_affects_false_builder_no_deduction",
+      "expect_admissible": false,
+      "package_admissible": false,
+      "worst_disposition": "HOLD",
+      "reasons": [
+        "S1_UNSUPPORTED_CASH_IMPACT_CLASSIFICATION"
+      ]
+    },
+    {
+      "id": "PF-117",
+      "cls": "secG_completed_no_deduction",
+      "expect_admissible": false,
+      "package_admissible": false,
+      "worst_disposition": "HOLD",
+      "reasons": [
+        "S1_OFF_MODEL_DEDUCTION_REQUIRED"
+      ]
+    },
+    {
+      "id": "PF-118",
+      "cls": "secG_unsupported_field_no_deduction",
+      "expect_admissible": false,
+      "package_admissible": false,
+      "worst_disposition": "HOLD",
+      "reasons": [
+        "S1_UNSUPPORTED_AUTHORITY_FIELD"
+      ]
+    },
+    {
+      "id": "PF-119",
+      "cls": "secG_linked_non_live",
+      "expect_admissible": false,
+      "package_admissible": false,
+      "worst_disposition": "HOLD",
+      "reasons": [
+        "S1_REFERENCED_COMMITMENT_NOT_RESERVING"
+      ]
+    },
+    {
+      "id": "PF-120",
+      "cls": "secG_linked_valid_active_adjustment",
+      "expect_admissible": true,
+      "package_admissible": true,
+      "worst_disposition": "PASS",
+      "reasons": []
+    },
+    {
+      "id": "PF-121",
+      "cls": "rg1_unknown_target_namespace",
+      "expect_admissible": false,
+      "package_admissible": false,
+      "worst_disposition": "HOLD",
+      "reasons": [
+        "P7_LINKAGE_TARGET_NOT_AUTHORITATIVE"
+      ]
+    },
+    {
+      "id": "PF-122",
+      "cls": "rg1_unknown_source_namespace",
+      "expect_admissible": false,
+      "package_admissible": false,
+      "worst_disposition": "HOLD",
+      "reasons": [
+        "P7_LINKAGE_SOURCE_NAMESPACE_UNKNOWN"
+      ]
+    },
+    {
+      "id": "PF-123",
+      "cls": "rg2_direct_event_equals_commitment",
+      "expect_admissible": false,
+      "package_admissible": false,
+      "worst_disposition": "FAIL_STOP",
+      "reasons": [
+        "P7_DUPLICATE_LINKED_ECONOMIC_EVENT"
+      ]
+    },
+    {
+      "id": "PF-124",
+      "cls": "rg3_linkage_chain",
+      "expect_admissible": false,
+      "package_admissible": false,
+      "worst_disposition": "HOLD",
+      "reasons": [
+        "P7_LINKAGE_TARGET_NOT_AUTHORITATIVE"
+      ]
+    },
+    {
+      "id": "PF-125",
+      "cls": "rg4_target_is_local_row",
+      "expect_admissible": false,
+      "package_admissible": false,
+      "worst_disposition": "HOLD",
+      "reasons": [
+        "P7_LINKAGE_TARGET_NOT_AUTHORITATIVE"
+      ]
+    },
+    {
+      "id": "PF-126",
+      "cls": "rg5_declared_aggregation_ignored",
+      "expect_admissible": false,
+      "package_admissible": false,
+      "worst_disposition": "FAIL_STOP",
+      "reasons": [
+        "P7_LINKAGE_WITHIN_PATH_DOUBLE_COUNT"
+      ]
+    },
+    {
+      "id": "PF-127",
+      "cls": "obs5_rg3_shared_token_indirection",
+      "expect_admissible": false,
+      "package_admissible": false,
+      "worst_disposition": "HOLD",
+      "reasons": [
+        "P7_LINKAGE_GRAPH_INDIRECTION"
+      ]
+    },
+    {
+      "id": "PF-128",
+      "cls": "obs5_empty_source_id",
+      "expect_admissible": false,
+      "package_admissible": false,
+      "worst_disposition": "HOLD",
+      "reasons": [
+        "P7_LINKAGE_SOURCE_ID_MISSING"
+      ]
+    },
+    {
+      "id": "PF-129",
+      "cls": "obs5_whitespace_source_id",
+      "expect_admissible": false,
+      "package_admissible": false,
+      "worst_disposition": "HOLD",
+      "reasons": [
+        "P7_LINKAGE_SOURCE_ID_MISSING"
+      ]
+    },
+    {
+      "id": "PF-130",
+      "cls": "obs5_empty_target_id",
+      "expect_admissible": false,
+      "package_admissible": false,
+      "worst_disposition": "HOLD",
+      "reasons": [
+        "P7_LINKAGE_TARGET_ID_MISSING"
+      ]
+    },
+    {
+      "id": "PF-131",
+      "cls": "obs5_whitespace_target_id",
+      "expect_admissible": false,
+      "package_admissible": false,
+      "worst_disposition": "HOLD",
+      "reasons": [
+        "P7_LINKAGE_TARGET_ID_MISSING"
+      ]
+    },
+    {
+      "id": "PF-132",
+      "cls": "obs5_source_record_absent",
+      "expect_admissible": false,
+      "package_admissible": false,
+      "worst_disposition": "HOLD",
+      "reasons": [
+        "P7_LINKAGE_SOURCE_NOT_FOUND"
+      ]
+    },
+    {
+      "id": "PF-133",
+      "cls": "obs5_commitment_target_absent",
+      "expect_admissible": false,
+      "package_admissible": false,
+      "worst_disposition": "HOLD",
+      "reasons": [
+        "P7_LINKAGE_COMMITMENT_NOT_FOUND"
+      ]
+    },
+    {
+      "id": "PF-134",
+      "cls": "obs5_event_target_not_established",
+      "expect_admissible": false,
+      "package_admissible": false,
+      "worst_disposition": "HOLD",
+      "reasons": [
+        "P7_LINKAGE_EVENT_NOT_ESTABLISHED"
+      ]
+    },
+    {
+      "id": "PF-135",
+      "cls": "obs5_event_target_established_valid",
+      "expect_admissible": true,
+      "package_admissible": true,
+      "worst_disposition": "PASS",
+      "reasons": []
+    },
+    {
+      "id": "PF-136",
+      "cls": "obs5_commitment_resolves_one_double_count",
+      "expect_admissible": false,
+      "package_admissible": false,
+      "worst_disposition": "FAIL_STOP",
+      "reasons": [
+        "P7_DUPLICATE_LINKED_ECONOMIC_EVENT"
+      ]
+    },
+    {
+      "id": "PF-137",
+      "cls": "obs5_commitment_target_ambiguous",
+      "expect_admissible": false,
+      "package_admissible": false,
+      "worst_disposition": "FAIL_STOP",
+      "reasons": [
+        "P6_DUPLICATE_IDENTITY",
+        "P7_LINKAGE_TARGET_AMBIGUOUS"
+      ]
+    },
+    {
+      "id": "PF-138",
+      "cls": "obs5_orphan_unused_linkage",
+      "expect_admissible": false,
+      "package_admissible": false,
+      "worst_disposition": "HOLD",
+      "reasons": [
+        "P7_ORPHAN_LINKAGE"
+      ]
+    },
+    {
+      "id": "PF-139",
+      "cls": "obs5_target_only_in_unknown_section",
+      "expect_admissible": false,
+      "package_admissible": false,
+      "worst_disposition": "HOLD",
+      "reasons": [
+        "P7_LINKAGE_EVENT_NOT_ESTABLISHED"
+      ]
+    },
+    {
+      "id": "PF-140",
+      "cls": "obs5_valid_source_and_authoritative_target",
+      "expect_admissible": true,
+      "package_admissible": true,
+      "worst_disposition": "PASS",
+      "reasons": []
+    }
+  ],
+  "mutation_totals": {
+    "total": 47,
+    "all_caught": true
+  },
+  "mutations": [
+    {
+      "id": "MUT-01_null_recon_accepted",
+      "fixture": "PF-06",
+      "correct_admissible": false,
+      "mutated_admissible": true,
+      "diverged": true,
+      "deterministic": true
+    },
+    {
+      "id": "MUT-02_duplicate_recon_ignored",
+      "fixture": "PF-08",
+      "correct_admissible": false,
+      "mutated_admissible": true,
+      "diverged": true,
+      "deterministic": true
+    },
+    {
+      "id": "MUT-03_failed_fetch_as_empty",
+      "fixture": "PF-11",
+      "correct_admissible": false,
+      "mutated_admissible": true,
+      "diverged": true,
+      "deterministic": true
+    },
+    {
+      "id": "MUT-04_offmodel_warning_only",
+      "fixture": "PF-20",
+      "correct_admissible": false,
+      "mutated_admissible": true,
+      "diverged": true,
+      "deterministic": true
+    },
+    {
+      "id": "MUT-05_negative_commitment_accepted",
+      "fixture": "PF-17",
+      "correct_admissible": false,
+      "mutated_admissible": true,
+      "diverged": true,
+      "deterministic": true
+    },
+    {
+      "id": "MUT-06_uncleared_item_omitted",
+      "fixture": "PF-23",
+      "correct_admissible": false,
+      "mutated_admissible": true,
+      "diverged": true,
+      "deterministic": true
+    },
+    {
+      "id": "MUT-07_terminal_release_no_evidence",
+      "fixture": "PF-28",
+      "correct_admissible": false,
+      "mutated_admissible": true,
+      "diverged": true,
+      "deterministic": true
+    },
+    {
+      "id": "MUT-08_untyped_evidence_accepted",
+      "fixture": "PF-29",
+      "correct_admissible": false,
+      "mutated_admissible": true,
+      "diverged": true,
+      "deterministic": true
+    },
+    {
+      "id": "MUT-09_manifest_count_ignored",
+      "fixture": "PF-33",
+      "correct_admissible": false,
+      "mutated_admissible": true,
+      "diverged": true,
+      "deterministic": true
+    },
+    {
+      "id": "MUT-10_evidence_hash_bypassed",
+      "fixture": "PF-34",
+      "correct_admissible": false,
+      "mutated_admissible": true,
+      "diverged": true,
+      "deterministic": true
+    },
+    {
+      "id": "MUT-11_environment_mismatch_ignored",
+      "fixture": "PF-04",
+      "correct_admissible": false,
+      "mutated_admissible": true,
+      "diverged": true,
+      "deterministic": true
+    },
+    {
+      "id": "MUT-12_duplicate_obligation_deduction",
+      "fixture": "PF-37",
+      "correct_admissible": false,
+      "mutated_admissible": true,
+      "diverged": true,
+      "deterministic": true
+    },
+    {
+      "id": "MUT-13_transfer_mirror_double_count",
+      "fixture": "PF-25",
+      "correct_admissible": false,
+      "mutated_admissible": true,
+      "diverged": true,
+      "deterministic": true
+    },
+    {
+      "id": "MUT-14_hold_promoted_to_pass",
+      "fixture": "PF-40",
+      "correct_admissible": false,
+      "mutated_admissible": true,
+      "diverged": true,
+      "deterministic": true
+    },
+    {
+      "id": "MUT-15_f_release_without_j_evidence",
+      "fixture": "PF-41",
+      "correct_admissible": false,
+      "mutated_admissible": true,
+      "diverged": true,
+      "deterministic": true
+    },
+    {
+      "id": "MUT-16_bare_clearing_linkage_accepted",
+      "fixture": "PF-44",
+      "correct_admissible": false,
+      "mutated_admissible": true,
+      "diverged": true,
+      "deterministic": true
+    },
+    {
+      "id": "MUT-17_dangling_offmodel_reference_accepted",
+      "fixture": "PF-48",
+      "correct_admissible": false,
+      "mutated_admissible": true,
+      "diverged": true,
+      "deterministic": true
+    },
+    {
+      "id": "MUT-18_self_asserted_threshold_accepted",
+      "fixture": "PF-54",
+      "correct_admissible": false,
+      "mutated_admissible": true,
+      "diverged": true,
+      "deterministic": true
+    },
+    {
+      "id": "MUT-19_empty_balance_anchor_accepted",
+      "fixture": "PF-56",
+      "correct_admissible": false,
+      "mutated_admissible": true,
+      "diverged": true,
+      "deterministic": true
+    },
+    {
+      "id": "MUT-20_verified_empty_no_rows_visible_accepted",
+      "fixture": "PF-60",
+      "correct_admissible": false,
+      "mutated_admissible": true,
+      "diverged": true,
+      "deterministic": true
+    },
+    {
+      "id": "MUT-21_unattested_terminal_section_accepted",
+      "fixture": "PF-63",
+      "correct_admissible": false,
+      "mutated_admissible": true,
+      "diverged": true,
+      "deterministic": true
+    },
+    {
+      "id": "MUT-22_malformed_multileg_transfer_accepted",
+      "fixture": "PF-65",
+      "correct_admissible": false,
+      "mutated_admissible": true,
+      "diverged": true,
+      "deterministic": true
+    },
+    {
+      "id": "MUT-23_one_cent_transfer_skew_accepted",
+      "fixture": "PF-66",
+      "correct_admissible": false,
+      "mutated_admissible": true,
+      "diverged": true,
+      "deterministic": true
+    },
+    {
+      "id": "MUT-24_renameable_economic_identity_accepted",
+      "fixture": "PF-70",
+      "correct_admissible": false,
+      "mutated_admissible": true,
+      "diverged": true,
+      "deterministic": true
+    },
+    {
+      "id": "MUT-25_missing_query_provenance_accepted",
+      "fixture": "PF-74",
+      "correct_admissible": false,
+      "mutated_admissible": true,
+      "diverged": true,
+      "deterministic": true
+    },
+    {
+      "id": "MUT-26_out_of_window_timestamp_accepted",
+      "fixture": "PF-77",
+      "correct_admissible": false,
+      "mutated_admissible": true,
+      "diverged": true,
+      "deterministic": true
+    },
+    {
+      "id": "MUT-27_cross_control_contradiction_ignored",
+      "fixture": "PF-81",
+      "correct_admissible": false,
+      "mutated_admissible": true,
+      "diverged": true,
+      "deterministic": true
+    },
+    {
+      "id": "MUT-28_duplicate_manifest_relation_accepted",
+      "fixture": "PF-82",
+      "correct_admissible": false,
+      "mutated_admissible": true,
+      "diverged": true,
+      "deterministic": true
+    },
+    {
+      "id": "MUT-29_trust_self_asserted_material_false",
+      "fixture": "PF-88",
+      "correct_admissible": false,
+      "mutated_admissible": true,
+      "diverged": true,
+      "deterministic": true
+    },
+    {
+      "id": "MUT-30_ignore_deduction_liveness",
+      "fixture": "PF-92",
+      "correct_admissible": false,
+      "mutated_admissible": true,
+      "diverged": true,
+      "deterministic": true
+    },
+    {
+      "id": "MUT-31_exclude_ext_sections_from_hashing",
+      "fixture": "PF-97",
+      "correct_admissible": false,
+      "mutated_admissible": true,
+      "diverged": true,
+      "deterministic": true
+    },
+    {
+      "id": "MUT-32_within_path_double_count_allowed",
+      "fixture": "PF-102",
+      "correct_admissible": false,
+      "mutated_admissible": true,
+      "diverged": true,
+      "deterministic": true
+    },
+    {
+      "id": "MUT-33_skip_required_blocking_control",
+      "fixture": "PF-41",
+      "correct_admissible": false,
+      "mutated_admissible": true,
+      "diverged": true,
+      "deterministic": true
+    },
+    {
+      "id": "MUT-34_admissible_before_xc",
+      "fixture": "PF-81",
+      "correct_admissible": false,
+      "mutated_admissible": true,
+      "diverged": true,
+      "deterministic": true
+    },
+    {
+      "id": "MUT-35_caller_supplied_admissibility",
+      "fixture": "PF-40",
+      "correct_admissible": false,
+      "mutated_admissible": true,
+      "diverged": true,
+      "deterministic": true
+    },
+    {
+      "id": "MUT-36_ignore_duplicate_control_result",
+      "fixture": "PF-01",
+      "correct_admissible": false,
+      "mutated_admissible": true,
+      "diverged": true,
+      "deterministic": true
+    },
+    {
+      "id": "MUT-37_ignore_unknown_control_result",
+      "fixture": "PF-01",
+      "correct_admissible": false,
+      "mutated_admissible": true,
+      "diverged": true,
+      "deterministic": true
+    },
+    {
+      "id": "MUT-38_dedup_local_row_id_fallback",
+      "fixture": "PF-105",
+      "correct_admissible": false,
+      "mutated_admissible": true,
+      "diverged": true,
+      "deterministic": true
+    },
+    {
+      "id": "MUT-39_trust_section_g_affects_false",
+      "fixture": "PF-116",
+      "correct_admissible": false,
+      "mutated_admissible": true,
+      "diverged": true,
+      "deterministic": true
+    },
+    {
+      "id": "MUT-40_trust_section_g_completed",
+      "fixture": "PF-117",
+      "correct_admissible": false,
+      "mutated_admissible": true,
+      "diverged": true,
+      "deterministic": true
+    },
+    {
+      "id": "MUT-41_permit_ambiguous_linkage_target",
+      "fixture": "PF-110",
+      "correct_admissible": false,
+      "mutated_admissible": true,
+      "diverged": true,
+      "deterministic": true
+    },
+    {
+      "id": "MUT-42_open_namespace_vocabulary",
+      "fixture": "PF-121",
+      "correct_admissible": false,
+      "mutated_admissible": true,
+      "diverged": true,
+      "deterministic": true
+    },
+    {
+      "id": "MUT-43_event_commitment_id_dodge",
+      "fixture": "PF-123",
+      "correct_admissible": false,
+      "mutated_admissible": true,
+      "diverged": true,
+      "deterministic": true
+    },
+    {
+      "id": "MUT-45_target_is_local_row_id",
+      "fixture": "PF-125",
+      "correct_admissible": false,
+      "mutated_admissible": true,
+      "diverged": true,
+      "deterministic": true
+    },
+    {
+      "id": "MUT-46_ignore_orphan_linkage",
+      "fixture": "PF-138",
+      "correct_admissible": false,
+      "mutated_admissible": true,
+      "diverged": true,
+      "deterministic": true
+    },
+    {
+      "id": "MUT-47_trust_event_target_as_proof",
+      "fixture": "PF-134",
+      "correct_admissible": false,
+      "mutated_admissible": true,
+      "diverged": true,
+      "deterministic": true
+    },
+    {
+      "id": "MUT-48_ignore_commitment_target_existence",
+      "fixture": "PF-133",
+      "correct_admissible": false,
+      "mutated_admissible": true,
+      "diverged": true,
+      "deterministic": true
+    }
+  ],
+  "remaining_blockers": [
+    "Live evidence has NOT been collected: synthetic contract + validator proof only.",
+    "A production package requires operator project confirmation, an authorized read-only extraction, and RLS/visibility proof — a separate owner-authorized gate.",
+    "No materiality threshold and no real-time freshness policy are authorized; both fail closed.",
+    "obligation_set_complete and capacity_calculation_eligible remain false until a real, attested live obligation load passes this preflight."
+  ]
+}
