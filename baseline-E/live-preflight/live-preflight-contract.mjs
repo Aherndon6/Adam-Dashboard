@@ -55,7 +55,7 @@ export const REQUIRED_EVIDENCE_TYPE_BY_RESOLUTION = Object.freeze({ cleared: 'ba
 
 // ── S-7 v3.1 durable-clearing lane (design s7-rev-8.3-bankcleared) ─────────────────────────────────────────────
 export const S7_SPEC_REVISION = 's7-rev-8.3-bankcleared';
-export const LEGACY_SPEC_VERSION = 'legacy-clearing-v1';
+export const LEGACY_SPEC_VERSION = 'legacy-clearing-v2';
 export const AUTHORITY_VERSION = 'authority-v1';
 export const LEGACY_REGISTRY_VERSION = 'legacy-registry-v1';
 // evidence_source is a CLOSED set. A J record with NO evidence_source is the committed evidence class (validated by the
@@ -71,11 +71,37 @@ export const PINNED_LEGACY_COMMITMENTS = Object.freeze([
   '2026mw4_tax_transfer_vio_2026_06_28', '2026mw5_kia_payment_2026_07_07', 'manual_18313b87-a03b-4034-a1a8-a73fa0bfadd9',
 ]);
 // Closed, versioned legacy disposition vocabulary. An out-of-vocab disposition FAIL-STOPs (S7_UNSUPPORTED_DISPOSITION).
-export const LEGACY_DISPOSITION_VOCAB = Object.freeze(['matched_bank_clearing', 'paid_from_other_account', 'voided_or_never_cleared', 'unresolved_hold']);
+export const LEGACY_DISPOSITION_VOCAB = Object.freeze(['matched_bank_clearing', 'matched_internal_transfer', 'paid_from_other_account', 'voided_or_never_cleared', 'unresolved_hold']);
 // Frozen accepted-record-digest registry. EMPTY until the six records are created + independently reviewed + owner-
 // ratified (owner decision (h), migration step 11). Pre-freeze this is empty, so EVERY legacy_adjudication record
 // FAIL-STOPs (S7_ADJUDICATION_NOT_IN_REGISTRY) — the correct pre-freeze fail-closed posture.
 export const ACCEPTED_LEGACY_RECORD_DIGESTS = Object.freeze([]);
+
+// ── legacy-clearing-v2 (owner-ratified 2026-08-02) ────────────────────────────────────────────────────────────
+// Commitment-specific inclusive lower bound for a legacy clearing's cleared_as_of (legacy lane ONLY; the committed
+// lane keeps extraction_window.start). Five entries are the commitment due_date; the AMEX (null due_date) uses its
+// authoritative created_at date (2026-07-18). A legacy record whose pinned commitment is absent from this map fails
+// closed (S7_LEGACY_LOWER_BOUND_MISSING). extraction_window.end remains the upper freshness bound.
+export const LEGACY_CLEARING_LOWER_BOUND_BY_COMMITMENT = Object.freeze({
+  '2026mw4_rent_tiffany_dye_2026_07_01': '2026-07-01T00:00:00.000Z',
+  '2026mw4_rent_tiffany_dye_2026_07_02': '2026-07-02T00:00:00.000Z',
+  '2026mw4_rent_tiffany_dye_2026_07_03': '2026-07-03T00:00:00.000Z',
+  '2026mw4_tax_transfer_vio_2026_06_28': '2026-06-28T00:00:00.000Z',
+  '2026mw5_kia_payment_2026_07_07': '2026-07-07T00:00:00.000Z',
+  'manual_18313b87-a03b-4034-a1a8-a73fa0bfadd9': '2026-07-18T00:00:00.000Z',
+});
+// Exact, enumerated expected-vs-cleared amount variances (NOT a tolerance band; NOT a materiality threshold). Only the
+// pinned commitment and its exact variance are accepted; cash_commitments.amount_cents is NEVER mutated.
+export const PINNED_LEGACY_AMOUNT_VARIANCES = Object.freeze({ '2026mw5_kia_payment_2026_07_07': -50 });
+// The exactly-two legacy commitments whose obligation IS an internal transfer, eligible for disposition
+// matched_internal_transfer (a transfer leg may satisfy their clearing). Any other commitment FAIL-STOPs.
+export const PINNED_LEGACY_TRANSFER_COMMITMENTS = Object.freeze(['2026mw4_tax_transfer_vio_2026_06_28', 'manual_18313b87-a03b-4034-a1a8-a73fa0bfadd9']);
+// Shared authoritative expected-CLEARED amount, consumed identically by S-4 and S-7. Exact pinned variance only; every
+// other commitment is strict (returns the commitment amount unchanged).
+export function expectedClearedCents(expectedItemId, commitmentAmountCents) {
+  const v = PINNED_LEGACY_AMOUNT_VARIANCES[expectedItemId];
+  return (typeof v === 'number') ? commitmentAmountCents + v : commitmentAmountCents;
+}
 
 // Attestation states (S-6). Only these two may proceed; every other state HOLDs.
 export const ATTEST_OK = Object.freeze(['complete', 'verified_empty']);

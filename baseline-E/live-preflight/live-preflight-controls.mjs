@@ -3,7 +3,8 @@
 // cross-control consistency layer (XC). Hardened per Fable verdict-3 (2026-07-30): every control fails closed on
 // what it does NOT model too. Each control(pkg, mut) -> { id, disposition, reason_code, detail }. `mut` injects
 // executable control breaks. All changes are ADDITIVE — no previously adopted control is weakened.
-import { SUPPORTED_SCHEMA_VERSIONS, EXPECTED_PRODUCTION_PROJECT_REF, USABLE_BALANCE_BASES, BALANCE_BASIS_PRECEDENCE, ATTEST_OK, digest, parseUtcInstant, ATTESTED_SECTIONS, ATTEST_TO_SECTION, SECTION_TO_RELATION, FRESHNESS_POLICY_AUTHORIZED, EXT_DIGEST_SECTIONS, packageFieldsForDigest, REQUIRED_EVIDENCE_TYPE_BY_RESOLUTION, SUPPORTED_EVIDENCE_SOURCES, AUTHORIZED_OWNER_SUBJECT_ID, PINNED_LEGACY_COMMITMENTS, LEGACY_DISPOSITION_VOCAB, ACCEPTED_LEGACY_RECORD_DIGESTS } from './live-preflight-contract.mjs';
+import { SUPPORTED_SCHEMA_VERSIONS, EXPECTED_PRODUCTION_PROJECT_REF, USABLE_BALANCE_BASES, BALANCE_BASIS_PRECEDENCE, ATTEST_OK, digest, parseUtcInstant, ATTESTED_SECTIONS, ATTEST_TO_SECTION, SECTION_TO_RELATION, FRESHNESS_POLICY_AUTHORIZED, EXT_DIGEST_SECTIONS, packageFieldsForDigest, REQUIRED_EVIDENCE_TYPE_BY_RESOLUTION, SUPPORTED_EVIDENCE_SOURCES, AUTHORIZED_OWNER_SUBJECT_ID, PINNED_LEGACY_COMMITMENTS, LEGACY_DISPOSITION_VOCAB, ACCEPTED_LEGACY_RECORD_DIGESTS, LEGACY_CLEARING_LOWER_BOUND_BY_COMMITMENT, PINNED_LEGACY_TRANSFER_COMMITMENTS, expectedClearedCents } from './live-preflight-contract.mjs';
+const LEGACY_GLOBAL_MIN = '2026-06-28T00:00:00.000Z'; // MUT-only: the rejected single-global floor (proves the map is stricter)
 
 const PASS = (id) => ({ id, disposition: 'PASS', reason_code: null });
 const HOLD = (id, reason_code, detail) => ({ id, disposition: 'HOLD', reason_code, detail });
@@ -359,7 +360,7 @@ export function S4_commitments(pkg, mut) {
     if (c.cleared_transaction_id != null) {
       if (clearing.has(c.cleared_transaction_id)) return STOP('S-4', 'S4_DUPLICATE_CLEARING_LINKAGE', c.cleared_transaction_id);
       clearing.add(c.cleared_transaction_id);
-      if (c.cleared_amount_cents != null && c.cleared_amount_cents !== c.amount_cents) return STOP('S-4', 'S4_CLEARING_AMOUNT_MISMATCH', c.expected_item_id);
+      if (c.cleared_amount_cents != null && c.cleared_amount_cents !== expectedClearedCents(c.expected_item_id, c.amount_cents)) return STOP('S-4', 'S4_CLEARING_AMOUNT_MISMATCH', c.expected_item_id); // v2: shared pinned-variance helper (Kia -50); strict for all others
       if (c.cleared_source_account != null && c.cleared_source_account !== c.source_account) return STOP('S-4', 'S4_CLEARING_SOURCE_MISMATCH', c.expected_item_id);
     }
   }
@@ -425,6 +426,21 @@ const isValidSubjectId = (v) => typeof v === 'string' && V4_UUID_RE.test(v);
 const recomputeRecordDigest = (j) => { const { record_digest, digest: _perRecord, ...rest } = j; return digest(rest); };
 // F-1: authoritative clearing digest recomputed from a referenced Register row (excluding its P-4 per-record digest).
 const recomputeClearingDigest = (tx) => { const { digest: _perRecord, ...rest } = tx; return digest(rest); };
+// F-2 (v2 hardening): a canonical transfer-group identifier — a non-empty token with no whitespace/control chars.
+const VALID_TRANSFER_GROUP_ID = /^[A-Za-z0-9_-]+$/;
+const isCanonicalGroupId = (v) => typeof v === 'string' && VALID_TRANSFER_GROUP_ID.test(v);
+// F-1 (v2 hardening): the FULL matched_internal_transfer exemption predicate, shared by S-7 and XC so the XC J-lane
+// transfer exemption applies ONLY to an ACTIVE, PINNED, group-valid, correctly-bound internal-transfer record. A
+// superseded / non-pinned / mis-grouped record can NEVER earn the exemption.
+function eligibleInternalTransferExemption(j, registerRows) {
+  if (j.superseded === true) return false;
+  if (j.evidence_source !== 'legacy_adjudication' || j.disposition !== 'matched_internal_transfer') return false;
+  if (!PINNED_LEGACY_TRANSFER_COMMITMENTS.includes(j.commitment_expected_item_id)) return false;
+  const gid = j.cleared_transfer_group_id;
+  if (!isCanonicalGroupId(gid)) return false;
+  const tx = registerRows.find((r) => r.txn_id === j.cleared_transaction_id);
+  return !!(tx && tx.is_transfer_leg === true && (tx.transfer_group_id ?? tx.transfer_pair_id) === gid);
+}
 
 export function S7_reserveRelease(pkg, mut) {
   const evw = evalWeek(pkg);
@@ -448,11 +464,15 @@ export function S7_reserveRelease(pkg, mut) {
   if (!mut.ignoreLegacyAuthority) for (const j of js) if (j.evidence_source === 'legacy_adjudication' && j.superseded !== true) {
     if (!PINNED_LEGACY_COMMITMENTS.includes(j.commitment_expected_item_id)) return STOP('S-7', 'S7_LEGACY_COMMITMENT_NOT_PINNED', j.commitment_expected_item_id);
     if (!LEGACY_DISPOSITION_VOCAB.includes(j.disposition)) return STOP('S-7', 'S7_UNSUPPORTED_DISPOSITION', String(j.disposition));
+    // v2: matched_internal_transfer is allowed ONLY for the exactly-two pinned transfer commitments (owner-adjudicated).
+    if (j.disposition === 'matched_internal_transfer' && !mut.ignoreTransferDispositionGate && !PINNED_LEGACY_TRANSFER_COMMITMENTS.includes(j.commitment_expected_item_id)) return STOP('S-7', 'S7_TRANSFER_DISPOSITION_NOT_PINNED', j.commitment_expected_item_id);
     if (!isValidSubjectId(j.adjudicated_by_subject_id)) return STOP('S-7', 'S7_ADJUDICATION_AUTHORITY_INVALID', typeof j.adjudicated_by_subject_id);
     if (j.adjudicated_by_subject_id !== AUTHORIZED_OWNER_SUBJECT_ID) return STOP('S-7', 'S7_ADJUDICATION_AUTHORITY_UNAUTHORIZED', j.adjudicated_by_subject_id);
     if (!mut.acceptForgedAdjudication && recomputeRecordDigest(j) !== j.record_digest) return STOP('S-7', 'S7_ADJUDICATION_DIGEST_MISMATCH', j.commitment_expected_item_id);
     const registry = mut.testAcceptedRegistry || ACCEPTED_LEGACY_RECORD_DIGESTS;
-    if (!registry.includes(j.record_digest)) return STOP('S-7', 'S7_ADJUDICATION_NOT_IN_REGISTRY', j.commitment_expected_item_id);
+    // acceptAllLegacyRegistry is a TEST-INJECTION bypass (generalized testAcceptedRegistry) so durable DEFS fixtures /
+    //   MUT-registry entries can reach the Phase-1 v2 legacy guards without embedding a per-record digest. Fail-closed by default.
+    if (!mut.acceptAllLegacyRegistry && !registry.includes(j.record_digest)) return STOP('S-7', 'S7_ADJUDICATION_NOT_IN_REGISTRY', j.commitment_expected_item_id);
   }
   // F10/G9: supersession chain structure over the FULL chain — single active tail per commitment; no cycle/self-supersede.
   const legacyByCommit = new Map();
@@ -473,6 +493,8 @@ export function S7_reserveRelease(pkg, mut) {
     const bind = (txn, cid) => { if (txn == null) return; (use.get(txn) || use.set(txn, new Set()).get(txn)).add(cid); };
     for (const c of commits) bind(c.cleared_transaction_id, c.expected_item_id);
     for (const j of js) if (j.superseded !== true && j.cleared_transaction_id != null) { bind(j.cleared_transaction_id, j.commitment_expected_item_id); jTxns.add(j.cleared_transaction_id); }
+    // v2: BOTH legs of a matched_internal_transfer participate in reuse protection (mirror leg cannot be reused elsewhere).
+    if (!mut.ignoreMirrorLegReuse) for (const j of js) if (j.superseded !== true && j.evidence_source === 'legacy_adjudication' && j.disposition === 'matched_internal_transfer' && j.cleared_transfer_group_id != null) for (const r of registerRows) if ((r.transfer_group_id ?? r.transfer_pair_id) === j.cleared_transfer_group_id) { bind(r.txn_id, j.commitment_expected_item_id); jTxns.add(r.txn_id); }
     for (const [txn, cids] of use) if (cids.size > 1 && jTxns.has(txn)) return STOP('S-7', 'S7_CLEARING_TXN_REUSE_CONFLICT', txn);
   }
 
@@ -518,7 +540,7 @@ export function S7_reserveRelease(pkg, mut) {
     // committed UNCONDITIONAL clearing-metadata check (G4): fires whenever cleared_transaction_id != null, ANY type/source.
     if (j.cleared_transaction_id != null && !mut.acceptBareClearing) {
       for (const f of ['cleared_amount_cents', 'cleared_source_account', 'cleared_state', 'cleared_as_of']) if (j[f] == null) return HOLD('S-7', 'S7_CLEARING_METADATA_MISSING', `${c.expected_item_id}.${f}`);
-      if (j.cleared_amount_cents !== c.amount_cents) return HOLD('S-7', 'S7_CLEARING_AMOUNT_MISMATCH', c.expected_item_id);
+      if (!mut.acceptAnyVariance) { const _exp = expectedClearedCents(c.expected_item_id, c.amount_cents); const _ok = mut.applyToleranceBand ? Math.abs(j.cleared_amount_cents - _exp) <= 100 : j.cleared_amount_cents === _exp; if (!_ok) return HOLD('S-7', 'S7_CLEARING_AMOUNT_MISMATCH', c.expected_item_id); } // v2: shared pinned-variance helper
       // N-2: an alternate_payment clears from a DIFFERENT account, so its self-reported source is validated against the
       //   referenced Register row below, not against the commitment source here (bank_cleared/void keep committed check).
       if (requiredType !== 'alternate_payment' && j.cleared_source_account !== c.source_account) return HOLD('S-7', 'S7_CLEARING_SOURCE_MISMATCH', c.expected_item_id);
@@ -534,14 +556,33 @@ export function S7_reserveRelease(pkg, mut) {
         if (matches.length > 1) return STOP('S-7', 'S7_CLEARING_TXN_AMBIGUOUS', j.cleared_transaction_id); // P-6 also fail-stops a duplicate register txn_id
       }
       const tx = matches[0];
-      // N-1: a transfer leg (an internal movement) can NEVER satisfy a durable clearing — aligns with XC_TRANSFER_ALSO_CLEARING.
-      if (tx && tx.is_transfer_leg === true && !mut.ignoreS7TransferLeg) return STOP('S-7', 'S7_CLEARING_TXN_IS_TRANSFER', `${c.expected_item_id}:${j.cleared_transaction_id}`);
+      const isInternalTransfer = j.evidence_source === 'legacy_adjudication' && j.disposition === 'matched_internal_transfer';
+      // N-1 / v2: a transfer leg satisfies a durable clearing ONLY as an eligible matched_internal_transfer (case b/c);
+      //   otherwise FAIL-STOP (case a). A matched_internal_transfer whose referenced row is NOT a transfer leg FAIL-STOPs.
+      if (tx && tx.is_transfer_leg === true && !isInternalTransfer && !mut.ignoreS7TransferLeg
+          && !(mut.inferTransferFromMirrorPresence && registerRows.some((r) => r.txn_id !== tx.txn_id && r.amount_cents === -tx.amount_cents)))
+        return STOP('S-7', 'S7_CLEARING_TXN_IS_TRANSFER', `${c.expected_item_id}:${j.cleared_transaction_id}`);
+      if (isInternalTransfer && !mut.ignoreInternalTransferLegRequired && !(tx && tx.is_transfer_leg === true)) return STOP('S-7', 'S7_INTERNAL_TRANSFER_LEG_REQUIRED', c.expected_item_id);
+      // v2 matched_internal_transfer: authoritative paired-leg identity from the record's group id matched to the row;
+      //   exactly two legs, opposite signs, same magnitude, distinct ids/accounts, neither an active deduction. No inference.
+      if (isInternalTransfer && tx && !mut.ignoreTransferGroup) {
+        const gid = j.cleared_transfer_group_id, rowGid = tx.transfer_group_id ?? tx.transfer_pair_id;
+        // F-2: the group identity must be a non-empty canonical token; null/empty/whitespace-only/malformed fail closed.
+        //   No normalization is applied — distinct identifiers never collapse (row match below is strict ===).
+        if (!mut.acceptInvalidTransferGroupId && !isCanonicalGroupId(gid)) return STOP('S-7', 'S7_TRANSFER_GROUP_ID_INVALID', c.expected_item_id);
+        if (gid == null || rowGid !== gid) return STOP('S-7', 'S7_TRANSFER_GROUP_MISMATCH', c.expected_item_id);
+        const legs = registerRows.filter((r) => (r.transfer_group_id ?? r.transfer_pair_id) === gid);
+        if (legs.length !== 2) return STOP('S-7', 'S7_TRANSFER_GROUP_MALFORMED', `${c.expected_item_id}:legs=${legs.length}`);
+        const [la, lb] = legs;
+        if (la.txn_id === lb.txn_id || la.account_key === lb.account_key || Math.sign(la.amount_cents) === Math.sign(lb.amount_cents) || Math.abs(la.amount_cents) !== Math.abs(lb.amount_cents)) return STOP('S-7', 'S7_TRANSFER_GROUP_MALFORMED', c.expected_item_id);
+        if (la.represented_as_deduction === true || lb.represented_as_deduction === true) return STOP('S-7', 'S7_CLEARING_TXN_ALSO_DEDUCTED', c.expected_item_id);
+      }
       if (tx && !mut.ignoreClearingTxnDigest) {
         if (j.cleared_transaction_digest == null) return HOLD('S-7', 'S7_CLEARING_METADATA_MISSING', `${c.expected_item_id}.cleared_transaction_digest`);
         if (j.cleared_transaction_digest !== recomputeClearingDigest(tx)) return HOLD('S-7', 'S7_CLEARING_DIGEST_MISMATCH', c.expected_item_id);
       }
       if (tx && !mut.ignoreClearingTxnBinding) {
-        if (Math.abs(tx.amount_cents) !== c.amount_cents) return HOLD('S-7', 'S7_CLEARING_AMOUNT_MISMATCH', c.expected_item_id);
+        if (!mut.acceptAnyVariance) { const _exp = expectedClearedCents(c.expected_item_id, c.amount_cents); const _ok = mut.applyToleranceBand ? Math.abs(Math.abs(tx.amount_cents) - _exp) <= 100 : Math.abs(tx.amount_cents) === _exp; if (!_ok) return HOLD('S-7', 'S7_CLEARING_AMOUNT_MISMATCH', c.expected_item_id); } // v2: shared pinned-variance helper
         if (!(typeof tx.amount_cents === 'number' && tx.amount_cents < 0)) return HOLD('S-7', 'S7_CLEARING_DIRECTION_INVALID', c.expected_item_id);
         if (tx.cleared !== true) return HOLD('S-7', 'S7_CLEARING_STATE_INVALID', c.expected_item_id);
         // source: bank_cleared clears from the commitment's own account; alternate_payment clears from a DIFFERENT
@@ -556,10 +597,21 @@ export function S7_reserveRelease(pkg, mut) {
       if (asof == null) return HOLD('S-7', 'S7_CLEARING_ASOF_UNPARSEABLE', c.expected_item_id);
       const win = (pkg.execution_identity || {}).extraction_window || {};
       const winStart = parseUtcInstant(win.start), winEnd = parseUtcInstant(win.end);
-      // F-2: S-7 OWNS this window check (P-2 never reads cleared_as_of). The preflight lacks the model-week->date epoch,
-      //   so the extraction-window START is the deterministic, fail-closed release floor and the END the upper bound
-      //   (both inclusive). N-3 additionally binds cleared_as_of to the referenced row's authoritative transaction_date.
-      if (winStart != null && !mut.ignoreClearingAsofLower && asof < winStart) return HOLD('S-7', 'S7_CLEARING_ASOF_OUT_OF_WINDOW', `${c.expected_item_id}:before`);
+      // v2 Issue-A: the LEGACY lane lower bound is COMMITMENT-SPECIFIC (a frozen map keyed by expected_item_id — five
+      //   due_dates + the AMEX created_at date). The committed/non-legacy lane keeps extraction_window.start EXACTLY.
+      //   extraction_window.end stays the upper freshness bound for both. N-3 binds cleared_as_of to the row date.
+      let lower = winStart;
+      if (j.evidence_source === 'legacy_adjudication') {
+        if (mut.useGlobalLegacyFloor) lower = parseUtcInstant(LEGACY_GLOBAL_MIN); // MUT: the rejected single-global floor
+        else {
+          // simulateMissingLegacyLowerBound is a TEST-INJECTION that forces a map gap (the pinned set and the map are
+          //   coextensive in production, so this gate is defense-in-depth and otherwise unreachable). ignore* is its flip.
+          const lowerStr = (mut.simulateMissingLegacyLowerBound === c.expected_item_id) ? undefined : LEGACY_CLEARING_LOWER_BOUND_BY_COMMITMENT[c.expected_item_id];
+          if (lowerStr == null) { if (!mut.ignoreLegacyLowerBoundMissing) return HOLD('S-7', 'S7_LEGACY_LOWER_BOUND_MISSING', c.expected_item_id); }
+          else lower = parseUtcInstant(lowerStr);
+        }
+      } else if (mut.applyLegacyFloorToCommittedLane) lower = parseUtcInstant(LEGACY_GLOBAL_MIN); // MUT: wrongly relax the committed lane
+      if (lower != null && !mut.ignoreClearingAsofLower && asof < lower) return HOLD('S-7', 'S7_CLEARING_ASOF_OUT_OF_WINDOW', `${c.expected_item_id}:before`);
       if (winEnd != null && !mut.ignoreClearingAsofUpper && asof > winEnd) return HOLD('S-7', 'S7_CLEARING_ASOF_OUT_OF_WINDOW', `${c.expected_item_id}:after`);
       if (tx && !mut.ignoreClearingDateBinding) { // N-3: EXACT (non-heuristic) binding to the referenced row's transaction_date
         if (tx.transaction_date == null) return HOLD('S-7', 'S7_CLEARING_ROW_DATE_MISSING', c.expected_item_id);
@@ -591,7 +643,15 @@ export function XC_crossControl(pkg, mut) {
   for (const c of arr(pkg, 'cash_commitment_evidence')) if (c.cleared_transaction_id != null && legIds.has(c.cleared_transaction_id)) return STOP('XC', 'XC_TRANSFER_ALSO_CLEARING', c.cleared_transaction_id);
   // N-1: the transfer-leg-as-clearing prohibition also covers the J lane (terminal-resolution cleared_transaction_id),
   //   so S-7 and XC agree on ONE transfer-leg interpretation across both the commitment-lane and J-lane bindings.
-  if (!mut.ignoreXcJLaneTransfer) for (const j of arr(pkg, 'terminal_resolution_evidence')) if (j.cleared_transaction_id != null && legIds.has(j.cleared_transaction_id)) return STOP('XC', 'XC_TRANSFER_ALSO_CLEARING', j.cleared_transaction_id);
+  // v2: a J binding to a transfer leg STOPs — EXCEPT an eligible matched_internal_transfer's own bound debit leg
+  //   (S-7 owns that lane's full eligibility validation: pinned set, group, two legs, reuse). Everything else STOPs.
+  // F-1 (v2 hardening): the exemption is granted ONLY to an active, pinned, group-valid, correctly-bound internal
+  //   transfer (eligibleInternalTransferExemption). A superseded / non-pinned / mis-grouped J still STOPs here.
+  const xcRegisterRows = arr(pkg, 'register_transaction_evidence');
+  if (!mut.ignoreXcJLaneTransfer) for (const j of arr(pkg, 'terminal_resolution_evidence')) if (j.cleared_transaction_id != null && legIds.has(j.cleared_transaction_id)) {
+    const exempt = mut.looseXcExemption ? (j.evidence_source === 'legacy_adjudication' && j.disposition === 'matched_internal_transfer') : eligibleInternalTransferExemption(j, xcRegisterRows);
+    if (!exempt) return STOP('XC', 'XC_TRANSFER_ALSO_CLEARING', j.cleared_transaction_id);
+  }
   // a self-asserted derived field must match the records it summarizes (H4: shares the S-7 released predicate so a
   // `cleared`/`reflected` claimed_released commitment is not falsely contradicted at package-rebuild time).
   for (const c of arr(pkg, 'cash_commitment_evidence')) if (c.claimed_released === true) {

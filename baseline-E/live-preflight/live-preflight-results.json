@@ -64,6 +64,35 @@
     "pf_115_corrected": true,
     "rg3_graph_guard_independently_mutated": true
   },
+  "legacy_clearing_v2_spec_version": "legacy-clearing-v2",
+  "legacy_clearing_v2_coverage_closed": true,
+  "legacy_clearing_v2_coverage": {
+    "spec_version": "legacy-clearing-v2",
+    "lower_bound_valid_floor_pass": true,
+    "lower_bound_kia_one_day_before_floor": true,
+    "lower_bound_after_window": true,
+    "lower_bound_row_date_mismatch": true,
+    "committed_lane_isolation": true,
+    "lower_bound_missing_map_entry": true,
+    "variance_kia_exact_pass": true,
+    "variance_kia_minus_49_hold": true,
+    "variance_nonkia_minus_50_hold": true,
+    "variance_kia_row_amount_mismatch": true,
+    "transfer_valid_internal_transfer_pass": true,
+    "transfer_disposition_not_pinned": true,
+    "transfer_unmarked_leg": true,
+    "transfer_malformed_one_leg": true,
+    "transfer_malformed_three_leg": true,
+    "transfer_same_sign_legs": true,
+    "transfer_unequal_amounts": true,
+    "transfer_same_account_legs": true,
+    "transfer_group_id_mismatch": true,
+    "transfer_mirror_leg_reuse": true,
+    "transfer_leg_also_deducted": true,
+    "transfer_bank_clearing_on_leg": true,
+    "f1_superseded_no_xc_exemption": true,
+    "f2_invalid_transfer_group_id": true
+  },
   "remaining_non_blocking_observations": [
     {
       "id": "OBS-1",
@@ -359,9 +388,9 @@
     }
   ],
   "fixture_totals": {
-    "total": 175,
+    "total": 199,
     "expected_admissible": 27,
-    "expected_not_admissible": 148,
+    "expected_not_admissible": 172,
     "mismatches": 0
   },
   "fixtures": [
@@ -2077,10 +2106,261 @@
       "package_admissible": true,
       "worst_disposition": "PASS",
       "reasons": []
+    },
+    {
+      "id": "PF-176",
+      "cls": "v2_lb_valid_commitment_floor",
+      "expect_admissible": false,
+      "package_admissible": false,
+      "worst_disposition": "FAIL_STOP",
+      "reasons": [
+        "S7_ADJUDICATION_NOT_IN_REGISTRY"
+      ]
+    },
+    {
+      "id": "PF-177",
+      "cls": "v2_lb_kia_one_day_before_floor",
+      "expect_admissible": false,
+      "package_admissible": false,
+      "worst_disposition": "FAIL_STOP",
+      "reasons": [
+        "S7_ADJUDICATION_NOT_IN_REGISTRY"
+      ]
+    },
+    {
+      "id": "PF-178",
+      "cls": "v2_lb_after_window_end",
+      "expect_admissible": false,
+      "package_admissible": false,
+      "worst_disposition": "FAIL_STOP",
+      "reasons": [
+        "S7_ADJUDICATION_NOT_IN_REGISTRY"
+      ]
+    },
+    {
+      "id": "PF-179",
+      "cls": "v2_lb_asof_row_date_mismatch",
+      "expect_admissible": false,
+      "package_admissible": false,
+      "worst_disposition": "FAIL_STOP",
+      "reasons": [
+        "S7_ADJUDICATION_NOT_IN_REGISTRY"
+      ]
+    },
+    {
+      "id": "PF-180",
+      "cls": "v2_lb_committed_lane_isolation",
+      "expect_admissible": false,
+      "package_admissible": false,
+      "worst_disposition": "HOLD",
+      "reasons": [
+        "S7_CLEARING_ASOF_OUT_OF_WINDOW"
+      ]
+    },
+    {
+      "id": "PF-181",
+      "cls": "v2_lb_missing_map_entry",
+      "expect_admissible": false,
+      "package_admissible": false,
+      "worst_disposition": "FAIL_STOP",
+      "reasons": [
+        "S7_ADJUDICATION_NOT_IN_REGISTRY"
+      ]
+    },
+    {
+      "id": "PF-182",
+      "cls": "v2_var_kia_exact_minus_50",
+      "expect_admissible": false,
+      "package_admissible": false,
+      "worst_disposition": "FAIL_STOP",
+      "reasons": [
+        "S7_ADJUDICATION_NOT_IN_REGISTRY"
+      ]
+    },
+    {
+      "id": "PF-183",
+      "cls": "v2_var_kia_minus_49_hold",
+      "expect_admissible": false,
+      "package_admissible": false,
+      "worst_disposition": "FAIL_STOP",
+      "reasons": [
+        "S7_ADJUDICATION_NOT_IN_REGISTRY"
+      ]
+    },
+    {
+      "id": "PF-184",
+      "cls": "v2_var_nonkia_minus_50_hold",
+      "expect_admissible": false,
+      "package_admissible": false,
+      "worst_disposition": "FAIL_STOP",
+      "reasons": [
+        "S7_ADJUDICATION_NOT_IN_REGISTRY"
+      ]
+    },
+    {
+      "id": "PF-185",
+      "cls": "v2_var_kia_row_amount_mismatch",
+      "expect_admissible": false,
+      "package_admissible": false,
+      "worst_disposition": "FAIL_STOP",
+      "reasons": [
+        "S7_ADJUDICATION_NOT_IN_REGISTRY"
+      ]
+    },
+    {
+      "id": "PF-186",
+      "cls": "v2_trf_valid_internal_transfer",
+      "expect_admissible": false,
+      "package_admissible": false,
+      "worst_disposition": "FAIL_STOP",
+      "reasons": [
+        "S7_ADJUDICATION_NOT_IN_REGISTRY"
+      ]
+    },
+    {
+      "id": "PF-187",
+      "cls": "v2_trf_disposition_not_pinned",
+      "expect_admissible": false,
+      "package_admissible": false,
+      "worst_disposition": "FAIL_STOP",
+      "reasons": [
+        "S7_TRANSFER_DISPOSITION_NOT_PINNED",
+        "XC_TRANSFER_ALSO_CLEARING"
+      ]
+    },
+    {
+      "id": "PF-188",
+      "cls": "v2_trf_unmarked_transfer_row",
+      "expect_admissible": false,
+      "package_admissible": false,
+      "worst_disposition": "FAIL_STOP",
+      "reasons": [
+        "S7_ADJUDICATION_NOT_IN_REGISTRY"
+      ]
+    },
+    {
+      "id": "PF-189",
+      "cls": "v2_trf_malformed_one_leg",
+      "expect_admissible": false,
+      "package_admissible": false,
+      "worst_disposition": "FAIL_STOP",
+      "reasons": [
+        "S7_ADJUDICATION_NOT_IN_REGISTRY",
+        "P8_MALFORMED_LEG_COUNT"
+      ]
+    },
+    {
+      "id": "PF-190",
+      "cls": "v2_trf_malformed_three_leg",
+      "expect_admissible": false,
+      "package_admissible": false,
+      "worst_disposition": "FAIL_STOP",
+      "reasons": [
+        "S7_ADJUDICATION_NOT_IN_REGISTRY",
+        "P8_MALFORMED_LEG_COUNT"
+      ]
+    },
+    {
+      "id": "PF-191",
+      "cls": "v2_trf_same_sign_legs",
+      "expect_admissible": false,
+      "package_admissible": false,
+      "worst_disposition": "FAIL_STOP",
+      "reasons": [
+        "S7_ADJUDICATION_NOT_IN_REGISTRY",
+        "P8_SAME_DIRECTION"
+      ]
+    },
+    {
+      "id": "PF-192",
+      "cls": "v2_trf_unequal_amounts",
+      "expect_admissible": false,
+      "package_admissible": false,
+      "worst_disposition": "FAIL_STOP",
+      "reasons": [
+        "S7_ADJUDICATION_NOT_IN_REGISTRY",
+        "P8_UNEQUAL_AMOUNTS"
+      ]
+    },
+    {
+      "id": "PF-193",
+      "cls": "v2_trf_same_account_legs",
+      "expect_admissible": false,
+      "package_admissible": false,
+      "worst_disposition": "FAIL_STOP",
+      "reasons": [
+        "S7_ADJUDICATION_NOT_IN_REGISTRY"
+      ]
+    },
+    {
+      "id": "PF-194",
+      "cls": "v2_trf_group_id_mismatch",
+      "expect_admissible": false,
+      "package_admissible": false,
+      "worst_disposition": "FAIL_STOP",
+      "reasons": [
+        "S7_ADJUDICATION_NOT_IN_REGISTRY",
+        "XC_TRANSFER_ALSO_CLEARING"
+      ]
+    },
+    {
+      "id": "PF-195",
+      "cls": "v2_trf_mirror_leg_reuse",
+      "expect_admissible": false,
+      "package_admissible": false,
+      "worst_disposition": "FAIL_STOP",
+      "reasons": [
+        "S7_ADJUDICATION_NOT_IN_REGISTRY",
+        "XC_TRANSFER_ALSO_CLEARING"
+      ]
+    },
+    {
+      "id": "PF-196",
+      "cls": "v2_trf_leg_also_deducted",
+      "expect_admissible": false,
+      "package_admissible": false,
+      "worst_disposition": "FAIL_STOP",
+      "reasons": [
+        "P8_TRANSFER_DOUBLE_COUNT",
+        "S7_ADJUDICATION_NOT_IN_REGISTRY"
+      ]
+    },
+    {
+      "id": "PF-197",
+      "cls": "v2_trf_bank_clearing_on_leg",
+      "expect_admissible": false,
+      "package_admissible": false,
+      "worst_disposition": "FAIL_STOP",
+      "reasons": [
+        "S7_ADJUDICATION_NOT_IN_REGISTRY",
+        "XC_TRANSFER_ALSO_CLEARING"
+      ]
+    },
+    {
+      "id": "PF-198",
+      "cls": "v2_f1_superseded_no_xc_exemption",
+      "expect_admissible": false,
+      "package_admissible": false,
+      "worst_disposition": "FAIL_STOP",
+      "reasons": [
+        "S7_ADJUDICATION_NOT_IN_REGISTRY",
+        "XC_TRANSFER_ALSO_CLEARING"
+      ]
+    },
+    {
+      "id": "PF-199",
+      "cls": "v2_f2_invalid_transfer_group_id",
+      "expect_admissible": false,
+      "package_admissible": false,
+      "worst_disposition": "FAIL_STOP",
+      "reasons": [
+        "S7_ADJUDICATION_NOT_IN_REGISTRY",
+        "XC_TRANSFER_ALSO_CLEARING"
+      ]
     }
   ],
   "mutation_totals": {
-    "total": 65,
+    "total": 81,
     "all_caught": true
   },
   "mutations": [
@@ -2599,6 +2879,134 @@
     {
       "id": "MUT-66_ignore_pinned_legacy_source",
       "fixture": "PF-170",
+      "correct_admissible": false,
+      "mutated_admissible": true,
+      "diverged": true,
+      "deterministic": true
+    },
+    {
+      "id": "MUT-67_legacy_asof_lower_bound",
+      "fixture": "PF-177",
+      "correct_admissible": false,
+      "mutated_admissible": true,
+      "diverged": true,
+      "deterministic": true
+    },
+    {
+      "id": "MUT-68_legacy_asof_upper_bound",
+      "fixture": "PF-178",
+      "correct_admissible": false,
+      "mutated_admissible": true,
+      "diverged": true,
+      "deterministic": true
+    },
+    {
+      "id": "MUT-69_legacy_asof_row_date_binding",
+      "fixture": "PF-179",
+      "correct_admissible": false,
+      "mutated_admissible": true,
+      "diverged": true,
+      "deterministic": true
+    },
+    {
+      "id": "MUT-70_committed_lane_floor_isolation",
+      "fixture": "PF-180",
+      "correct_admissible": false,
+      "mutated_admissible": true,
+      "diverged": true,
+      "deterministic": true
+    },
+    {
+      "id": "MUT-71_legacy_lower_bound_missing",
+      "fixture": "PF-181",
+      "correct_admissible": false,
+      "mutated_admissible": true,
+      "diverged": true,
+      "deterministic": true
+    },
+    {
+      "id": "MUT-72_kia_pinned_variance",
+      "fixture": "PF-183",
+      "correct_admissible": false,
+      "mutated_admissible": true,
+      "diverged": true,
+      "deterministic": true
+    },
+    {
+      "id": "MUT-73_nonkia_variance_rejected",
+      "fixture": "PF-184",
+      "correct_admissible": false,
+      "mutated_admissible": true,
+      "diverged": true,
+      "deterministic": true
+    },
+    {
+      "id": "MUT-74_transfer_disposition_pinned",
+      "fixture": "PF-187",
+      "correct_admissible": false,
+      "mutated_admissible": true,
+      "diverged": true,
+      "deterministic": true
+    },
+    {
+      "id": "MUT-75_internal_transfer_leg_required",
+      "fixture": "PF-188",
+      "correct_admissible": false,
+      "mutated_admissible": true,
+      "diverged": true,
+      "deterministic": true
+    },
+    {
+      "id": "MUT-76_transfer_group_malformed",
+      "fixture": "PF-189",
+      "correct_admissible": false,
+      "mutated_admissible": true,
+      "diverged": true,
+      "deterministic": true
+    },
+    {
+      "id": "MUT-77_transfer_group_mismatch",
+      "fixture": "PF-194",
+      "correct_admissible": false,
+      "mutated_admissible": true,
+      "diverged": true,
+      "deterministic": true
+    },
+    {
+      "id": "MUT-78_transfer_group_id_invalid",
+      "fixture": "PF-199",
+      "correct_admissible": false,
+      "mutated_admissible": true,
+      "diverged": true,
+      "deterministic": true
+    },
+    {
+      "id": "MUT-79_transfer_leg_also_deducted",
+      "fixture": "PF-196",
+      "correct_admissible": false,
+      "mutated_admissible": true,
+      "diverged": true,
+      "deterministic": true
+    },
+    {
+      "id": "MUT-80_transfer_bank_clearing_on_leg",
+      "fixture": "PF-197",
+      "correct_admissible": false,
+      "mutated_admissible": true,
+      "diverged": true,
+      "deterministic": true
+    },
+    {
+      "id": "MUT-81_transfer_mirror_leg_reuse",
+      "fixture": "PF-195",
+      "correct_admissible": false,
+      "mutated_admissible": true,
+      "diverged": true,
+      "deterministic": true
+    },
+    {
+      "id": "MUT-82_xc_superseded_no_exemption",
+      "fixture": "PF-198",
       "correct_admissible": false,
       "mutated_admissible": true,
       "diverged": true,

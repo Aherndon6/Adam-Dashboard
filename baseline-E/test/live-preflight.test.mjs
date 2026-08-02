@@ -1,5 +1,5 @@
 // baseline-E/test/live-preflight.test.mjs
-// Hardened fail-closed live-input preflight: 140 synthetic fixtures + 47 executable mutations + invariants.
+// Hardened fail-closed live-input preflight: 199 synthetic fixtures + 81 executable mutations + invariants.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { FIXTURES, golden, _stamp } from '../live-preflight/live-preflight-fixtures.mjs';
@@ -12,9 +12,9 @@ const V = (id, mut) => validatePackage(byId(id).package, mut);
 const holds = (id) => V(id).holds;
 const stops = (id) => V(id).fail_stops;
 
-test('175 synthetic PF-NN fixtures, unique ids', () => {
-  assert.equal(FIXTURES.length, 175);
-  assert.equal(new Set(FIXTURES.map((f) => f.id)).size, 175);
+test('199 synthetic PF-NN fixtures, unique ids', () => {
+  assert.equal(FIXTURES.length, 199);
+  assert.equal(new Set(FIXTURES.map((f) => f.id)).size, 199);
   for (const f of FIXTURES) assert.match(f.id, /^PF-\d{2,3}$/);
 });
 
@@ -245,6 +245,144 @@ test('Obs-B: an invalid UNTAGGED superseded record does not block a valid active
   assert.equal(validatePackage(p, { testAcceptedRegistry: [active.record_digest] }).package_admissible, true);
 });
 
+// ── legacy-clearing-v2: commitment-specific lower bound, Kia pinned variance, matched_internal_transfer ──
+// build a legacy bank_cleared package with controllable dates (window stays golden 2026-07-30; row.as_of_utc in-window,
+// but cleared_as_of/row.transaction_date can be an earlier July date to exercise the lane-specific lower bound).
+function lcPkg(o = {}) {
+  const cid = o.commitment || '2026mw4_rent_tiffany_dye_2026_07_01';   // pinned, floor 2026-07-01
+  const amount = o.amount != null ? o.amount : 200000;
+  const p = golden();
+  Object.assign(p.cash_commitment_evidence[0], { expected_item_id: cid, status: 'cleared', resolution_type: 'cleared', amount_cents: amount });
+  const clearedAsOf = o.cleared_as_of || AS;
+  const txn = o.txn || 'lc_tx';
+  const row = { txn_id: txn, account_key: 'truist_checking', amount_cents: o.rowAmount != null ? o.rowAmount : -amount, cleared: true, is_transfer_leg: false, transfer_pair_id: null, represented_as_deduction: false, transaction_date: o.rowDate || clearedAsOf.slice(0, 10), as_of_utc: AS };
+  if (!o.noRow) p.register_transaction_evidence.push(row);
+  const j = { commitment_expected_item_id: cid, disposition: 'matched_bank_clearing', adjudicated_by_subject_id: OWNER, resolution_type: 'cleared', resolution_evidence: 'legacy', resolution_evidence_type: 'bank_cleared', cleared_transaction_id: txn, cleared_transaction_digest: o.noRow ? 'x'.repeat(64) : digest(row), cleared_amount_cents: o.clearedAmount != null ? o.clearedAmount : amount, cleared_source_account: 'truist_checking', cleared_state: 'cleared', cleared_as_of: clearedAsOf, direction: 'debit', amount_cents: amount, source_account: 'truist_checking', as_of_utc: AS };
+  if (o.committed) { /* absent evidence_source (committed lane) */ } else j.evidence_source = 'legacy_adjudication';
+  if (j.evidence_source === 'legacy_adjudication') { const { record_digest, ...rest } = j; j.record_digest = digest(rest); }
+  p.terminal_resolution_evidence.push(j); _stamp(p);
+  return { p, reg: j.record_digest ? { testAcceptedRegistry: [j.record_digest] } : {} };
+}
+test('v2 F-LGW: commitment-specific legacy lower bound (permits historical July clearing; excludes pre-obligation)', () => {
+  const ok = lcPkg({ cleared_as_of: '2026-07-15T12:00:00.000Z' });                 // legacy, floor 07-01, as-of 07-15
+  assert.equal(validatePackage(ok.p, ok.reg).package_admissible, true);            // F-LGW-1 permitted (map floor, not window.start)
+  const kiaLow = lcPkg({ commitment: '2026mw5_kia_payment_2026_07_07', amount: 79100, clearedAmount: 79050, rowAmount: -79050, cleared_as_of: '2026-07-06T12:00:00.000Z' });
+  const r2 = validatePackage(kiaLow.p, kiaLow.reg);                                // F-LGW-2 Kia as-of 07-06 < its 07-07 floor
+  assert.ok(r2.holds.includes('S7_CLEARING_ASOF_OUT_OF_WINDOW'));
+  assert.equal(r2.package_admissible, false);
+  // useGlobalLegacyFloor is load-bearing AND proves the map is STRICTER than a single global 06-28 floor
+  assert.equal(validatePackage(kiaLow.p, { ...kiaLow.reg, useGlobalLegacyFloor: true }).package_admissible, true);
+  const after = lcPkg({ cleared_as_of: '2026-07-31T12:00:00.000Z' });             // F-LGW-3 after window.end 2026-07-30
+  assert.ok(validatePackage(after.p, after.reg).holds.includes('S7_CLEARING_ASOF_OUT_OF_WINDOW'));
+  const committed = lcPkg({ committed: true, commitment: '2026mw6_rent_2026_07_01', cleared_as_of: '2026-07-15T12:00:00.000Z' });
+  assert.ok(validatePackage(committed.p).holds.includes('S7_CLEARING_ASOF_OUT_OF_WINDOW')); // F-LGW-5 committed lane still uses window.start (Jul-15 < Jul-30)
+  assert.equal(validatePackage(committed.p, { applyLegacyFloorToCommittedLane: true }).package_admissible, true); // mutation flips (proves committed lane unweakened)
+  // F-LGW-6: N-3 exact date binding intact — cleared_as_of date != row date HOLDs
+  const mism = lcPkg({ cleared_as_of: '2026-07-16T12:00:00.000Z', rowDate: '2026-07-15' }); // as-of date 07-16 != row date 07-15
+  assert.ok(validatePackage(mism.p, mism.reg).holds.includes('S7_CLEARING_ASOF_ROW_MISMATCH'));
+});
+test('v2 F-VAR: Kia -50 pinned variance (exact; no band; strict elsewhere) — shared S-4/S-7 helper', () => {
+  const kia = lcPkg({ commitment: '2026mw5_kia_payment_2026_07_07', amount: 79100, clearedAmount: 79050, rowAmount: -79050, cleared_as_of: '2026-07-07T12:00:00.000Z' });
+  assert.equal(validatePackage(kia.p, kia.reg).package_admissible, true);          // F-VAR-1 Kia expected 79100 / cleared 79050 -> PASS
+  const rent = lcPkg({ amount: 200000, clearedAmount: 79050, rowAmount: -79050, cleared_as_of: '2026-07-15T12:00:00.000Z' });
+  assert.ok(validatePackage(rent.p, rent.reg).holds.includes('S7_CLEARING_AMOUNT_MISMATCH')); // F-VAR-2 non-pinned commitment, variance not accepted
+  assert.equal(validatePackage(rent.p, { ...rent.reg, acceptAnyVariance: true }).package_admissible, true); // acceptAnyVariance flips (load-bearing)
+  const kia49 = lcPkg({ commitment: '2026mw5_kia_payment_2026_07_07', amount: 79100, clearedAmount: 79051, rowAmount: -79051, cleared_as_of: '2026-07-07T12:00:00.000Z' });
+  assert.ok(validatePackage(kia49.p, kia49.reg).holds.includes('S7_CLEARING_AMOUNT_MISMATCH')); // F-VAR-3 delta -49 (not exactly -50) HOLDs
+  assert.equal(validatePackage(kia49.p, { ...kia49.reg, applyToleranceBand: true }).package_admissible, true); // tolerance-band flips (proves no band exists)
+  const kiaRow = lcPkg({ commitment: '2026mw5_kia_payment_2026_07_07', amount: 79100, clearedAmount: 79050, rowAmount: -70000, cleared_as_of: '2026-07-07T12:00:00.000Z' });
+  assert.ok(validatePackage(kiaRow.p, kiaRow.reg).holds.includes('S7_CLEARING_AMOUNT_MISMATCH')); // F-VAR-4 |row| != expected cleared
+});
+// matched_internal_transfer package: a 2-leg group (debit on source account, credit on destination)
+function tfPkg(o = {}) {
+  const cid = o.commitment || '2026mw4_tax_transfer_vio_2026_06_28'; const amount = o.amount != null ? o.amount : 43563; const gid = o.gid || 'GRP1';
+  const p = golden();
+  Object.assign(p.cash_commitment_evidence[0], { expected_item_id: cid, status: 'cleared', resolution_type: 'cleared', amount_cents: amount });
+  const debit = { txn_id: 'tleg_d', account_key: 'truist_checking', amount_cents: -amount, cleared: true, is_transfer_leg: o.debitNotLeg ? false : true, transfer_group_id: gid, transfer_pair_id: gid, represented_as_deduction: !!o.debitDeducted, transaction_date: '2026-07-07', as_of_utc: AS };
+  const credit = { txn_id: 'tleg_c', account_key: 'vio_tax_reserve', amount_cents: o.creditAmt != null ? o.creditAmt : amount, cleared: true, is_transfer_leg: true, transfer_group_id: gid, transfer_pair_id: gid, represented_as_deduction: !!o.creditDeducted, transaction_date: '2026-07-07', as_of_utc: AS };
+  if (o.debitNotLeg) { debit.transfer_group_id = null; debit.transfer_pair_id = null; }
+  p.register_transaction_evidence.push(debit); if (!o.noCredit && !o.debitNotLeg) p.register_transaction_evidence.push(credit);
+  if (o.reuse) p.terminal_resolution_evidence.push({ commitment_expected_item_id: '2026mw6_bkx_2026_07_01', evidence_source: 'au11', resolution_type: 'cleared', resolution_evidence: 'x', resolution_evidence_type: 'bank_cleared', cleared_transaction_id: 'tleg_c', cleared_amount_cents: 70090, cleared_source_account: 'truist_checking', cleared_state: 'cleared', cleared_as_of: AS, direction: 'debit', amount_cents: 70090, source_account: 'truist_checking', as_of_utc: AS });
+  const j = { commitment_expected_item_id: cid, evidence_source: 'legacy_adjudication', disposition: o.disposition || 'matched_internal_transfer', adjudicated_by_subject_id: OWNER, resolution_type: 'cleared', resolution_evidence: 'legacy', resolution_evidence_type: 'bank_cleared', cleared_transaction_id: 'tleg_d', cleared_transaction_digest: digest(debit), cleared_amount_cents: amount, cleared_source_account: 'truist_checking', cleared_state: 'cleared', cleared_as_of: '2026-07-07T12:00:00.000Z', direction: 'debit', amount_cents: amount, source_account: 'truist_checking', as_of_utc: AS, cleared_transfer_group_id: o.recordGid !== undefined ? o.recordGid : gid };
+  const { record_digest, ...rest } = j; j.record_digest = digest(rest);
+  p.terminal_resolution_evidence.push(j); _stamp(p);
+  return { p, reg: { testAcceptedRegistry: [j.record_digest] } };
+}
+test('v2 F-TRF: matched_internal_transfer eligibility (pinned set, authoritative pair, both-leg reuse, no inference)', () => {
+  const ok = tfPkg();
+  assert.equal(validatePackage(ok.p, ok.reg).package_admissible, true);                              // F-TRF-1 valid internal transfer
+  const bank = tfPkg({ disposition: 'matched_bank_clearing' });
+  const rB = validatePackage(bank.p, bank.reg);
+  assert.ok(rB.fail_stops.includes('S7_CLEARING_TXN_IS_TRANSFER') || rB.fail_stops.includes('XC_TRANSFER_ALSO_CLEARING')); // F-TRF-2 bank_clearing on a leg blocked
+  assert.equal(validatePackage(bank.p, { ...bank.reg, ignoreS7TransferLeg: true, ignoreXcJLaneTransfer: true }).package_admissible, true); // both transfer guards load-bearing
+  const notLeg = tfPkg({ debitNotLeg: true });
+  assert.ok(validatePackage(notLeg.p, notLeg.reg).fail_stops.includes('S7_INTERNAL_TRANSFER_LEG_REQUIRED'));   // F-TRF-3 unmarked row
+  assert.equal(validatePackage(notLeg.p, { ...notLeg.reg, ignoreInternalTransferLegRequired: true, ignoreTransferGroup: true }).package_admissible, true);
+  const notPinned = tfPkg({ commitment: '2026mw4_rent_tiffany_dye_2026_07_01', amount: 200000 }); // pinned-six rent, NOT a pinned transfer commitment
+  assert.ok(validatePackage(notPinned.p, notPinned.reg).fail_stops.includes('S7_TRANSFER_DISPOSITION_NOT_PINNED')); // F-TRF-4 transfer disposition outside the pinned transfer set
+  // F-1 defense-in-depth: the pinned-transfer check is now enforced in S-7 AND XC, so both gates must be disabled to admit.
+  assert.equal(validatePackage(notPinned.p, { ...notPinned.reg, ignoreTransferDispositionGate: true, ignoreXcJLaneTransfer: true }).package_admissible, true);
+  const reuse = tfPkg({ reuse: true });
+  assert.ok(validatePackage(reuse.p, reuse.reg).fail_stops.includes('S7_CLEARING_TXN_REUSE_CONFLICT'));         // F-TRF-5 mirror leg reused elsewhere
+  // ignoreMirrorLegReuse is isolated by neutralizing XC's redundant transfer-leg guard in the base:
+  assert.equal(validatePackage(reuse.p, { ...reuse.reg, ignoreXcJLaneTransfer: true }).package_admissible, false);                        // S-7 reuse map catches it
+  assert.equal(validatePackage(reuse.p, { ...reuse.reg, ignoreXcJLaneTransfer: true, ignoreMirrorLegReuse: true }).package_admissible, true); // load-bearing
+  const dedu = tfPkg({ creditDeducted: true });
+  assert.ok(validatePackage(dedu.p, dedu.reg).fail_stops.includes('S7_CLEARING_TXN_ALSO_DEDUCTED'));            // F-TRF-6 mirror leg also a deduction
+  const gmis = tfPkg({ recordGid: 'WRONG' });
+  assert.ok(validatePackage(gmis.p, gmis.reg).fail_stops.includes('S7_TRANSFER_GROUP_MISMATCH'));               // F-TRF-7 record group id != row group id
+  // no inference: bank_clearing on a leg with a mirror present only passes under the explicit inference mutation
+  assert.equal(validatePackage(bank.p, { ...bank.reg, inferTransferFromMirrorPresence: true, ignoreXcJLaneTransfer: true }).package_admissible, true);
+});
+
+// F-1 (v2 hardening): the XC J-lane internal-transfer exemption is active-only + pinned-only + group-valid + leg-bound.
+// Build a package where TAX is validly cleared by an ACTIVE internal transfer and add a SECOND internal-transfer record
+// (bound to the mirror leg tleg_c) whose eligibility we vary. Only an active/pinned/group-valid/leg-bound record may
+// suppress the XC transfer STOP.
+function tfPlusSecond(second) {
+  const base = tfPkg();                                  // active valid internal transfer on TAX (legs tleg_d/tleg_c, GRP1)
+  base.p.terminal_resolution_evidence.push(Object.assign({
+    commitment_expected_item_id: '2026mw4_tax_transfer_vio_2026_06_28', evidence_source: 'legacy_adjudication',
+    disposition: 'matched_internal_transfer', adjudicated_by_subject_id: OWNER, resolution_type: 'cleared',
+    resolution_evidence: 'x', resolution_evidence_type: 'bank_cleared', cleared_transaction_id: 'tleg_c',
+    cleared_transfer_group_id: 'GRP1', record_digest: 'deadbeef', amount_cents: 43563, source_account: 'truist_checking', as_of_utc: AS,
+  }, second));
+  _stamp(base.p);
+  return base;   // base.reg accepts the ACTIVE record's digest; the second record rides the acceptAll bypass below
+}
+test('v2 F-1: XC transfer exemption is active-only, pinned-only, group-valid', () => {
+  const REG = { acceptAllLegacyRegistry: true };
+  // active valid pinned internal-transfer record → exemption granted (no XC stop; admissible under registry bypass).
+  assert.equal(validatePackage(tfPkg().p, REG).package_admissible, true);
+  // superseded record bound to a leg → NO exemption → XC STOPs; looseXcExemption (old predicate) reverts.
+  const sup = tfPlusSecond({ superseded: true });
+  assert.ok(validatePackage(sup.p, REG).fail_stops.includes('XC_TRANSFER_ALSO_CLEARING'));
+  assert.equal(validatePackage(sup.p, { ...REG, looseXcExemption: true }).package_admissible, true);
+  // ACTIVE record on a NON-pinned commitment bound to a leg → NO exemption (pinned clause) → XC STOPs.
+  const np = tfPlusSecond({ commitment_expected_item_id: '2026mw6_rent_2026_07_01' });
+  assert.ok(validatePackage(np.p, REG).fail_stops.includes('XC_TRANSFER_ALSO_CLEARING'));
+  // superseded + wrong group identity → NO exemption → XC STOPs.
+  const wg = tfPlusSecond({ superseded: true, cleared_transfer_group_id: 'NOPE' });
+  assert.ok(validatePackage(wg.p, REG).fail_stops.includes('XC_TRANSFER_ALSO_CLEARING'));
+  // superseded + missing group identity → NO exemption → XC STOPs.
+  const mg = tfPlusSecond({ superseded: true, cleared_transfer_group_id: undefined });
+  assert.ok(validatePackage(mg.p, REG).fail_stops.includes('XC_TRANSFER_ALSO_CLEARING'));
+});
+test('v2 F-2: transfer group id must be a non-empty canonical token (fails closed otherwise)', () => {
+  const REG = { acceptAllLegacyRegistry: true };
+  // legacyTransfer-equivalent invalid-id probe: vary the RECORD's cleared_transfer_group_id (rows keep GRP1), XC off to
+  //   isolate the S-7 identity gate from XC's (redundant) rejection of the same non-canonical id.
+  const inv = (recordGid) => validatePackage(tfPkg({ recordGid }).p, { ...REG, ignoreXcJLaneTransfer: true });
+  assert.ok(inv(null).fail_stops.includes('S7_TRANSFER_GROUP_ID_INVALID'));        // null
+  assert.ok(inv('').fail_stops.includes('S7_TRANSFER_GROUP_ID_INVALID'));          // empty
+  assert.ok(inv('   ').fail_stops.includes('S7_TRANSFER_GROUP_ID_INVALID'));       // whitespace-only
+  assert.ok(inv('a b/c').fail_stops.includes('S7_TRANSFER_GROUP_ID_INVALID'));     // malformed (space + slash)
+  // valid canonical UUID passes the identity gate (whole package admissible under registry bypass).
+  assert.equal(validatePackage(tfPkg({ gid: 'bc8b3a62-1111-4111-8111-111111111111', recordGid: 'bc8b3a62-1111-4111-8111-111111111111' }).p, REG).package_admissible, true);
+  // record group id present+canonical but != row group id → mismatch (not invalid).
+  assert.ok(validatePackage(tfPkg({ recordGid: 'GRP2' }).p, REG).fail_stops.includes('S7_TRANSFER_GROUP_MISMATCH'));
+});
+
 // ── S-1 referential integrity ──
 test('S-1: authoritative off-model references must resolve to a real deduction', () => {
   assert.ok(holds('PF-48').includes('S1_DANGLING_REFERENCE'));
@@ -469,7 +607,7 @@ test('RG-3 INDEPENDENT: the graph-indirection guard is load-bearing with namespa
   assert.equal(V('PF-127').package_admissible, false);
 });
 
-// ── 47 executable mutations ──
+// ── 81 executable mutations ──
 for (const [id, fixtureId, mut, baseMut] of MUTATIONS) {
   test(`MUTATION ${id}: disabling the control lets ${fixtureId} through (deterministic)`, () => {
     const base = baseMut || {};

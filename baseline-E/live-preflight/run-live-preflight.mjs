@@ -6,7 +6,7 @@ import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 import { validatePackage, controlBooleans } from './live-preflight-validator.mjs';
 import { FIXTURES } from './live-preflight-fixtures.mjs';
-import { CONTRACT_VERSION } from './live-preflight-contract.mjs';
+import { CONTRACT_VERSION, LEGACY_SPEC_VERSION } from './live-preflight-contract.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 
@@ -68,7 +68,7 @@ export const MUTATIONS = [
   ['MUT-49_ignore_cleared_release', 'PF-141', { ignoreClearedRelease: true }],           // G1 released-set is load-bearing
   ['MUT-50_ignore_evidence_source_routing', 'PF-146', { ignoreEvidenceSourceRouting: true }], // G2 closed-set routing is load-bearing
   ['MUT-51_ignore_cross_lane_reuse', 'PF-151', { ignoreCrossLaneReuse: true }],            // G5/G8 cross-lane reuse guard is load-bearing
-  ['MUT-52_ignore_legacy_authority', 'PF-148', { ignoreLegacyAuthority: true }],           // legacy pinned-six gate is load-bearing
+  ['MUT-52_ignore_legacy_authority', 'PF-148', { ignoreLegacyAuthority: true }, { useGlobalLegacyFloor: true }], // legacy pinned-six gate load-bearing (v2 lower-bound-missing neutralized in base)
   // ── Mode-2 F-1/F-2 durable-clearing binding + as-of window ──
   ['MUT-53_ignore_clearing_txn_existence', 'PF-153', { ignoreClearingTxnExistence: true }], // F-1 referenced-txn existence
   ['MUT-54_ignore_clearing_txn_digest', 'PF-156', { ignoreClearingTxnDigest: true }],        // F-1 clearing-digest recompute/match
@@ -85,6 +85,24 @@ export const MUTATIONS = [
   ['MUT-64_ignore_pending_clearing_conflict', 'PF-168', { ignorePendingClearingConflict: true }], // N-4 pending-and-clearing contradiction
   ['MUT-65_ignore_resolution_undetermined', 'PF-169', { ignoreResolutionUndetermined: true }], // N-5 null-resolution UNDETERMINED
   ['MUT-66_ignore_pinned_legacy_source', 'PF-170', { ignorePinnedLegacySource: true }],         // Obs-B: pinned-legacy source gate is load-bearing (untagged committed-class bypass)
+  // ── legacy-clearing-v2 principal guards (F-3): baseMut acceptAllLegacyRegistry bypasses the pre-freeze empty registry
+  //    so the Phase-1 v2 guard under test is reached; the mut disables exactly that guard and must flip to admissible. ──
+  ['MUT-67_legacy_asof_lower_bound', 'PF-177', { ignoreClearingAsofLower: true }, { acceptAllLegacyRegistry: true }],           // v2: commitment-specific legacy lower bound (Kia < 07-07 floor)
+  ['MUT-68_legacy_asof_upper_bound', 'PF-178', { ignoreClearingAsofUpper: true }, { acceptAllLegacyRegistry: true }],           // v2: legacy-lane upper freshness bound (window.end)
+  ['MUT-69_legacy_asof_row_date_binding', 'PF-179', { ignoreClearingDateBinding: true }, { acceptAllLegacyRegistry: true }],    // v2: N-3 exact as-of/row-date binding on the legacy lane
+  ['MUT-70_committed_lane_floor_isolation', 'PF-180', { applyLegacyFloorToCommittedLane: true }],                               // v2: committed lane keeps window.start (no legacy floor leak)
+  ['MUT-71_legacy_lower_bound_missing', 'PF-181', { ignoreLegacyLowerBoundMissing: true }, { acceptAllLegacyRegistry: true, simulateMissingLegacyLowerBound: '2026mw4_rent_tiffany_dye_2026_07_01' }], // v2: map-gap defense-in-depth
+  ['MUT-72_kia_pinned_variance', 'PF-183', { acceptAnyVariance: true }, { acceptAllLegacyRegistry: true }],                     // v2: Kia -50 is exact (delta -49 must HOLD; no band)
+  ['MUT-73_nonkia_variance_rejected', 'PF-184', { acceptAnyVariance: true }, { acceptAllLegacyRegistry: true }],                // v2: -50 accepted ONLY for Kia (strict elsewhere)
+  ['MUT-74_transfer_disposition_pinned', 'PF-187', { ignoreTransferDispositionGate: true }, { acceptAllLegacyRegistry: true, ignoreXcJLaneTransfer: true }], // v2: matched_internal_transfer only for the pinned-transfer set
+  ['MUT-75_internal_transfer_leg_required', 'PF-188', { ignoreInternalTransferLegRequired: true, ignoreTransferGroup: true }, { acceptAllLegacyRegistry: true }], // v2: an internal transfer must reference an actual transfer leg
+  ['MUT-76_transfer_group_malformed', 'PF-189', { ignoreTransferGroup: true }, { acceptAllLegacyRegistry: true, allowTransferDouble: true }],  // v2: authoritative two-leg group shape (P-8 bypassed to isolate S-7)
+  ['MUT-77_transfer_group_mismatch', 'PF-194', { ignoreTransferGroup: true }, { acceptAllLegacyRegistry: true, ignoreXcJLaneTransfer: true }], // v2: record group id must equal the row group id
+  ['MUT-78_transfer_group_id_invalid', 'PF-199', { acceptInvalidTransferGroupId: true }, { acceptAllLegacyRegistry: true, ignoreXcJLaneTransfer: true }], // F-2: non-empty canonical group id
+  ['MUT-79_transfer_leg_also_deducted', 'PF-196', { ignoreTransferGroup: true }, { acceptAllLegacyRegistry: true, allowTransferDouble: true }], // v2: a transfer leg must not also be a deduction
+  ['MUT-80_transfer_bank_clearing_on_leg', 'PF-197', { ignoreS7TransferLeg: true }, { acceptAllLegacyRegistry: true, ignoreXcJLaneTransfer: true }], // v2: matched_bank_clearing may not use a transfer leg
+  ['MUT-81_transfer_mirror_leg_reuse', 'PF-195', { ignoreMirrorLegReuse: true }, { acceptAllLegacyRegistry: true, ignoreXcJLaneTransfer: true }], // v2: both legs participate in reuse protection
+  ['MUT-82_xc_superseded_no_exemption', 'PF-198', { looseXcExemption: true }, { acceptAllLegacyRegistry: true }], // F-1: a superseded internal-transfer record must not earn the XC transfer exemption
 ];
 
 function run() {
@@ -134,7 +152,40 @@ function run() {
     rg3_graph_guard_independently_mutated: reasonOf('PF-127', 'P-7') === 'P7_LINKAGE_GRAPH_INDIRECTION' && p7ReasonMut('PF-127', { allowGraphIndirection: true }) !== 'P7_LINKAGE_GRAPH_INDIRECTION',
   };
   const obs5Closed = Object.values(obs5).every(Boolean);
-  const allClosed = fixtureMismatches.length === 0 && mutationCoverageComplete && Object.values(closed).every(Boolean) && Object.values(secG).every(Boolean) && rgAllClosed && obs5Closed;
+  // ── legacy-clearing-v2 durable coverage (F-3): each specific v2 reason code + the PASS lanes, witnessed with the
+  //    registry-bypass injection so this artifact permanently records the Phase-1 legacy behavior. ──
+  const reasonMut = (id, ctrl, mut) => (validatePackage(FIXTURES.find((f) => f.id === id).package, mut).control_results.find((c) => c.id === ctrl) || {}).reason_code;
+  const admMut = (id, mut) => validatePackage(FIXTURES.find((f) => f.id === id).package, mut).package_admissible === true;
+  const REG = { acceptAllLegacyRegistry: true };
+  const v2 = {
+    spec_version: LEGACY_SPEC_VERSION,
+    lower_bound_valid_floor_pass: admMut('PF-176', REG),
+    lower_bound_kia_one_day_before_floor: reasonMut('PF-177', 'S-7', REG) === 'S7_CLEARING_ASOF_OUT_OF_WINDOW',
+    lower_bound_after_window: reasonMut('PF-178', 'S-7', REG) === 'S7_CLEARING_ASOF_OUT_OF_WINDOW',
+    lower_bound_row_date_mismatch: reasonMut('PF-179', 'S-7', REG) === 'S7_CLEARING_ASOF_ROW_MISMATCH',
+    committed_lane_isolation: notAdmissible('PF-180') && admMut('PF-180', { applyLegacyFloorToCommittedLane: true }),
+    lower_bound_missing_map_entry: reasonMut('PF-181', 'S-7', { ...REG, simulateMissingLegacyLowerBound: '2026mw4_rent_tiffany_dye_2026_07_01' }) === 'S7_LEGACY_LOWER_BOUND_MISSING',
+    variance_kia_exact_pass: admMut('PF-182', REG),
+    variance_kia_minus_49_hold: reasonMut('PF-183', 'S-7', REG) === 'S7_CLEARING_AMOUNT_MISMATCH',
+    variance_nonkia_minus_50_hold: reasonMut('PF-184', 'S-7', REG) === 'S7_CLEARING_AMOUNT_MISMATCH',
+    variance_kia_row_amount_mismatch: reasonMut('PF-185', 'S-7', REG) === 'S7_CLEARING_AMOUNT_MISMATCH',
+    transfer_valid_internal_transfer_pass: admMut('PF-186', REG),
+    transfer_disposition_not_pinned: reasonOf('PF-187', 'S-7') === 'S7_TRANSFER_DISPOSITION_NOT_PINNED',
+    transfer_unmarked_leg: reasonMut('PF-188', 'S-7', REG) === 'S7_INTERNAL_TRANSFER_LEG_REQUIRED',
+    transfer_malformed_one_leg: reasonMut('PF-189', 'S-7', { ...REG, allowTransferDouble: true }) === 'S7_TRANSFER_GROUP_MALFORMED',
+    transfer_malformed_three_leg: reasonMut('PF-190', 'S-7', { ...REG, allowTransferDouble: true }) === 'S7_TRANSFER_GROUP_MALFORMED',
+    transfer_same_sign_legs: reasonMut('PF-191', 'S-7', { ...REG, allowTransferDouble: true }) === 'S7_TRANSFER_GROUP_MALFORMED',
+    transfer_unequal_amounts: reasonMut('PF-192', 'S-7', { ...REG, allowTransferDouble: true }) === 'S7_TRANSFER_GROUP_MALFORMED',
+    transfer_same_account_legs: reasonMut('PF-193', 'S-7', REG) === 'S7_TRANSFER_GROUP_MALFORMED',
+    transfer_group_id_mismatch: reasonMut('PF-194', 'S-7', REG) === 'S7_TRANSFER_GROUP_MISMATCH',
+    transfer_mirror_leg_reuse: reasonMut('PF-195', 'S-7', { ...REG, ignoreXcJLaneTransfer: true }) === 'S7_CLEARING_TXN_REUSE_CONFLICT',
+    transfer_leg_also_deducted: reasonMut('PF-196', 'S-7', { ...REG, allowTransferDouble: true }) === 'S7_CLEARING_TXN_ALSO_DEDUCTED',
+    transfer_bank_clearing_on_leg: reasonMut('PF-197', 'S-7', REG) === 'S7_CLEARING_TXN_IS_TRANSFER' || reasonMut('PF-197', 'XC', REG) === 'XC_TRANSFER_ALSO_CLEARING',
+    f1_superseded_no_xc_exemption: reasonMut('PF-198', 'XC', REG) === 'XC_TRANSFER_ALSO_CLEARING' && admMut('PF-198', { ...REG, looseXcExemption: true }),
+    f2_invalid_transfer_group_id: reasonMut('PF-199', 'S-7', REG) === 'S7_TRANSFER_GROUP_ID_INVALID',
+  };
+  const v2AllClosed = Object.entries(v2).filter(([, x]) => typeof x === 'boolean').every(([, x]) => x);
+  const allClosed = fixtureMismatches.length === 0 && mutationCoverageComplete && Object.values(closed).every(Boolean) && Object.values(secG).every(Boolean) && rgAllClosed && obs5Closed && v2AllClosed;
 
   const out = {
     gate: 'BASELINE_E_LIVE_INPUT_PREFLIGHT', contract_version: CONTRACT_VERSION,
@@ -178,6 +229,10 @@ function run() {
     rg3_graph_guard_independently_mutated: obs5.rg3_graph_guard_independently_mutated,
     all_p7_identity_bypasses_closed: rgAllClosed && obs5Closed,
     obs5_detail: obs5,
+    // ── legacy-clearing-v2 durable coverage (F-3): spec version + per-scenario reason-code / PASS-lane witnesses ──
+    legacy_clearing_v2_spec_version: LEGACY_SPEC_VERSION,
+    legacy_clearing_v2_coverage_closed: v2AllClosed,
+    legacy_clearing_v2_coverage: v2,
     // OBS-1..OBS-4 remain documented non-blocking limitations (conservative / inert); OBS-5 is now CLOSED.
     remaining_non_blocking_observations: [
       { id: 'OBS-1', direction: 'capacity_understating', summary: 'RG-2 closes literal event/commitment id equality only; distinct id strings are distinct events without an authoritative event registry (understating).' },

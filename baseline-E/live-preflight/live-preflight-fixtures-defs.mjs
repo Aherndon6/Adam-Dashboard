@@ -70,6 +70,40 @@ const twoLeg = (pairId, a1, a2, dedA, dedB) => ([
   { txn_id: 'tr2', account_key: 'amex_savings', amount_cents: a2, cleared: true, is_transfer_leg: true, transfer_group_id: pairId, transfer_pair_id: pairId, represented_as_deduction: dedB, transaction_date: '2026-07-30', as_of_utc: AS_OF },
 ]);
 
+// ── legacy-clearing-v2 durable fixture builders (mirror the inline lcPkg/tfPkg; pre-freeze all fail closed at the
+//    empty accepted-registry, so every DEFS sweep result is inadmissible. MUT entries with baseMut acceptAllLegacyRegistry
+//    and the v2_coverage block in run-live-preflight bypass the registry to durably witness the Phase-1 v2 guards.) ──
+const KIA = '2026mw5_kia_payment_2026_07_07';                // pinned; -50 variance; floor 2026-07-07
+const TAX = '2026mw4_tax_transfer_vio_2026_06_28';           // pinned transfer commitment; floor 2026-06-28
+// A legacy_adjudication bank_cleared record on a PINNED commitment, bound to a single Register clearing row.
+function legacyPin(p, o = {}) {
+  const cid = o.commitment, amount = o.amount != null ? o.amount : 200000;
+  Object.assign(p.cash_commitment_evidence[0], { expected_item_id: cid, status: 'cleared', resolution_type: 'cleared', amount_cents: amount });
+  const clearedAsOf = o.cleared_as_of || AS_OF, txn = o.txn || 'lc_tx';
+  const row = { txn_id: txn, account_key: 'truist_checking', amount_cents: o.rowAmount != null ? o.rowAmount : -amount, cleared: true, is_transfer_leg: false, transfer_pair_id: null, represented_as_deduction: false, transaction_date: o.rowDate !== undefined ? o.rowDate : clearedAsOf.slice(0, 10), as_of_utc: AS_OF };
+  if (!o.noRow) p.register_transaction_evidence.push(row);
+  const j = { commitment_expected_item_id: cid, evidence_source: 'legacy_adjudication', disposition: o.disposition || 'matched_bank_clearing', adjudicated_by_subject_id: o.owner || OWNER, resolution_type: 'cleared', resolution_evidence: 'legacy', resolution_evidence_type: 'bank_cleared', cleared_transaction_id: txn, cleared_transaction_digest: o.noRow ? 'x'.repeat(64) : digest(row), cleared_amount_cents: o.clearedAmount != null ? o.clearedAmount : amount, cleared_source_account: 'truist_checking', cleared_state: 'cleared', cleared_as_of: clearedAsOf, direction: 'debit', amount_cents: amount, source_account: 'truist_checking', as_of_utc: AS_OF };
+  const { record_digest, ...rest } = j; j.record_digest = digest(rest);
+  p.terminal_resolution_evidence.push(j);
+}
+// A legacy_adjudication matched_internal_transfer record on a PINNED TRANSFER commitment: a two-leg group (debit on the
+// source account, credit on a different account) + a J carrying cleared_transfer_group_id. opts toggle each escape.
+function legacyTransfer(p, o = {}) {
+  const cid = o.commitment || TAX, amount = o.amount != null ? o.amount : 43563, gid = o.gid !== undefined ? o.gid : 'GRP1';
+  Object.assign(p.cash_commitment_evidence[0], { expected_item_id: cid, status: 'cleared', resolution_type: 'cleared', amount_cents: amount });
+  const asof = o.cleared_as_of || '2026-07-07T12:00:00.000Z', d = asof.slice(0, 10);
+  const debit = { txn_id: 'tleg_d', account_key: 'truist_checking', amount_cents: -amount, cleared: true, is_transfer_leg: o.debitNotLeg ? false : true, transfer_group_id: o.debitNotLeg ? null : gid, transfer_pair_id: o.debitNotLeg ? null : gid, represented_as_deduction: !!o.debitDeducted, transaction_date: d, as_of_utc: AS_OF };
+  const credit = { txn_id: 'tleg_c', account_key: o.creditAccount || 'vio_tax_reserve', amount_cents: o.creditAmt != null ? o.creditAmt : amount, cleared: true, is_transfer_leg: true, transfer_group_id: gid, transfer_pair_id: gid, represented_as_deduction: !!o.creditDeducted, transaction_date: d, as_of_utc: AS_OF };
+  p.register_transaction_evidence.push(debit);
+  if (!o.noCredit && !o.debitNotLeg) p.register_transaction_evidence.push(credit);
+  if (o.thirdLeg) p.register_transaction_evidence.push({ txn_id: 'tleg_x', account_key: 'sav', amount_cents: amount, cleared: true, is_transfer_leg: true, transfer_group_id: gid, transfer_pair_id: gid, represented_as_deduction: false, transaction_date: d, as_of_utc: AS_OF });
+  if (o.reuse) p.terminal_resolution_evidence.push({ commitment_expected_item_id: '2026mw6_bkx_2026_07_01', evidence_source: 'au11', resolution_type: 'cleared', resolution_evidence: 'x', resolution_evidence_type: 'bank_cleared', cleared_transaction_id: 'tleg_c', cleared_amount_cents: 70090, cleared_source_account: 'truist_checking', cleared_state: 'cleared', cleared_as_of: AS_OF, direction: 'debit', amount_cents: 70090, source_account: 'truist_checking', as_of_utc: AS_OF });
+  const j = { commitment_expected_item_id: cid, evidence_source: 'legacy_adjudication', disposition: o.disposition || 'matched_internal_transfer', adjudicated_by_subject_id: OWNER, resolution_type: 'cleared', resolution_evidence: 'legacy', resolution_evidence_type: 'bank_cleared', cleared_transaction_id: 'tleg_d', cleared_transaction_digest: digest(debit), cleared_amount_cents: amount, cleared_source_account: 'truist_checking', cleared_state: 'cleared', cleared_as_of: asof, direction: 'debit', amount_cents: amount, source_account: 'truist_checking', as_of_utc: AS_OF, cleared_transfer_group_id: o.recordGid !== undefined ? o.recordGid : gid };
+  if (o.superseded) j.superseded = true;
+  const { record_digest, ...rest } = j; j.record_digest = digest(rest);
+  p.terminal_resolution_evidence.push(j);
+}
+
 export const DEFS = [
   // ── original 40 classes (adapted to the hardened golden) ────────────────────────────────────────────────
   { id: 'PF-01', cls: 'fully_admissible', expect_admissible: true, mutate: () => {} },
@@ -349,4 +383,49 @@ export const DEFS = [
   { id: 'PF-174', cls: 'obsB_pinned_unknown_source', expect_admissible: false, mutate: (p) => { p.cash_commitment_evidence[0].expected_item_id = PIN; setCleared(p); pushClearing(p, PIN, 200000, { txn: 'ctx_pin', source: 'made_up' }); } },
   // G2 preserved: a NON-pinned commitment with an absent-source valid clearing retains committed behavior -> PASS.
   { id: 'PF-175', cls: 'obsB_nonpinned_absent_source_committed', expect_admissible: true, mutate: (p) => { setCleared(p); pushClearing(p, RENT, 200000, { noSource: true }); } },
+
+  // ── legacy-clearing-v2 durable coverage (F-3). Pre-freeze every legacy record FAIL-STOPs at the empty accepted
+  //    registry (S7_ADJUDICATION_NOT_IN_REGISTRY) in the no-mut sweep — the correct posture — so all are inadmissible.
+  //    The Phase-1 v2 behavior each isolates is witnessed by the MUT registry (baseMut acceptAllLegacyRegistry) and the
+  //    v2_coverage block, which bypass the registry. A few (committed-lane, non-pinned disposition, superseded-XC)
+  //    surface their specific v2 reason in the sweep itself because their gate precedes / is independent of the registry.
+  // Lower-bound lane (commitment-specific floor; committed lane keeps window.start).
+  { id: 'PF-176', cls: 'v2_lb_valid_commitment_floor', expect_admissible: false, mutate: (p) => legacyPin(p, { commitment: PIN, cleared_as_of: '2026-07-15T12:00:00.000Z' }) },
+  { id: 'PF-177', cls: 'v2_lb_kia_one_day_before_floor', expect_admissible: false, mutate: (p) => legacyPin(p, { commitment: KIA, amount: 79100, clearedAmount: 79050, rowAmount: -79050, cleared_as_of: '2026-07-06T12:00:00.000Z' }) },
+  { id: 'PF-178', cls: 'v2_lb_after_window_end', expect_admissible: false, mutate: (p) => legacyPin(p, { commitment: PIN, cleared_as_of: '2026-07-31T12:00:00.000Z', rowDate: '2026-07-31' }) },
+  { id: 'PF-179', cls: 'v2_lb_asof_row_date_mismatch', expect_admissible: false, mutate: (p) => legacyPin(p, { commitment: PIN, cleared_as_of: '2026-07-16T12:00:00.000Z', rowDate: '2026-07-15' }) },
+  // committed/non-legacy lane isolation: an ABSENT-source clearing at 07-15 still HOLDs (window.start 07-30) in the sweep.
+  { id: 'PF-180', cls: 'v2_lb_committed_lane_isolation', expect_admissible: false, mutate: (p) => { setCleared(p); pushClearing(p, RENT, 200000, { noSource: true, cleared_as_of: '2026-07-15T12:00:00.000Z', rowDate: '2026-07-15' }); } },
+  // map-gap defense-in-depth (production-unreachable; the pinned set and the map are coextensive) — as-of in-window so the
+  //   flip (ignoreLegacyLowerBoundMissing) reaches PASS via window.start.
+  { id: 'PF-181', cls: 'v2_lb_missing_map_entry', expect_admissible: false, mutate: (p) => legacyPin(p, { commitment: PIN, cleared_as_of: AS_OF }) },
+  // Pinned variance (exact -50; strict elsewhere; shared S-4/S-7 helper).
+  { id: 'PF-182', cls: 'v2_var_kia_exact_minus_50', expect_admissible: false, mutate: (p) => legacyPin(p, { commitment: KIA, amount: 79100, clearedAmount: 79050, rowAmount: -79050, cleared_as_of: '2026-07-07T12:00:00.000Z' }) },
+  { id: 'PF-183', cls: 'v2_var_kia_minus_49_hold', expect_admissible: false, mutate: (p) => legacyPin(p, { commitment: KIA, amount: 79100, clearedAmount: 79051, rowAmount: -79051, cleared_as_of: '2026-07-07T12:00:00.000Z' }) },
+  { id: 'PF-184', cls: 'v2_var_nonkia_minus_50_hold', expect_admissible: false, mutate: (p) => legacyPin(p, { commitment: PIN, amount: 200000, clearedAmount: 199950, rowAmount: -199950, cleared_as_of: '2026-07-15T12:00:00.000Z' }) },
+  { id: 'PF-185', cls: 'v2_var_kia_row_amount_mismatch', expect_admissible: false, mutate: (p) => legacyPin(p, { commitment: KIA, amount: 79100, clearedAmount: 79050, rowAmount: -70000, cleared_as_of: '2026-07-07T12:00:00.000Z' }) },
+  // Internal transfer (pinned-transfer set; authoritative two-leg group; no inference).
+  { id: 'PF-186', cls: 'v2_trf_valid_internal_transfer', expect_admissible: false, mutate: (p) => legacyTransfer(p, {}) },
+  // non-pinned disposition FAIL-STOPs in Phase-0 (before the registry) — its v2 reason surfaces in the sweep.
+  { id: 'PF-187', cls: 'v2_trf_disposition_not_pinned', expect_admissible: false, mutate: (p) => legacyTransfer(p, { commitment: PIN, amount: 200000 }) },
+  { id: 'PF-188', cls: 'v2_trf_unmarked_transfer_row', expect_admissible: false, mutate: (p) => legacyTransfer(p, { debitNotLeg: true }) },
+  { id: 'PF-189', cls: 'v2_trf_malformed_one_leg', expect_admissible: false, mutate: (p) => legacyTransfer(p, { noCredit: true }) },
+  { id: 'PF-190', cls: 'v2_trf_malformed_three_leg', expect_admissible: false, mutate: (p) => legacyTransfer(p, { thirdLeg: true }) },
+  { id: 'PF-191', cls: 'v2_trf_same_sign_legs', expect_admissible: false, mutate: (p) => legacyTransfer(p, { creditAmt: -43563 }) },
+  { id: 'PF-192', cls: 'v2_trf_unequal_amounts', expect_admissible: false, mutate: (p) => legacyTransfer(p, { creditAmt: 43564 }) },
+  { id: 'PF-193', cls: 'v2_trf_same_account_legs', expect_admissible: false, mutate: (p) => legacyTransfer(p, { creditAccount: 'truist_checking' }) },
+  { id: 'PF-194', cls: 'v2_trf_group_id_mismatch', expect_admissible: false, mutate: (p) => legacyTransfer(p, { recordGid: 'WRONG' }) },
+  { id: 'PF-195', cls: 'v2_trf_mirror_leg_reuse', expect_admissible: false, mutate: (p) => legacyTransfer(p, { reuse: true }) },
+  { id: 'PF-196', cls: 'v2_trf_leg_also_deducted', expect_admissible: false, mutate: (p) => legacyTransfer(p, { creditDeducted: true }) },
+  { id: 'PF-197', cls: 'v2_trf_bank_clearing_on_leg', expect_admissible: false, mutate: (p) => legacyTransfer(p, { disposition: 'matched_bank_clearing' }) },
+  // F-1: TAX is validly cleared by an ACTIVE internal-transfer record; a SUPERSEDED internal-transfer record on the SAME
+  //   commitment is also bound to a transfer leg. The active record legitimately earns the XC exemption for its leg, but
+  //   the SUPERSEDED record must NOT — so XC STOPs on it (tightened predicate). MUT looseXcExemption + registry reverts.
+  //   Sweep: active record fails closed at the empty registry (inadmissible); XC STOPs on the superseded leg binding.
+  { id: 'PF-198', cls: 'v2_f1_superseded_no_xc_exemption', expect_admissible: false, mutate: (p) => {
+    legacyTransfer(p, {});   // active valid matched_internal_transfer on TAX (legs tleg_d / tleg_c, group GRP1)
+    p.terminal_resolution_evidence.push({ commitment_expected_item_id: TAX, evidence_source: 'legacy_adjudication', superseded: true, disposition: 'matched_internal_transfer', adjudicated_by_subject_id: OWNER, resolution_type: 'cleared', resolution_evidence: 'stale', resolution_evidence_type: 'bank_cleared', cleared_transaction_id: 'tleg_c', cleared_transfer_group_id: 'GRP1', record_digest: 'deadbeef', amount_cents: 43563, source_account: 'truist_checking', as_of_utc: AS_OF });
+  } },
+  // F-2: an empty (non-canonical) transfer group id FAIL-STOPs (S7_TRANSFER_GROUP_ID_INVALID). MUT acceptInvalidTransferGroupId reverts.
+  { id: 'PF-199', cls: 'v2_f2_invalid_transfer_group_id', expect_admissible: false, mutate: (p) => legacyTransfer(p, { gid: '', recordGid: '' }) },
 ];
