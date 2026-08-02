@@ -41,8 +41,41 @@ export const REQUIRED_QUERY_PROVENANCE = Object.freeze(['query_id', 'relation', 
 export const BALANCE_BASIS_PRECEDENCE = Object.freeze(['stale', 'projected', 'available_balance', 'posted_current_balance', 'reconciled']);
 export const USABLE_BALANCE_BASES = Object.freeze(['posted_current_balance', 'available_balance', 'reconciled']); // 'unknown'/'projected'/'stale'/null are NOT authoritative
 
-// Supported terminal-resolution evidence types (S-7) and their required resolution kinds.
-export const TERMINAL_EVIDENCE_TYPES = Object.freeze({ void_cancellation: 'voided', alternate_payment: 'paid_from_other_account' });
+// Supported terminal-resolution evidence types (S-7) and their PRIMARY resolution kind. `bank_cleared` (S-7 v3.1,
+// s7-rev-8.3) is the durable bank-clearing type; because one type may cover BOTH `cleared` and `reflected` releases,
+// the authoritative direction for S-7 is the reverse map REQUIRED_EVIDENCE_TYPE_BY_RESOLUTION below (this constant
+// stays a per-type documentation map; nothing consumes it directly). Additive: void_cancellation / alternate_payment
+// are unchanged, so no committed fixture is affected.
+export const TERMINAL_EVIDENCE_TYPES = Object.freeze({ void_cancellation: 'voided', alternate_payment: 'paid_from_other_account', bank_cleared: 'cleared' });
+// Authoritative resolution_type -> required terminal-evidence type (S-7 requiredType). `cleared` and `reflected` both
+// require durable `bank_cleared` evidence; `paid_from_other_account` -> alternate_payment; `voided` -> void_cancellation.
+// A released commitment whose resolution_type is null is UNDETERMINED (HOLD, per Part 5'); an out-of-vocabulary value
+// is already FAIL-STOPped upstream by S-4 (S4_UNSUPPORTED_RESOLUTION), so this map only carries the valid vocabulary.
+export const REQUIRED_EVIDENCE_TYPE_BY_RESOLUTION = Object.freeze({ cleared: 'bank_cleared', reflected: 'bank_cleared', paid_from_other_account: 'alternate_payment', voided: 'void_cancellation' });
+
+// ── S-7 v3.1 durable-clearing lane (design s7-rev-8.3-bankcleared) ─────────────────────────────────────────────
+export const S7_SPEC_REVISION = 's7-rev-8.3-bankcleared';
+export const LEGACY_SPEC_VERSION = 'legacy-clearing-v1';
+export const AUTHORITY_VERSION = 'authority-v1';
+export const LEGACY_REGISTRY_VERSION = 'legacy-registry-v1';
+// evidence_source is a CLOSED set. A J record with NO evidence_source is the committed evidence class (validated by the
+// committed S-7 rules, unchanged). Any explicitly-declared value outside this set (including a present-but-null value)
+// FAIL-STOPs (S7_UNSUPPORTED_EVIDENCE_SOURCE).
+export const SUPPORTED_EVIDENCE_SOURCES = Object.freeze(['au11', 'legacy_adjudication']);
+// The authorized owner subject id (Gate-A owner; owner-run extraction identity; resolved_by on all six commitments).
+export const AUTHORIZED_OWNER_SUBJECT_ID = '9f6c9e09-209d-4533-8cd9-9143e8d570fc';
+// The legacy-adjudication lane is machine-bounded to EXACTLY these six pre-AU-11 commitments. Any other commitment on
+// the legacy path FAIL-STOPs (S7_LEGACY_COMMITMENT_NOT_PINNED). Changing this set requires a new LEGACY_SPEC_VERSION.
+export const PINNED_LEGACY_COMMITMENTS = Object.freeze([
+  '2026mw4_rent_tiffany_dye_2026_07_01', '2026mw4_rent_tiffany_dye_2026_07_02', '2026mw4_rent_tiffany_dye_2026_07_03',
+  '2026mw4_tax_transfer_vio_2026_06_28', '2026mw5_kia_payment_2026_07_07', 'manual_18313b87-a03b-4034-a1a8-a73fa0bfadd9',
+]);
+// Closed, versioned legacy disposition vocabulary. An out-of-vocab disposition FAIL-STOPs (S7_UNSUPPORTED_DISPOSITION).
+export const LEGACY_DISPOSITION_VOCAB = Object.freeze(['matched_bank_clearing', 'paid_from_other_account', 'voided_or_never_cleared', 'unresolved_hold']);
+// Frozen accepted-record-digest registry. EMPTY until the six records are created + independently reviewed + owner-
+// ratified (owner decision (h), migration step 11). Pre-freeze this is empty, so EVERY legacy_adjudication record
+// FAIL-STOPs (S7_ADJUDICATION_NOT_IN_REGISTRY) — the correct pre-freeze fail-closed posture.
+export const ACCEPTED_LEGACY_RECORD_DIGESTS = Object.freeze([]);
 
 // Attestation states (S-6). Only these two may proceed; every other state HOLDs.
 export const ATTEST_OK = Object.freeze(['complete', 'verified_empty']);

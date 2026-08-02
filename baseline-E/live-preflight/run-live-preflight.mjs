@@ -64,6 +64,26 @@ export const MUTATIONS = [
   ['MUT-46_ignore_orphan_linkage', 'PF-138', { allowOrphanLinkage: true }],
   ['MUT-47_trust_event_target_as_proof', 'PF-134', { trustEventTargetEstablished: true }],
   ['MUT-48_ignore_commitment_target_existence', 'PF-133', { ignoreCommitmentTargetExistence: true }],
+  // ── S-7 v3.1 durable-clearing lane (G1/G2/G5/legacy-authority) ──
+  ['MUT-49_ignore_cleared_release', 'PF-141', { ignoreClearedRelease: true }],           // G1 released-set is load-bearing
+  ['MUT-50_ignore_evidence_source_routing', 'PF-146', { ignoreEvidenceSourceRouting: true }], // G2 closed-set routing is load-bearing
+  ['MUT-51_ignore_cross_lane_reuse', 'PF-151', { ignoreCrossLaneReuse: true }],            // G5/G8 cross-lane reuse guard is load-bearing
+  ['MUT-52_ignore_legacy_authority', 'PF-148', { ignoreLegacyAuthority: true }],           // legacy pinned-six gate is load-bearing
+  // ── Mode-2 F-1/F-2 durable-clearing binding + as-of window ──
+  ['MUT-53_ignore_clearing_txn_existence', 'PF-153', { ignoreClearingTxnExistence: true }], // F-1 referenced-txn existence
+  ['MUT-54_ignore_clearing_txn_digest', 'PF-156', { ignoreClearingTxnDigest: true }],        // F-1 clearing-digest recompute/match
+  ['MUT-55_ignore_clearing_binding_direction', 'PF-143', { ignoreClearingTxnBinding: true }],// F-1 register-authoritative direction
+  ['MUT-56_ignore_clearing_binding_state', 'PF-144', { ignoreClearingTxnBinding: true }],    // F-1 register-authoritative state
+  ['MUT-57_ignore_clearing_asof_lower', 'PF-160', { ignoreClearingAsofLower: true }],         // F-2/N-5 as-of lower bound (isolated)
+  ['MUT-58_ignore_clearing_asof_upper', 'PF-145', { ignoreClearingAsofUpper: true }],         // F-2/N-5 as-of upper bound (isolated)
+  ['MUT-59_ignore_legacy_unauthorized', 'PF-149', { ignoreLegacyAuthority: true }],          // legacy authorized-owner gate
+  ['MUT-60_ignore_legacy_unregistered', 'PF-150', { ignoreLegacyAuthority: true }],          // legacy accepted-registry gate
+  // ── Mode-2 N-1..N-5 (isolated attribution; transfer guards use baseMut to disable the OTHER control) ──
+  ['MUT-61_ignore_s7_transfer_leg', 'PF-164', { ignoreS7TransferLeg: true }, { ignoreXcJLaneTransfer: true }],  // N-1 S-7 transfer-leg guard (XC off in base)
+  ['MUT-62_ignore_xc_jlane_transfer', 'PF-164', { ignoreXcJLaneTransfer: true }, { ignoreS7TransferLeg: true }],// N-1 XC J-lane transfer guard (S-7 off in base)
+  ['MUT-63_ignore_clearing_date_binding', 'PF-165', { ignoreClearingDateBinding: true }],     // N-3 exact row-date binding
+  ['MUT-64_ignore_pending_clearing_conflict', 'PF-168', { ignorePendingClearingConflict: true }], // N-4 pending-and-clearing contradiction
+  ['MUT-65_ignore_resolution_undetermined', 'PF-169', { ignoreResolutionUndetermined: true }], // N-5 null-resolution UNDETERMINED
 ];
 
 function run() {

@@ -3,7 +3,7 @@
 // cross-control consistency layer (XC). Hardened per Fable verdict-3 (2026-07-30): every control fails closed on
 // what it does NOT model too. Each control(pkg, mut) -> { id, disposition, reason_code, detail }. `mut` injects
 // executable control breaks. All changes are ADDITIVE — no previously adopted control is weakened.
-import { SUPPORTED_SCHEMA_VERSIONS, EXPECTED_PRODUCTION_PROJECT_REF, USABLE_BALANCE_BASES, BALANCE_BASIS_PRECEDENCE, ATTEST_OK, digest, parseUtcInstant, ATTESTED_SECTIONS, ATTEST_TO_SECTION, SECTION_TO_RELATION, FRESHNESS_POLICY_AUTHORIZED, EXT_DIGEST_SECTIONS, packageFieldsForDigest } from './live-preflight-contract.mjs';
+import { SUPPORTED_SCHEMA_VERSIONS, EXPECTED_PRODUCTION_PROJECT_REF, USABLE_BALANCE_BASES, BALANCE_BASIS_PRECEDENCE, ATTEST_OK, digest, parseUtcInstant, ATTESTED_SECTIONS, ATTEST_TO_SECTION, SECTION_TO_RELATION, FRESHNESS_POLICY_AUTHORIZED, EXT_DIGEST_SECTIONS, packageFieldsForDigest, REQUIRED_EVIDENCE_TYPE_BY_RESOLUTION, SUPPORTED_EVIDENCE_SOURCES, AUTHORIZED_OWNER_SUBJECT_ID, PINNED_LEGACY_COMMITMENTS, LEGACY_DISPOSITION_VOCAB, ACCEPTED_LEGACY_RECORD_DIGESTS } from './live-preflight-contract.mjs';
 
 const PASS = (id) => ({ id, disposition: 'PASS', reason_code: null });
 const HOLD = (id, reason_code, detail) => ({ id, disposition: 'HOLD', reason_code, detail });
@@ -401,48 +401,168 @@ export function S6_completeness(pkg, mut) {
   return PASS('S-6');
 }
 
-// ── S-7 reserve-release evidence (cross-check section F releases against section J; reproduce state-parity SP-79)
+// ── S-7 reserve-release evidence (v3.1 s7-rev-8.3-bankcleared) ────────────────────────────────────────────────
+// Cross-checks section-F releases against section-J terminal evidence (reproduces committed state-parity SP-79) AND
+// adds the durable-clearing lane: a `cleared`/`reflected` commitment is RELEASED and requires durable `bank_cleared`
+// evidence (G1 — closes the capacity bypass). Evidence records are routed by `evidence_source`: ABSENT -> the committed
+// path (unchanged; every committed fixture takes this path); `au11`/`legacy_adjudication` -> the new lanes; any explicit
+// other value -> FAIL-STOP (G2). Phase 0 collects every global FAIL-STOP (source, cleared+voided overlap, legacy
+// authority/registry/digest/vocab/pinned-six on ACTIVE records only, supersession structure, cross-lane txn reuse)
+// BEFORE any per-commitment HOLD, so no HOLD can mask a FAIL-STOP (G5/G7/G8/G9). All committed reason codes and
+// fixtures are preserved: the new logic fires only on evidence_source-tagged records, cleared/reflected commitments, or
+// legacy records — none of which appear in the committed fixtures. Pre-freeze the accepted-registry is empty, so every
+// legacy_adjudication record fails closed (S7_ADJUDICATION_NOT_IN_REGISTRY) — the correct pre-freeze posture.
+// H4: the released predicate is defined ONCE here and reused by XC (XC.actuallyReleased) so the two never diverge.
+function releasedPredicate(c, evw, mut) {
+  return (c.reflected_model_week != null && evw != null && c.reflected_model_week <= evw)
+    || (c.resolved_model_week != null && evw != null && c.resolved_model_week <= evw)
+    || c.status === 'voided' || c.resolution_type === 'voided' || c.resolution_type === 'paid_from_other_account'
+    || (!(mut && mut.ignoreClearedRelease) && (c.resolution_type === 'cleared' || c.resolution_type === 'reflected')); // G1 additive (MUT reverts)
+}
+const V4_UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
+const isValidSubjectId = (v) => typeof v === 'string' && V4_UUID_RE.test(v);
+// Family-B record_digest preimage = canonical-JSON of the record minus its own record_digest and the P-4 per-record digest.
+const recomputeRecordDigest = (j) => { const { record_digest, digest: _perRecord, ...rest } = j; return digest(rest); };
+// F-1: authoritative clearing digest recomputed from a referenced Register row (excluding its P-4 per-record digest).
+const recomputeClearingDigest = (tx) => { const { digest: _perRecord, ...rest } = tx; return digest(rest); };
+
 export function S7_reserveRelease(pkg, mut) {
   const evw = evalWeek(pkg);
-  const jByCommit = new Map(); const seenEv = new Set();
-  for (const j of arr(pkg, 'terminal_resolution_evidence')) {
-    const list = jByCommit.get(j.commitment_expected_item_id) || jByCommit.set(j.commitment_expected_item_id, []).get(j.commitment_expected_item_id);
-    list.push(j);
-  }
-  const commitIds = new Set(arr(pkg, 'cash_commitment_evidence').map((c) => c.expected_item_id));
-  // orphan J: evidence with no matching F commitment
-  for (const j of arr(pkg, 'terminal_resolution_evidence')) if (!commitIds.has(j.commitment_expected_item_id)) return HOLD('S-7', 'S7_ORPHAN_EVIDENCE', j.commitment_expected_item_id);
+  const js = arr(pkg, 'terminal_resolution_evidence');
+  const commits = arr(pkg, 'cash_commitment_evidence');
+  const registerRows = arr(pkg, 'register_transaction_evidence');
+  const commitIds = new Set(commits.map((c) => c.expected_item_id));
 
-  for (const c of arr(pkg, 'cash_commitment_evidence')) {
-    const released = (c.reflected_model_week != null && evw != null && c.reflected_model_week <= evw)
-      || (c.resolved_model_week != null && evw != null && c.resolved_model_week <= evw)
-      || c.status === 'voided' || c.resolution_type === 'voided' || c.resolution_type === 'paid_from_other_account';
-    if (!released) continue;
-    if (mut.terminalNoEvidence) continue; // MUT: accept release without evidence
-    const js = jByCommit.get(c.expected_item_id) || [];
-    if (js.length === 0) return HOLD('S-7', 'S7_RELEASE_NO_EVIDENCE', c.expected_item_id); // reflected/resolved/terminal release, no J -> HOLD (SP-79)
-    const j = js[0];
-    // contradictory terminal state
+  // ── PHASE 0 — global FAIL-STOP scans (evaluated before any per-commitment HOLD) ──
+  // G2: evidence_source is a closed set. Absent -> committed path. Any explicit value outside the set (incl null) STOPs.
+  if (!mut.ignoreEvidenceSourceRouting) for (const j of js) if ('evidence_source' in j && !SUPPORTED_EVIDENCE_SOURCES.includes(j.evidence_source)) return STOP('S-7', 'S7_UNSUPPORTED_EVIDENCE_SOURCE', String(j.evidence_source));
+  // H2: only the NEW cleared+status=voided overlap is a Phase-0 FAIL-STOP (committed voided+status combos stay a Phase-1
+  //     HOLD via the committed contradictory-state check; the unsupported-resolution_type FAIL-STOP is owned by S-4).
+  for (const c of commits) if (c.resolution_type === 'cleared' && c.status === 'voided') return STOP('S-7', 'S7_CONTRADICTORY_STATE', c.expected_item_id);
+  // G9/H3: legacy content gates apply to ACTIVE (non-superseded) records only; superseded records are inert audit.
+  if (!mut.ignoreLegacyAuthority) for (const j of js) if (j.evidence_source === 'legacy_adjudication' && j.superseded !== true) {
+    if (!PINNED_LEGACY_COMMITMENTS.includes(j.commitment_expected_item_id)) return STOP('S-7', 'S7_LEGACY_COMMITMENT_NOT_PINNED', j.commitment_expected_item_id);
+    if (!LEGACY_DISPOSITION_VOCAB.includes(j.disposition)) return STOP('S-7', 'S7_UNSUPPORTED_DISPOSITION', String(j.disposition));
+    if (!isValidSubjectId(j.adjudicated_by_subject_id)) return STOP('S-7', 'S7_ADJUDICATION_AUTHORITY_INVALID', typeof j.adjudicated_by_subject_id);
+    if (j.adjudicated_by_subject_id !== AUTHORIZED_OWNER_SUBJECT_ID) return STOP('S-7', 'S7_ADJUDICATION_AUTHORITY_UNAUTHORIZED', j.adjudicated_by_subject_id);
+    if (!mut.acceptForgedAdjudication && recomputeRecordDigest(j) !== j.record_digest) return STOP('S-7', 'S7_ADJUDICATION_DIGEST_MISMATCH', j.commitment_expected_item_id);
+    const registry = mut.testAcceptedRegistry || ACCEPTED_LEGACY_RECORD_DIGESTS;
+    if (!registry.includes(j.record_digest)) return STOP('S-7', 'S7_ADJUDICATION_NOT_IN_REGISTRY', j.commitment_expected_item_id);
+  }
+  // F10/G9: supersession chain structure over the FULL chain — single active tail per commitment; no cycle/self-supersede.
+  const legacyByCommit = new Map();
+  for (const j of js) if (j.evidence_source === 'legacy_adjudication') (legacyByCommit.get(j.commitment_expected_item_id) || legacyByCommit.set(j.commitment_expected_item_id, []).get(j.commitment_expected_item_id)).push(j);
+  for (const [cid, recs] of legacyByCommit) {
+    if (!mut.ignoreSupersessionStructure) {
+      const bySup = new Map(recs.map((r) => [r.record_digest, r.supersedes]));
+      for (const r of recs) if (r.supersedes != null && r.supersedes === r.record_digest) return STOP('S-7', 'S7_SUPERSESSION_CYCLE', cid);
+      for (const start of bySup.keys()) { const seen = new Set(); let cur = start; while (cur != null && bySup.has(cur)) { if (seen.has(cur)) return STOP('S-7', 'S7_SUPERSESSION_CYCLE', cid); seen.add(cur); cur = bySup.get(cur); } }
+    }
+    if (!mut.ignoreMultipleActive && recs.filter((r) => r.superseded !== true).length > 1) return STOP('S-7', 'S7_MULTIPLE_ACTIVE_ADJUDICATIONS', cid);
+  }
+  // G5/G8: cross-lane / durable transaction reuse — a clearing txn bound to >1 DISTINCT commitment where at least one
+  //   binding is via a J (au11/legacy lane) FAIL-STOPs. Two commitment-DB bindings of one txn are S-4's domain
+  //   (S4_DUPLICATE_CLEARING_LINKAGE), not this check. Same-lane in-package duplicate is the committed HOLD below (G5).
+  if (!mut.ignoreCrossLaneReuse) {
+    const use = new Map(); const jTxns = new Set();
+    const bind = (txn, cid) => { if (txn == null) return; (use.get(txn) || use.set(txn, new Set()).get(txn)).add(cid); };
+    for (const c of commits) bind(c.cleared_transaction_id, c.expected_item_id);
+    for (const j of js) if (j.superseded !== true && j.cleared_transaction_id != null) { bind(j.cleared_transaction_id, j.commitment_expected_item_id); jTxns.add(j.cleared_transaction_id); }
+    for (const [txn, cids] of use) if (cids.size > 1 && jTxns.has(txn)) return STOP('S-7', 'S7_CLEARING_TXN_REUSE_CONFLICT', txn);
+  }
+
+  // orphan J: evidence with no matching F commitment (committed)
+  for (const j of js) if (!commitIds.has(j.commitment_expected_item_id)) return HOLD('S-7', 'S7_ORPHAN_EVIDENCE', j.commitment_expected_item_id);
+
+  // ── PHASE 1 — per-commitment acceptance (committed logic + additive v3.1 extensions) ──
+  const jByCommit = new Map();
+  for (const j of js) (jByCommit.get(j.commitment_expected_item_id) || jByCommit.set(j.commitment_expected_item_id, []).get(j.commitment_expected_item_id)).push(j);
+  const seenEv = new Set();
+  for (const c of commits) {
+    if (!releasedPredicate(c, evw, mut)) continue;          // G1 shared predicate
+    if (mut.terminalNoEvidence) continue;                   // MUT: accept release without evidence
+    const activeJs = (jByCommit.get(c.expected_item_id) || []).filter((j) => j.superseded !== true);
+    if (activeJs.length === 0) return HOLD('S-7', 'S7_RELEASE_NO_EVIDENCE', c.expected_item_id); // release, no active J -> HOLD (SP-79)
+    const j = activeJs[0];
+    // contradictory terminal state (committed HOLD; the NEW cleared+voided overlap already FAIL-STOPPED in Phase 0)
     if ((c.resolution_type === 'voided' && c.status != null && c.status !== 'voided') || (c.status === 'voided' && c.resolution_type != null && c.resolution_type !== 'voided')) return HOLD('S-7', 'S7_CONTRADICTORY_STATE', c.expected_item_id);
     if (j.resolution_stale === true) return HOLD('S-7', 'S7_STALE_RESOLUTION', c.expected_item_id);
-    // typed evidence, consistent with the commitment's resolution
+    // F-3: legacy disposition outcomes gate BEFORE any clearing evidence — a fully-formed clearing record can NOT make
+    //   an unresolved_hold or a voided_or_never_cleared release capacity. (Reachable only for a registry-accepted active
+    //   legacy record; pre-freeze the empty registry fail-stops it earlier in Phase 0.)
+    if (j.evidence_source === 'legacy_adjudication' && !mut.ignoreLegacyDisposition) {
+      if (j.disposition === 'unresolved_hold') return HOLD('S-7', 'S7_UNRESOLVED_LEGACY', c.expected_item_id);
+      if (j.disposition === 'voided_or_never_cleared') return HOLD('S-7', 'S7_RELEASE_NOT_CLEARED', c.expected_item_id);
+    }
     const evPresent = typeof j.resolution_evidence === 'string' && j.resolution_evidence.length > 0;
     if (!evPresent) return HOLD('S-7', 'S7_RELEASE_NO_EVIDENCE', c.expected_item_id);
-    const wantVoid = c.resolution_type !== 'paid_from_other_account';
-    const requiredType = wantVoid ? 'void_cancellation' : 'alternate_payment';
+    // requiredType (v3.1): null-on-release -> UNDETERMINED (only reachable when an active J exists); else the
+    //   authoritative resolution->type map (cleared/reflected -> bank_cleared). Committed voided/paid_from_other map to
+    //   the committed void_cancellation/alternate_payment, so committed fixtures are unchanged.
+    if (c.resolution_type == null && !mut.ignoreResolutionUndetermined) return HOLD('S-7', 'S7_RESOLUTION_TYPE_UNDETERMINED', c.expected_item_id);
+    const requiredType = REQUIRED_EVIDENCE_TYPE_BY_RESOLUTION[c.resolution_type] || 'void_cancellation';
     if (!mut.untypedEvidence && (typeof j.resolution_evidence_type !== 'string' || j.resolution_evidence_type.length === 0)) return HOLD('S-7', 'S7_EVIDENCE_TYPE_MISSING', c.expected_item_id);
     if (!mut.untypedEvidence && j.resolution_evidence_type !== requiredType) return HOLD('S-7', 'S7_EVIDENCE_WRONG_TYPE', `${c.expected_item_id}:${j.resolution_evidence_type}`);
-    // amount / source / resolution consistency vs the commitment
     if (j.amount_cents != null && j.amount_cents !== c.amount_cents) return HOLD('S-7', 'S7_AMOUNT_MISMATCH', c.expected_item_id);
     if (j.source_account != null && j.source_account !== c.source_account) return HOLD('S-7', 'S7_SOURCE_MISMATCH', c.expected_item_id);
     if (j.resolution_type != null && c.resolution_type != null && j.resolution_type !== c.resolution_type) return HOLD('S-7', 'S7_RESOLUTION_TYPE_MISMATCH', c.expected_item_id);
-    // cleared_transaction_id requires full authoritative metadata
+    // H1/G3: a durable cleared_transaction_id is demanded ONLY for bank_cleared, or a LEGACY-branch alternate_payment.
+    //   An absent-source (committed) alternate_payment keeps committed semantics -> not demanded (preserves PF-43).
+    const needsDurableId = requiredType === 'bank_cleared' || (requiredType === 'alternate_payment' && j.evidence_source === 'legacy_adjudication');
+    if (needsDurableId && j.cleared_transaction_id == null) return HOLD('S-7', 'S7_RELEASE_NO_EVIDENCE', c.expected_item_id);
+    // committed UNCONDITIONAL clearing-metadata check (G4): fires whenever cleared_transaction_id != null, ANY type/source.
     if (j.cleared_transaction_id != null && !mut.acceptBareClearing) {
       for (const f of ['cleared_amount_cents', 'cleared_source_account', 'cleared_state', 'cleared_as_of']) if (j[f] == null) return HOLD('S-7', 'S7_CLEARING_METADATA_MISSING', `${c.expected_item_id}.${f}`);
       if (j.cleared_amount_cents !== c.amount_cents) return HOLD('S-7', 'S7_CLEARING_AMOUNT_MISMATCH', c.expected_item_id);
-      if (j.cleared_source_account !== c.source_account) return HOLD('S-7', 'S7_CLEARING_SOURCE_MISMATCH', c.expected_item_id);
+      // N-2: an alternate_payment clears from a DIFFERENT account, so its self-reported source is validated against the
+      //   referenced Register row below, not against the commitment source here (bank_cleared/void keep committed check).
+      if (requiredType !== 'alternate_payment' && j.cleared_source_account !== c.source_account) return HOLD('S-7', 'S7_CLEARING_SOURCE_MISMATCH', c.expected_item_id);
     }
-    // evidence-identity reuse across unrelated commitments / duplicate linkage
+    // Durable Register binding for a bank_cleared release OR a legacy alternate_payment carrying a cleared_transaction_id
+    //   (N-2). The referenced row is AUTHORITATIVE — it must exist (F-1), not be a transfer leg (N-1), match the
+    //   recomputed digest (F-1), agree on amount/direction/state and on source per lane (N-2), not also be an active
+    //   pending deduction (N-4), lie within the window (F-2), and bind cleared_as_of to its transaction_date (N-3).
+    if (needsDurableId && j.cleared_transaction_id != null && !mut.acceptBareClearing) {
+      const matches = registerRows.filter((r) => r.txn_id === j.cleared_transaction_id);
+      if (!mut.ignoreClearingTxnExistence) {
+        if (matches.length === 0) return HOLD('S-7', 'S7_CLEARING_TXN_NOT_FOUND', `${c.expected_item_id}:${j.cleared_transaction_id}`);
+        if (matches.length > 1) return STOP('S-7', 'S7_CLEARING_TXN_AMBIGUOUS', j.cleared_transaction_id); // P-6 also fail-stops a duplicate register txn_id
+      }
+      const tx = matches[0];
+      // N-1: a transfer leg (an internal movement) can NEVER satisfy a durable clearing — aligns with XC_TRANSFER_ALSO_CLEARING.
+      if (tx && tx.is_transfer_leg === true && !mut.ignoreS7TransferLeg) return STOP('S-7', 'S7_CLEARING_TXN_IS_TRANSFER', `${c.expected_item_id}:${j.cleared_transaction_id}`);
+      if (tx && !mut.ignoreClearingTxnDigest) {
+        if (j.cleared_transaction_digest == null) return HOLD('S-7', 'S7_CLEARING_METADATA_MISSING', `${c.expected_item_id}.cleared_transaction_digest`);
+        if (j.cleared_transaction_digest !== recomputeClearingDigest(tx)) return HOLD('S-7', 'S7_CLEARING_DIGEST_MISMATCH', c.expected_item_id);
+      }
+      if (tx && !mut.ignoreClearingTxnBinding) {
+        if (Math.abs(tx.amount_cents) !== c.amount_cents) return HOLD('S-7', 'S7_CLEARING_AMOUNT_MISMATCH', c.expected_item_id);
+        if (!(typeof tx.amount_cents === 'number' && tx.amount_cents < 0)) return HOLD('S-7', 'S7_CLEARING_DIRECTION_INVALID', c.expected_item_id);
+        if (tx.cleared !== true) return HOLD('S-7', 'S7_CLEARING_STATE_INVALID', c.expected_item_id);
+        // source: bank_cleared clears from the commitment's own account; alternate_payment clears from a DIFFERENT
+        //   account, validated against the J's declared paying account (N-2) — never trusted as a bare id.
+        if (requiredType === 'bank_cleared') { if (tx.account_key !== c.source_account) return HOLD('S-7', 'S7_CLEARING_SOURCE_MISMATCH', c.expected_item_id); }
+        else if (tx.account_key !== j.cleared_source_account || tx.account_key === c.source_account) return HOLD('S-7', 'S7_CLEARING_SOURCE_MISMATCH', c.expected_item_id);
+      }
+      // N-4: a durable clearing txn must not also be an active pending deduction (contradictory economic representation).
+      if (tx && !mut.ignorePendingClearingConflict && arr(pkg, 'pending_or_uncleared_evidence').some((p) => p.txn_id === j.cleared_transaction_id && p.represented_as_deduction === true)) return STOP('S-7', 'S7_CLEARING_TXN_ALSO_DEDUCTED', j.cleared_transaction_id);
+      // F-2: cleared_as_of must parse; N-5 splits the window into isolated lower/upper guards.
+      const asof = parseUtcInstant(j.cleared_as_of);
+      if (asof == null) return HOLD('S-7', 'S7_CLEARING_ASOF_UNPARSEABLE', c.expected_item_id);
+      const win = (pkg.execution_identity || {}).extraction_window || {};
+      const winStart = parseUtcInstant(win.start), winEnd = parseUtcInstant(win.end);
+      // F-2: S-7 OWNS this window check (P-2 never reads cleared_as_of). The preflight lacks the model-week->date epoch,
+      //   so the extraction-window START is the deterministic, fail-closed release floor and the END the upper bound
+      //   (both inclusive). N-3 additionally binds cleared_as_of to the referenced row's authoritative transaction_date.
+      if (winStart != null && !mut.ignoreClearingAsofLower && asof < winStart) return HOLD('S-7', 'S7_CLEARING_ASOF_OUT_OF_WINDOW', `${c.expected_item_id}:before`);
+      if (winEnd != null && !mut.ignoreClearingAsofUpper && asof > winEnd) return HOLD('S-7', 'S7_CLEARING_ASOF_OUT_OF_WINDOW', `${c.expected_item_id}:after`);
+      if (tx && !mut.ignoreClearingDateBinding) { // N-3: EXACT (non-heuristic) binding to the referenced row's transaction_date
+        if (tx.transaction_date == null) return HOLD('S-7', 'S7_CLEARING_ROW_DATE_MISSING', c.expected_item_id);
+        if (!/^\d{4}-\d{2}-\d{2}$/.test(tx.transaction_date)) return HOLD('S-7', 'S7_CLEARING_ROW_DATE_MALFORMED', `${c.expected_item_id}:${tx.transaction_date}`);
+        if (j.cleared_as_of.slice(0, 10) !== tx.transaction_date) return HOLD('S-7', 'S7_CLEARING_ASOF_ROW_MISMATCH', c.expected_item_id);
+      }
+    }
+    // evidence-identity reuse across commitments (committed same-lane in-package duplicate -> HOLD, G5)
     const evId = j.resolution_evidence_id ?? j.cleared_transaction_id;
     if (evId != null) { if (seenEv.has(evId)) return HOLD('S-7', 'S7_DUPLICATE_EVIDENCE', evId); seenEv.add(evId); }
   }
@@ -464,11 +584,13 @@ export function XC_crossControl(pkg, mut) {
   const legIds = new Set(arr(pkg, 'register_transaction_evidence').filter((t) => t.is_transfer_leg).map((t) => t.txn_id));
   for (const p of arr(pkg, 'pending_or_uncleared_evidence')) if (p.represented_as_deduction && legIds.has(p.txn_id)) return STOP('XC', 'XC_TRANSFER_ALSO_DEDUCTED', p.txn_id);
   for (const c of arr(pkg, 'cash_commitment_evidence')) if (c.cleared_transaction_id != null && legIds.has(c.cleared_transaction_id)) return STOP('XC', 'XC_TRANSFER_ALSO_CLEARING', c.cleared_transaction_id);
-  // a self-asserted derived field must match the records it summarizes
+  // N-1: the transfer-leg-as-clearing prohibition also covers the J lane (terminal-resolution cleared_transaction_id),
+  //   so S-7 and XC agree on ONE transfer-leg interpretation across both the commitment-lane and J-lane bindings.
+  if (!mut.ignoreXcJLaneTransfer) for (const j of arr(pkg, 'terminal_resolution_evidence')) if (j.cleared_transaction_id != null && legIds.has(j.cleared_transaction_id)) return STOP('XC', 'XC_TRANSFER_ALSO_CLEARING', j.cleared_transaction_id);
+  // a self-asserted derived field must match the records it summarizes (H4: shares the S-7 released predicate so a
+  // `cleared`/`reflected` claimed_released commitment is not falsely contradicted at package-rebuild time).
   for (const c of arr(pkg, 'cash_commitment_evidence')) if (c.claimed_released === true) {
-    const evw = evalWeek(pkg);
-    const actuallyReleased = (c.reflected_model_week != null && evw != null && c.reflected_model_week <= evw) || (c.resolved_model_week != null && evw != null && c.resolved_model_week <= evw) || c.status === 'voided' || c.resolution_type === 'voided' || c.resolution_type === 'paid_from_other_account';
-    if (!actuallyReleased) return HOLD('XC', 'XC_DERIVED_FIELD_CONTRADICTION', c.expected_item_id);
+    if (!releasedPredicate(c, evalWeek(pkg), mut)) return HOLD('XC', 'XC_DERIVED_FIELD_CONTRADICTION', c.expected_item_id);
   }
   return PASS('XC');
 }

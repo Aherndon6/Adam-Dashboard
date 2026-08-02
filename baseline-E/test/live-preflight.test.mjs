@@ -2,18 +2,19 @@
 // Hardened fail-closed live-input preflight: 140 synthetic fixtures + 47 executable mutations + invariants.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { FIXTURES } from '../live-preflight/live-preflight-fixtures.mjs';
+import { FIXTURES, golden, _stamp } from '../live-preflight/live-preflight-fixtures.mjs';
 import { validatePackage, REQUIRED_CONTROL_IDS } from '../live-preflight/live-preflight-validator.mjs';
 import { MUTATIONS } from '../live-preflight/run-live-preflight.mjs';
+import { digest, AUTHORIZED_OWNER_SUBJECT_ID } from '../live-preflight/live-preflight-contract.mjs';
 
 const byId = (id) => FIXTURES.find((f) => f.id === id);
 const V = (id, mut) => validatePackage(byId(id).package, mut);
 const holds = (id) => V(id).holds;
 const stops = (id) => V(id).fail_stops;
 
-test('140 synthetic PF-NN fixtures, unique ids', () => {
-  assert.equal(FIXTURES.length, 140);
-  assert.equal(new Set(FIXTURES.map((f) => f.id)).size, 140);
+test('169 synthetic PF-NN fixtures, unique ids', () => {
+  assert.equal(FIXTURES.length, 169);
+  assert.equal(new Set(FIXTURES.map((f) => f.id)).size, 169);
   for (const f of FIXTURES) assert.match(f.id, /^PF-\d{2,3}$/);
 });
 
@@ -47,6 +48,167 @@ test('S-7: section-F reflected/resolved release without J evidence HOLDs (state-
   assert.ok(holds('PF-45').includes('S7_CLEARING_AMOUNT_MISMATCH'));
   assert.ok(holds('PF-46').includes('S7_CLEARING_SOURCE_MISMATCH'));
   assert.ok(holds('PF-47').includes('S7_ORPHAN_EVIDENCE'));
+});
+
+// ── S-7 v3.1 durable-clearing lane (design s7-rev-8.3-bankcleared; G1-G10 + Mode-2 F-1..F-4) ──
+test('S-7 v3.1 G1: a cleared commitment with no J is RELEASED and HOLDs (no capacity bypass)', () => {
+  assert.ok(holds('PF-141').includes('S7_RELEASE_NO_EVIDENCE'));
+  assert.equal(V('PF-141').package_admissible, false);
+  assert.equal(validatePackage(byId('PF-141').package, { ignoreClearedRelease: true }).package_admissible, true);
+});
+test('S-7 v3.1 F-1: a bank_cleared release binds to a real Register txn (fabricated/absent/duplicate/digest all fail closed)', () => {
+  assert.equal(V('PF-142').package_admissible, true);                          // valid, bound to a Register row
+  assert.ok(holds('PF-153').includes('S7_CLEARING_TXN_NOT_FOUND'));            // referenced txn absent
+  assert.ok(holds('PF-154').includes('S7_CLEARING_METADATA_MISSING'));         // supplied digest missing
+  assert.ok(stops('PF-155').includes('P6_DUPLICATE_IDENTITY'));                // duplicate register txn identity
+  assert.ok(stops('PF-155').includes('S7_CLEARING_TXN_AMBIGUOUS'));            // + S-7 defense-in-depth
+  assert.ok(holds('PF-156').includes('S7_CLEARING_DIGEST_MISMATCH'));          // digest over an altered row
+});
+test('S-7 v3.1 F-1: amount/source/direction/state validated against the referenced ROW, not the J self-report', () => {
+  assert.ok(holds('PF-157').includes('S7_CLEARING_AMOUNT_MISMATCH'));          // row amount != commitment (J self-report matched)
+  assert.ok(holds('PF-158').includes('S7_CLEARING_SOURCE_MISMATCH'));          // row account != source
+  assert.ok(holds('PF-143').includes('S7_CLEARING_DIRECTION_INVALID'));        // row is a credit (positive)
+  assert.ok(holds('PF-144').includes('S7_CLEARING_STATE_INVALID'));            // row not cleared
+});
+test('S-7 v3.1 F-2: cleared_as_of must parse and lie within [window.start, window.end] (inclusive), else HOLD', () => {
+  assert.ok(holds('PF-159').includes('S7_CLEARING_ASOF_UNPARSEABLE'));         // unparseable
+  assert.ok(holds('PF-163').includes('S7_CLEARING_METADATA_MISSING'));         // missing (committed metadata check)
+  assert.ok(holds('PF-160').includes('S7_CLEARING_ASOF_OUT_OF_WINDOW'));       // before lower bound
+  assert.ok(holds('PF-145').includes('S7_CLEARING_ASOF_OUT_OF_WINDOW'));       // after upper bound
+  assert.equal(V('PF-161').package_admissible, true);                          // exactly at window.start (inclusive)
+  assert.equal(V('PF-162').package_admissible, true);                          // exactly at window.end (inclusive)
+});
+test('S-7 v3.1 G2: evidence_source is a closed set (explicit unknown FAIL-STOPs; absent = committed path preserved)', () => {
+  assert.ok(stops('PF-146').includes('S7_UNSUPPORTED_EVIDENCE_SOURCE'));
+  assert.equal(V('PF-27').package_admissible, true);
+});
+test('S-7 v3.1 H2: the NEW cleared+status=voided overlap FAIL-STOPs; committed contradiction (PF-31) stays inadmissible', () => {
+  assert.ok(stops('PF-147').includes('S7_CONTRADICTORY_STATE'));
+  assert.equal(V('PF-31').package_admissible, false);
+});
+test('S-7 v3.1 legacy lane: machine-bounded to the six pinned commitments; authority + registry gated (fail-closed pre-freeze)', () => {
+  assert.ok(stops('PF-148').includes('S7_LEGACY_COMMITMENT_NOT_PINNED'));
+  assert.ok(stops('PF-149').includes('S7_ADJUDICATION_AUTHORITY_UNAUTHORIZED'));
+  assert.ok(stops('PF-150').includes('S7_ADJUDICATION_NOT_IN_REGISTRY'));
+});
+test('S-7 v3.1 G5/G8: one clearing txn bound to two commitments across lanes FAIL-STOPs (reuse conflict)', () => {
+  assert.ok(stops('PF-151').includes('S7_CLEARING_TXN_REUSE_CONFLICT'));
+});
+test('S-7 v3.1 G9/H3: a superseded record invalid three ways is inert audit; the active au11 J admits', () => {
+  assert.equal(V('PF-152').package_admissible, true);
+});
+// ── legacy registry lane (injected test registry; empty frozen registry fail-closes pre-freeze) ──
+const OWNER = AUTHORIZED_OWNER_SUBJECT_ID, PIN = '2026mw4_rent_tiffany_dye_2026_07_01', AS = '2026-07-30T12:00:00.000Z';
+function legacyPkg(overrides = [], cidId = PIN) {                    // build fresh packages (never mutate shared fixtures)
+  const p = golden();
+  Object.assign(p.cash_commitment_evidence[0], { expected_item_id: cidId, status: 'cleared', resolution_type: 'cleared' });
+  const rds = [];
+  overrides.forEach((ov, i) => {
+    const txn = ov.txn || ('ltx' + i);
+    const row = { txn_id: txn, account_key: 'truist_checking', amount_cents: -200000, cleared: true, is_transfer_leg: false, transfer_pair_id: null, represented_as_deduction: false, transaction_date: '2026-07-30', as_of_utc: AS };
+    p.register_transaction_evidence.push(row);
+    const base = { commitment_expected_item_id: cidId, evidence_source: 'legacy_adjudication', disposition: ov.disposition || 'matched_bank_clearing', adjudicated_by_subject_id: OWNER, resolution_type: 'cleared', resolution_evidence: 'legacy', resolution_evidence_type: 'bank_cleared', cleared_transaction_id: txn, cleared_amount_cents: 200000, cleared_source_account: 'truist_checking', cleared_state: 'cleared', cleared_as_of: AS, direction: 'debit', amount_cents: 200000, source_account: 'truist_checking', as_of_utc: AS, cleared_transaction_digest: digest(row), ...ov.j };
+    if (base.record_digest === undefined) { const { record_digest, ...rest } = base; base.record_digest = digest(rest); }
+    rds.push(base.record_digest);
+    p.terminal_resolution_evidence.push(base);
+  });
+  _stamp(p);
+  return { p, rds };
+}
+test('S-7 v3.1 registry: a frozen-accepted, register-bound legacy record is admissible', () => {
+  const ok = legacyPkg([{}]);
+  assert.equal(validatePackage(ok.p, { testAcceptedRegistry: ok.rds }).package_admissible, true);
+});
+test('S-7 v3.1 F-4: acceptForgedAdjudication is load-bearing — a tampered payload (stale digest) FAIL-STOPs; only forging it through admits', () => {
+  const tampered = legacyPkg([{ j: { record_digest: 'a'.repeat(64) } }]);          // stored digest != recompute
+  const base = { testAcceptedRegistry: ['a'.repeat(64)] };
+  assert.ok(validatePackage(tampered.p, base).fail_stops.includes('S7_ADJUDICATION_DIGEST_MISMATCH'));   // correct: mismatch STOPs
+  assert.equal(validatePackage(tampered.p, { ...base, acceptForgedAdjudication: true }).package_admissible, true); // mutant admits
+});
+test('S-7 v3.1 F10: more than one ACTIVE adjudication FAIL-STOPs; ignoreMultipleActive is load-bearing', () => {
+  const two = legacyPkg([{ txn: 'ltxA' }, { txn: 'ltxB' }]);
+  const base = { testAcceptedRegistry: two.rds };
+  assert.ok(validatePackage(two.p, base).fail_stops.includes('S7_MULTIPLE_ACTIVE_ADJUDICATIONS'));
+  assert.equal(validatePackage(two.p, { ...base, ignoreMultipleActive: true }).package_admissible, true);
+});
+test('S-7 v3.1 F10: a self-superseding record is a CYCLE; ignoreSupersessionStructure is load-bearing', () => {
+  const cyc = legacyPkg([{ j: { record_digest: 'selfX', supersedes: 'selfX' } }]);
+  assert.ok(validatePackage(cyc.p, { ignoreLegacyAuthority: true }).fail_stops.includes('S7_SUPERSESSION_CYCLE'));
+  assert.equal(validatePackage(cyc.p, { ignoreLegacyAuthority: true, ignoreSupersessionStructure: true }).package_admissible, true);
+});
+test('S-7 v3.1 F-3: a fully-formed clearing record cannot make unresolved_hold or voided_or_never_cleared PASS', () => {
+  const uh = legacyPkg([{ disposition: 'unresolved_hold' }]);
+  const ur = validatePackage(uh.p, { testAcceptedRegistry: uh.rds });
+  assert.ok(ur.holds.includes('S7_UNRESOLVED_LEGACY'));
+  assert.equal(ur.package_admissible, false);
+  const vc = legacyPkg([{ disposition: 'voided_or_never_cleared' }]);
+  const vr = validatePackage(vc.p, { testAcceptedRegistry: vc.rds });
+  assert.ok(vr.holds.includes('S7_RELEASE_NOT_CLEARED'));
+  assert.equal(vr.package_admissible, false);
+  // the disposition gate is load-bearing: skipping it lets the clearing evidence through
+  assert.equal(validatePackage(uh.p, { testAcceptedRegistry: uh.rds, ignoreLegacyDisposition: true }).package_admissible, true);
+});
+
+// ── Mode-2 N-1..N-5 corrections ──
+test('N-1: a transfer leg can never satisfy a durable bank_cleared release (S-7 STOP + XC J-lane STOP)', () => {
+  assert.ok(stops('PF-164').includes('S7_CLEARING_TXN_IS_TRANSFER'));
+  assert.ok(stops('PF-164').includes('XC_TRANSFER_ALSO_CLEARING'));
+  assert.equal(V('PF-164').package_admissible, false);
+  // both guards independently load-bearing (each isolated by disabling the OTHER in the base mut)
+  assert.equal(validatePackage(byId('PF-164').package, { ignoreXcJLaneTransfer: true }).package_admissible, false); // S-7 still catches
+  assert.equal(validatePackage(byId('PF-164').package, { ignoreS7TransferLeg: true }).package_admissible, false);   // XC still catches
+  assert.equal(validatePackage(byId('PF-164').package, { ignoreS7TransferLeg: true, ignoreXcJLaneTransfer: true }).package_admissible, true); // both off -> improper PASS
+  // a legacy bank_cleared J bound to a transfer leg is likewise blocked (registry-accepted)
+  const lp = golden(); Object.assign(lp.cash_commitment_evidence[0], { expected_item_id: PIN, status: 'cleared', resolution_type: 'cleared' });
+  const l1 = { txn_id: 'lleg1', account_key: 'truist_checking', amount_cents: -200000, cleared: true, is_transfer_leg: true, transfer_group_id: 'TPL', transfer_pair_id: 'TPL', represented_as_deduction: false, transaction_date: '2026-07-30', as_of_utc: AS };
+  const l2 = { txn_id: 'lleg2', account_key: 'amex_savings', amount_cents: 200000, cleared: true, is_transfer_leg: true, transfer_group_id: 'TPL', transfer_pair_id: 'TPL', represented_as_deduction: false, transaction_date: '2026-07-30', as_of_utc: AS };
+  lp.register_transaction_evidence.push(l1, l2);
+  const lj = { commitment_expected_item_id: PIN, evidence_source: 'legacy_adjudication', disposition: 'matched_bank_clearing', adjudicated_by_subject_id: OWNER, resolution_type: 'cleared', resolution_evidence: 'x', resolution_evidence_type: 'bank_cleared', cleared_transaction_id: 'lleg1', cleared_amount_cents: 200000, cleared_source_account: 'truist_checking', cleared_state: 'cleared', cleared_as_of: AS, direction: 'debit', amount_cents: 200000, source_account: 'truist_checking', as_of_utc: AS, cleared_transaction_digest: digest(l1) };
+  { const { record_digest, ...rest } = lj; lj.record_digest = digest(rest); }
+  lp.terminal_resolution_evidence.push(lj); _stamp(lp);
+  const lr = validatePackage(lp, { testAcceptedRegistry: [lj.record_digest] });
+  assert.equal(lr.package_admissible, false);
+  assert.ok(lr.fail_stops.includes('S7_CLEARING_TXN_IS_TRANSFER') || lr.fail_stops.includes('XC_TRANSFER_ALSO_CLEARING'));
+});
+// N-2: legacy paid_from_other_account durable binding (fabricated id / missing / dup / digest / source / valid)
+function legacyAltPkg(o = {}) {
+  const p = golden(); const payAcct = o.payAccount || 'amex_savings';
+  Object.assign(p.cash_commitment_evidence[0], { expected_item_id: PIN, status: 'open', resolution_type: 'paid_from_other_account', reflected_model_week: 7 });
+  const row = { txn_id: o.txn || 'pay_tx', account_key: payAcct, amount_cents: -200000, cleared: true, is_transfer_leg: false, transfer_pair_id: null, represented_as_deduction: false, transaction_date: '2026-07-30', as_of_utc: AS };
+  if (!o.noRow) p.register_transaction_evidence.push(row);
+  if (o.dupRow) p.register_transaction_evidence.push({ ...row });
+  const j = { commitment_expected_item_id: PIN, evidence_source: 'legacy_adjudication', disposition: 'paid_from_other_account', adjudicated_by_subject_id: OWNER, resolution_type: 'paid_from_other_account', resolution_evidence: 'legacy-alt', resolution_evidence_type: 'alternate_payment', cleared_transaction_id: o.txn || 'pay_tx', cleared_amount_cents: 200000, cleared_source_account: payAcct, cleared_state: 'cleared', cleared_as_of: AS, direction: 'debit', amount_cents: 200000, source_account: 'truist_checking', as_of_utc: AS, cleared_transaction_digest: o.digest !== undefined ? o.digest : digest(row) };
+  { const { record_digest, ...rest } = j; j.record_digest = digest(rest); }
+  p.terminal_resolution_evidence.push(j); _stamp(p);
+  return { p, reg: { testAcceptedRegistry: [j.record_digest] } };
+}
+test('N-2: a legacy paid_from_other_account cleared_transaction_id must resolve to a real Register row (no fabricated id)', () => {
+  const valid = legacyAltPkg();
+  assert.equal(validatePackage(valid.p, valid.reg).package_admissible, true);                       // valid alternate-payment -> PASS
+  const fab = legacyAltPkg({ noRow: true });
+  assert.ok(validatePackage(fab.p, fab.reg).holds.includes('S7_CLEARING_TXN_NOT_FOUND'));            // fabricated/missing id
+  const dup = legacyAltPkg({ dupRow: true });
+  assert.ok(validatePackage(dup.p, dup.reg).fail_stops.includes('S7_CLEARING_TXN_AMBIGUOUS'));       // duplicate row
+  const dm = legacyAltPkg({ digest: 'f'.repeat(64) });
+  assert.ok(validatePackage(dm.p, dm.reg).holds.includes('S7_CLEARING_DIGEST_MISMATCH'));            // digest mismatch
+  const ws = legacyAltPkg({ payAccount: 'truist_checking' });                                        // "other" account == commitment source
+  assert.ok(validatePackage(ws.p, ws.reg).holds.includes('S7_CLEARING_SOURCE_MISMATCH'));            // wrong source (not actually "other")
+  // the existence guard is load-bearing for the legacy alt-payment lane
+  assert.equal(validatePackage(fab.p, { ...fab.reg, ignoreClearingTxnExistence: true }).package_admissible, true);
+});
+test('N-3: cleared_as_of exact-binds to the referenced row transaction_date (mismatch/missing/malformed all HOLD)', () => {
+  assert.equal(V('PF-142').package_admissible, true);                                 // exact date match
+  assert.ok(holds('PF-165').includes('S7_CLEARING_ASOF_ROW_MISMATCH'));               // J date != row date
+  assert.ok(holds('PF-166').includes('S7_CLEARING_ROW_DATE_MISSING'));                // row date missing
+  assert.ok(holds('PF-167').includes('S7_CLEARING_ROW_DATE_MALFORMED'));              // row date malformed
+});
+test('N-4: a clearing txn that is also an active pending deduction FAIL-STOPs (contradictory representation)', () => {
+  assert.ok(stops('PF-168').includes('S7_CLEARING_TXN_ALSO_DEDUCTED'));
+  assert.equal(V('PF-168').package_admissible, false);
+});
+test('N-5: S7_RESOLUTION_TYPE_UNDETERMINED has dedicated coverage; the guard is load-bearing', () => {
+  assert.ok(holds('PF-169').includes('S7_RESOLUTION_TYPE_UNDETERMINED'));
+  assert.equal(validatePackage(byId('PF-169').package, { ignoreResolutionUndetermined: true }).package_admissible, true);
 });
 
 // ── S-1 referential integrity ──

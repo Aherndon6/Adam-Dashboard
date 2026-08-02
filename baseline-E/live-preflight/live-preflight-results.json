@@ -359,9 +359,9 @@
     }
   ],
   "fixture_totals": {
-    "total": 140,
-    "expected_admissible": 22,
-    "expected_not_admissible": 118,
+    "total": 169,
+    "expected_admissible": 26,
+    "expected_not_admissible": 143,
     "mismatches": 0
   },
   "fixtures": [
@@ -1735,10 +1735,294 @@
       "package_admissible": true,
       "worst_disposition": "PASS",
       "reasons": []
+    },
+    {
+      "id": "PF-141",
+      "cls": "s7v31_cleared_release_no_j",
+      "expect_admissible": false,
+      "package_admissible": false,
+      "worst_disposition": "HOLD",
+      "reasons": [
+        "S7_RELEASE_NO_EVIDENCE"
+      ]
+    },
+    {
+      "id": "PF-142",
+      "cls": "s7v31_bank_cleared_au11_valid",
+      "expect_admissible": true,
+      "package_admissible": true,
+      "worst_disposition": "PASS",
+      "reasons": []
+    },
+    {
+      "id": "PF-143",
+      "cls": "s7v31_bank_cleared_direction_invalid",
+      "expect_admissible": false,
+      "package_admissible": false,
+      "worst_disposition": "HOLD",
+      "reasons": [
+        "S7_CLEARING_DIRECTION_INVALID"
+      ]
+    },
+    {
+      "id": "PF-144",
+      "cls": "s7v31_bank_cleared_state_invalid",
+      "expect_admissible": false,
+      "package_admissible": false,
+      "worst_disposition": "HOLD",
+      "reasons": [
+        "S7_CLEARING_STATE_INVALID"
+      ]
+    },
+    {
+      "id": "PF-145",
+      "cls": "s7v31_bank_cleared_asof_after_window",
+      "expect_admissible": false,
+      "package_admissible": false,
+      "worst_disposition": "HOLD",
+      "reasons": [
+        "S7_CLEARING_ASOF_OUT_OF_WINDOW"
+      ]
+    },
+    {
+      "id": "PF-146",
+      "cls": "s7v31_unsupported_evidence_source",
+      "expect_admissible": false,
+      "package_admissible": false,
+      "worst_disposition": "FAIL_STOP",
+      "reasons": [
+        "S7_UNSUPPORTED_EVIDENCE_SOURCE"
+      ]
+    },
+    {
+      "id": "PF-147",
+      "cls": "s7v31_cleared_voided_overlap",
+      "expect_admissible": false,
+      "package_admissible": false,
+      "worst_disposition": "FAIL_STOP",
+      "reasons": [
+        "S7_CONTRADICTORY_STATE"
+      ]
+    },
+    {
+      "id": "PF-148",
+      "cls": "s7v31_legacy_commitment_not_pinned",
+      "expect_admissible": false,
+      "package_admissible": false,
+      "worst_disposition": "FAIL_STOP",
+      "reasons": [
+        "S7_LEGACY_COMMITMENT_NOT_PINNED"
+      ]
+    },
+    {
+      "id": "PF-149",
+      "cls": "s7v31_legacy_unauthorized_adjudicator",
+      "expect_admissible": false,
+      "package_admissible": false,
+      "worst_disposition": "FAIL_STOP",
+      "reasons": [
+        "S7_ADJUDICATION_AUTHORITY_UNAUTHORIZED"
+      ]
+    },
+    {
+      "id": "PF-150",
+      "cls": "s7v31_legacy_not_in_registry",
+      "expect_admissible": false,
+      "package_admissible": false,
+      "worst_disposition": "FAIL_STOP",
+      "reasons": [
+        "S7_ADJUDICATION_NOT_IN_REGISTRY"
+      ]
+    },
+    {
+      "id": "PF-151",
+      "cls": "s7v31_cross_lane_txn_reuse",
+      "expect_admissible": false,
+      "package_admissible": false,
+      "worst_disposition": "FAIL_STOP",
+      "reasons": [
+        "S7_CLEARING_TXN_REUSE_CONFLICT"
+      ]
+    },
+    {
+      "id": "PF-152",
+      "cls": "s7v31_superseded_record_inert",
+      "expect_admissible": true,
+      "package_admissible": true,
+      "worst_disposition": "PASS",
+      "reasons": []
+    },
+    {
+      "id": "PF-153",
+      "cls": "s7v31_clearing_txn_not_found",
+      "expect_admissible": false,
+      "package_admissible": false,
+      "worst_disposition": "HOLD",
+      "reasons": [
+        "S7_CLEARING_TXN_NOT_FOUND"
+      ]
+    },
+    {
+      "id": "PF-154",
+      "cls": "s7v31_clearing_digest_missing",
+      "expect_admissible": false,
+      "package_admissible": false,
+      "worst_disposition": "HOLD",
+      "reasons": [
+        "S7_CLEARING_METADATA_MISSING"
+      ]
+    },
+    {
+      "id": "PF-155",
+      "cls": "s7v31_clearing_txn_duplicated",
+      "expect_admissible": false,
+      "package_admissible": false,
+      "worst_disposition": "FAIL_STOP",
+      "reasons": [
+        "P6_DUPLICATE_IDENTITY",
+        "S7_CLEARING_TXN_AMBIGUOUS"
+      ]
+    },
+    {
+      "id": "PF-156",
+      "cls": "s7v31_clearing_digest_mismatch",
+      "expect_admissible": false,
+      "package_admissible": false,
+      "worst_disposition": "HOLD",
+      "reasons": [
+        "S7_CLEARING_DIGEST_MISMATCH"
+      ]
+    },
+    {
+      "id": "PF-157",
+      "cls": "s7v31_clearing_amount_vs_row_mismatch",
+      "expect_admissible": false,
+      "package_admissible": false,
+      "worst_disposition": "HOLD",
+      "reasons": [
+        "S7_CLEARING_AMOUNT_MISMATCH"
+      ]
+    },
+    {
+      "id": "PF-158",
+      "cls": "s7v31_clearing_source_vs_row_mismatch",
+      "expect_admissible": false,
+      "package_admissible": false,
+      "worst_disposition": "HOLD",
+      "reasons": [
+        "S7_CLEARING_SOURCE_MISMATCH"
+      ]
+    },
+    {
+      "id": "PF-159",
+      "cls": "s7v31_clearing_asof_unparseable",
+      "expect_admissible": false,
+      "package_admissible": false,
+      "worst_disposition": "HOLD",
+      "reasons": [
+        "S7_CLEARING_ASOF_UNPARSEABLE"
+      ]
+    },
+    {
+      "id": "PF-160",
+      "cls": "s7v31_clearing_asof_before_window",
+      "expect_admissible": false,
+      "package_admissible": false,
+      "worst_disposition": "HOLD",
+      "reasons": [
+        "S7_CLEARING_ASOF_OUT_OF_WINDOW"
+      ]
+    },
+    {
+      "id": "PF-161",
+      "cls": "s7v31_clearing_asof_at_start",
+      "expect_admissible": true,
+      "package_admissible": true,
+      "worst_disposition": "PASS",
+      "reasons": []
+    },
+    {
+      "id": "PF-162",
+      "cls": "s7v31_clearing_asof_at_end",
+      "expect_admissible": true,
+      "package_admissible": true,
+      "worst_disposition": "PASS",
+      "reasons": []
+    },
+    {
+      "id": "PF-163",
+      "cls": "s7v31_clearing_asof_missing",
+      "expect_admissible": false,
+      "package_admissible": false,
+      "worst_disposition": "HOLD",
+      "reasons": [
+        "S7_CLEARING_METADATA_MISSING"
+      ]
+    },
+    {
+      "id": "PF-164",
+      "cls": "s7v31_clearing_txn_is_transfer_leg",
+      "expect_admissible": false,
+      "package_admissible": false,
+      "worst_disposition": "FAIL_STOP",
+      "reasons": [
+        "S7_CLEARING_TXN_IS_TRANSFER",
+        "XC_TRANSFER_ALSO_CLEARING"
+      ]
+    },
+    {
+      "id": "PF-165",
+      "cls": "s7v31_clearing_asof_row_date_mismatch",
+      "expect_admissible": false,
+      "package_admissible": false,
+      "worst_disposition": "HOLD",
+      "reasons": [
+        "S7_CLEARING_ASOF_ROW_MISMATCH"
+      ]
+    },
+    {
+      "id": "PF-166",
+      "cls": "s7v31_clearing_row_date_missing",
+      "expect_admissible": false,
+      "package_admissible": false,
+      "worst_disposition": "HOLD",
+      "reasons": [
+        "S7_CLEARING_ROW_DATE_MISSING"
+      ]
+    },
+    {
+      "id": "PF-167",
+      "cls": "s7v31_clearing_row_date_malformed",
+      "expect_admissible": false,
+      "package_admissible": false,
+      "worst_disposition": "HOLD",
+      "reasons": [
+        "S7_CLEARING_ROW_DATE_MALFORMED"
+      ]
+    },
+    {
+      "id": "PF-168",
+      "cls": "s7v31_clearing_txn_also_deducted",
+      "expect_admissible": false,
+      "package_admissible": false,
+      "worst_disposition": "FAIL_STOP",
+      "reasons": [
+        "S7_CLEARING_TXN_ALSO_DEDUCTED"
+      ]
+    },
+    {
+      "id": "PF-169",
+      "cls": "s7v31_resolution_type_undetermined",
+      "expect_admissible": false,
+      "package_admissible": false,
+      "worst_disposition": "HOLD",
+      "reasons": [
+        "S7_RESOLUTION_TYPE_UNDETERMINED"
+      ]
     }
   ],
   "mutation_totals": {
-    "total": 47,
+    "total": 64,
     "all_caught": true
   },
   "mutations": [
@@ -2113,6 +2397,142 @@
     {
       "id": "MUT-48_ignore_commitment_target_existence",
       "fixture": "PF-133",
+      "correct_admissible": false,
+      "mutated_admissible": true,
+      "diverged": true,
+      "deterministic": true
+    },
+    {
+      "id": "MUT-49_ignore_cleared_release",
+      "fixture": "PF-141",
+      "correct_admissible": false,
+      "mutated_admissible": true,
+      "diverged": true,
+      "deterministic": true
+    },
+    {
+      "id": "MUT-50_ignore_evidence_source_routing",
+      "fixture": "PF-146",
+      "correct_admissible": false,
+      "mutated_admissible": true,
+      "diverged": true,
+      "deterministic": true
+    },
+    {
+      "id": "MUT-51_ignore_cross_lane_reuse",
+      "fixture": "PF-151",
+      "correct_admissible": false,
+      "mutated_admissible": true,
+      "diverged": true,
+      "deterministic": true
+    },
+    {
+      "id": "MUT-52_ignore_legacy_authority",
+      "fixture": "PF-148",
+      "correct_admissible": false,
+      "mutated_admissible": true,
+      "diverged": true,
+      "deterministic": true
+    },
+    {
+      "id": "MUT-53_ignore_clearing_txn_existence",
+      "fixture": "PF-153",
+      "correct_admissible": false,
+      "mutated_admissible": true,
+      "diverged": true,
+      "deterministic": true
+    },
+    {
+      "id": "MUT-54_ignore_clearing_txn_digest",
+      "fixture": "PF-156",
+      "correct_admissible": false,
+      "mutated_admissible": true,
+      "diverged": true,
+      "deterministic": true
+    },
+    {
+      "id": "MUT-55_ignore_clearing_binding_direction",
+      "fixture": "PF-143",
+      "correct_admissible": false,
+      "mutated_admissible": true,
+      "diverged": true,
+      "deterministic": true
+    },
+    {
+      "id": "MUT-56_ignore_clearing_binding_state",
+      "fixture": "PF-144",
+      "correct_admissible": false,
+      "mutated_admissible": true,
+      "diverged": true,
+      "deterministic": true
+    },
+    {
+      "id": "MUT-57_ignore_clearing_asof_lower",
+      "fixture": "PF-160",
+      "correct_admissible": false,
+      "mutated_admissible": true,
+      "diverged": true,
+      "deterministic": true
+    },
+    {
+      "id": "MUT-58_ignore_clearing_asof_upper",
+      "fixture": "PF-145",
+      "correct_admissible": false,
+      "mutated_admissible": true,
+      "diverged": true,
+      "deterministic": true
+    },
+    {
+      "id": "MUT-59_ignore_legacy_unauthorized",
+      "fixture": "PF-149",
+      "correct_admissible": false,
+      "mutated_admissible": true,
+      "diverged": true,
+      "deterministic": true
+    },
+    {
+      "id": "MUT-60_ignore_legacy_unregistered",
+      "fixture": "PF-150",
+      "correct_admissible": false,
+      "mutated_admissible": true,
+      "diverged": true,
+      "deterministic": true
+    },
+    {
+      "id": "MUT-61_ignore_s7_transfer_leg",
+      "fixture": "PF-164",
+      "correct_admissible": false,
+      "mutated_admissible": true,
+      "diverged": true,
+      "deterministic": true
+    },
+    {
+      "id": "MUT-62_ignore_xc_jlane_transfer",
+      "fixture": "PF-164",
+      "correct_admissible": false,
+      "mutated_admissible": true,
+      "diverged": true,
+      "deterministic": true
+    },
+    {
+      "id": "MUT-63_ignore_clearing_date_binding",
+      "fixture": "PF-165",
+      "correct_admissible": false,
+      "mutated_admissible": true,
+      "diverged": true,
+      "deterministic": true
+    },
+    {
+      "id": "MUT-64_ignore_pending_clearing_conflict",
+      "fixture": "PF-168",
+      "correct_admissible": false,
+      "mutated_admissible": true,
+      "diverged": true,
+      "deterministic": true
+    },
+    {
+      "id": "MUT-65_ignore_resolution_undetermined",
+      "fixture": "PF-169",
       "correct_admissible": false,
       "mutated_admissible": true,
       "diverged": true,

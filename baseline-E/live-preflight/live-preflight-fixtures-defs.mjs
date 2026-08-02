@@ -1,7 +1,53 @@
 // baseline-E/live-preflight/live-preflight-fixtures-defs.mjs
 // Fixture DEFINITIONS (mutate functions) for the hardened preflight. Kept separate from the golden factory to keep
 // each file readable. Every fixture clones the golden and applies its mutate; stamping happens in the index module.
+import { digest } from './live-preflight-contract.mjs';
 const AS_OF = '2026-07-30T12:00:00.000Z';
+const OWNER = '9f6c9e09-209d-4533-8cd9-9143e8d570fc';
+const RENT = '2026mw6_rent_2026_07_01';                       // golden commitment[0] id
+const PIN = '2026mw4_rent_tiffany_dye_2026_07_01';            // a PINNED_LEGACY_COMMITMENT id
+const setCleared = (p, i = 0) => { p.cash_commitment_evidence[i].status = 'cleared'; p.cash_commitment_evidence[i].resolution_type = 'cleared'; };
+
+// S-7 v3.1: Family-B digest of a Register row (over its content; the P-4 per-record `digest` is excluded by the control
+// and is absent at build time). F-1: a bank_cleared J's cleared_transaction_digest must equal this over the bound row.
+const clrDigest = (row) => digest(row);
+// Add a Register clearing row (debit / negative amount by default) and return it so a J can bind its digest.
+function clearingRow(p, txnId, amount, opts) {
+  const row = { txn_id: txnId, account_key: opts.account || 'truist_checking', amount_cents: opts.amount_cents !== undefined ? opts.amount_cents : -amount, cleared: opts.cleared !== undefined ? opts.cleared : true, is_transfer_leg: !!opts.transferLeg, transfer_pair_id: opts.transferLeg ? (opts.transfer_group_id || 'TPCLR') : null, transfer_group_id: opts.transferLeg ? (opts.transfer_group_id || 'TPCLR') : undefined, represented_as_deduction: false, transaction_date: opts.rowDate !== undefined ? opts.rowDate : '2026-07-30', as_of_utc: AS_OF };
+  if (row.transfer_group_id === undefined) delete row.transfer_group_id;
+  p.register_transaction_evidence.push(row);
+  return row;
+}
+// Push a bank_cleared terminal J bound (F-1) to a Register clearing row. `source` selects au11 (default) or
+// legacy_adjudication (adds disposition + owner + a correct record_digest). opts toggles each escape under test.
+function pushClearing(p, cid, amount, opts = {}) {
+  const txnId = opts.txn || ('ctx_' + cid);
+  const row = opts.noRow ? null : clearingRow(p, txnId, amount, opts);
+  const j = {
+    commitment_expected_item_id: cid, evidence_source: opts.source || 'au11', resolution_type: 'cleared',
+    resolution_evidence: 'synthetic-bank-clearing', resolution_evidence_type: 'bank_cleared',
+    cleared_transaction_id: txnId, cleared_amount_cents: amount, cleared_source_account: 'truist_checking',
+    cleared_state: 'cleared', direction: 'debit', amount_cents: amount, source_account: 'truist_checking', as_of_utc: AS_OF,
+  };
+  if (!opts.noAsof) j.cleared_as_of = opts.cleared_as_of !== undefined ? opts.cleared_as_of : AS_OF;
+  let ctd;
+  if (opts.noDigest) ctd = undefined;
+  else if (opts.digest !== undefined) ctd = opts.digest;               // explicit (e.g. a wrong hash)
+  else if (opts.digestOverRow) ctd = clrDigest(opts.digestOverRow);      // digest computed over a DIFFERENT row state (altered-row)
+  else if (row) ctd = clrDigest(row);
+  else ctd = 'x'.repeat(64);
+  if (ctd !== undefined) j.cleared_transaction_digest = ctd;
+  if ((opts.source || 'au11') === 'legacy_adjudication') {
+    j.disposition = opts.disposition || 'matched_bank_clearing';
+    j.adjudicated_by_subject_id = opts.owner || OWNER;
+    if (opts.superseded) j.superseded = true;
+    if (opts.supersedes) j.supersedes = opts.supersedes;
+    if (opts.record_digest !== undefined) j.record_digest = opts.record_digest;
+    else { const { record_digest, ...rest } = j; j.record_digest = digest(rest); }
+  }
+  p.terminal_resolution_evidence.push(j);
+  return j;
+}
 
 // verified-empty attestation for an emptied section
 const attEmpty = (ns) => ({ status: 'verified_empty', attested: true, rows_visible: true, rows_returned: 0, zero_rows_verified: true, query_id: 'q_' + ns, schema_version: 'step8-schema-v1', extraction_ts: AS_OF, source_namespace: ns, row_count: 0 });
@@ -220,4 +266,70 @@ export const DEFS = [
   { id: 'PF-139', cls: 'obs5_target_only_in_unknown_section', expect_admissible: false, mutate: (p) => { p.pending_or_uncleared_evidence = [pend('pa')]; p.some_unknown_section = [{ economic_event_id: 'GHOSTSEC' }]; p.economic_linkages = [link('pending', 'pa', 'event', 'GHOSTSEC')]; } },
   // valid source + valid authoritative (adjustment-source, established event) target → admissible.
   { id: 'PF-140', cls: 'obs5_valid_source_and_authoritative_target', expect_admissible: true, mutate: (p) => { p.baseline_e_adjustments = [adj('a1')]; p.pending_or_uncleared_evidence = [estab('EB', 'eb')]; p.economic_linkages = [link('adjustment', 'a1', 'event', 'EB')]; } },
+
+  // ── S-7 v3.1 durable-clearing lane (design s7-rev-8.3-bankcleared; G1-G10 + Mode-2 F-1..F-4) ─────────────
+  // G1: a `cleared` commitment with no reflected/resolved week and no J is RELEASED and HOLDs (was silently skipped -> capacity bypass).
+  { id: 'PF-141', cls: 's7v31_cleared_release_no_j', expect_admissible: false, mutate: (p) => { setCleared(p); } },
+  // F-1: cleared commitment + a valid au11 clearing bound to a Register row -> admissible (durable binding satisfied).
+  { id: 'PF-142', cls: 's7v31_bank_cleared_au11_valid', expect_admissible: true, mutate: (p) => { setCleared(p); pushClearing(p, RENT, 200000); } },
+  // F-1: referenced Register txn is a CREDIT (positive amount) -> direction invalid (validated against the ROW, not the J field).
+  { id: 'PF-143', cls: 's7v31_bank_cleared_direction_invalid', expect_admissible: false, mutate: (p) => { setCleared(p); pushClearing(p, RENT, 200000, { amount_cents: 200000 }); } },
+  // F-1: referenced Register row is NOT cleared -> state invalid.
+  { id: 'PF-144', cls: 's7v31_bank_cleared_state_invalid', expect_admissible: false, mutate: (p) => { setCleared(p); pushClearing(p, RENT, 200000, { cleared: false }); } },
+  // F-2: bank_cleared cleared_as_of AFTER the extraction-window end -> HOLD (row date matches so the N-3 binding is not the cause).
+  { id: 'PF-145', cls: 's7v31_bank_cleared_asof_after_window', expect_admissible: false, mutate: (p) => { setCleared(p); pushClearing(p, RENT, 200000, { cleared_as_of: '2026-08-15T12:00:00.000Z', rowDate: '2026-08-15' }); } },
+  // G2: explicit unknown evidence_source FAIL-STOPs. The J targets a NON-released commitment, so with routing disabled it is admissible (clean mutation flip).
+  { id: 'PF-146', cls: 's7v31_unsupported_evidence_source', expect_admissible: false, mutate: (p) => { p.terminal_resolution_evidence.push({ commitment_expected_item_id: '2026mw6_bkx_2026_07_01', evidence_source: 'bogus', resolution_type: 'cleared', resolution_evidence: 'x', resolution_evidence_type: 'bank_cleared', resolution_evidence_id: 're_bogus', amount_cents: 70090, source_account: 'truist_checking', as_of_utc: AS_OF }); } },
+  // H2: a NEW cleared + status=voided overlap FAIL-STOPs (committed voided+status combos stay a HOLD, cf. PF-31).
+  { id: 'PF-147', cls: 's7v31_cleared_voided_overlap', expect_admissible: false, mutate: (p) => { p.cash_commitment_evidence[0].status = 'voided'; p.cash_commitment_evidence[0].resolution_type = 'cleared'; } },
+  // legacy boundary: a legacy record for a NON-pinned commitment FAIL-STOPs (register row present so MUT-52 flips via Phase 1).
+  { id: 'PF-148', cls: 's7v31_legacy_commitment_not_pinned', expect_admissible: false, mutate: (p) => { setCleared(p); pushClearing(p, RENT, 200000, { source: 'legacy_adjudication', txn: 'ltx_rent' }); } },
+  // authority: a pinned legacy record with a well-formed but UNAUTHORIZED adjudicator UUID FAIL-STOPs.
+  { id: 'PF-149', cls: 's7v31_legacy_unauthorized_adjudicator', expect_admissible: false, mutate: (p) => { p.cash_commitment_evidence[0].expected_item_id = PIN; setCleared(p); pushClearing(p, PIN, 200000, { source: 'legacy_adjudication', txn: 'ltx_pin', owner: '11111111-1111-4111-8111-111111111111' }); } },
+  // registry: pre-freeze the accepted registry is EMPTY, so even a correctly-formed pinned legacy record fails closed.
+  { id: 'PF-150', cls: 's7v31_legacy_not_in_registry', expect_admissible: false, mutate: (p) => { p.cash_commitment_evidence[0].expected_item_id = PIN; setCleared(p); pushClearing(p, PIN, 200000, { source: 'legacy_adjudication', txn: 'ltx_pin' }); } },
+  // G5/G8: one clearing txn bound to two commitments across the DB lane (bkx) and the au11 J lane (rent) FAIL-STOPs.
+  { id: 'PF-151', cls: 's7v31_cross_lane_txn_reuse', expect_admissible: false, mutate: (p) => { p.cash_commitment_evidence[1].cleared_transaction_id = 'shared_tx'; p.cash_commitment_evidence[1].cleared_amount_cents = 70090; p.cash_commitment_evidence[1].cleared_source_account = 'truist_checking'; setCleared(p); pushClearing(p, RENT, 200000, { txn: 'shared_tx' }); } },
+  // G9/H3: a superseded legacy record invalid three ways is inert audit; the active au11 J admits.
+  { id: 'PF-152', cls: 's7v31_superseded_record_inert', expect_admissible: true, mutate: (p) => { setCleared(p); pushClearing(p, RENT, 200000); p.terminal_resolution_evidence.push({ commitment_expected_item_id: RENT, evidence_source: 'legacy_adjudication', superseded: true, disposition: 'garbage_not_in_vocab', adjudicated_by_subject_id: 'not-a-uuid', record_digest: 'deadbeef', resolution_evidence: 'stale', resolution_evidence_type: 'bank_cleared', amount_cents: 200000, source_account: 'truist_checking', as_of_utc: AS_OF }); } },
+
+  // ── Mode-2 F-1: durable clearing transaction binding ────────────────────────────────────────────────────
+  // referenced transaction ABSENT -> HOLD (a self-consistent but nonexistent txn id can never PASS).
+  { id: 'PF-153', cls: 's7v31_clearing_txn_not_found', expect_admissible: false, mutate: (p) => { setCleared(p); pushClearing(p, RENT, 200000, { noRow: true }); } },
+  // supplied cleared_transaction_digest MISSING -> HOLD.
+  { id: 'PF-154', cls: 's7v31_clearing_digest_missing', expect_admissible: false, mutate: (p) => { setCleared(p); pushClearing(p, RENT, 200000, { noDigest: true }); } },
+  // referenced transaction DUPLICATED in Register evidence -> FAIL-STOP (P-6 identity + S-7 defense-in-depth).
+  { id: 'PF-155', cls: 's7v31_clearing_txn_duplicated', expect_admissible: false, mutate: (p) => { setCleared(p); pushClearing(p, RENT, 200000, { txn: 'dup_tx' }); p.register_transaction_evidence.push({ txn_id: 'dup_tx', account_key: 'truist_checking', amount_cents: -200000, cleared: true, is_transfer_leg: false, transfer_pair_id: null, represented_as_deduction: false, transaction_date: '2026-07-30', as_of_utc: AS_OF }); } },
+  // supplied digest MISMATCHED / Register row altered after the digest was created -> HOLD (digest recomputed from the row).
+  { id: 'PF-156', cls: 's7v31_clearing_digest_mismatch', expect_admissible: false, mutate: (p) => { setCleared(p); pushClearing(p, RENT, 200000, { digestOverRow: { txn_id: 'ctx_' + RENT, account_key: 'truist_checking', amount_cents: -999999, cleared: true, is_transfer_leg: false, transfer_pair_id: null, represented_as_deduction: false, transaction_date: '2026-07-30', as_of_utc: AS_OF } }); } },
+  // wrong amount vs the referenced Register row despite a self-reported match -> HOLD (row is authoritative).
+  { id: 'PF-157', cls: 's7v31_clearing_amount_vs_row_mismatch', expect_admissible: false, mutate: (p) => { setCleared(p); pushClearing(p, RENT, 200000, { amount_cents: -300000 }); } },
+  // wrong source account vs the referenced Register row -> HOLD.
+  { id: 'PF-158', cls: 's7v31_clearing_source_vs_row_mismatch', expect_admissible: false, mutate: (p) => { setCleared(p); pushClearing(p, RENT, 200000, { account: 'vio_tax' }); } },
+
+  // ── Mode-2 F-2: clearing as-of parse + both bounds ──────────────────────────────────────────────────────
+  // unparseable cleared_as_of -> HOLD (fail closed).
+  { id: 'PF-159', cls: 's7v31_clearing_asof_unparseable', expect_admissible: false, mutate: (p) => { setCleared(p); pushClearing(p, RENT, 200000, { cleared_as_of: 'not-a-timestamp' }); } },
+  // before the lower bound (extraction_window.start) -> HOLD (row date matches so the N-3 binding is not the cause).
+  { id: 'PF-160', cls: 's7v31_clearing_asof_before_window', expect_admissible: false, mutate: (p) => { setCleared(p); pushClearing(p, RENT, 200000, { cleared_as_of: '2026-07-29T12:00:00.000Z', rowDate: '2026-07-29' }); } },
+  // exactly at the lower bound (window.start) -> PASS (inclusive).
+  { id: 'PF-161', cls: 's7v31_clearing_asof_at_start', expect_admissible: true, mutate: (p) => { setCleared(p); pushClearing(p, RENT, 200000, { cleared_as_of: '2026-07-30T00:00:00.000Z' }); } },
+  // exactly at the upper bound (window.end) -> PASS (inclusive).
+  { id: 'PF-162', cls: 's7v31_clearing_asof_at_end', expect_admissible: true, mutate: (p) => { setCleared(p); pushClearing(p, RENT, 200000, { cleared_as_of: '2026-07-30T23:59:59.999Z' }); } },
+  // missing cleared_as_of -> HOLD (committed metadata check catches the absent field, fail closed).
+  { id: 'PF-163', cls: 's7v31_clearing_asof_missing', expect_admissible: false, mutate: (p) => { setCleared(p); pushClearing(p, RENT, 200000, { noAsof: true }); } },
+
+  // ── Mode-2 N-1..N-5 ─────────────────────────────────────────────────────────────────────────────────────
+  // N-1: an au11 bank_cleared J bound to a TRANSFER LEG (of a valid P-8 pair) is inadmissible (S-7 STOP + XC J-lane STOP).
+  { id: 'PF-164', cls: 's7v31_clearing_txn_is_transfer_leg', expect_admissible: false, mutate: (p) => { setCleared(p); const leg1 = { txn_id: 'clr_leg1', account_key: 'truist_checking', amount_cents: -200000, cleared: true, is_transfer_leg: true, transfer_group_id: 'TPCLR', transfer_pair_id: 'TPCLR', represented_as_deduction: false, transaction_date: '2026-07-30', as_of_utc: AS_OF }; const leg2 = { txn_id: 'clr_leg2', account_key: 'amex_savings', amount_cents: 200000, cleared: true, is_transfer_leg: true, transfer_group_id: 'TPCLR', transfer_pair_id: 'TPCLR', represented_as_deduction: false, transaction_date: '2026-07-30', as_of_utc: AS_OF }; p.register_transaction_evidence.push(leg1, leg2); p.terminal_resolution_evidence.push({ commitment_expected_item_id: RENT, evidence_source: 'au11', resolution_type: 'cleared', resolution_evidence: 'x', resolution_evidence_type: 'bank_cleared', cleared_transaction_id: 'clr_leg1', cleared_amount_cents: 200000, cleared_source_account: 'truist_checking', cleared_state: 'cleared', cleared_as_of: AS_OF, direction: 'debit', amount_cents: 200000, source_account: 'truist_checking', as_of_utc: AS_OF, cleared_transaction_digest: clrDigest(leg1) }); } },
+  // N-3: cleared_as_of calendar date must EXACTLY equal the referenced Register row's transaction_date.
+  { id: 'PF-165', cls: 's7v31_clearing_asof_row_date_mismatch', expect_admissible: false, mutate: (p) => { setCleared(p); pushClearing(p, RENT, 200000, { rowDate: '2026-07-29' }); } }, // cleared_as_of date 2026-07-30 != row 2026-07-29
+  // N-3: referenced Register row has NO authoritative transaction_date -> HOLD.
+  { id: 'PF-166', cls: 's7v31_clearing_row_date_missing', expect_admissible: false, mutate: (p) => { setCleared(p); pushClearing(p, RENT, 200000, { rowDate: null }); } },
+  // N-3: referenced Register row transaction_date is malformed -> HOLD.
+  { id: 'PF-167', cls: 's7v31_clearing_row_date_malformed', expect_admissible: false, mutate: (p) => { setCleared(p); pushClearing(p, RENT, 200000, { rowDate: 'bad-date' }); } },
+  // N-4: a durable clearing txn that is ALSO an active pending deduction is contradictory -> FAIL-STOP.
+  { id: 'PF-168', cls: 's7v31_clearing_txn_also_deducted', expect_admissible: false, mutate: (p) => { setCleared(p); pushClearing(p, RENT, 200000, { txn: 'pc_tx' }); p.pending_or_uncleared_evidence = [{ txn_id: 'pc_tx', account_key: 'truist_checking', amount_cents: -200000, direction: 'debit', reflected_in_authoritative: false, represented_as_deduction: true, economic_event_id: 'pc_evt', as_of_utc: AS_OF }]; } },
+  // N-5: a reflected release with resolution_type=null and an active J is UNDETERMINED -> HOLD.
+  { id: 'PF-169', cls: 's7v31_resolution_type_undetermined', expect_admissible: false, mutate: (p) => { p.cash_commitment_evidence[0].reflected_model_week = 7; p.terminal_resolution_evidence.push({ commitment_expected_item_id: RENT, resolution_evidence: 'x', resolution_evidence_type: 'void_cancellation', amount_cents: 200000, source_account: 'truist_checking', as_of_utc: AS_OF }); } },
 ];
