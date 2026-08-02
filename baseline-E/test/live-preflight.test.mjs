@@ -12,9 +12,9 @@ const V = (id, mut) => validatePackage(byId(id).package, mut);
 const holds = (id) => V(id).holds;
 const stops = (id) => V(id).fail_stops;
 
-test('169 synthetic PF-NN fixtures, unique ids', () => {
-  assert.equal(FIXTURES.length, 169);
-  assert.equal(new Set(FIXTURES.map((f) => f.id)).size, 169);
+test('175 synthetic PF-NN fixtures, unique ids', () => {
+  assert.equal(FIXTURES.length, 175);
+  assert.equal(new Set(FIXTURES.map((f) => f.id)).size, 175);
   for (const f of FIXTURES) assert.match(f.id, /^PF-\d{2,3}$/);
 });
 
@@ -209,6 +209,40 @@ test('N-4: a clearing txn that is also an active pending deduction FAIL-STOPs (c
 test('N-5: S7_RESOLUTION_TYPE_UNDETERMINED has dedicated coverage; the guard is load-bearing', () => {
   assert.ok(holds('PF-169').includes('S7_RESOLUTION_TYPE_UNDETERMINED'));
   assert.equal(validatePackage(byId('PF-169').package, { ignoreResolutionUndetermined: true }).package_admissible, true);
+});
+
+// ── Obs-B: pinned-legacy commitments cannot bypass the registry via an untagged committed-class record ──
+test('Obs-B: an active record on a pinned legacy commitment MUST be legacy_adjudication (absent/null/blank/au11/other STOP)', () => {
+  for (const id of ['PF-170', 'PF-171', 'PF-172', 'PF-173', 'PF-174']) {
+    assert.ok(stops(id).includes('S7_PINNED_LEGACY_SOURCE_REQUIRED'), `${id} must STOP with the pinned-legacy code`);
+    assert.equal(V(id).package_admissible, false);
+  }
+  // the guard is load-bearing: with it disabled the absent-source valid clearing improperly PASSES through committed behavior
+  assert.equal(validatePackage(byId('PF-170').package, { ignorePinnedLegacySource: true }).package_admissible, true);
+});
+test('Obs-B: G2 preserved — a NON-pinned commitment with an absent-source valid clearing retains committed behavior (PASS)', () => {
+  assert.equal(V('PF-175').package_admissible, true);
+  // and the committed non-pinned S-7 fixtures are untouched
+  assert.equal(V('PF-31').package_admissible, false);
+  for (const id of ['PF-41', 'PF-42', 'PF-43', 'PF-44', 'PF-45', 'PF-46', 'PF-47']) assert.ok(V(id) !== undefined);
+  assert.equal(V('PF-43').package_admissible, true);
+});
+test('Obs-B: a pinned commitment can only PASS via legacy_adjudication + accepted registry + owner + digest (registry unavoidable)', () => {
+  const ok = legacyPkg([{}]);
+  assert.equal(validatePackage(ok.p).package_admissible, false);                                   // empty frozen registry -> fail-closed
+  assert.ok(validatePackage(ok.p).fail_stops.includes('S7_ADJUDICATION_NOT_IN_REGISTRY'));
+  assert.equal(validatePackage(ok.p, { testAcceptedRegistry: ok.rds }).package_admissible, true);   // accepted -> PASS
+});
+test('Obs-B: an invalid UNTAGGED superseded record does not block a valid active legacy record (inert per supersession rules)', () => {
+  const p = golden();
+  Object.assign(p.cash_commitment_evidence[0], { expected_item_id: PIN, status: 'cleared', resolution_type: 'cleared' });
+  const row = { txn_id: 'ltxA', account_key: 'truist_checking', amount_cents: -200000, cleared: true, is_transfer_leg: false, transfer_pair_id: null, represented_as_deduction: false, transaction_date: '2026-07-30', as_of_utc: AS };
+  p.register_transaction_evidence.push(row);
+  const active = { commitment_expected_item_id: PIN, evidence_source: 'legacy_adjudication', disposition: 'matched_bank_clearing', adjudicated_by_subject_id: OWNER, resolution_type: 'cleared', resolution_evidence: 'x', resolution_evidence_type: 'bank_cleared', cleared_transaction_id: 'ltxA', cleared_amount_cents: 200000, cleared_source_account: 'truist_checking', cleared_state: 'cleared', cleared_as_of: AS, direction: 'debit', amount_cents: 200000, source_account: 'truist_checking', as_of_utc: AS, cleared_transaction_digest: digest(row) };
+  { const { record_digest, ...rest } = active; active.record_digest = digest(rest); }
+  const superseded = { commitment_expected_item_id: PIN, superseded: true, resolution_evidence: 'stale', resolution_evidence_type: 'bank_cleared', amount_cents: 200000, source_account: 'truist_checking', as_of_utc: AS }; // untagged, inert
+  p.terminal_resolution_evidence.push(active, superseded); _stamp(p);
+  assert.equal(validatePackage(p, { testAcceptedRegistry: [active.record_digest] }).package_admissible, true);
 });
 
 // ── S-1 referential integrity ──

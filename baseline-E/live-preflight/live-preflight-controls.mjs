@@ -434,6 +434,11 @@ export function S7_reserveRelease(pkg, mut) {
   const commitIds = new Set(commits.map((c) => c.expected_item_id));
 
   // ── PHASE 0 — global FAIL-STOP scans (evaluated before any per-commitment HOLD) ──
+  // Obs-B: an ACTIVE terminal record on a PINNED legacy commitment MUST route through the legacy-adjudication lane. An
+  //   absent / null / blank / au11 / other source can NEVER fall through to committed S-7 behavior and thereby bypass
+  //   the pinned-owner, accepted-registry and digest-recompute gates. Evaluated FIRST (before the general source-routing
+  //   check) so a pinned commitment gets this dedicated code; SUPERSEDED records are inert (only the active record is gated).
+  if (!mut.ignorePinnedLegacySource) for (const j of js) if (j.superseded !== true && PINNED_LEGACY_COMMITMENTS.includes(j.commitment_expected_item_id) && j.evidence_source !== 'legacy_adjudication') return STOP('S-7', 'S7_PINNED_LEGACY_SOURCE_REQUIRED', j.commitment_expected_item_id);
   // G2: evidence_source is a closed set. Absent -> committed path. Any explicit value outside the set (incl null) STOPs.
   if (!mut.ignoreEvidenceSourceRouting) for (const j of js) if ('evidence_source' in j && !SUPPORTED_EVIDENCE_SOURCES.includes(j.evidence_source)) return STOP('S-7', 'S7_UNSUPPORTED_EVIDENCE_SOURCE', String(j.evidence_source));
   // H2: only the NEW cleared+status=voided overlap is a Phase-0 FAIL-STOP (committed voided+status combos stay a Phase-1

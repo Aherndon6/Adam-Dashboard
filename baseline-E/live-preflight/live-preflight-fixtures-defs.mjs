@@ -23,12 +23,14 @@ function clearingRow(p, txnId, amount, opts) {
 function pushClearing(p, cid, amount, opts = {}) {
   const txnId = opts.txn || ('ctx_' + cid);
   const row = opts.noRow ? null : clearingRow(p, txnId, amount, opts);
+  const src = ('source' in opts) ? opts.source : 'au11';   // may be null/'' /'au11'/'legacy_adjudication'/unknown
   const j = {
-    commitment_expected_item_id: cid, evidence_source: opts.source || 'au11', resolution_type: 'cleared',
+    commitment_expected_item_id: cid, resolution_type: 'cleared',
     resolution_evidence: 'synthetic-bank-clearing', resolution_evidence_type: 'bank_cleared',
     cleared_transaction_id: txnId, cleared_amount_cents: amount, cleared_source_account: 'truist_checking',
     cleared_state: 'cleared', direction: 'debit', amount_cents: amount, source_account: 'truist_checking', as_of_utc: AS_OF,
   };
+  if (!opts.noSource) j.evidence_source = src;   // omit entirely when noSource (absent evidence_source)
   if (!opts.noAsof) j.cleared_as_of = opts.cleared_as_of !== undefined ? opts.cleared_as_of : AS_OF;
   let ctd;
   if (opts.noDigest) ctd = undefined;
@@ -37,7 +39,7 @@ function pushClearing(p, cid, amount, opts = {}) {
   else if (row) ctd = clrDigest(row);
   else ctd = 'x'.repeat(64);
   if (ctd !== undefined) j.cleared_transaction_digest = ctd;
-  if ((opts.source || 'au11') === 'legacy_adjudication') {
+  if (src === 'legacy_adjudication') {
     j.disposition = opts.disposition || 'matched_bank_clearing';
     j.adjudicated_by_subject_id = opts.owner || OWNER;
     if (opts.superseded) j.superseded = true;
@@ -332,4 +334,19 @@ export const DEFS = [
   { id: 'PF-168', cls: 's7v31_clearing_txn_also_deducted', expect_admissible: false, mutate: (p) => { setCleared(p); pushClearing(p, RENT, 200000, { txn: 'pc_tx' }); p.pending_or_uncleared_evidence = [{ txn_id: 'pc_tx', account_key: 'truist_checking', amount_cents: -200000, direction: 'debit', reflected_in_authoritative: false, represented_as_deduction: true, economic_event_id: 'pc_evt', as_of_utc: AS_OF }]; } },
   // N-5: a reflected release with resolution_type=null and an active J is UNDETERMINED -> HOLD.
   { id: 'PF-169', cls: 's7v31_resolution_type_undetermined', expect_admissible: false, mutate: (p) => { p.cash_commitment_evidence[0].reflected_model_week = 7; p.terminal_resolution_evidence.push({ commitment_expected_item_id: RENT, resolution_evidence: 'x', resolution_evidence_type: 'void_cancellation', amount_cents: 200000, source_account: 'truist_checking', as_of_utc: AS_OF }); } },
+
+  // ── Obs-B: pinned-legacy commitments must route through the legacy-adjudication lane (no committed-class bypass) ──
+  // ABSENT source on a pinned commitment, with an OTHERWISE-VALID committed-class clearing -> STOP (this is the closed bypass;
+  //   with the guard disabled it would improperly PASS through committed behavior -> the executable mutation).
+  { id: 'PF-170', cls: 'obsB_pinned_absent_source', expect_admissible: false, mutate: (p) => { p.cash_commitment_evidence[0].expected_item_id = PIN; setCleared(p); pushClearing(p, PIN, 200000, { txn: 'ctx_pin', noSource: true }); } },
+  // null source on a pinned commitment -> STOP (dedicated pinned code, evaluated before the general routing check).
+  { id: 'PF-171', cls: 'obsB_pinned_null_source', expect_admissible: false, mutate: (p) => { p.cash_commitment_evidence[0].expected_item_id = PIN; setCleared(p); pushClearing(p, PIN, 200000, { txn: 'ctx_pin', source: null }); } },
+  // blank source on a pinned commitment -> STOP.
+  { id: 'PF-172', cls: 'obsB_pinned_blank_source', expect_admissible: false, mutate: (p) => { p.cash_commitment_evidence[0].expected_item_id = PIN; setCleared(p); pushClearing(p, PIN, 200000, { txn: 'ctx_pin', source: '' }); } },
+  // au11 source on a pinned (pre-AU-11) commitment -> STOP (even a well-formed au11 clearing cannot attribute the six).
+  { id: 'PF-173', cls: 'obsB_pinned_au11_source', expect_admissible: false, mutate: (p) => { p.cash_commitment_evidence[0].expected_item_id = PIN; setCleared(p); pushClearing(p, PIN, 200000, { txn: 'ctx_pin', source: 'au11' }); } },
+  // any other non-legacy source on a pinned commitment -> STOP (pinned code, not the generic unsupported-source code).
+  { id: 'PF-174', cls: 'obsB_pinned_unknown_source', expect_admissible: false, mutate: (p) => { p.cash_commitment_evidence[0].expected_item_id = PIN; setCleared(p); pushClearing(p, PIN, 200000, { txn: 'ctx_pin', source: 'made_up' }); } },
+  // G2 preserved: a NON-pinned commitment with an absent-source valid clearing retains committed behavior -> PASS.
+  { id: 'PF-175', cls: 'obsB_nonpinned_absent_source_committed', expect_admissible: true, mutate: (p) => { setCleared(p); pushClearing(p, RENT, 200000, { noSource: true }); } },
 ];

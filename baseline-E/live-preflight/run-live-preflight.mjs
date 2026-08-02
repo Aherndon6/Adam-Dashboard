@@ -84,6 +84,7 @@ export const MUTATIONS = [
   ['MUT-63_ignore_clearing_date_binding', 'PF-165', { ignoreClearingDateBinding: true }],     // N-3 exact row-date binding
   ['MUT-64_ignore_pending_clearing_conflict', 'PF-168', { ignorePendingClearingConflict: true }], // N-4 pending-and-clearing contradiction
   ['MUT-65_ignore_resolution_undetermined', 'PF-169', { ignoreResolutionUndetermined: true }], // N-5 null-resolution UNDETERMINED
+  ['MUT-66_ignore_pinned_legacy_source', 'PF-170', { ignorePinnedLegacySource: true }],         // Obs-B: pinned-legacy source gate is load-bearing (untagged committed-class bypass)
 ];
 
 function run() {

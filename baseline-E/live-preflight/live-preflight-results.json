@@ -359,9 +359,9 @@
     }
   ],
   "fixture_totals": {
-    "total": 169,
-    "expected_admissible": 26,
-    "expected_not_admissible": 143,
+    "total": 175,
+    "expected_admissible": 27,
+    "expected_not_admissible": 148,
     "mismatches": 0
   },
   "fixtures": [
@@ -2019,10 +2019,68 @@
       "reasons": [
         "S7_RESOLUTION_TYPE_UNDETERMINED"
       ]
+    },
+    {
+      "id": "PF-170",
+      "cls": "obsB_pinned_absent_source",
+      "expect_admissible": false,
+      "package_admissible": false,
+      "worst_disposition": "FAIL_STOP",
+      "reasons": [
+        "S7_PINNED_LEGACY_SOURCE_REQUIRED"
+      ]
+    },
+    {
+      "id": "PF-171",
+      "cls": "obsB_pinned_null_source",
+      "expect_admissible": false,
+      "package_admissible": false,
+      "worst_disposition": "FAIL_STOP",
+      "reasons": [
+        "S7_PINNED_LEGACY_SOURCE_REQUIRED"
+      ]
+    },
+    {
+      "id": "PF-172",
+      "cls": "obsB_pinned_blank_source",
+      "expect_admissible": false,
+      "package_admissible": false,
+      "worst_disposition": "FAIL_STOP",
+      "reasons": [
+        "S7_PINNED_LEGACY_SOURCE_REQUIRED"
+      ]
+    },
+    {
+      "id": "PF-173",
+      "cls": "obsB_pinned_au11_source",
+      "expect_admissible": false,
+      "package_admissible": false,
+      "worst_disposition": "FAIL_STOP",
+      "reasons": [
+        "S7_PINNED_LEGACY_SOURCE_REQUIRED"
+      ]
+    },
+    {
+      "id": "PF-174",
+      "cls": "obsB_pinned_unknown_source",
+      "expect_admissible": false,
+      "package_admissible": false,
+      "worst_disposition": "FAIL_STOP",
+      "reasons": [
+        "S7_PINNED_LEGACY_SOURCE_REQUIRED"
+      ]
+    },
+    {
+      "id": "PF-175",
+      "cls": "obsB_nonpinned_absent_source_committed",
+      "expect_admissible": true,
+      "package_admissible": true,
+      "worst_disposition": "PASS",
+      "reasons": []
     }
   ],
   "mutation_totals": {
-    "total": 64,
+    "total": 65,
     "all_caught": true
   },
   "mutations": [
@@ -2533,6 +2591,14 @@
     {
       "id": "MUT-65_ignore_resolution_undetermined",
       "fixture": "PF-169",
+      "correct_admissible": false,
+      "mutated_admissible": true,
+      "diverged": true,
+      "deterministic": true
+    },
+    {
+      "id": "MUT-66_ignore_pinned_legacy_source",
+      "fixture": "PF-170",
       "correct_admissible": false,
       "mutated_admissible": true,
       "diverged": true,
