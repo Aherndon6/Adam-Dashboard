@@ -75,7 +75,14 @@ export const LEGACY_DISPOSITION_VOCAB = Object.freeze(['matched_bank_clearing', 
 // Frozen accepted-record-digest registry. EMPTY until the six records are created + independently reviewed + owner-
 // ratified (owner decision (h), migration step 11). Pre-freeze this is empty, so EVERY legacy_adjudication record
 // FAIL-STOPs (S7_ADJUDICATION_NOT_IN_REGISTRY) — the correct pre-freeze fail-closed posture.
-export const ACCEPTED_LEGACY_RECORD_DIGESTS = Object.freeze([]);
+export const ACCEPTED_LEGACY_RECORD_DIGESTS = Object.freeze([
+  'c74e56373714839a77e24c57a4083f98e10708df0f8409162bcd38a5db726ca1', // R1 rent 07/01
+  '55802b1e6119507af7871b35c56df0d491179708e67df0bbf7a4900db93dedc7', // R2 rent 07/02
+  '23cb3818ba5b82e05d3e7b397643fd2cb0d2c17d34ba67740faecb312477a3c8', // R3 rent 07/03
+  '345ed30246e3d1739f1217726fad9c170c51cd2303d98a4140e25a61971b7ec7', // R4 tax transfer (vio)
+  '4e008e6782682d357ea64a6fb636f8132dd7ed32ab089fca6dc06eaa24c990db', // R5 kia (pinned variance -50)
+  '8f862b720c7448c7351c20f29a99d192c75d2fafeb1532db53701ea935fc766f', // R6 amex transfer
+]);
 
 // ── legacy-clearing-v2 (owner-ratified 2026-08-02) ────────────────────────────────────────────────────────────
 // Commitment-specific inclusive lower bound for a legacy clearing's cleared_as_of (legacy lane ONLY; the committed
