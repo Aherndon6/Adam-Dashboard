@@ -3494,7 +3494,7 @@ async function reloadReconAndCommitments(){
   ]);
   if(reconR.ok){
     var freshRecon={};
-    (await reconR.json()).forEach(function(row){freshRecon[row.week_num]={chk:row.chk,sav:row.sav,amx:row.amx,tax:row.tax,lc:row.lc,balance_basis:row.balance_basis||null,date:new Date(row.recorded_at).toLocaleDateString('en-US',{month:'short',day:'numeric'})};});
+    (await reconR.json()).forEach(function(row){freshRecon[row.week_num]={chk:row.chk,sav:row.sav,amx:row.amx,tax:row.tax,lc:row.lc,chk_available:(row.chk_available!=null?row.chk_available:null),balance_basis:row.balance_basis||null,date:new Date(row.recorded_at).toLocaleDateString('en-US',{month:'short',day:'numeric'})};});
     reconData=freshRecon;
   }
   if(cashCommitmentsR.ok){commitmentData=await cashCommitmentsR.json();}
@@ -3519,6 +3519,8 @@ function beginCloseout(n){
     return;
   }
   function gv(id){return parseFloat(document.getElementById(id).value)||0;}
+  // WI-1: nullable getter for the optional available-Checking observation (empty => null, not 0).
+  function gvn(id){var el=document.getElementById(id);if(!el)return null;var v=(el.value||'').trim();if(v==='')return null;var num=parseFloat(v);return Number.isFinite(num)?num:null;}
   // 5G-1D Slice 4c — closeout-state routing. A half_closed week (reconciled, <9 eligible
   // snapshots) is REPAIRED (wrapper branch G): missing rows only, empty commitment arrays,
   // balances equal to the persisted reconciliation. A blocked/corrupt week cannot be closed
@@ -3538,8 +3540,8 @@ function beginCloseout(n){
   // Capture entered balances into _reconBalances so they survive Back / re-render and become
   // the closeout payload (no optimistic reconData write — amendment §F). For a REPAIR the
   // balances MUST equal the persisted reconciliation (branch G), so take them from reconData[n].
-  _reconBalances=(isRepair&&reconData[n])?{chk:reconData[n].chk,sav:reconData[n].sav,amx:reconData[n].amx,tax:reconData[n].tax,lc:reconData[n].lc}
-                                         :{chk:gv('ri_chk'),sav:gv('ri_sav'),amx:gv('ri_amx'),tax:gv('ri_tax'),lc:gv('ri_lc')};
+  _reconBalances=(isRepair&&reconData[n])?{chk:reconData[n].chk,sav:reconData[n].sav,amx:reconData[n].amx,tax:reconData[n].tax,lc:reconData[n].lc,chk_available:(reconData[n].chk_available!=null?reconData[n].chk_available:null)}
+                                         :{chk:gv('ri_chk'),sav:gv('ri_sav'),amx:gv('ri_amx'),tax:gv('ri_tax'),lc:gv('ri_lc'),chk_available:gvn('ri_chk_available')};
   // Commitment arrays — built ONCE here, before the confirmation renders, from the staged
   // answers as they exist now (identical builders + signatures to the pre-1D path).
   var patched=buildPhase1PatchArray(commitmentData,_reconPhase1Answers,_reconBasis,n);
@@ -3618,6 +3620,15 @@ async function submitCloseout(){
     // silently reported as success.
     var res=null;try{res=await r.json();}catch(parseOk){res=null;}
     var okShape=!!res&&res.ok===true&&res.mode==='normal_closeout'&&res.week_num===n&&res.snapshot_count===9;
+    // WI-1 (additive; frozen closeout wrapper UNTOUCHED): persist the optional available-Checking
+    // observation via a thin PATCH after the wrapper's reconciliation write. chk_available is a
+    // nullable column read by no engine/capacity/goal path — this changes no runModel behavior.
+    // Best-effort: a PATCH failure never fails the (already-committed) closeout.
+    try{
+      var _av=(_reconBalances&&_reconBalances.chk_available!==undefined)?_reconBalances.chk_available:null;
+      var _ph=await getAuthHeaders();_ph['Prefer']='return=minimal';
+      await fetch(SUPA_URL+'/rest/v1/weekly_reconciliations?week_num=eq.'+n,{method:'PATCH',headers:_ph,body:JSON.stringify({chk_available:_av})});
+    }catch(_pe){console.warn('WI-1 chk_available PATCH (non-fatal):',_pe);}
     await reloadReconAndCommitments(); // server-owned truth — reload, don't fake locally
     await reloadGoalSnapshots();       // refresh the overlay/badge with the just-written nine rows
     var persistedComplete=isWeekReconciled(n)&&closeoutState(n)==='complete'&&_persistedSnapshotsMatch(n,_closeout.funded);
@@ -6243,7 +6254,8 @@ function renderWeekDetail(w,weeks){
       '<div class="recon-form-title" style="margin-top:2px">Phase 4 — Actual end-of-week balances</div>'+
       '<div class="recon-guidance-note">'+reconBalanceGuidance(_reconBasis)+'</div>'+
       '<div class="recon-inputs">'+
-      '<div class="recon-field"><label>Truist Checking</label><input class="recon-input" id="ri_chk" type="number" step="0.01" value="'+pre.chk+'"></div>'+
+      '<div class="recon-field"><label>Truist Checking <span style="color:var(--muted);font-weight:400">(posted &mdash; anchor)</span></label><input class="recon-input" id="ri_chk" type="number" step="0.01" value="'+pre.chk+'"></div>'+
+      '<div class="recon-field"><label>Truist Checking <span style="color:var(--muted);font-weight:400">(available &mdash; optional)</span></label><input class="recon-input" id="ri_chk_available" type="number" step="0.01" value="'+(pre&&pre.chk_available!=null?pre.chk_available:'')+'"></div>'+
       '<div class="recon-field"><label>Truist Savings</label><input class="recon-input" id="ri_sav" type="number" step="0.01" value="'+pre.sav+'"></div>'+
       '<div class="recon-field"><label>AMEX Savings</label><input class="recon-input" id="ri_amx" type="number" step="0.01" value="'+pre.amx+'"></div>'+
       '<div class="recon-field"><label>Vio Bank - Tax Reserve</label><input class="recon-input" id="ri_tax" type="number" step="0.01" value="'+pre.tax+'"></div>'+
