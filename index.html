@@ -7295,7 +7295,39 @@ function renderHistory(weeksArg){
 
 // ── renderAssumptions ──────────────────────────────────────────────────────
 function renderAssumptions(){
-  var html='<div class="assumptions-grid">'+
+  var html=''+
+    '<div class="panel" style="border-left:4px solid #d97706;margin-bottom:15px">'+
+      '<h3 style="margin-top:0">Weekly Cash Operations &mdash; Interim Certified Process</h3>'+
+      '<p style="color:var(--muted);font-size:12px;margin-top:-4px"><strong>INTERIM &mdash; until the Authoritative Cash Decision runtime is activated (WI-23).</strong> The OS is <strong>not yet authoritative</strong> for discretionary sweeps / goal funding &mdash; treat its capacity &amp; Goal Funding output as <em>input</em>, not final authority. Certification applies to <strong>discretionary</strong> cash deployment (goal funding, savings sweeps, IRA holding allocations, reserve transfers, material internal moves). Routine household spending and normal modeled bills do <strong>not</strong> require certification.</p>'+
+      '<p style="font-weight:700;letter-spacing:.03em;font-size:14px">Operate &rarr; Reconcile &rarr; Recompute &rarr; Certify &rarr; Execute &rarr; Record</p>'+
+      '<div class="two-col" style="display:grid;grid-template-columns:1fr 1fr;gap:14px">'+
+        '<div><h4 style="margin:6px 0">During the week</h4><ul style="margin:0;padding-left:18px">'+
+          '<li>Maintain the Transaction Register.</li>'+
+          '<li>Maintain the Budget.</li>'+
+          '<li>Keep major Weekly Model inflows/outflows current.</li>'+
+          '<li>Record completed transfers <strong>only after</strong> they actually occur.</li>'+
+        '</ul></div>'+
+        '<div><h4 style="margin:6px 0">During reconciliation</h4><ul style="margin:0;padding-left:18px">'+
+          '<li>Reconcile Checking and holding accounts to <strong>bank truth</strong>.</li>'+
+          '<li>Resolve unexplained differences <strong>before</strong> any discretionary transfer.</li>'+
+          '<li>Confirm major upcoming obligations.</li>'+
+          '<li>Confirm unusual inflows / outflows.</li>'+
+        '</ul></div>'+
+      '</div>'+
+      '<h4 style="margin:10px 0 4px">After reconciliation &mdash; before moving discretionary cash, ask ChatGPT or Code to calculate and verify:</h4>'+
+      '<ul style="margin:0;padding-left:18px;columns:2;-webkit-columns:2">'+
+        '<li>authoritative Checking anchor</li><li>posted vs available analysis</li><li>unresolved reserve transfers</li><li>protected future obligations</li><li>projected full-horizon trough</li><li>trough week</li><li>margin above the $6,500 floor</li><li>deployable cash</li><li>highest-priority eligible goal</li><li>safe funding amount</li><li>source / destination account</li><li>execution gates</li><li><strong>EXECUTE / PARTIAL / DEFER / HOLD</strong> recommendation</li>'+
+      '</ul>'+
+      '<h4 style="margin:10px 0 4px">Then</h4><ul style="margin:0;padding-left:18px">'+
+        '<li>Execute <strong>only</strong> the certified movement.</li>'+
+        '<li>Record the completed transfer in the Register.</li>'+
+        '<li>Complete the related task/action in the OS &mdash; do not leave an executed movement in the model as a future obligation.</li>'+
+      '</ul>'+
+      '<h4 style="margin:10px 0 4px">Standard certification request (copy/paste)</h4>'+
+      '<pre style="white-space:pre-wrap;background:rgba(0,0,0,.25);padding:10px;border-radius:6px;font-size:12px;margin:0">Reconciliation is complete. Please run the interim weekly cash certification. Use the reconciled bank truth and current Financial OS state. Determine the authoritative Checking anchor, unresolved protected obligations/reserves, full-horizon trough, margin above the $6,500 floor, deployable capacity, highest-priority eligible goal, safe funding amount, source/destination accounts, execution gates, and return EXECUTE / PARTIAL / DEFER / HOLD. Do not execute any transfer.</pre>'+
+      '<p style="color:var(--muted);font-size:11px;margin:8px 0 0">Interim owner guidance (WI-OPS-1). Living documentation &mdash; revised as work items land; removed or rewritten when WI-23 makes the runtime authoritative.</p>'+
+    '</div>'+
+    '<div class="assumptions-grid">'+
     '<div class="panel assumption-card"><h3>EF Injection + Starting Balances</h3>'+
       '<p>Checking is <strong>$11,250 better positioned vs. the original EF restoration plan</strong> — achieved in three phases:</p>'+
       '<p><strong>Phase 1 — $3,000 reclassification:</strong> The original plan was to send $5,250 from checking + $2,750 from savings to Lending Club, restoring LC to $24,738.88. The May AMEX Platinum payoff ($37,482) left checking too thin for July and September rent troughs. $3,000 of the planned checking→LC transfer was reclassified as permanent operating cash — only $2,250 was sent. LC settled at $21,738.88. Operating floors revised from $7,000/$5,000 to $3,000/$1,500.</p>'+
