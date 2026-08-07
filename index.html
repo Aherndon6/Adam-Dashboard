@@ -3623,18 +3623,31 @@ async function submitCloseout(){
     // WI-1 (additive; frozen closeout wrapper UNTOUCHED): persist the optional available-Checking
     // observation via a thin PATCH after the wrapper's reconciliation write. chk_available is a
     // nullable column read by no engine/capacity/goal path — this changes no runModel behavior.
-    // Best-effort: a PATCH failure never fails the (already-committed) closeout.
+    // Blank => NULL is valid and needs no confirmation. A SUPPLIED value must be POSITIVELY confirmed
+    // persisted (server read-back below) — it is never silently dropped.
+    var _avSupplied=(_reconBalances&&_reconBalances.chk_available!=null)?_reconBalances.chk_available:null;
+    var _avPatchFailed=false;
     try{
-      var _av=(_reconBalances&&_reconBalances.chk_available!==undefined)?_reconBalances.chk_available:null;
       var _ph=await getAuthHeaders();_ph['Prefer']='return=minimal';
-      await fetch(SUPA_URL+'/rest/v1/weekly_reconciliations?week_num=eq.'+n,{method:'PATCH',headers:_ph,body:JSON.stringify({chk_available:_av})});
-    }catch(_pe){console.warn('WI-1 chk_available PATCH (non-fatal):',_pe);}
+      var _pr=await fetch(SUPA_URL+'/rest/v1/weekly_reconciliations?week_num=eq.'+n,{method:'PATCH',headers:_ph,body:JSON.stringify({chk_available:(_avSupplied!=null?_avSupplied:null)})});
+      if(!_pr.ok)_avPatchFailed=true;
+    }catch(_pe){_avPatchFailed=true;console.warn('WI-1 chk_available PATCH error:',_pe);}
     await reloadReconAndCommitments(); // server-owned truth — reload, don't fake locally
     await reloadGoalSnapshots();       // refresh the overlay/badge with the just-written nine rows
     var persistedComplete=isWeekReconciled(n)&&closeoutState(n)==='complete'&&_persistedSnapshotsMatch(n,_closeout.funded);
-    if(okShape&&persistedComplete){
+    // WI-1: confirm a SUPPLIED available value actually persisted (server read-back at cents). Blank => confirmed.
+    var _avConfirmed=(_avSupplied==null)||(!!reconData[n]&&reconData[n].chk_available!=null&&Math.round(reconData[n].chk_available*100)===Math.round(_avSupplied*100));
+    if(okShape&&persistedComplete&&_avConfirmed){
       // Verified success: clear staging, close the form.
       _closeout=null;reconSaving=false;reconOpen=null;_reconBalances=null;_reconBasis=null;_reconPhase1Answers={};_reconPhase2Answers={};_reconPhase3Items=[];
+      renderApp();return;
+    }
+    if(okShape&&persistedComplete&&!_avConfirmed){
+      // Reconciliation IS saved, but the entered Available Checking value did NOT persist — surface it
+      // clearly and keep the confirmation open (never silently dropped). Saving again records it (the
+      // reconciliation replay is idempotent).
+      reconSaving=false;_closeout.phase='confirm';
+      _closeout.error='Reconciliation saved, but the entered Available Checking value ($'+_avSupplied.toFixed(2)+') was not persisted'+(_avPatchFailed?' — the write was rejected':'')+'. Click Save again to record it (the reconciliation itself is already saved).';
       renderApp();return;
     }
     // 2xx but the response contract or the persisted end state does not confirm completion:
