@@ -956,6 +956,13 @@ var taskData={};
 var noteData={};
 var overrideData={};
 var reconOpen=null;
+// DEFECT-RECON-DRAFT (2026-08-07): live draft of operator-typed reconciliation balances for the
+// open week (incl. WI-1 chk_available). The recon inputs are not otherwise state-backed, so any
+// renderApp() (basis / Phase 1/2/3) would repopulate them from the model-projection prefill and
+// silently discard owner-entered bank truth. This draft (written on `oninput`, no re-render)
+// survives those re-renders; `pre` prefers it. Keyed by week; reset on open/cancel/success,
+// preserved on Back-to-balances. (Ported from production hotfix e38bd30, extended to chk_available.)
+var _reconDraft=null;
 // 5G-1D Slice 3 — combined-closeout state. _reconBalances holds the operator's entered
 // end-of-week balances for the open week (survives the confirmation Back / re-render, and
 // is the closeout payload — no optimistic reconData write). _closeout holds the frozen
@@ -3466,7 +3473,7 @@ function goWeek(dir){
 function openRecon(n){
   if(!canWriteFinancials())return;
   reconOpen=n;
-  _closeout=null;_reconBalances=null; // 5G-1D: fresh open — no stale confirmation/entered balances
+  _closeout=null;_reconBalances=null;_reconDraft=null; // 5G-1D: fresh open — no stale confirmation/entered balances (draft cleared per open)
   // Phase 5F-1: fresh Phase 0/1 staging state per open — pre-fill basis from
   // a prior save if this week was already reconciled (edit flow), otherwise
   // start unselected so the required-selection gate is meaningful.
@@ -3476,7 +3483,15 @@ function openRecon(n){
   _reconPhase3Items=[];   // Phase 3 manual items reset per open (no cross-week leak)
   renderApp();setTimeout(function(){var el=document.querySelector('.recon-form');if(el)el.scrollIntoView({behavior:'smooth',block:'nearest'});},80);
 }
-function cancelRecon(){reconOpen=null;_closeout=null;_reconBalances=null;_reconBasis=null;_reconPhase1Answers={};_reconPhase2Answers={};_reconPhase3Items=[];renderApp();}
+function cancelRecon(){reconOpen=null;_closeout=null;_reconBalances=null;_reconDraft=null;_reconBasis=null;_reconPhase1Answers={};_reconPhase2Answers={};_reconPhase3Items=[];renderApp();}
+// DEFECT-RECON-DRAFT: record an owner-typed balance into the live draft WITHOUT re-rendering.
+// Stores the raw string per field (empty string is a deliberate value — honored by `pre`, and for
+// chk_available a blank means NULL). Keyed to the open week so a stale draft can never bleed into
+// a different week's form.
+function reconDraftSet(field,val){
+  if(!_reconDraft||_reconDraft.week!==reconOpen)_reconDraft={week:reconOpen};
+  _reconDraft[field]=val;
+}
 function confirmReconDelete(n){if(!canWriteFinancials())return;if(!canDeleteRecon(n)){renderApp();return;}_reconDeleteError=null;reconDeleteConfirm=n;renderApp();}
 function cancelReconDelete(){reconDeleteConfirm=false;_reconDeleteError=null;renderApp();}
 // 5F-1 RPC persistence bridge: reload weekly_reconciliations + cash_commitments
@@ -3639,7 +3654,7 @@ async function submitCloseout(){
     var _avConfirmed=(_avSupplied==null)||(!!reconData[n]&&reconData[n].chk_available!=null&&Math.round(reconData[n].chk_available*100)===Math.round(_avSupplied*100));
     if(okShape&&persistedComplete&&_avConfirmed){
       // Verified success: clear staging, close the form.
-      _closeout=null;reconSaving=false;reconOpen=null;_reconBalances=null;_reconBasis=null;_reconPhase1Answers={};_reconPhase2Answers={};_reconPhase3Items=[];
+      _closeout=null;reconSaving=false;reconOpen=null;_reconBalances=null;_reconDraft=null;_reconBasis=null;_reconPhase1Answers={};_reconPhase2Answers={};_reconPhase3Items=[];
       renderApp();return;
     }
     if(okShape&&persistedComplete&&!_avConfirmed){
@@ -3692,7 +3707,7 @@ function _isAmbiguousCloseoutError(e){
 async function _reconcileAmbiguousCloseout(n){
   try{await reloadReconAndCommitments();await reloadGoalSnapshots();}catch(_){}
   if(_closeout&&isWeekReconciled(n)&&closeoutState(n)==='complete'&&_persistedSnapshotsMatch(n,_closeout.funded)){
-    _closeout=null;reconOpen=null;_reconBalances=null;_reconBasis=null;_reconPhase1Answers={};_reconPhase2Answers={};_reconPhase3Items=[];
+    _closeout=null;reconOpen=null;_reconBalances=null;_reconDraft=null;_reconBasis=null;_reconPhase1Answers={};_reconPhase2Answers={};_reconPhase3Items=[];
     renderApp();return;
   }
   if(_closeout){_closeout.phase='confirm';
@@ -6260,19 +6275,33 @@ function renderWeekDetail(w,weeks){
   }else if(reconOpen===w.num){
     // 5G-1D: prefer the operator's entered balances (survive a Back from the confirmation)
     // over the modeled/last-saved prefill.
-    var pre=_reconBalances||w.actualBals||{chk:w.mChk,sav:w.mSav,amx:w.mAmx,tax:w.mTax,lc:w.mLc};
+    // DEFECT-RECON-DRAFT: the live owner-typed draft (survives Phase 0/1/2/3 re-renders) takes
+    // precedence over the modeled/last-saved prefill so entered bank truth is never silently
+    // replaced. `'field' in _d` (not != null) so a deliberately-cleared field stays cleared instead
+    // of reverting to the model projection. chk_available follows the same rule; a blank stays blank
+    // (=> NULL at capture). Model values remain the INITIAL prefill only, for untouched fields.
+    var _base=_reconBalances||w.actualBals||{chk:w.mChk,sav:w.mSav,amx:w.mAmx,tax:w.mTax,lc:w.mLc};
+    var _d=(_reconDraft&&_reconDraft.week===w.num)?_reconDraft:null;
+    var pre={
+      chk:(_d&&'chk' in _d)?_d.chk:_base.chk,
+      chk_available:(_d&&'chk_available' in _d)?_d.chk_available:(_base.chk_available!=null?_base.chk_available:null),
+      sav:(_d&&'sav' in _d)?_d.sav:_base.sav,
+      amx:(_d&&'amx' in _d)?_d.amx:_base.amx,
+      tax:(_d&&'tax' in _d)?_d.tax:_base.tax,
+      lc:(_d&&'lc' in _d)?_d.lc:_base.lc
+    };
     var _canSave=canSaveRecon(w.num);
     html+='<div class="recon-form"><div class="recon-form-title">Reconcile — Wk '+getCalWeek(w.num)+' \xb7 '+w.dates+'</div>'+
       renderReconPhase01(w)+
       '<div class="recon-form-title" style="margin-top:2px">Phase 4 — Actual end-of-week balances</div>'+
       '<div class="recon-guidance-note">'+reconBalanceGuidance(_reconBasis)+'</div>'+
       '<div class="recon-inputs">'+
-      '<div class="recon-field"><label>Truist Checking <span style="color:var(--muted);font-weight:400">(posted &mdash; anchor)</span></label><input class="recon-input" id="ri_chk" type="number" step="0.01" value="'+pre.chk+'"></div>'+
-      '<div class="recon-field"><label>Truist Checking <span style="color:var(--muted);font-weight:400">(available &mdash; optional)</span></label><input class="recon-input" id="ri_chk_available" type="number" step="0.01" value="'+(pre&&pre.chk_available!=null?pre.chk_available:'')+'"></div>'+
-      '<div class="recon-field"><label>Truist Savings</label><input class="recon-input" id="ri_sav" type="number" step="0.01" value="'+pre.sav+'"></div>'+
-      '<div class="recon-field"><label>AMEX Savings</label><input class="recon-input" id="ri_amx" type="number" step="0.01" value="'+pre.amx+'"></div>'+
-      '<div class="recon-field"><label>Vio Bank - Tax Reserve</label><input class="recon-input" id="ri_tax" type="number" step="0.01" value="'+pre.tax+'"></div>'+
-      '<div class="recon-field"><label>Lending Club (EF)</label><input class="recon-input" id="ri_lc" type="number" step="0.01" value="'+pre.lc+'"></div>'+
+      '<div class="recon-field"><label>Truist Checking <span style="color:var(--muted);font-weight:400">(posted &mdash; anchor)</span></label><input class="recon-input" id="ri_chk" type="number" step="0.01" value="'+pre.chk+'" oninput="reconDraftSet(\'chk\',this.value)"></div>'+
+      '<div class="recon-field"><label>Truist Checking <span style="color:var(--muted);font-weight:400">(available &mdash; optional)</span></label><input class="recon-input" id="ri_chk_available" type="number" step="0.01" value="'+(pre&&pre.chk_available!=null?pre.chk_available:'')+'" oninput="reconDraftSet(\'chk_available\',this.value)"></div>'+
+      '<div class="recon-field"><label>Truist Savings</label><input class="recon-input" id="ri_sav" type="number" step="0.01" value="'+pre.sav+'" oninput="reconDraftSet(\'sav\',this.value)"></div>'+
+      '<div class="recon-field"><label>AMEX Savings</label><input class="recon-input" id="ri_amx" type="number" step="0.01" value="'+pre.amx+'" oninput="reconDraftSet(\'amx\',this.value)"></div>'+
+      '<div class="recon-field"><label>Vio Bank - Tax Reserve</label><input class="recon-input" id="ri_tax" type="number" step="0.01" value="'+pre.tax+'" oninput="reconDraftSet(\'tax\',this.value)"></div>'+
+      '<div class="recon-field"><label>Lending Club (EF)</label><input class="recon-input" id="ri_lc" type="number" step="0.01" value="'+pre.lc+'" oninput="reconDraftSet(\'lc\',this.value)"></div>'+
       '</div><div class="recon-btn-row">'+
       '<button class="recon-save" onclick="beginCloseout('+w.num+')"'+(_canSave?'':' disabled style="opacity:.5;cursor:not-allowed"')+'>Save actuals — review &amp; close</button>'+
       '<button class="recon-cancel" onclick="cancelRecon()">Cancel</button>'+
