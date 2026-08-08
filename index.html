@@ -9955,7 +9955,7 @@ async function loadAll(){
       // missing-table 404 arrives here as a resolved non-ok response and is handled quietly.
       fetch(SUPA_URL+'/rest/v1/goal_funding_snapshots?model_year=eq.'+PLAN_YEAR+'&select=week_num,goal_id,funded_amount',{headers:h})
     ]);
-    if(reconR.ok){(await reconR.json()).forEach(function(row){reconData[row.week_num]={chk:row.chk,sav:row.sav,amx:row.amx,tax:row.tax,lc:row.lc,balance_basis:row.balance_basis||null,date:new Date(row.recorded_at).toLocaleDateString('en-US',{month:'short',day:'numeric'})};});}
+    if(reconR.ok){(await reconR.json()).forEach(function(row){reconData[row.week_num]={chk:row.chk,sav:row.sav,amx:row.amx,tax:row.tax,lc:row.lc,chk_available:(row.chk_available!=null?row.chk_available:null),balance_basis:row.balance_basis||null,date:new Date(row.recorded_at).toLocaleDateString('en-US',{month:'short',day:'numeric'})};});}
     // ── 5G-1C-2 (C3): goal funding snapshots → goalSnapData[week_num][goal_id]=funded_amount ──
     // QUIET when the table is absent (404, expected pre-DDL) or has zero rows: goalSnapData={},
     // no user-facing warning. A real error (non-404 status or malformed payload) leaves
