@@ -1459,15 +1459,26 @@ function getAutoRemindersForWeek(weekNum){
   if([7,11,16,20,24,29].indexOf(weekNum)>=0){
     reminders.push({reminderKey:yr+'_w'+weekNum+'__jabian_reimb',label:'Review Jabian reimbursements — compare expected vs. received. If a large or unusual amount is pending or recently arrived, add it as a one-time inflow via Edit Week. No action needed if reimbursements are on schedule.',type:'action'});
   }
-  var _amexGoldClose=[[3,6],[7,11],[12,15],[16,19],[20,24],[25,28],[29,null]];
-  var _disneyVisaClose=[[3,7],[8,11],[12,16],[16,20],[21,25],[25,29],[29,null]];
-  var _amexPlatClose=[[4,8],[9,12],[13,17],[17,21],[22,25],[26,30],[30,null]];
+  // ── Credit-card statement-close reminders (Phase 1 stabilization 2026-08-08) ──
+  // Fire in the week the statement CLOSES. Estimate-known cards (Gold/Disney) carry a modeled
+  // WD payment + "confirm/update ~$X". Zero-baseline cards (Platinum future / Costco / Blue)
+  // carry NO modeled payment — the reminder drives a manual Edit Week true-up when a non-zero
+  // statement posts. No invented estimates; schedules derived from owner-verified close/due days.
+  var _amexGoldClose=[[3,6],[7,11],[12,15],[16,19],[20,24],[25,28],[29,null]];    // close 23rd → due ~17th next
+  var _disneyVisaClose=[[3,7],[8,11],[12,16],[16,20],[21,25],[25,29],[29,null]];  // close 26th → due ~23rd next
+  var _amexPlatClose=[[4,8],[9,12],[13,17],[17,21],[22,25],[26,30],[30,null]];    // close 2nd → due ~27th same month
+  var _costcoVisaClose=[[12,16],[16,20],[20,24],[25,29],[29,null]];               // close 24th → due ~20th next (primary Visa)
+  var _amexBlueClose=[[4,8],[9,12],[13,17],[17,21],[22,25],[26,30],[30,null]];    // close ~1st-2nd → due ~27th same month (dormant)
   var _agEntry=_amexGoldClose.find(function(e){return e[0]===weekNum;});
   var _dvEntry=_disneyVisaClose.find(function(e){return e[0]===weekNum;});
   var _apEntry=_amexPlatClose.find(function(e){return e[0]===weekNum;});
+  var _cvEntry=_costcoVisaClose.find(function(e){return e[0]===weekNum;});
+  var _abEntry=_amexBlueClose.find(function(e){return e[0]===weekNum;});
   if(_agEntry){var _agRef=_agEntry[1]?'Cal Wk '+getCalWeek(_agEntry[1]):'next statement period';reminders.push({reminderKey:yr+'_w'+weekNum+'__amex_gold_close',label:'💳 AMEX Gold statement closes this week (23rd) — log in and confirm the actual bill amount due '+_agRef+' (~$5,500 estimated). Open Edit Week on '+_agRef+' and update the actual amount.',type:'action'});}
   if(_dvEntry){var _dvRef=_dvEntry[1]?'Cal Wk '+getCalWeek(_dvEntry[1]):'next statement period';reminders.push({reminderKey:yr+'_w'+weekNum+'__disney_visa_close',label:'💳 Disney Visa statement closes this week (26th) — log in and confirm the actual bill amount due '+_dvRef+' (~$3,500 estimated). Open Edit Week on '+_dvRef+' and update the actual amount.',type:'action'});}
-  if(_apEntry){var _apRef=_apEntry[1]?'Cal Wk '+getCalWeek(_apEntry[1]):'next statement period';reminders.push({reminderKey:yr+'_w'+weekNum+'__amex_plat_close',label:'💳 AMEX Platinum statement closes this week (2nd) — log in and confirm any straggler charges due '+_apRef+' and update the actual amount.',type:'action'});}
+  if(_apEntry){var _apRef=_apEntry[1]?'Cal Wk '+getCalWeek(_apEntry[1]):'next statement period';reminders.push({reminderKey:yr+'_w'+weekNum+'__amex_plat_close',label:'💳 AMEX Platinum statement closes this week (2nd) — active card, true-up only (no baseline modeled). Confirm the statement and add/update the payment due '+_apRef+' via Edit Week.',type:'action'});}
+  if(_cvEntry){var _cvRef=_cvEntry[1]?'Cal Wk '+getCalWeek(_cvEntry[1]):'next statement period';reminders.push({reminderKey:yr+'_w'+weekNum+'__costco_visa_close',label:'💳 Costco Visa (primary Visa) statement closes this week (24th) — confirm the statement and add the payment due '+_cvRef+' via Edit Week (manual true-up; no baseline modeled yet).',type:'action'});}
+  if(_abEntry){var _abRef=_abEntry[1]?'Cal Wk '+getCalWeek(_abEntry[1]):'next statement period';reminders.push({reminderKey:yr+'_w'+weekNum+'__amex_blue_close',label:'💳 AMEX Blue Cash Everyday statement closes this week (~1st) — dormant/keep-alive, usually $0. If a charge posted, add the payment due '+_abRef+' via Edit Week.',type:'action'});}
   return reminders;
 }
 function ensureAutoReminders(weekNum){
@@ -3038,11 +3049,10 @@ function runModel(akGoal,rtGoal,flags){
       ac.push('Move $1,000 Lending Club → Truist Checking (EF injection — do first)');acKeys.push('setup_lc_1000');
       ac.push('Move $2,250 Lending Club → Truist Checking (Option 1 correction — do with other SETUP transfers)');acKeys.push('setup_lc_2250');
     }
-    // ── Costco Visa reminder (overrideable: move week or delete) ─────────
-    if(!aoDeleted(ACTION_KEYS.COSTCO_VISA)&&num===aoW(ACTION_KEYS.COSTCO_VISA)){
-      var costcoLabel=aoLabel(ACTION_KEYS.COSTCO_VISA,'[PENDING #20] Costco Visa — Confirm closing date, due date, and card transition timing (provide date to Claude to complete)');
-      ac.push(costcoLabel);acKeys.push(ACTION_KEYS.COSTCO_VISA);
-    }
+    // ── Costco Visa PENDING #20 placeholder removed (Phase 1 2026-08-08) ──
+    // Superseded by the proper Costco Visa statement-close reminder schedule (dates now
+    // owner-verified: close 24th → due ~20th next month). The ACTION_KEYS.COSTCO_VISA
+    // move/delete machinery is left inert (no emitter) for a later cleanup pass.
     // ── Transfer helpers ──────────────────────────────────────────────────
     function mv(amt,dst,allowFinal){
       const m=r(sm(chk,amt,effFl));
@@ -3385,14 +3395,19 @@ function runModel(akGoal,rtGoal,flags){
       recActs.push('Review Jabian reimbursements — compare expected vs. received. If a large or unusual amount is pending or recently arrived, add it as a one-time inflow via Edit Week. No action needed if reimbursements are on schedule.');}
     // ── Credit card statement close review prompts ─────────────────────────
     // Fire in the week the statement CLOSES (not the week before the bill is due).
-    // Close dates: AMEX Gold = 23rd, Disney Visa = 26th, AMEX Platinum = 2nd.
-    // Each entry: [closeWeek, billWeek (null if outside model)]
+    // Close dates: Gold=23rd, Disney=26th, Platinum=2nd, Costco=24th, Blue=~1st-2nd. (Phase 1 2026-08-08)
+    // Each entry: [closeWeek, billWeek (null if outside model)]. Estimate-known cards carry a modeled
+    // WD payment; zero-baseline cards (Platinum future / Costco / Blue) drive a manual Edit Week true-up.
     var _amexGoldClose=[[3,6],[7,11],[12,15],[16,19],[20,24],[25,28],[29,null]];
     var _disneyVisaClose=[[3,7],[8,11],[12,16],[16,20],[21,25],[25,29],[29,null]];
     var _amexPlatClose=[[4,8],[9,12],[13,17],[17,21],[22,25],[26,30],[30,null]];
+    var _costcoVisaClose=[[12,16],[16,20],[20,24],[25,29],[29,null]];
+    var _amexBlueClose=[[4,8],[9,12],[13,17],[17,21],[22,25],[26,30],[30,null]];
     var _agEntry=_amexGoldClose.find(function(e){return e[0]===num;});
     var _dvEntry=_disneyVisaClose.find(function(e){return e[0]===num;});
     var _apEntry=_amexPlatClose.find(function(e){return e[0]===num;});
+    var _cvEntry=_costcoVisaClose.find(function(e){return e[0]===num;});
+    var _abEntry=_amexBlueClose.find(function(e){return e[0]===num;});
     if(_agEntry){
       var _agBillRef=_agEntry[1]?'Cal Wk '+getCalWeek(_agEntry[1]):'next statement period';
       recActs.push('💳 AMEX Gold statement closes this week (23rd) — log in and confirm the actual bill amount due '+_agBillRef+' (~$5,500 estimated). Open Edit Week on '+_agBillRef+' and update the actual amount.');}
@@ -3401,7 +3416,13 @@ function runModel(akGoal,rtGoal,flags){
       recActs.push('💳 Disney Visa statement closes this week (26th) — log in and confirm the actual bill amount due '+_dvBillRef+' (~$3,500 estimated). Open Edit Week on '+_dvBillRef+' and update the actual amount.');}
     if(_apEntry){
       var _apBillRef=_apEntry[1]?'Cal Wk '+getCalWeek(_apEntry[1]):'next statement period';
-      recActs.push('💳 AMEX Platinum statement closes this week (2nd) — log in and confirm any straggler charges due '+_apBillRef+' and update the actual amount.');}
+      recActs.push('💳 AMEX Platinum statement closes this week (2nd) — active card, true-up only (no baseline modeled). Confirm the statement and add/update the payment due '+_apBillRef+' via Edit Week.');}
+    if(_cvEntry){
+      var _cvBillRef=_cvEntry[1]?'Cal Wk '+getCalWeek(_cvEntry[1]):'next statement period';
+      recActs.push('💳 Costco Visa (primary Visa) statement closes this week (24th) — confirm the statement and add the payment due '+_cvBillRef+' via Edit Week (manual true-up; no baseline modeled yet).');}
+    if(_abEntry){
+      var _abBillRef=_abEntry[1]?'Cal Wk '+getCalWeek(_abEntry[1]):'next statement period';
+      recActs.push('💳 AMEX Blue Cash Everyday statement closes this week (~1st) — dormant/keep-alive, usually $0. If a charge posted, add the payment due '+_abBillRef+' via Edit Week.');}
     // Snapshot goal savings for this week (deep copy)
     var gSnap={};Object.keys(goalSaved).forEach(function(k){gSnap[k]=goalSaved[k];});
     weeks.push({num,dates,trough:false,managed:false,calNote,evs,tr,ac,acKeys,recActs,realActs,realActKeys,totalTasks,doneTasks,
