@@ -27,6 +27,42 @@ Do not copy AI Context files into this repo.
 
 One job per document: **Law** = this `AGENTS.md` (stable rules, conventions, Do-Not-Touch, gates); **State** = `CODEX_STATUS.md` (current operating state, active phase/gate, verified test baseline, next actions); **History** = append-only closeouts + `docs/execution-ledger.md` + `docs/decision-log.md`; **Plan** = the single living `docs/roadmap/canonical-roadmap.md` (revised in place; git history is its changelog). Prior roadmap layers are provenance only — see `docs/roadmap/archive-index.md`. For "what's next / in what order," read the canonical roadmap, not older synthesis/FINAL/amendment layers. The Alaska repository-stability freeze is **Jul 29 – Aug 10, 2026** (controlled period, not a total blackout — canonical roadmap §11.3).
 
+### Governance rules added 2026-09-07
+
+Two rules, both written after the 2026-09-07 context refresh found the same failure three
+times: a fact recorded somewhere nothing reads.
+
+**1. A standing requirement that is also work MUST have a State entry.**
+
+Law (this file) says what is always true. State (`CODEX_STATUS.md`) says what to do next.
+A session reads State to decide what to pick up, so a requirement living only in Law is
+never picked up by anyone.
+
+*Precedent:* the backup/restore requirement was written into this file on 2026-07-13 as an
+"immediate production-operability requirement" and given no State entry. It sat unstarted
+for eight weeks until the 2026-09-07 refresh found it. It is now DR-1 in `CODEX_STATUS.md`.
+
+At session end, ask: did this session add a standing requirement to Law? If it is purely a
+rule, no State entry is needed. If it is work someone must do, it needs one.
+
+**2. Status must reach `main`. Artifacts may stay on a branch.**
+
+Any `CODEX_STATUS.md` currency note describing executed work MUST be committed to `main`,
+even when the artifacts it describes remain branch-local, uncommitted, or owner-gated
+against pushing.
+
+*Rationale:* a session working from `main` cannot see a branch. Neither can the AI Context
+files, which are refreshed against `main`. A currency note on an unpushed branch is
+invisible to every consumer except the person who wrote it.
+
+*Precedent:* the 2026-08-26 note recording F1B, H1 and I1 as executed was committed only to
+`wi-3-p2-reconciliation-state`. Eleven days later the 2026-09-07 context refresh, reading
+`main`, wrote "F1B not executed" into two canonical context files. The same branch-only
+pattern also kept the R-9 production defect out of every document that a session reads.
+
+Committing a status pointer to `main` does not push artifacts, does not merge code, and
+does not weaken any owner gate on the work itself. It is a status update, not a release.
+
 ## Architecture
 
 No framework, no build step.
