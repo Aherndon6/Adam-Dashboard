@@ -18,3 +18,7 @@ scratchpad/
 *.xlsx
 *.pptx
 exports/
+
+# Execution output and captured evidence (household values, UUIDs) - NEVER commit
+*.out
+baseline-E/live-evidence/
