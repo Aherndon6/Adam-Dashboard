@@ -1,5 +1,37 @@
 # Codex Status: Herndon Financial OS
 
+## CURRENCY NOTE (2026-09-07b) — WI-PROGRAM GATE DECIDED. Owner decision on the product-level question pending since 2026-08-27. DOCUMENTATION ONLY; nothing is authorized to implement.
+
+**Status of the gate: CLOSED.** The product-level decision pending since 2026-08-27 — what becomes the permanent integrity kernel, what defers past rollover, and whether the remaining WI work is still justified — was taken by the owner on 2026-09-07. It had been open eleven days and was blocking P-1, P-3 and WI-2 behind a decision rather than behind engineering.
+
+**The decision: retain a deliberately small permanent integrity kernel; defer the remainder of the WI program past rollover.**
+
+**The permanent integrity kernel is scoped to three things and no more:**
+1. **R-9 / reconciled-week protection.** Eliminate the direct-delete integrity path and preserve the owner-controlled reopen discipline.
+2. **Lightweight reconciled-week write protection.** Enough server-side enforcement to prevent writes that violate reconciled or closed-week state.
+3. **The already-proven guards and controls** that remain useful without requiring the broader WI-3 concurrency architecture.
+
+**Deferred past rollover, explicitly NOT cancelled:** P-1 (authoritative cleared-evidence resolver), P-3 (server-authoritative Gate), WI-2 (Reconciliation Gate), and deployment of the broader WI-3 P-2 concurrency machinery. Owner wording: *"Do not continue P-1/P-3/WI-2 or deploy the broader WI-3 P-2 concurrency machinery merely because it has been designed or validated."*
+
+**Reassessment triggers.** "Defer" is intentional, not "delete forever." Reopen the deferred WI architecture against a new threat model if any of these appear: a **second financial writer**; **automation that can independently mutate financial state**; or **evidence of an actual integrity or concurrency failure**. Absent one of those, do not re-propose it.
+
+**Owner's stated rationale, recorded because a future session will otherwise re-litigate this:**
+- There is a **single cash operator and writer**. The concurrency machinery addresses a failure class that has not been experienced.
+- The one material unsafe-money recommendation on record — the Cal Wk 33 goal-funding transfer of $2,237.68 that would have breached `FLOOR_CENTS=650000` in two later weeks, refused by the owner and never executed — was caused by **stale forward-looking input and model state, not a failure of the integrity gate**. See the 2026-08-16 currency note: the gate worked; the input was wrong.
+- Therefore additional concurrency and audit machinery **would not have prevented the demonstrated failure**.
+- **P3c and the card-obligation baselines address the demonstrated risk directly.**
+- **DR-1 demonstrated the opportunity cost** of leaving operational resilience unfinished while continuing to build theoretical integrity machinery: it sat untouched for eight weeks while F1A, F1B, G1, H1 and I1 were authored, executed and torn down.
+
+**Resulting sequence for substantive effort:** DR-1 completion (part 3, the tested restore) → P3c including the card-obligation baselines → revisit the deferred WI architecture after rollover, and only against the triggers above.
+
+**Concrete remaining action under kernel item 1, NOT authorized by this note.** Today's R-9 remediation revoked INSERT, UPDATE, DELETE and TRUNCATE from `anon` across the public schema in production. It did **not** touch `authenticated`, which still holds DELETE on `weekly_reconciliations` in production. The WI-3 P-2 A6 slice removed that grant on staging and the H1 teardown restored it to PRE-1, so the direct-delete integrity path remains open to an authenticated client on production. Closing it is the first concrete piece of kernel item 1 and requires separate owner authorization at execution time.
+
+**Explicitly not authorized by this note.** No implementation, deployment, migration, schema change, grant change, or production modification. The existing documentation and freeze controls remain in force. This note records an architectural and program decision and its rationale. Every piece of work it implies still needs its own authorization.
+
+**Bearing on the WI-3 branch.** The artifacts on `wi-3-p2-reconciliation-state` (`docs/wi-3-p2-00` through `-91`, local commit `e771e24`) are retained as a **proven but unshipped design**, not as pending work. F1A, F1B, G1-static, H1 and I1 all executed and passed on staging; staging is torn down to PRE-1 with zero residue. Nothing in the WI-3 validation set is outstanding. A session finding the phrase "execute F-H plus F-G disposable validation" in older notes should treat it as already satisfied and not re-run it.
+
+---
+
 ## CURRENCY NOTE (2026-09-07) — DR-1 BACKUP & RESTORE MATURITY: IN PROGRESS, 4 OF 5 PARTS CLOSED. Elevated to an active pointer at owner direction.
 
 **Why this is here.** `AGENTS.md` has carried this since **2026-07-13** as the stated consequence of retiring Quicken: with the Financial OS as the sole live system of record and no parallel fallback, backup/restore maturity is an **immediate production-operability requirement, not a future prerequisite**. It was written into Law and never given an entry in State, so no session ever picked it up. Eight weeks elapsed. This note closes that gap.
