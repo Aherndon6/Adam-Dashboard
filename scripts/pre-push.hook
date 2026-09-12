@@ -1,0 +1,65 @@
+#!/bin/bash
+# ──────────────────────────────────────────────────────────────────────────────
+# Herndon Financial OS — pre-push gate
+# Source of truth: scripts/pre-push.hook — install via: bash scripts/install-hooks.sh
+#
+# WHY THIS EXISTS
+# push_to_github.sh already runs both suites and aborts on failure, but it is an
+# OPT-IN wrapper: a plain `git push` skipped it entirely. That is not theoretical.
+#   2026-07-11  c0a3476  pushed with a failing e2e test (e2e red from here on)
+#   2026-07-15  15b372f  pushed with two more failing e2e tests
+#   2026-08-08  caed4737 pushed with 14 failing static tests
+# e2e stayed red for two months and static for five weeks, while AGENTS.md still
+# claimed both were green. Nothing enforced the gate, so nothing caught it.
+#
+# WHAT THIS GATES
+# The static regression suite only (node test_regression.js — seconds). e2e takes
+# 8-10 minutes, which is too slow to run on every push; it stays in
+# push_to_github.sh and remains the pre-release gate. This hook is the floor, not
+# the ceiling: it makes the cheap, fast check unskippable by accident.
+#
+# OVERRIDE
+# `git push --no-verify` still bypasses this. That is deliberate — the point is to
+# make the bypass an explicit, visible act rather than the silent default. If you
+# use it, say so in the commit or the session notes.
+# ──────────────────────────────────────────────────────────────────────────────
+REPO_ROOT="$(git rev-parse --show-toplevel)"
+cd "$REPO_ROOT" || exit 0
+
+if [ ! -f test_regression.js ]; then
+  echo "pre-push: test_regression.js not found — skipping gate."
+  exit 0
+fi
+
+if ! command -v node >/dev/null 2>&1; then
+  echo "pre-push: node not on PATH — cannot run the gate."
+  echo "          Install node, or push with --no-verify if you accept the risk."
+  exit 1
+fi
+
+echo "pre-push: running static regression suite..."
+GATE_OUT="$(node test_regression.js 2>&1)"
+GATE_RC=$?
+
+if [ $GATE_RC -ne 0 ]; then
+  echo "$GATE_OUT" | tail -40
+  echo ""
+  echo "────────────────────────────────────────────────────────────────────"
+  echo "PUSH BLOCKED: the static regression suite is failing."
+  echo ""
+  echo "Do not push a red suite. A red baseline hides the next real"
+  echo "regression, because nobody can tell a new break from a standing one."
+  echo ""
+  echo "  - Fix the failures, or"
+  echo "  - If the change is intentional and the expected outputs must move,"
+  echo "    that needs Adam's explicit approval (AGENTS.md: never edit a"
+  echo "    golden master to make a test pass), or"
+  echo "  - git push --no-verify   (deliberate bypass — record that you did)"
+  echo "────────────────────────────────────────────────────────────────────"
+  exit 1
+fi
+
+echo "$GATE_OUT" | grep -E "^  (Passed|Failed):"
+echo "pre-push: static suite green. Note e2e is NOT run here — use"
+echo "          'bash push_to_github.sh \"msg\"' for the full gate."
+exit 0
