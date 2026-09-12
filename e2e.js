@@ -4587,6 +4587,106 @@ async function clickNav(page, id) {
     await context.close();
   });
 
+  // ── Register date-entry defect (Adam, 2026-09-12) ──────────────────────────────
+  // Every existing Register form test sets _txFormData.transaction_date directly, so none of
+  // them ever exercised the native <input type="date"> segment editor. That is precisely how
+  // this shipped: the add form pre-fills today, so the field always holds a complete valid
+  // value, and Chrome fires "change" the instant a segment edit leaves it complete-and-valid.
+  // Typing "1" into the month produced 2026-01-12, committed, and (pre-fix) renderApp()
+  // destroyed the input node mid-entry — focus went to <body>, the second digit went nowhere,
+  // and Tab could never reach Payee. These two tests drive REAL keystrokes.
+  const RD_CATEGORIES = [
+    { key: 'entertainment.event_1', label: 'Event One', parent_key: 'entertainment', is_leaf: true,
+      lifecycle_status: 'active', behavior_class: 'discretionary', budget_treatment: 'expense',
+      cashflow_treatment: 'expense', budget_line_key: null, budget_group_key: null, merged_into_key: null }
+  ];
+  // A line label that exists ONLY in October 2026 — proves the month-derived relabel really ran.
+  const RD_BLR = [
+    { is_active: true, category_key: 'entertainment.event_1', line_label: 'OCTOBER-ONLY-LABEL',
+      amount: 100, start_month: '2026-10-01', end_month: '2026-10-01' }
+  ];
+  const RD_DATE_SEL = '#transactions-content input[type="date"]:not([id])';
+
+  async function setupRegisterDateForm(page) {
+    await setupRegister(page, { txCache: [], categories: RD_CATEGORIES });
+    await page.evaluate(blr => {
+      USER_ROLE = 'owner';
+      _budgetLineRulesCache = blr;
+      _budgetLineRulesLoadStatus = 'loaded';
+      _openTxForm('add', null);
+      _txFormData.transaction_date = '2026-09-12';
+      renderApp();
+    }, RD_BLR);
+  }
+
+  await test('RD-1: two-digit month can be typed into the Register date field without losing focus', async () => {
+    const { page, context } = await openApp(browser);
+    await setupRegisterDateForm(page);
+    await page.focus(RD_DATE_SEL);
+    // First digit: pre-fix this committed 2026-01-12, re-rendered, and blew focus to <body>.
+    await page.keyboard.press('1');
+    const mid = await page.evaluate(sel => ({
+      value: document.querySelector(sel)?.value ?? 'NODE-GONE',
+      stillFocused: document.activeElement === document.querySelector(sel),
+      activeTag: document.activeElement.tagName
+    }), RD_DATE_SEL);
+    assert(mid.stillFocused,
+      'date input must keep focus after the first month digit, activeElement was: ' + mid.activeTag);
+    // Second digit: only reaches the segment editor if focus survived.
+    await page.keyboard.press('0');
+    const after = await page.evaluate(sel => ({
+      value: document.querySelector(sel)?.value ?? 'NODE-GONE',
+      stillFocused: document.activeElement === document.querySelector(sel),
+      state: _txFormData.transaction_date,
+      // The month-derived dropdown label must have been refreshed IN PLACE, not left stale.
+      label: document.getElementById('tx-form-category')?.options?.[1]?.textContent || 'NO-SELECT'
+    }), RD_DATE_SEL);
+    assert(after.value === '2026-10-12',
+      'month must accept both digits (expected 2026-10-12), got: ' + after.value);
+    assert(after.stillFocused, 'date input must still hold focus after the second digit');
+    assert(after.state === '2026-10-12',
+      'form state must track the typed date, got: ' + after.state);
+    assert(after.label === 'OCTOBER-ONLY-LABEL',
+      'category label must be refreshed in place for the new month, got: ' + after.label);
+    await context.close();
+  });
+
+  await test('RD-2: Tab walks the date field through to Payee across the New Transaction row', async () => {
+    const { page, context } = await openApp(browser);
+    await setupRegisterDateForm(page);
+    await page.focus(RD_DATE_SEL);
+    // A Chrome <input type="date"> holds FOUR internal tab stops, not three: month, day, year,
+    // and the built-in calendar-picker icon. All four report document.activeElement as the input
+    // itself (segments are shadow content). The extra picker stop is native browser behavior, not
+    // anything this markup controls — removing it would mean hiding the calendar picker entirely.
+    // Pre-fix none of this mattered: the re-render destroyed the input on the first committed
+    // edit, so the chain never reached Payee at all.
+    for (let i = 0; i < 3; i++) {
+      await page.keyboard.press('Tab');
+      const inside = await page.evaluate(sel => document.activeElement === document.querySelector(sel), RD_DATE_SEL);
+      assert(inside, 'Tab ' + (i + 1) + ' must stay inside the date input (segment/picker stop), not leave it');
+    }
+    await page.keyboard.press('Tab');
+    const landed = await page.evaluate(() => ({
+      tag: document.activeElement.tagName,
+      type: document.activeElement.type || '',
+      placeholder: document.activeElement.placeholder || ''
+    }));
+    assert(landed.tag === 'INPUT' && landed.type === 'text' && landed.placeholder === 'Required',
+      'Tab out of the date field must land on the Payee field, landed on: ' + JSON.stringify(landed));
+    // And the rest of the row must follow in visual order: Payee -> Memo -> Category -> Outflow.
+    await page.keyboard.press('Tab');
+    const memo = await page.evaluate(() => document.activeElement.placeholder || '');
+    assert(memo === 'Optional', 'Tab from Payee must land on Memo, got placeholder: ' + memo);
+    await page.keyboard.press('Tab');
+    const cat = await page.evaluate(() => document.activeElement.id || '');
+    assert(cat === 'tx-form-category', 'Tab from Memo must land on the Category select, got id: ' + cat);
+    await page.keyboard.press('Tab');
+    const outflow = await page.evaluate(() => document.activeElement.id || '');
+    assert(outflow === 'tx-form-outflow', 'Tab from Category must land on Outflow, got id: ' + outflow);
+    await context.close();
+  });
+
   // ── 5G-1D Slice 3/5: combined weekly closeout — browser wiring (mocked wrapper) ──
   // Drives submitCloseout() against a mocked save_weekly_closeout_with_snapshots endpoint.
   // canWriteFinancials()/getAuthHeaders() are satisfied by setting USER_ROLE='owner' and

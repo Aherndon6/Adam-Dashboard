@@ -7757,16 +7757,62 @@ test('5E8-R22: end-to-end — Register Add Transaction dropdown (via _renderTxRe
   }
 });
 
-test('5E8-R20: transaction_date field change triggers a re-render (dropdown labels are month-derived and must not go stale while the form stays open)',()=>{
+// 5E8-R20 originally pinned the opposite behavior: "transaction_date field change triggers a
+// re-render". That re-render WAS the 2026-09-12 Register date-entry defect. The add form
+// pre-fills today's date, so the field always holds a complete valid value, and Chrome fires
+// "change" the instant a segment edit leaves it complete-and-valid — typing "1" into the month
+// produced 2026-01-12, committed, re-rendered, destroyed the <input type="date"> node and threw
+// focus to <body>. The month stayed "1", the second digit could not be typed, and Tab could
+// never reach Payee. The dropdown labels still must not go stale; they are now refreshed in
+// place instead. Behavior change approved by Adam 2026-09-12.
+test('5E8-R20: transaction_date refreshes category labels in place, never through renderApp (2026-09-12 date-entry defect)',()=>{
   var fnIdx=html.indexOf('function _setTxFormField');
   assert(fnIdx>-1,'_setTxFormField function missing from index.html');
-  var fnBlock=html.slice(fnIdx,fnIdx+900);
-  assertIncludes(fnBlock,"field==='transaction_date'",
-    '_setTxFormField must trigger renderApp() when the transaction_date field changes, same as category_key/cleared');
+  var fnBlock=html.slice(fnIdx,html.indexOf('\nfunction ',fnIdx+10));
+  assertIncludes(fnBlock,"if(field==='transaction_date')_refreshTxFormCategoryLabels();",
+    'transaction_date must refresh the month-derived dropdown labels in place');
+  assertIncludes(fnBlock,"else if(field==='category_key'||field==='cleared')renderApp();",
+    'only category_key/cleared may trigger a full re-render');
+  // Regression guard: the defect was transaction_date sharing the renderApp branch.
+  assert(fnBlock.indexOf("||field==='transaction_date')renderApp()")===-1,
+    'transaction_date must never be folded back into the renderApp branch');
+  assert(fnBlock.indexOf("field==='transaction_date'||")===-1,
+    'transaction_date must never be folded back into the renderApp branch');
   // The date input must use onchange, not oninput — native date inputs fire "input" repeatedly
-  // per keystroke/segment, so oninput+renderApp() would cause a jarring re-render mid-edit.
+  // per keystroke/segment, so oninput would run the label refresh far more often than needed.
   assertIncludes(html,"onchange=\"_setTxFormField(\\'transaction_date\\',this.value)\"",
     'Register date input must use onchange (not oninput) for transaction_date');
+});
+
+test('5E8-R20b: _refreshTxFormCategoryLabels exists, is correctly scoped, and never re-renders',()=>{
+  var fnIdx=html.indexOf('function _refreshTxFormCategoryLabels(');
+  assert(fnIdx>-1,'_refreshTxFormCategoryLabels must exist in index.html');
+  var fnBlock=html.slice(fnIdx,html.indexOf('\nfunction ',fnIdx+10));
+  assertIncludes(fnBlock,"getElementById('tx-form-category')",
+    'must target the open form category select by its stable id');
+  assertIncludes(fnBlock,"getAttribute('data-mlabel')",
+    'must relabel only month-derived options, leaving placeholder and legacy options alone');
+  assertIncludes(fnBlock,'_getRegisterCategoryLabel(o.value,monthIso)',
+    'must resolve labels through the same helper the renderer uses');
+  assertIncludes(fnBlock,'_txDateToMonthIso(_txFormData.transaction_date)||_txDateToMonthIso(_today)',
+    'month resolution must mirror _renderTxRegister so the two cannot drift');
+  assert(fnBlock.indexOf('renderApp()')===-1,
+    'the in-place refresh helper must never call renderApp — that would reintroduce the defect');
+});
+
+test('5E8-R20c: category select carries the id, and only month-derived options carry data-mlabel',()=>{
+  var regFn=html.slice(html.indexOf('function _renderTxRegister()'),
+    html.indexOf('\n// renderTransactions'));
+  assertIncludes(regFn,'<select id="tx-form-category"',
+    'category select needs a stable id so labels can be refreshed without a re-render');
+  assertIncludes(regFn,"catOpts+='<option data-mlabel=\"1\" value=\"'+_esc(c.key)",
+    'month-derived options must be tagged data-mlabel="1"');
+  // The placeholder and the legacy option are NOT month-derived and must stay untagged,
+  // or the refresh would overwrite "— No category —" and the "(legacy — re-categorize)" hint.
+  assertIncludes(regFn,'<option value="">— No category —</option>',
+    'placeholder option must stay untagged');
+  assertIncludes(regFn,"catOpts+='<option value=\"'+_esc(fd.category_key)+'\" selected>'",
+    'legacy re-categorize option must stay untagged');
 });
 
 // ═══════════════════════════════════════════════════════════════════════════

@@ -885,7 +885,7 @@ button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-vis
 // ── Constants (unchanged) ──────────────────────────────────────────────────
 // Simplified architecture — $8,250 total from LC · $6,500 operating floor · no legacy mechanics
 // Real-world moves: keep $2,250 in chk, move $2,750 sav→chk, move $1,000 LC→chk, move $2,250 LC→chk (Option 1 correction)
-const BUILD_TS='2026-07-23T00:12:07'; // updated each push — local time string
+const BUILD_TS='2026-09-12T09:33:05'; // updated each push — local time string
 const START_CHK=18037.73,START_SAV=3772.77,START_AMX=103.64,START_TAX=0,START_LC=13488.88;
 const EF_AMT=13488.88; // LC/EF balance — static this model year (no transfers in or out)
 const BASE_TAX=521.36,RET_SAV_XFR=3772.74;
@@ -8211,11 +8211,34 @@ function _setTxFormField(field,val){
     var el=document.getElementById('tx-form-outflow');
     if(el)el.value='';
   }
-  // Phase 5E-8: transaction_date must also trigger a re-render — the category dropdown's
-  // option labels are month-derived (_regMonthIso from fd.transaction_date), so changing the
-  // date without re-rendering would leave the dropdown showing labels resolved for whatever
-  // date the form had at open time, not the currently-selected date.
-  if(field==='category_key'||field==='cleared'||field==='transaction_date')renderApp();
+  // Phase 5E-8 required transaction_date to refresh the category dropdown, because that
+  // dropdown's option labels are month-derived (_regMonthIso from fd.transaction_date): leaving
+  // it alone would show labels resolved for whatever date the form had at open time. 5E-8 got
+  // that refresh by calling renderApp(), which is what caused the 2026-09-12 date-entry defect —
+  // a full re-render destroys the <input type="date"> node the user is typing into. The add form
+  // pre-fills today, so the field already holds a complete valid value, and Chrome fires "change"
+  // the instant a segment edit keeps it complete-and-valid: one digit into the month ("1" ->
+  // 2026-01-12) committed, re-rendered, and threw focus to <body>, so the second digit could
+  // never be typed and Tab could never reach Payee. Refresh the labels in place instead — same
+  // labels, no node replacement, no focus loss. category_key/cleared keep the re-render: they are
+  // select/checkbox fields where focus loss is not a concern (see 5E2-33).
+  if(field==='transaction_date')_refreshTxFormCategoryLabels();
+  else if(field==='category_key'||field==='cleared')renderApp();
+}
+
+// Rewrite the open transaction form's month-derived category labels without re-rendering.
+// Only options tagged data-mlabel="1" are month-derived; the "— No category —" placeholder and
+// the legacy "(legacy — re-categorize)" option are deliberately left alone. Mirrors the month
+// resolution in _renderTxRegister so the two cannot drift.
+function _refreshTxFormCategoryLabels(){
+  var sel=document.getElementById('tx-form-category');
+  if(!sel)return;
+  var monthIso=_txDateToMonthIso(_txFormData.transaction_date)||_txDateToMonthIso(_today);
+  for(var i=0;i<sel.options.length;i++){
+    var o=sel.options[i];
+    if(o.getAttribute('data-mlabel')!=='1')continue;
+    o.textContent=_getRegisterCategoryLabel(o.value,monthIso);
+  }
 }
 
 // Open delete confirmation strip. Resets form state (one action at a time).
@@ -8496,7 +8519,7 @@ function _renderTxRegister(){
     var catOpts='<option value="">— No category —</option>';
     activeCategories.forEach(function(c){
       var _optLabel=_getRegisterCategoryLabel(c.key,_regMonthIso);
-      catOpts+='<option value="'+_esc(c.key)+'"'+(fd.category_key===c.key?' selected':'')+'>'+_esc(_optLabel)+'</option>';
+      catOpts+='<option data-mlabel="1" value="'+_esc(c.key)+'"'+(fd.category_key===c.key?' selected':'')+'>'+_esc(_optLabel)+'</option>';
     });
     // Legacy category support: if the current category_key is no longer leaf&&assignable
     // (e.g. it became a parent/group, or was retired), show it as a selectable legacy option
@@ -8531,9 +8554,12 @@ function _renderTxRegister(){
       // Date
       +'<div><label style="font-size:11px;font-weight:600;color:var(--muted);display:block;margin-bottom:3px">Date*</label>'
       +'<input type="date" value="'+_esc(fd.transaction_date||_today)+'" '
-      // onchange (not oninput): date now triggers a full re-render (dropdown is month-derived),
-      // and native date inputs fire "input" repeatedly per keystroke/segment — onchange fires
-      // once when the value is actually committed, avoiding a jarring re-render mid-edit.
+      // onchange (not oninput): native date inputs fire "input" repeatedly per keystroke and
+      // per segment, so oninput would run the label refresh far more often than needed. onchange
+      // still fires mid-edit (Chrome commits as soon as a segment edit leaves the value complete
+      // and valid) — that is fine now only because _setTxFormField no longer re-renders for this
+      // field. Do NOT reintroduce renderApp() on transaction_date: it destroys the input node
+      // mid-entry and blows focus to <body> (the 2026-09-12 date-entry defect).
       +'onchange="_setTxFormField(\'transaction_date\',this.value)" '
       +'style="font-family:inherit;font-size:13px;padding:5px 8px;border:1px solid var(--line);'
       +'border-radius:6px;background:var(--surface);color:var(--text);width:100%"></div>'
@@ -8545,7 +8571,7 @@ function _renderTxRegister(){
       +inp('memo','Optional',fd.memo)+'</div>'
       // Category
       +'<div><label style="font-size:11px;font-weight:600;color:var(--muted);display:block;margin-bottom:3px">Category</label>'
-      +'<select onchange="_setTxFormField(\'category_key\',this.value)" '
+      +'<select id="tx-form-category" onchange="_setTxFormField(\'category_key\',this.value)" '
       +'style="font-family:inherit;font-size:13px;padding:5px 8px;border:1px solid var(--line);'
       +'border-radius:6px;background:var(--surface);color:var(--text);width:100%">'
       +catOpts+'</select></div>'
