@@ -1776,34 +1776,75 @@ test('alaska_draw move: week 15 checking lower (draw not pulled) when moved to 1
   assert(baseW15>movedW15,'Week 15 checking should be higher when Alaska draw fires (got base='+baseW15+', moved='+movedW15+')');
 });
 
-// ── 22.6 costco_visa delete ──
-test('costco_visa: appears in week 1 realActs by default',()=>{
+// ── 22.6 model_week_overrides machinery: default / deleted / moved ──
+// RETARGETED 2026-09-12 (owner-approved) from 'costco_visa' to 'tax_base'.
+// These three tests exercise the override machinery (default placement, delete,
+// move-to-another-week); Costco Visa was only ever the vehicle. caed4737
+// (2026-08-08) removed the stale [PENDING #20] Costco placeholder emitter, so
+// 'costco_visa' no longer emits anywhere in the model. That left the default and
+// moved tests failing and — worse — left the DELETED test passing VACUOUSLY: it
+// asserted an absence that was already true for the wrong reason, so it would no
+// longer have caught a broken delete override.
+//
+// 'tax_base' (week 2) is the right replacement vehicle: it is genuinely
+// override-aware, as the aoW tests above already rely on. NOTE the first
+// retarget attempt used 'setup_sav_2750' and failed — the week-1 SETUP/EF
+// injections are emitted unconditionally and do NOT consult actionOverrides, so
+// they cannot exercise this machinery at all.
+test('override default: tax_base appears in week 2 realActs by default',()=>{
+  withOverride('tax_base',null,function(){
+    var weeks=runModel(7000,7694.87);
+    var w2=weeks.find(function(w){return w.num===2;});
+    assert(w2.realActs.some(function(a){return a.includes('Vio Bank');}),
+      'tax_base should appear in week 2 realActs by default');
+  });
+});
+
+// The DELETE override can no longer be exercised end-to-end, and that is a real
+// finding rather than a test-fitting problem. DELETEABLE_MODEL_ACTIONS contains
+// exactly one key — costco_visa — and caed4737 (2026-08-08) removed the emitter
+// that produced it. So no model action currently emits a deletable key: the
+// delete capability is ORPHANED. tax_base / commission_tax / alaska_draw are all
+// documented "moveable, no delete" (index.html ACTION_KEYS), so none can stand in.
+// Test the machinery directly, and pin the orphaned state explicitly so it stays
+// visible instead of hiding behind a vacuous pass.
+test('override deleted: delete machinery is correct for the deletable key',()=>{
+  assert(DELETEABLE_MODEL_ACTIONS.has('costco_visa'),
+    'costco_visa must remain the registered deletable model action');
   withOverride('costco_visa',null,function(){
-    var weeks=runModel(7000,7694.87);
-    var w1=weeks.find(function(w){return w.num===1;});
-    var hasCostco=w1.realActs.some(function(a){return a.includes('Costco Visa');});
-    assert(hasCostco,'Costco Visa should appear in week 1 realActs by default');
+    assert(aoDeleted('costco_visa')===false,'aoDeleted must be false with no override');
   });
-});
-
-test('costco_visa deleted: does NOT appear in week 1 realActs',()=>{
   withOverride('costco_visa',{deleted:true},function(){
-    var weeks=runModel(7000,7694.87);
-    var w1=weeks.find(function(w){return w.num===1;});
-    var hasCostco=w1.realActs.some(function(a){return a.includes('Costco Visa');});
-    assert(!hasCostco,'Costco Visa should be absent from realActs when deleted');
+    assert(aoDeleted('costco_visa')===true,'aoDeleted must be true when the override sets deleted');
+  });
+  ['tax_base','commission_tax','alaska_draw'].forEach(function(k){
+    assert(!DELETEABLE_MODEL_ACTIONS.has(k),
+      k+' is documented moveable-no-delete and must not be registered as deletable');
   });
 });
 
-test('costco_visa moved to week 3: not in week 1, appears in week 3',()=>{
-  withOverride('costco_visa',{week_num:3},function(){
+test('override deleted: the delete capability is currently ORPHANED (no emitter)',()=>{
+  // Documents reality after caed4737. If someone re-adds a costco_visa emitter, or
+  // makes another action deletable, this test fails and tells them to restore the
+  // end-to-end delete coverage that was lost when the placeholder was removed.
+  var weeks=runModel(7000,7694.87);
+  var emitsDeletable=weeks.some(function(w){
+    return (w.realActKeys||[]).some(function(k){return DELETEABLE_MODEL_ACTIONS.has(k);});
+  });
+  assert(!emitsDeletable,
+    'A deletable model action is emitted again — restore the end-to-end delete-override '+
+    'coverage (default/deleted/moved through runModel) that was retired on 2026-09-12.');
+});
+
+test('override moved: tax_base to week 4 — not in week 2, appears in week 4',()=>{
+  withOverride('tax_base',{week_num:4},function(){
     var weeks=runModel(7000,7694.87);
-    var w1=weeks.find(function(w){return w.num===1;});
-    var w3=weeks.find(function(w){return w.num===3;});
-    assert(!w1.realActs.some(function(a){return a.includes('Costco Visa');}),
-      'Costco should not be in week 1 when moved to week 3');
-    assert(w3.realActs.some(function(a){return a.includes('Costco Visa');}),
-      'Costco should appear in week 3 when moved there');
+    var w2=weeks.find(function(w){return w.num===2;});
+    var w4=weeks.find(function(w){return w.num===4;});
+    assert(!w2.realActs.some(function(a){return a.includes('Vio Bank');}),
+      'tax_base should not be in week 2 when moved to week 4');
+    assert(w4.realActs.some(function(a){return a.includes('Vio Bank');}),
+      'tax_base should appear in week 4 when moved there');
   });
 });
 
@@ -13292,7 +13333,7 @@ console.log('\n── Section 5G-1D Slice 4c: half-close repair confirmation ─
   test('RC1-9: runModel / computeGoalTransferNetting / resolveWeekTransfers byte-identical to 191cda5 (RC-1 did not touch them)',function(){
     var crypto=require('crypto');
     function bodyHash(tok){var i=html.indexOf(tok);var j=html.indexOf('\nfunction ',i+tok.length);var s=html.slice(i,j<0?html.length:j);return {len:s.length,sha:crypto.createHash('sha256').update(s).digest('hex').slice(0,16)};}
-    var EXPECT={'function runModel(':{len:32840,sha:'5181b79cbba47e68'},'function computeGoalTransferNetting(':{len:10309,sha:'4670447ce489dd8b'},'function resolveWeekTransfers(':{len:5583,sha:'20d17438996ac8ba'}};
+    var EXPECT={'function runModel(':{len:33892,sha:'86f3f3082151fe56'},'function computeGoalTransferNetting(':{len:10309,sha:'4670447ce489dd8b'},'function resolveWeekTransfers(':{len:5583,sha:'20d17438996ac8ba'}};
     Object.keys(EXPECT).forEach(function(tok){var h=bodyHash(tok);assert(h.len===EXPECT[tok].len&&h.sha===EXPECT[tok].sha,tok+' changed vs 191cda5: '+JSON.stringify(h)+' vs '+JSON.stringify(EXPECT[tok]));});
     ['function runModel(','function computeGoalTransferNetting(','function resolveWeekTransfers('].forEach(function(tok){var i=html.indexOf(tok);var j=html.indexOf('\nfunction ',i+tok.length);var s=html.slice(i,j<0?html.length:j);assert(s.indexOf('_ctOpenAuthority')<0&&s.indexOf('_ctAuthorizedLabel')<0,'RC-1 adapter must not appear inside '+tok);});
   });
@@ -13427,7 +13468,7 @@ console.log('\n── Section 5G-1D Slice 4c: half-close repair confirmation ─
   test('S5-FROZEN: runModel / computeGoalTransferNetting / resolveWeekTransfers byte-identical to baseline; adapter+guard live outside them',function(){
     var crypto=require('crypto');
     function bh(tok){var i=html.indexOf(tok);var j=html.indexOf('\nfunction ',i+tok.length);var s=html.slice(i,j<0?html.length:j);return {len:s.length,sha:crypto.createHash('sha256').update(s).digest('hex').slice(0,16),body:s};}
-    var EXP={'function runModel(':{len:32840,sha:'5181b79cbba47e68'},'function computeGoalTransferNetting(':{len:10309,sha:'4670447ce489dd8b'},'function resolveWeekTransfers(':{len:5583,sha:'20d17438996ac8ba'}};
+    var EXP={'function runModel(':{len:33892,sha:'86f3f3082151fe56'},'function computeGoalTransferNetting(':{len:10309,sha:'4670447ce489dd8b'},'function resolveWeekTransfers(':{len:5583,sha:'20d17438996ac8ba'}};
     Object.keys(EXP).forEach(function(tok){var h=bh(tok);
       assert(h.len===EXP[tok].len&&h.sha===EXP[tok].sha,tok+' changed: '+JSON.stringify({len:h.len,sha:h.sha}));
       assert(h.body.indexOf('_legacyClassifyWeek')<0&&h.body.indexOf('_weekIsImmutable')<0&&h.body.indexOf('_immutableWeekRefusal')<0,'Step-5 adapter/guard must not appear inside '+tok);});
@@ -13634,11 +13675,26 @@ console.log('\n── Section 5G-1D Slice 4c: half-close repair confirmation ─
     var stripped=code.replace(/reconEffectiveWD/g,'').replace(/effectiveWD/g,'');
     assert(!/\bWD\b/.test(stripped),'AU-11 authority path must not reference raw WD');
   });
+  // ── runModel freeze pin RE-PINNED 2026-09-12 (owner-approved) ──────────────
+  // The runModel pin moved from 32840/5181b79cbba47e68 to 33892/86f3f3082151fe56.
+  // Cause: caed4737 (2026-08-08, "fix(cards): Phase 1 stabilization") changed card
+  // reminder emission, which lives inside runModel, growing the function by 1052
+  // bytes. That commit did not update these pins, so the suite ran 1788/14 on main
+  // for five weeks (it was 1802/0 at caed4737~1).
+  //
+  // Re-pinning a freeze hash is exactly the action this gate exists to prevent, so
+  // the delta was characterised before the pin moved: runModel's NUMERIC output is
+  // unchanged across all 31 weeks except week[0].totalTasks 4 -> 3 (a reminder
+  // count). Every cash, trough, balance and goal figure is byte-identical. The
+  // netting and resolver pins below were NOT touched and still match their original
+  // values — independent evidence the change was confined to reminder generation.
+  // The runModel FREEZE ITSELF IS NOT LIFTED: the function stays frozen until the
+  // Calc-Core Extraction phase, per AGENTS.md.
   // FROZEN re-affirm: runModel/netting/resolver bodies unchanged by the AU-11 insertion
   test('AU11-FROZEN-1: runModel / computeGoalTransferNetting / resolveWeekTransfers byte-frozen after AU-11 insertion',function(){
     var crypto=require('crypto');
     function bh(tok){var i=html.indexOf(tok);var j=html.indexOf('\nfunction ',i+tok.length);var s=html.slice(i,j<0?html.length:j);return s.length+'/'+crypto.createHash('sha256').update(s).digest('hex').slice(0,16);}
-    assert(bh('function runModel(')==='32840/5181b79cbba47e68','runModel changed: '+bh('function runModel('));
+    assert(bh('function runModel(')==='33892/86f3f3082151fe56','runModel changed: '+bh('function runModel('));
     assert(bh('function computeGoalTransferNetting(')==='10309/4670447ce489dd8b','netting changed: '+bh('function computeGoalTransferNetting('));
     assert(bh('function resolveWeekTransfers(')==='5583/20d17438996ac8ba','resolver changed: '+bh('function resolveWeekTransfers('));
   });
@@ -13722,7 +13778,7 @@ console.log('\n── Section 5G-1D Slice 4c: half-close repair confirmation ─
   test('AU11-S2-FROZEN: runModel / netting / resolver byte-frozen after Step 2 insertion',function(){
     var crypto=require('crypto');
     function bh(tok){var i=html.indexOf(tok);var j=html.indexOf('\nfunction ',i+tok.length);var s=html.slice(i,j<0?html.length:j);return s.length+'/'+crypto.createHash('sha256').update(s).digest('hex').slice(0,16);}
-    assert(bh('function runModel(')==='32840/5181b79cbba47e68','runModel changed: '+bh('function runModel('));
+    assert(bh('function runModel(')==='33892/86f3f3082151fe56','runModel changed: '+bh('function runModel('));
     assert(bh('function computeGoalTransferNetting(')==='10309/4670447ce489dd8b','netting changed: '+bh('function computeGoalTransferNetting('));
     assert(bh('function resolveWeekTransfers(')==='5583/20d17438996ac8ba','resolver changed: '+bh('function resolveWeekTransfers('));
   });
@@ -13854,7 +13910,7 @@ console.log('\n── Section 5G-1D Slice 4c: half-close repair confirmation ─
   test('AU11-S3-FROZEN: runModel / netting / resolver byte-frozen after Step 3',function(){
     var crypto=require('crypto');
     function bh(tok){var i=html.indexOf(tok);var j=html.indexOf('\nfunction ',i+tok.length);var s=html.slice(i,j<0?html.length:j);return s.length+'/'+crypto.createHash('sha256').update(s).digest('hex').slice(0,16);}
-    assert(bh('function runModel(')==='32840/5181b79cbba47e68','runModel changed: '+bh('function runModel('));
+    assert(bh('function runModel(')==='33892/86f3f3082151fe56','runModel changed: '+bh('function runModel('));
     assert(bh('function computeGoalTransferNetting(')==='10309/4670447ce489dd8b','netting changed');
     assert(bh('function resolveWeekTransfers(')==='5583/20d17438996ac8ba','resolver changed');
   });
@@ -13927,7 +13983,7 @@ console.log('\n── Section 5G-1D Slice 4c: half-close repair confirmation ─
   test('AU11-EVID-FROZEN: runModel / netting / resolver byte-frozen after Step 4A-1b',function(){
     var crypto2=require('crypto');
     function bh(tok){var i=html.indexOf(tok);var j=html.indexOf('\nfunction ',i+tok.length);var s=html.slice(i,j<0?html.length:j);return s.length+'/'+crypto2.createHash('sha256').update(s).digest('hex').slice(0,16);}
-    assert(bh('function runModel(')==='32840/5181b79cbba47e68','runModel changed: '+bh('function runModel('));
+    assert(bh('function runModel(')==='33892/86f3f3082151fe56','runModel changed: '+bh('function runModel('));
     assert(bh('function computeGoalTransferNetting(')==='10309/4670447ce489dd8b','netting changed');
     assert(bh('function resolveWeekTransfers(')==='5583/20d17438996ac8ba','resolver changed');
   });
@@ -14147,7 +14203,7 @@ console.log('\n── Section 5G-1D Slice 4c: half-close repair confirmation ─
   test('AU11-CLS-FROZEN: runModel / netting / resolver byte-frozen after Step 4A-2',function(){
     var crypto2=require('crypto');
     function bh(tok){var i=html.indexOf(tok);var j=html.indexOf('\nfunction ',i+tok.length);var s=html.slice(i,j<0?html.length:j);return s.length+'/'+crypto2.createHash('sha256').update(s).digest('hex').slice(0,16);}
-    assert(bh('function runModel(')==='32840/5181b79cbba47e68','runModel changed: '+bh('function runModel('));
+    assert(bh('function runModel(')==='33892/86f3f3082151fe56','runModel changed: '+bh('function runModel('));
     assert(bh('function computeGoalTransferNetting(')==='10309/4670447ce489dd8b','netting changed');
     assert(bh('function resolveWeekTransfers(')==='5583/20d17438996ac8ba','resolver changed');
   });
@@ -14388,7 +14444,7 @@ console.log('\n── Section 5G-1D Slice 4c: half-close repair confirmation ─
   test('AU11-4B-FROZEN: runModel / netting / resolver byte-frozen after Step 4B',function(){
     var crypto2=require('crypto');
     function bh(tok){var i=html.indexOf(tok);var j=html.indexOf('\nfunction ',i+tok.length);var s=html.slice(i,j<0?html.length:j);return s.length+'/'+crypto2.createHash('sha256').update(s).digest('hex').slice(0,16);}
-    assert(bh('function runModel(')==='32840/5181b79cbba47e68','runModel changed: '+bh('function runModel('));
+    assert(bh('function runModel(')==='33892/86f3f3082151fe56','runModel changed: '+bh('function runModel('));
     assert(bh('function computeGoalTransferNetting(')==='10309/4670447ce489dd8b','netting changed');
     assert(bh('function resolveWeekTransfers(')==='5583/20d17438996ac8ba','resolver changed');
   });
@@ -14723,7 +14779,7 @@ console.log('\n── Section 5G-1D Slice 4c: half-close repair confirmation ─
   test('AU11-5B-FROZEN: runModel / netting / resolver byte-frozen after Step 5B',function(){
     var crypto2=require('crypto');
     function bh(tok){var i=html.indexOf(tok);var j=html.indexOf('\nfunction ',i+tok.length);var s=html.slice(i,j<0?html.length:j);return s.length+'/'+crypto2.createHash('sha256').update(s).digest('hex').slice(0,16);}
-    assert(bh('function runModel(')==='32840/5181b79cbba47e68','runModel changed: '+bh('function runModel('));
+    assert(bh('function runModel(')==='33892/86f3f3082151fe56','runModel changed: '+bh('function runModel('));
     assert(bh('function computeGoalTransferNetting(')==='10309/4670447ce489dd8b','netting changed');
     assert(bh('function resolveWeekTransfers(')==='5583/20d17438996ac8ba','resolver changed');
   });
@@ -14973,7 +15029,7 @@ console.log('\n── Section 5G-1D Slice 4c: half-close repair confirmation ─
   test('AU11-6B-FROZEN: runModel/CAE/authoritativeCurrentChk/nine-contract intact after Step 6B',function(){
     var crypto2=require('crypto');
     function bh(tok){var i=html.indexOf(tok);var j=html.indexOf('\nfunction ',i+tok.length);var s=html.slice(i,j<0?html.length:j);return s.length+'/'+crypto2.createHash('sha256').update(s).digest('hex').slice(0,16);}
-    assert(bh('function runModel(')==='32840/5181b79cbba47e68','runModel changed');
+    assert(bh('function runModel(')==='33892/86f3f3082151fe56','runModel changed');
     assert(bh('function computeGoalTransferNetting(')==='10309/4670447ce489dd8b','netting changed');
     assert(bh('function resolveWeekTransfers(')==='5583/20d17438996ac8ba','resolver changed');
     assert(/p_expected_count:9/.test(html)&&/snapshot_count===9/.test(html)&&/rows\.length!==9/.test(html),'nine-contract intact');
