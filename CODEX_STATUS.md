@@ -1,6 +1,69 @@
 # Codex Status: Herndon Financial OS
 
-## CURRENCY NOTE (2026-09-12b) — P3c-1 card-obligation baseline correction: COMPLETE pending production verification
+## CURRENCY NOTE (2026-09-13) — ROADMAP DECISION: P3b-1 is next product work; P3c-2 deferred post-rollover (specification NOT authorized); manual Saturday cash certification stays authoritative
+
+**Status at a glance (owner decision 2026-09-13).**
+- **P3c-1: COMPLETE and production-verified** (see 2026-09-12b below).
+- **P3c-2: DEFERRED** to the first post-rollover control/product item. **Specification is NOT authorized.**
+- **Next product work: P3b-1 Register & Budget Data Integrity**, after the minimal e2e production-isolation control.
+- **Rollover:** paper-only preparation starts the first week of October; the formal specification starts **about Oct 12** (not drifting toward Oct 19); production target **Dec 12-19**; **Dec 19 is the HARD LATEST production date** (the Dec 22-30 cruise follows).
+- **Operating control unchanged:** the Saturday manual cash-safety certification remains authoritative.
+
+**Active sequence.** (0) this documentation and pointer reconciliation → (1) minimal e2e production-isolation control, required before the first P3b-1 push → (2) **P3b-1** (specification, then build) → (3) **2027 rollover** (specification, then implementation), carrying the P3c-2 compatibility requirements below → (4) **P3c-2**, first post-rollover, unless a new integrity issue changes priority → (5) 5G-2 per the post-rollover roadmap. WIP=1 applies to implementation.
+
+**Gates and planning constraints.**
+- **P3b-1 scope-freeze gate, Sep 18:** architecture/spec challenge plus owner approval freezes the minimum P3b-1 scope. Implementation starts only if the specification genuinely passed that gate, never merely because the calendar reached the build day. After the gate, any discovered rider or enhancement goes to backlog unless it is required for correctness.
+- **P3b-1 production push** is held until after the Cal 38 certification sitting (Sep 26); production verification targets Monday Sep 28 if the build is approved. The Cal 38 manual certification remains authoritative.
+- **P3b-1 may not consume the rollover deadline.** If it slips into the rollover-specification critical path: remove P3b-2 riders, preserve only the approved P3b-1 minimum, stop adding scope, protect rollover.
+- **D10 ("Calc-Core Extraction before rollover?")** must be decided before the rollover specification. Its decision brief belongs in the early-October paper-only rollover-prep package. The brief decides whether rollover can safely proceed on the current architecture; it does not automatically create a new prerequisite. Calc-Core Extraction is not started without separate authorization.
+- **Reduced 5G-1B** stays in the calendar lane, not the active implementation pointer. When real DCL evidence is available it is sequenced explicitly around rollover work under WIP=1 and may not silently interrupt an active rollover implementation. Its expected golden-master recapture remains owner-approved.
+
+**P3c-2 investigation outcome (architecture only; nothing implemented).**
+- The additive reconstruction of a no-sweep trajectory from `runModel` output (**C1**) is **REJECTED**. Two optimistic counterexamples were reproduced: floor-gated tax deferral and savings-draw enablement.
+- A **direct dated committed-cash walk** is only the **leading architectural family**, not a frozen design. It uses: the reconciled base; the existing reserve once; required and committed dated events only; durable tax obligations; confirmed favorable inflows only; draws only from pre-existing funds; an explicit operating allowance. It uses no goal state, waterfall, lookahead or allocation.
+- The minimum is medium scope with only partial pre-rollover decision authority, which is why it follows P3b-1 and rollover.
+- The 5-week lookahead fail-open remains a known defect, controlled by the manual certification.
+
+**Owner rulings recorded as P3c-2 design input (NOT implemented; no fields, schema or code added now).**
+1. **Floor at all times:** the operating floor applies at every relevant point in time. Evaluation is dated, outflows before inflows on the same date, and undated required outflows are placed before favorable inflows.
+2. **Structured dates:** the 2027 schedule carries structured event dates. Retrofitting 2026 `WD`: *"Required only if P3c-2 is later pulled ahead of rollover or legacy 2026 data must participate in post-rollover validation."* No 2026 golden-master recapture for this.
+3. **Permanence:** a candidate discretionary transfer X is treated as permanently removed from checking.
+4. **Favorable inflows:** PASS may count scheduled contractual payroll plus confirmed, dated favorable inflows only. A confirmed release counts only when the released funds were already held before the authoritative reconciled base and are not attributable to X. A future release funded by X itself must not credit X back into the safety trajectory.
+5. **Operating allowance:** an explicit owner-reviewed weekly operating allowance is a gate input, not added to `WD`/effectiveWD and not a card margin. It is placed conservatively, never smoothed optimistically. Leading rule: debited at the beginning of the applicable week before favorable inflows, unless the eventual specification proves a more accurate deterministic placement.
+6. **Open card cycles:** pessimistic amounts are owner-entered. Missing means evidence incomplete.
+7. **Non-monthly obligations (until 5G-2):** dated entry of in-window non-monthly obligations plus a per-sitting owner attestation. No recurrence engine.
+8. **Evidence vocabulary:** the dormant AU-11 card-evidence vocabulary is the starting vocabulary, not necessarily the final schema. The eventual rationalization must also support a structured cash/payment date (the existing event `d` field or an explicitly defined equivalent) and the owner-entered pessimistic amount, and must fix Edit-Week evidence-metadata persistence. Labels are display only.
+9. **Card timing:** one canonical card-timing source, attached to the existing backlog item **CARD-CYCLE-1** (refined below, not duplicated).
+10. **Safe partial / ceiling:** advisory only until netting completion semantics are characterized. No freeze exception for convenience.
+11. **Method:** C1 rejected. The direct dated walk is the direction; its specification must prove it is never more optimistic than the valid committed trajectory.
+12. **Horizon:** not frozen. The reassessment-frontier formulation is the leading candidate, to be formally derived in the specification.
+
+**Rollover compatibility requirements (compatibility only; P3c-2 is not implemented inside rollover).**
+- **R1:** 2027 cash events carry structured dates.
+- **R2:** "The period and schedule model must support extending the required cash schedule beyond a calendar-year boundary without another rollover-style cliff. Rollover does not determine the P3c-2 forward-safety horizon; P3c-2 does." Rollover does not size a forward lead merely to satisfy P3c-2.
+- **R3:** "2027 card payment rows are authored from issuer close/due rules recorded once under CARD-CYCLE-1 and protected by a consistency test. Do not introduce another independently maintained card-timing table. The frozen runModel reminder/action table remains legacy behavior." This is an authoring and source-of-truth control, not a P3c-2 runtime gate.
+- **R4:** "Rollover must not preclude the future structured card-evidence vocabulary. Rollover itself adds no P3c-2 evidence fields."
+- **R5:** nothing in rollover makes a pure committed-cash walk harder.
+- **R6:** any golden-master recapture remains owner-approved.
+- **R7:** P3c-2 implementation is not pulled into rollover without separate authorization.
+
+**CARD-CYCLE-1 refined (not implemented in this pass).** The existing backlog item (decision log 2026-07-25, "card statement-cycle metadata has no data model") now also carries:
+- one issuer close/due-rule source;
+- consistency testing against authored card payment rows;
+- no additional independent timing table;
+- legacy frozen `runModel` timing is non-authoritative for future authoring.
+
+No second backlog item is created.
+
+**Operating control (unchanged).** The Saturday manual cash-safety certification remains authoritative through rollover. Weekly discretionary goal-funding recommendations are non-authoritative for cash-safety decisions. Reconciliation remains required. This decision does not soften that control.
+
+**Not reopened by this note.** The deferred WI/P-2 concurrency arc, K3/K4/K6, Certification v1, Roadmap UI Lite, DOC-3 and Calc-Core Extraction each wait on their existing trigger, dependency or separate authorization. The Architecture v2 / canonical-roadmap authority question is **not** decided here; it will be decided explicitly before the rollover specification needs to cite Architecture v2.
+
+**Documentation only.** No code, test, schema, SQL, production or financial change. Evidence and the full owner-rulings record live in the owner's evidence folder, outside this public repo.
+
+---
+
+## CURRENCY NOTE (2026-09-12b) — P3c-1 card-obligation baseline correction: COMPLETE (production-verified 2026-09-12: commit 474eabb live on both Pages endpoints; smoke A–E passed)
 
 **What changed (owner-authorized, reviewed with ChatGPT).** `WD` card-payment rows for model weeks 16-31 (Cal 38-53) corrected to a **full-statement basis** from closed statements, live-accrual projections and owner-confirmed carry-forwards; Costco Visa and AMEX Blue now carry modeled payments. **Final Nov/Dec AMEX Gold planning baseline: ~$8,822** (evidence-based normal month including GLP, baseball and Diablos; it supersedes an earlier ~$11,800 carry that P3c-1 validation showed would carry ~$3,000/month of identified one-off spend). `WD_PROTECTED_PAYEE_RULES` gains `costco_visa` and `amex_blue`. One render-only floor-note string in `_renderGoalsSavings` no longer quotes stale card figures. Weeks 1-15 are byte-identical; no standalone Diablos or GLP rows; Nov Disney Visa $500; no December Disney bill. The original "add Diablos/GLP rows to `WD`" scope was retired because those are card charges and would double count.
 
@@ -35,7 +98,7 @@
 
 **Owner actions still open (not blocking DR-1 closure):**
 - ~~Copy the posture file and fingerprint queries into the off-device (cloud) copy of the backup set.~~ **DONE 2026-09-12**; cloud copies verified SHA-256-identical to the local set, including the encrypted archive.
-- Decide on an older **unencrypted** production dump from 2026-08-07 still present in the local backup folder (mode 600). Not touched.
+- ~~Decide on an older **unencrypted** production dump from 2026-08-07 still present in the local backup folder (mode 600).~~ **DONE 2026-09-12**: removed from the backup folder by the owner (moved to Trash).
 - Record the SHA-256 of each future encrypted dump at creation; none was stored beside the 2026-09-07 archive.
 
 **Cadence.** Re-rehearse after any change to the backup method or a Postgres major upgrade, and at least every 6 months. Refresh the dump monthly on the context-refresh cycle; refresh the posture file on any grant change.
@@ -770,7 +833,7 @@ Prepare the system for Wendy using the Budget tab in live household workflow whi
 
 ## Next Candidate Work
 
-**DR-1 (Backup & Restore Maturity) is CLOSED — parts 1, 2, 4 and 5 closed 2026-09-07; part 3 (tested restore) rehearsed and PASSED 2026-09-12** — see the 2026-09-12 currency note at the top of this file and `docs/restore-runbook.md`. Next substantive item per the 2026-09-07b sequence is **P3c** including the card-obligation baselines (not started, separately authorized).
+**Current pointer (2026-09-13):** see the 2026-09-13 currency note at the top of this file. Sequence: e2e production-isolation control → **P3b-1** (Sep 18 scope-freeze gate) → 2027 rollover (spec ~Oct 12; production Dec 12-19, Dec 19 hard latest) → P3c-2 (first post-rollover; spec not authorized) → 5G-2. DR-1 and P3c-1 are closed. The list below is historical.
 
 Active next-phase pointer: 5G-0 CLOSED, 5G-1A SHIPPED, UX-0 SHIPPED, UX-0.5 SHIPPED, 5G-1A.5 SHIPPED+pushed, **5G-1C-1 SHIPPED+pushed** (`de4e3c0`, production-verified 2026-07-08). **5G-1 staging DB/security layer is validated and pushed** (RLS smoke `eeee4cb`, `app_environment` hardening `7f0d0a0`); **production DDL and the app-side functional build remain gated**. IRA-goal correction ($7,000→$7,500, funded amounts preserved) is DONE (commit `1dcc686`); the AMEX sub-`MIN_XFR` waterfall deadlock it exposed is FIXED by 5G-1A.5 (commit `f307db7`, pushed — see "## 5G-1A.5 SHIPPED"). **5G-1C-2 — Goal Funding State Integrity** (review doc §5/§7 Phase B: week-anchored `goal_funding_snapshots` + runModel overlay): the plan doc was updated with Fable R1–R13 (`e1eac07`), the pre-snapshot golden-master identity gate was captured (`e0be9dc`), **C2 (the staging SQL package) is staging-validated + pushed** (`5bbcab2`), and **C3 (the app-side overlay) is SHIPPED + DEPLOYED** (`c6fbb32`, pushed; live `BUILD_TS 2026-07-09T08:51:21` on dashboard.herndons.us; static 1392/0, e2e 133/0; inert until snapshot rows exist — see "## 5G-1C-2 C3 SHIPPED + DEPLOYED"). **5G-QA-1 is COMPLETE and pushed** (Slice A `05a5558` tag-based smoke mode + Slice B `d8e21a0` deterministic waits; `e2e.js`-only; full 133/0 default gate preserved, runtime 538.45s→415.77s, smoke 19/0 opt-in ~44–50s, fallback 0/0 — see "## 5G-QA-1 SHIPPED"). **5G-1C-2 production SQL package is CREATED + PUSHED** (`3061644`; six `docs/phase-5g-1c-2-prod-*` files — see "## 5G-1C-2 PRODUCTION SQL PACKAGE COMMITTED"). **E1 (production DDL) is COMPLETE + GREEN (2026-07-09)** — preflight/migration/validation/inert-check all PASS against Adam-Dashboard (usayoldrawwmjsmretin) under runbook `e1b9252`; production now holds `goal_funding_snapshots` + `save_goal_funding_snapshots`, schema-only and EMPTY; app behavior-inert (see "## 5G-1C-2 E1 COMPLETE"). **Immediate next work item is E2 (first-anchor seed)** — manual Supabase in Adam-Dashboard (usayoldrawwmjsmretin), separate explicit in-session Adam go-ahead required; **do NOT start E2 without it.** **E2 reconfirm:** production's latest reconciled week is **4** (E1 preflight P6), so the First-Anchor Value Card must use the **wk-4 basis** or wait for a wk-5 reconciliation. No first-anchor seed has run. THEN 5G-1D write-through. Optional still-open: the capped pre-5G UX cleanup bundle (FLOW-2, FLOW-1, WK-1, REG-1, SYS-2; rider REG-2). Future candidate (not sequenced): TX-1 — see `docs/tx-1-candidate.md`. **SUPERSEDED (2026-07-10):** the "wk-4 basis or wait for wk-5" language above is superseded by the cleared E2 runbook §2 decision to **wait for the Week-5 reconciliation** (wk-4 basis not used). The 5G-1D planning stack (plan + correction spec + implementation-readiness package) is now **CLEARED and on main**; **E2 is Gate 0 (OPEN / BLOCKING)** and **5G-1D implementation is BLOCKED until Gate 0 closes** — see "## 5G-1D READINESS CLEARED — E2 / GATE 0 BLOCKING (2026-07-10)".
 

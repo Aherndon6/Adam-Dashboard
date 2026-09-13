@@ -102,8 +102,8 @@ Access model:
 
 ## Current State
 
-Phase 5B complete.
-Budget Module v1 live.
+Current operating state is recorded in `CODEX_STATUS.md` (not here) and execution order in `docs/roadmap/canonical-roadmap.md` §0. This section keeps durable rules and background only.
+
 5F-1 complete through Phase 4. Forward reconciliation write path (Phase 0 basis, Phase 1 prior-commitment patches, Phase 2 current-week WD inserts, Phase 3 manual catch-all, Phase 4 balance entry) is live via the `save_reconciliation_with_commitments` RPC and proven in a real Week 26 closeout (2026-07-04): row saved correctly, three Tiffany Dye rents cleared/reflected at week 4, no Phase 3 duplicate for the $435.63 Vio transfer, production data verified clean.
 Two 5F-1 sub-items remain deferred (NOT required for forward weekly closeout): dashboard Review Required verdict-text rendering (the `reviewRequired` flag is computed and tested; only the on-dashboard verdict string is unbuilt) and historical repair mode (`repair_commitments_for_week` wiring, past-week backfill only).
 5F-1.5 Gate A (Wendy July usability) UI shipped and live (2026-07-05/06): A5 account-dropdown alphabetization, A8 weekly banner in header, A6 sortable Register columns, A9a Register search/type/status filters, A9b Register date filters, A7a read-only Category Report modal + picker, A7b Budget expense-row drill-through, plus the Register Quicken-style ledger hotfix (historical/as-of-transaction-date Balance, starting-balance row at bottom). Following Wendy's confirmation, the Register now defaults to the Quicken CL/reconciliation view — uncleared over cleared, newest-first within each group, Clr header activates it (commit 8d48b04) — superseding the earlier Clr-status-only default; Date/Payee/Category/Outflow/Inflow remain user-sortable. Display/read-only scope except the pre-existing Clr checkbox behavior, which was preserved unchanged; no new Register write path, schema/RLS/RPC, or Budget-calculation changes.
@@ -120,18 +120,8 @@ in `CODEX_STATUS.md`, recorded with the date and commit it was measured at. Befo
 citing any baseline, re-run the suites — `node test_regression.js` and `node e2e.js`
 — and treat a count you did not personally measure as unverified.
 
-Dashboard stable.
-
-Next milestone:
-- Wendy's Budget tab live use starting July 1, 2026
-
 **Operating state (2026-07-13, Adam-confirmed — supersedes the two Quicken bullets that were here):** The **Herndon Financial OS is the sole live system of record.** Quicken parallel operation has **ended**, the Quicken subscription is **canceled**, and the historical Quicken data is retained as an **archive/reference source only** — Quicken is **not** an active operational system, parallel ledger, or independent live recovery replica. **No additional clean parallel month is required for anything.** The retained historical Quicken data **must not be deleted, modified, or treated as disposable without explicit Adam approval.**
 - **Recovery consequence (immediate):** because the OS is now the sole live record with no parallel fallback, backup/restore maturity is an **immediate production-operability requirement**, not a future cancellation prerequisite — scheduled production backups; encrypted off-device storage; documented + periodically tested restore; a named backup owner; and MFA on the owner Supabase login.
-
-Next build phase:
-- 5G Cash Planning + Allocation (locked). 5G-0 is the first implementation sub-phase and is label/docs cleanup only. 5G-1 is the first schema/build sub-phase.
-- See `docs/phase-status.md` for the 5G-0 through 5G-5 map, gates, and the pre/post-Alaska split, and `CODEX_STATUS.md` for the active pointer.
-- Claude Code owns 5G local implementation. This AGENTS.md + CODEX_STATUS.md update is the enabling gate before 5G-1 starts.
 
 ## Budget Module
 

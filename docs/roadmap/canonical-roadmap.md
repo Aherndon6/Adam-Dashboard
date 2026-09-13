@@ -23,7 +23,7 @@
 
 **Model-week arithmetic (confirmed; `getCalWeek(model)=model+22`):** persisted `week_num` is the **model week** (epoch Jun 7 2026). Model wk 6 = **Cal Wk 28**, first supervised closeout Sat **Jul 18**; wk 7 = Sat **Jul 25** (at home, pre-freeze); wk 8 = Cal Wk 30 = Sat **Aug 1** (inside freeze); wk 9 = Sat **Aug 8** (inside freeze); wk 10 = Sat **Aug 15**. RCCL payout ~Cal Wk 30 (~Aug 1, mid-trip); DCL ~Cal Wk 41 (~Oct 17). Model window ends **2027-01-09**. `weekly_reconciliations` has **no `model_year` column** and upserts on bare `week_num` — see §14 (AF-2) and §12 (D-11).
 
-**Active execution pointer (2026-07-19) — this roadmap is PAUSED until it clears.** Before the normal roadmap resumes, the controlling sequence is **Post-BKX Stabilization & Goal-Funding Validation** — `docs/phase-5g-1d-post-bkx-stabilization-2026-07-19.md` (State detail in `CODEX_STATUS.md`): (1) finish BKX settlement + R5–R7 verification → (2) Week 23/24 read-only diagnosis → (3) smallest-safe Week 23/24 repair → (4) pre/post goal-funding deep dive → (5) fix any defects → (6) finalize/push docs (after approval) → (7) **then** resume this roadmap. Advisory; balance-free.
+**Active execution pointer (2026-09-13).** Post-BKX Stabilization concluded with Step 8 (engineering complete 2026-08-06; operational result HOLD); DR-1 closed 2026-09-12; the original P3c (Diablos/GLP `WD` rows) was superseded by **P3c-1** card-obligation baseline correction (live 2026-09-12). **Current sequence: P3b-1 → 2027 rollover (spec mid-October, production Dec 12–19, Dec 19 hard latest) → P3c-2 (first post-rollover) → 5G-2.** Current state and the controlling decision live in `CODEX_STATUS.md` (2026-09-13 note). The dated calendar in §3.0 and §11 is historical where its dates have passed. Advisory; balance-free.
 
 ---
 
@@ -55,6 +55,8 @@
 No P0–P8 slot changes vs the FINAL roadmap; deltas are gates, dates, and intra-step order. **WIP = 1 for code-bearing phases** (§8). Dates reflect the corrected freeze (`Jul 29 – Aug 10`) and the Fable-access-end (`Jul 19`).
 
 ### 3.0 Corrected sequence & dates (Targeted Sequencing amendment T-1…T-6, 2026-07-14 — CONTROLLING)
+
+*Currency (2026-09-13): rows 1–6 are complete, superseded or re-sequenced per the §0 pointer; 5G-2 moves post-rollover; the T-1 November swap is moot.*
 
 *Adopts the Fable Targeted Sequencing Review + Boundary Clarifications (Amendment 1) + Account Composition Scope (Amendment 2), all 2026-07-14 (provenance: `docs/roadmap/archive-index.md`). This table is the controlling order; the P-block narrative below is annotated where a T-decision changes it. **Two structural guarantees:** (1) the **DCL chain** (1B build start ≤ Sep 14; complete before DCL ~Oct 17) and the **rollover chain** (spec ~Nov 1 → D10+D-11 ~Nov 15 → rehearsal mid-Dec → execution ≤ Dec 28, hard 2027-01-09) are **dated, calendar-forced chains that preempt every discretionary item** — nothing in this amendment displaces either. (2) **No separate "Architecture Enablement" code phase exists** — "Stage 1A" is dissolved (T-3): its paper is freeze docs, its seams are Calc-Core Extraction Stage 1 (late Nov), its tests ride D7. Pre-1B preparation is documentation + test-only per the §8 bright line.*
 
