@@ -43,6 +43,29 @@ try { eval(stub+sc); } catch(e) { console.error('FATAL eval:',e.message); proces
 
 // Shared model output
 const WEEKS = runModel(7000, 7694.87);
+
+// ── P3c-1 controlled liquidity fixture (TEST-ONLY; added 2026-09-12, owner-directed) ──
+// Since P3c-1 the canonical WD carries full-statement card bills, so the June-start scenario no longer
+// has surplus for the discretionary goal waterfall after Cal 37. The canonical outcome is pinned by the
+// golden master and the Ph4 integration tests. Behavioural tests whose PURPOSE is to prove goal-funding
+// mechanics (IRA/529 funding, completion semantics, residual completion, sweep/lookahead floor safety)
+// WHEN CAPACITY EXISTS run under this fixture instead of asserting on the constrained baseline.
+// Mechanism: the existing Edit-Week override path (overrideData). Weeks 15-31 keep their WD events and
+// gain ONE synthetic inflow labelled as a fixture. No production logic is changed.
+// Note: an overridden week bypasses Budget Rules in runModel; this harness loads no rules, so no effect.
+// $1,000/week is the smallest probed amount (1,000 / 1,500 / 2,000 / 2,500) that restores every held goal
+// to target AND returns floor violations to the structural W6/W8/W13 set.
+const LIQUIDITY_FIXTURE_PER_WEEK=1000;
+function withAmpleLiquidity(fn){
+  var saved=overrideData, ov=Object.assign({},overrideData);
+  for(var n=15;n<=31;n++){
+    if(ov[n])continue; // never clobber an override a test already set
+    var wd=WD.find(function(x){return x[0]===n;});
+    ov[n]={week_num:n,events_json:wd[4].map(function(e){return Object.assign({},e);}).concat([{l:'TEST FIXTURE: ample liquidity (not real income)',t:'in',a:LIQUIDITY_FIXTURE_PER_WEEK}])};
+  }
+  overrideData=ov;
+  try{return fn();}finally{overrideData=saved;}
+}
 // mockVm: override key fields AND goalSaved so getGoalFunded reads test values
 const mockVm = { weeks: WEEKS.map(w=>Object.assign({},w,{
   akSaved:3500,akRem:3500,amx:200,
@@ -902,8 +925,13 @@ test('goalCompletion[wendy_sep] = Completed (complete=true)',()=>{
   assert(c&&c.dates==='Completed','wendy_sep goalCompletion expected Completed, got: '+JSON.stringify(c));
 });
 
-test('goalCompletion[adam_ira] is non-null (CPA flag display-only; waterfall funds IRA to target)',()=>
-  assert(bvm.goalCompletion.adam_ira!==null,'adam_ira goalCompletion should be non-null after IRA gate removed'));
+// P3c-1: behavioural (controlled liquidity fixture). Intent: the CPA flag is display-only and the waterfall
+// funds the IRA to target when capacity exists. The canonical baseline no longer has that capacity.
+test('goalCompletion[adam_ira] is non-null when capacity exists (CPA flag display-only; waterfall funds IRA to target) [liquidity fixture]',()=>
+  withAmpleLiquidity(function(){
+    var vmL=buildDashboardViewModel(runModel(7000,7694.87),{ak:7000,rt:7694.87});
+    assert(vmL.goalCompletion.adam_ira!==null,'adam_ira goalCompletion should be non-null after IRA gate removed');
+  }));
 
 test('goalCompletion[taxable_etf] = null (stretch goal)',()=>
   assert(bvm.goalCompletion.taxable_etf===null,'taxable_etf should be null'));
@@ -1035,10 +1063,65 @@ test('Ph4 WD: Wk 16 has no Alaska outflow event',()=>{
   const evs=wd&&wd[4]||[];
   assert(!evs.some(e=>e.l&&e.l.toLowerCase().includes('alaska')&&e.a<0),'W16 still has Alaska outflow event');
 });
-test('Ph4 WD: Wk 16 has Disney Visa bill',()=>{
+test('Ph4 WD: Wk 16 has Disney Visa bill (P3c-1: Sep statement $519.98)',()=>{
   const wd=WD.find(([n])=>n===16);
-  assert(wd&&wd[3].some(b=>b>=3000&&b<=4000),'W16 missing Disney Visa ~$3,500 in bills');
+  assert(wd&&wd[3].some(b=>Math.abs(b-519.98)<0.005),'W16 missing Disney Visa $519.98 statement in bills');
 });
+
+// ── P3c-1 (2026-09-12, owner-approved): WD card-obligation baselines, full-statement basis ──
+// Characterises the corrected card rows for model weeks 16-31 (Cal 38-53). Values and sources:
+// owner-held P3c-1 value table rev 4 (Nov/Dec Gold ~$8,822). Weeks 1-15 must stay byte-identical to pre-P3c-1 source.
+(function(){
+  const CARD_RE=/AMEX\s+(Gold|Plat(inum)?|Blue)|Disney\s+Visa|Costco\s+Visa/i;
+  const cardTotal=(n)=>{const wd=WD.find(([w])=>w===n);return(wd[4]||[]).filter(e=>e.t==='ob'&&CARD_RE.test(e.l)).reduce((s,e)=>s+Math.abs(e.a),0);};
+  const EXPECT={16:2180.22,17:3172.06,18:0,19:0,20:13350,21:1250,22:0,23:0,24:10222,25:994.70,26:0,27:0,28:8822,29:1400,30:494.70,31:0};
+  test('P3c-1 WD: per-week card-bill totals for model weeks 16-31 match the approved value table',()=>{
+    Object.keys(EXPECT).forEach(function(k){assertApprox(cardTotal(+k),EXPECT[k],'model wk '+k+' card total',0.005);});
+  });
+  test('P3c-1 WD: card-bill total across weeks 16-31 = $41,885.68 (was $30,500.00, delta +$11,385.68)',()=>{
+    let t=0;for(let n=16;n<=31;n++)t+=cardTotal(n);
+    assertApprox(t,41885.68,'weeks 16-31 card total',0.005);
+  });
+  test('P3c-1 WD: each week\'s bills array (wd[3]) equals its ob event amounts (wd[4]) for weeks 16-31',()=>{
+    for(let n=16;n<=31;n++){
+      const wd=WD.find(([w])=>w===n);
+      const obs=(wd[4]||[]).filter(e=>e.t==='ob').map(e=>Math.abs(e.a));
+      assert(JSON.stringify(obs)===JSON.stringify(wd[3]),'wk '+n+' bills '+JSON.stringify(wd[3])+' != ob events '+JSON.stringify(obs));
+    }
+  });
+  test('P3c-1 WD: weeks 1-15 source text byte-identical to pre-P3c-1 (sha256 a33b2076...)',()=>{
+    const crypto=require('crypto');
+    const lines=html.split('\n');const s=lines.findIndex(l=>l.startsWith('const WD=['));
+    const h=crypto.createHash('sha256').update(lines.slice(s+1,s+16).join('\n')).digest('hex');
+    assert(lines[s+15].startsWith('  [15,'),'row 15 not where expected');
+    assert(h==='a33b20760178783a6689894c95c3e0c9262cdd5e0e462618939b1c272234da95','weeks 1-15 changed, sha256 '+h);
+  });
+  test('P3c-1 WD: no standalone Diablos or GLP cash events anywhere in WD (they live inside card bills)',()=>{
+    WD.forEach(function(wd){(wd[4]||[]).forEach(function(e){assert(!/diablo|glp|lilly/i.test(e.l||''),'wk '+wd[0]+' has standalone event: '+e.l);});});
+  });
+  test('P3c-1 WD: no Disney Visa bill after the November DCL bill; Nov Disney = $500.00',()=>{
+    const dis=(n)=>(WD.find(([w])=>w===n)[4]||[]).filter(e=>/Disney\s+Visa/i.test(e.l)).map(e=>Math.abs(e.a));
+    assert(JSON.stringify(dis(25))==='[500]','wk 25 Disney '+JSON.stringify(dis(25)));
+    for(let n=26;n<=31;n++)assert(dis(n).length===0,'wk '+n+' still has a Disney Visa bill');
+  });
+  test('P3c-1 WD: every card-payment event in weeks 16-31 is tagged with a protected payee and a due-date eid',()=>{
+    getTaggedWD(WD).filter(function(wd){return wd[0]>=16;}).forEach(function(wd){
+      wd[4].filter(function(e){return e.t==='ob'&&CARD_RE.test(e.l);}).forEach(function(e){
+        assert(e.eid&&e.rod==='protected_required'&&e.cc==='credit_card_payment','untagged card event wk '+wd[0]+': '+e.l);
+      });
+    });
+  });
+  test('P3c-1 payee rules: Costco Visa and AMEX Blue tag with eid, payee and displayLabel',()=>{
+    const cv=tagProtectedWDEvent({l:'Costco Visa ~$1,400 due ~10/20',t:'ob',a:-1400},20);
+    assert(cv.eid==='2026mw20_costco_visa_2026_10_20','costco eid '+cv.eid);
+    assert(cv.payee==='Costco Visa'&&cv.displayLabel==='Costco Visa payment'&&cv.due_date==='2026-10-20','costco metadata '+JSON.stringify(cv));
+    const ab=tagProtectedWDEvent({l:'AMEX Blue $49.90 due 9/27 (statement)',t:'ob',a:-49.9},17);
+    assert(ab.eid==='2026mw17_amex_blue_2026_09_27','blue eid '+ab.eid);
+    assert(ab.payee==='AMEX Blue'&&ab.displayLabel==='AMEX Blue payment'&&ab.due_date==='2026-09-27','blue metadata '+JSON.stringify(ab));
+    const gold=tagProtectedWDEvent({l:'AMEX Gold ~$11,800 due ~10/18',t:'ob',a:-11800},20);
+    assert(gold.eid==='2026mw20_amex_gold_2026_10_18','gold must still tag as amex_gold, got '+gold.eid);
+  });
+})();
 test('Ph4 WD: Wk 22 Wendy paycheck $2,152.50 present',()=>{
   const wd=WD.find(([n])=>n===22);
   const inflows=wd&&wd[2]||[];
@@ -1136,20 +1219,38 @@ test('Ph4 Wishlist: all WISHLIST_SEED items have title, phase, status',()=>{
 // Structural floor violations: W6 (commission+bill), W8 (Wendy paycheck now base $2,152.50 — minor),
 // W13 (triple-rent, no income), W26 (triple-rent, reduced surplus from Wk 24 paycheck change).
 // W8 and W26 are new minor violations after removing $400 from Wendy paycheck schedule (Jun 2026).
-test('Ph4 model: floor violations are exactly W6, W8, W13, W26',()=>{
-  const expectedViolationWeeks=[6,8,13,26];
+// P3c-1 (2026-09-12) INTEGRATION RE-BASELINE: WD now carries full-statement card bills (Oct Gold ~$11,800,
+// Nov/Dec Gold ~$8,822, Costco/Platinum/Blue added), so the canonical June-start scenario also breaches the
+// floor in W21 (Oct Platinum + Blue + rent) and W25-W31 (Nov/Dec card + rent weeks). Previously
+// [6,8,13,26]; lowest was W13 ~$3,700. These are forecast outcomes of the corrected inputs, not defects.
+test('Ph4 model: floor violations are exactly W6, W8, W13, W21, W25, W26, W28, W29, W30, W31 (P3c-1 baseline)',()=>{
+  const expectedViolationWeeks=[6,8,13,21,25,26,28,29,30,31];
   const actualViolationWeeks=WEEKS.filter(w=>w.chk<6500).map(w=>w.num);
   assert(JSON.stringify(actualViolationWeeks)===JSON.stringify(expectedViolationWeeks),
     'Unexpected floor violations: '+JSON.stringify(actualViolationWeeks));
 });
-test('Ph4 model: lowest checking is W13 (~$3,700)',()=>{
+test('Ph4 model: lowest checking is W28 (~$686, Dec Gold + no Adam paycheck) (P3c-1 baseline; was W13 ~$3,700)',()=>{
   const lowest=WEEKS.reduce((m,w)=>w.chk<m.chk?w:m,WEEKS[0]);
-  assert(lowest.num===13,'Expected lowest week W13, got W'+lowest.num+' ('+lowest.chk.toFixed(0)+')');
-  assert(lowest.chk>=3400&&lowest.chk<=4200,'Expected W13 ~$3,700, got '+lowest.chk.toFixed(0));
+  assert(lowest.num===28,'Expected lowest week W28, got W'+lowest.num+' ('+lowest.chk.toFixed(0)+')');
+  assert(lowest.chk>=500&&lowest.chk<=900,'Expected W28 ~$686, got '+lowest.chk.toFixed(0));
 });
-test('Ph4 model: no week ends with negative checking (EF backstop holds)',()=>{
-  const bad=WEEKS.filter(w=>w.chk<0);
-  assert(bad.length===0,'Week(s) went negative: '+bad.map(w=>'W'+w.num+'('+w.chk.toFixed(0)+')').join(','));
+// P3c-1 SEMANTIC CORRECTION: this test was 'no week ends with negative checking (EF backstop holds)'.
+// There is NO EF-backstop implementation: runModel never draws the emergency fund, and the only source of the
+// idea is Assumptions-page copy. Non-negative checking held only while card bills were understated. A negative
+// projection is a legitimate forecast if committed flows exceed cash. What the model actually does, and what is
+// asserted instead: (a) a below-floor week is surfaced by the low-liquidity signal (chk < OP_FL, which drives
+// the Low-liq badge and the timeline 'next risk'), and (b) no discretionary goal transfer executes in it.
+test('Ph4 model: below-floor weeks (incl. any negative week) execute no discretionary goal transfer — no EF backstop is assumed',()=>{
+  const bad=WEEKS.filter(w=>w.chk<OP_FL-0.005&&(w.tr||[]).some(t=>t.r==='done'&&t._key&&t._key.indexOf('goal_')===0));
+  assert(bad.length===0,'goal transfer executed in a below-floor week: '+bad.map(w=>'W'+w.num+'('+w.chk.toFixed(0)+')').join(','));
+});
+test('Ph4 model: low-liquidity signal names the first below-floor week at or after currentW (timeline next-risk)',()=>{
+  const _cw=currentW; currentW=22;
+  try{
+    const first=WEEKS.find(w=>w.num>=22&&w.chk<OP_FL);
+    assert(first&&first.num===25,'precondition: first below-floor week at/after W22 is W25, got '+(first&&first.num));
+    assertIncludes(renderTimeline(bvm,'weekly'),'Low-liquidity · Wk '+getCalWeek(25),'timeline must flag the below-floor week as low-liquidity');
+  } finally { currentW=_cw; }
 });
 
 // ─────────────────────────────────────────────────────────────────────────
@@ -1175,12 +1276,16 @@ test('CPA pending: adam_ira AMEX accumulation not blocked (grows beyond seed)',(
   var w31=WEEKS_LOCKED[WEEKS_LOCKED.length-1];
   assert((w31.goalSaved.adam_ira||0)>4000,'adam_ira should grow beyond seed with CPA pending, got '+(w31.goalSaved.adam_ira||0));
 });
-test('CPA pending: wendy_ira receives waterfall contributions',()=>{
-  var w31=WEEKS_LOCKED[WEEKS_LOCKED.length-1];
+// P3c-1: behavioural tests below that prove the waterfall FUNDS goals when capacity exists run on the
+// controlled liquidity fixture; the constrained canonical runs (WEEKS_LOCKED/CLEARED) no longer have capacity.
+var WEEKS_LOCKED_LIQ = withAmpleLiquidity(function(){return runModelWithFlags({ira_cpa_cleared:false});});
+var WEEKS_CLEARED_LIQ = withAmpleLiquidity(function(){return runModelWithFlags({ira_cpa_cleared:true});});
+test('CPA pending: wendy_ira receives waterfall contributions [liquidity fixture]',()=>{
+  var w31=WEEKS_LOCKED_LIQ[WEEKS_LOCKED_LIQ.length-1];
   assertGt(w31.goalSaved.wendy_ira||0,0,'wendy_ira should fund with CPA pending');
 });
-test('CPA pending: at least one 529 receives waterfall contributions',()=>{
-  var w31=WEEKS_LOCKED[WEEKS_LOCKED.length-1];
+test('CPA pending: at least one 529 receives waterfall contributions [liquidity fixture]',()=>{
+  var w31=WEEKS_LOCKED_LIQ[WEEKS_LOCKED_LIQ.length-1];
   var any529=['bailey_529','bryce_529','preston_529'].some(function(id){return(w31.goalSaved[id]||0)>0;});
   assert(any529,'No 529 funded with CPA pending');
 });
@@ -1196,15 +1301,23 @@ test('CPA pending: wewe_dcl funds normally',()=>{
 });
 
 // ── Floor violation guard — must stay at structural baseline W6/W8/W13/W26 ──
-test('CPA pending: floor violations are W6 W8 W13 W26 — no new violations from AMEX sweeps',()=>{
-  var violations=WEEKS_LOCKED.filter(function(w){return w.chk<OP_FL;});
-  var nums=violations.map(function(w){return w.num;}).sort(function(a,b){return a-b;});
-  assert(violations.length<=4,'Expected ≤4 floor violations, got '+violations.length+' at weeks '+nums.join(','));
-  [6,13].forEach(function(n){assert(nums.indexOf(n)>=0,'W'+n+' should be a structural floor violation');});
+// P3c-1: the intent is 'active AMEX/goal sweeps create no new floor violations'. That is only exercised when
+// sweeps actually happen, so these run on the liquidity fixture (sweeps active). The constrained canonical
+// violation set is pinned by the Ph4 integration test.
+// Exact-set pin (P3c-1 review): the fixture is deterministic and W6/W8/W13 all precede the fixture weeks (15-31),
+// so ANY additional breach under active sweeps is a regression. The inherited '≤4 incl. W6,W13' tolerance dated
+// from the old W6/W8/W13/W26 baseline and would have let a new breach pass. See also P3c-2 cross-horizon evidence.
+const STRUCTURAL_FLOOR_VIOLATIONS_LIQ=[6,8,13];
+test('CPA pending: floor violations are exactly the structural W6 W8 W13 — no new violations from active AMEX sweeps [liquidity fixture]',()=>{
+  var nums=WEEKS_LOCKED_LIQ.filter(function(w){return w.chk<OP_FL;}).map(function(w){return w.num;}).sort(function(a,b){return a-b;});
+  assert(JSON.stringify(nums)===JSON.stringify(STRUCTURAL_FLOOR_VIOLATIONS_LIQ),'Expected floor violations exactly '+STRUCTURAL_FLOOR_VIOLATIONS_LIQ.join(',')+', got '+nums.join(','));
 });
-test('CPA pending: no return to 12-violation failure mode (<6 floor violations)',()=>{
-  var violations=WEEKS_LOCKED.filter(function(w){return w.chk<OP_FL;});
-  assert(violations.length<6,'Too many floor violations: '+violations.length+' — check AMEX lookahead window');
+// Tightened with the exact-set pin (P3c-1 review): '<6' would let 1-2 new sweep-induced breaches pass. Intent kept:
+// guards the old no-lookahead failure mode, where sweeps drained checking into many later breaches; asserted as
+// zero breaches in the sweep-active weeks 14-31 (the structural set lies entirely in weeks 1-13).
+test('CPA pending: no return to 12-violation failure mode — zero floor violations in sweep-active weeks 14-31 [liquidity fixture]',()=>{
+  var late=WEEKS_LOCKED_LIQ.filter(function(w){return w.num>=14&&w.chk<OP_FL;}).map(function(w){return w.num;});
+  assert(late.length===0,'Floor violations in sweep-active weeks: '+late.join(',')+' — check AMEX lookahead window');
 });
 test('CPA pending: 5-week lookahead prevents NEW floor violations from AMEX sweeps',()=>{
   // CPA cleared model should have the same violation set (both use lookahead)
@@ -1217,9 +1330,10 @@ test('CPA pending: 5-week lookahead prevents NEW floor violations from AMEX swee
 test('CPA pending: allFunded not permanently blocked — model returns 31 weeks cleanly',()=>{
   assert(WEEKS_LOCKED.length===31,'Model must return 31 weeks with CPA pending');
 });
-test('CPA pending: no negative checking',()=>{
-  var neg=WEEKS_LOCKED.filter(function(w){return w.chk<0;});
-  assert(neg.length===0,'Negative checking with CPA pending: '+neg.map(function(w){return'W'+w.num+'('+w.chk.toFixed(0)+')';}).join(','));
+// P3c-1 SEMANTIC CORRECTION: was 'no negative checking' (implied EF backstop; none exists). Asserts real behaviour.
+test('CPA pending: no discretionary goal transfer executes in a below-floor week (negative weeks are forecasts, not auto-backstopped)',()=>{
+  var bad=WEEKS_LOCKED.filter(function(w){return w.chk<OP_FL-0.005&&(w.tr||[]).some(function(t){return t.r==='done'&&t._key&&t._key.indexOf('goal_')===0;});});
+  assert(bad.length===0,'goal transfer in below-floor week with CPA pending: '+bad.map(function(w){return'W'+w.num;}).join(','));
 });
 
 // ── _amxDeferredThisWeek resets per week ──
@@ -1249,19 +1363,20 @@ test('Cleared: adam_ira receives waterfall contributions after wewe_dcl complete
   var iraGrows=postDcl.some(function(w){return(w.goalSaved.adam_ira||0)>4000;});
   assert(iraGrows,'adam_ira never grew past seed+sweep after DCL done with CPA cleared');
 });
-test('Cleared: wendy_ira receives waterfall contributions',()=>{
-  var w31=WEEKS_CLEARED[WEEKS_CLEARED.length-1];
+test('Cleared: wendy_ira receives waterfall contributions [liquidity fixture]',()=>{
+  var w31=WEEKS_CLEARED_LIQ[WEEKS_CLEARED_LIQ.length-1];
   assertGt(w31.goalSaved.wendy_ira||0,0,'wendy_ira never funded with CPA cleared');
 });
-test('Cleared: 529s fund regardless of CPA flag (lookahead governs, not gate)',()=>{
-  var w31=WEEKS_CLEARED[WEEKS_CLEARED.length-1];
+test('Cleared: 529s fund regardless of CPA flag (lookahead governs, not gate) [liquidity fixture]',()=>{
+  var w31=WEEKS_CLEARED_LIQ[WEEKS_CLEARED_LIQ.length-1];
   var any529=['bailey_529','bryce_529','preston_529'].some(function(id){return(w31.goalSaved[id]||0)>0;});
   assert(any529,'No 529 funded with CPA cleared');
 });
 test('Cleared: model still returns 31 weeks',()=>assert(WEEKS_CLEARED.length===31));
-test('Cleared: no negative checking',()=>{
-  var neg=WEEKS_CLEARED.filter(function(w){return w.chk<0;});
-  assert(neg.length===0,'Negative checking with CPA cleared: '+neg.map(function(w){return'W'+w.num+'('+w.chk.toFixed(0)+')';}).join(','));
+// P3c-1 SEMANTIC CORRECTION: was 'no negative checking' (implied EF backstop; none exists). Asserts real behaviour.
+test('Cleared: no discretionary goal transfer executes in a below-floor week (negative weeks are forecasts, not auto-backstopped)',()=>{
+  var bad=WEEKS_CLEARED.filter(function(w){return w.chk<OP_FL-0.005&&(w.tr||[]).some(function(t){return t.r==='done'&&t._key&&t._key.indexOf('goal_')===0;});});
+  assert(bad.length===0,'goal transfer in below-floor week with CPA cleared: '+bad.map(function(w){return'W'+w.num;}).join(','));
 });
 test('Cleared: goalSaved values non-negative',()=>{
   WEEKS_CLEARED.forEach(function(w){
@@ -1401,11 +1516,12 @@ console.log('\n── Section 20b: AMEX lookahead unit tests ──');
     var wLocked=runModelWithFlags({ira_cpa_cleared:false});
     assert(wLocked.length===31,'Model must return 31 weeks after lookahead changes');
   });
-  test('AMEX deferral: floor violations remain at structural baseline after lookahead changes',()=>{
-    var wLocked=runModelWithFlags({ira_cpa_cleared:false});
-    var viols=wLocked.filter(function(w){return w.chk<OP_FL;}).map(function(w){return w.num;});
-    assert(viols.length<=4&&viols.indexOf(6)>=0&&viols.indexOf(13)>=0,
-      'Floor violations changed from W6/W8/W13/W26 baseline: '+viols.join(','));
+  // P3c-1: intent = lookahead keeps ACTIVE sweeps from adding violations; exercised on the liquidity fixture.
+  test('AMEX deferral: floor violations remain exactly the structural W6/W8/W13 after lookahead changes [liquidity fixture]',()=>{
+    var wLocked=withAmpleLiquidity(function(){return runModelWithFlags({ira_cpa_cleared:false});});
+    var viols=wLocked.filter(function(w){return w.chk<OP_FL;}).map(function(w){return w.num;}).sort(function(a,b){return a-b;});
+    assert(JSON.stringify(viols)===JSON.stringify([6,8,13]),
+      'Floor violations changed from exact structural W6/W8/W13 baseline: '+viols.join(','));
   });
 })();
 
@@ -1995,12 +2111,17 @@ test('All 31 weeks still returned with tax_base override',()=>{
   });
 });
 
-test('No negative checking with default overrides (none set)',()=>{
+// P3c-1 SEMANTIC CORRECTION: was 'No negative checking with default overrides (none set)'. The non-negative
+// premise implied an EF backstop that does not exist. The real intent of this integrity block is that
+// default (null) action overrides do not perturb the model, so assert exactly that.
+test('Default action overrides (none set) leave every week\'s balances identical to the baseline run',()=>{
   withOverride('tax_base',null,function(){
     withOverride('commission_tax',null,function(){
       var weeks=runModel(7000,7694.87);
-      var negWeeks=weeks.filter(function(w){return w.chk<0;});
-      assert(negWeeks.length===0,'No weeks should have negative checking balance');
+      weeks.forEach(function(w,i){
+        assert(Math.abs(w.chk-WEEKS[i].chk)<0.005&&Math.abs(w.amx-WEEKS[i].amx)<0.005&&Math.abs(w.sav-WEEKS[i].sav)<0.005,
+          'W'+w.num+' differs from baseline with null overrides');
+      });
     });
   });
 });
@@ -9042,42 +9163,50 @@ test('AC-deviation: reconciled-week engine input uses reconData[num].chk (actual
   // sweeps against the LOWER real number, not the higher modeled one — the
   // unsafe failure mode (sweeping money the bank doesn't actually have,
   // because it used the optimistic modeled figure) does not occur.
-  var w17A=WEEKS.find(function(w){return w.num===17;});
-  var w18A=WEEKS.find(function(w){return w.num===18;}); // baseline: unconstrained, unreconciled
+  // P3c-1 FIXTURE MOVE (2026-09-12): this test originally used week 18 (Cal 40). After P3c-1 the corrected Oct
+  // card bills (Gold ~$11,800 + Costco + Disney in W20, Platinum + Blue in W21) sit inside W18's 5-week lookahead,
+  // so the waterfall now defers every goal in W18 for floor risk and W18 has NO natural waterfall activity, which
+  // voids the precondition. Week 15 (Cal 37) is the replacement: unreconciled, natural waterfall funding
+  // (~$2,803 Adam IRA partial) and ~$2,783 of modelled room above the floor, the same preconditions W18 had.
+  // The exercised behaviour is unchanged: a reconciliation override below the floor (+ a $300 reserve) must drive
+  // the engine cap from the reconciled chk to exactly 0 and fully suppress that week's waterfall funding, where a
+  // modelled-chk implementation would still show >$1,000 of room. Every assertion below is the original one.
+  var w14A=WEEKS.find(function(w){return w.num===14;});
+  var w15A=WEEKS.find(function(w){return w.num===15;}); // baseline: unconstrained, unreconciled
   var wfIds=REGULAR_WATERFALL.concat(VARIABLE_WATERFALL).filter(function(id,i,arr){return arr.indexOf(id)===i;});
   function wfTotal(w){return wfIds.reduce(function(s,id){return s+(w.goalSaved[id]||0);},0);}
-  var baselineActivity=_r2(wfTotal(w18A)-wfTotal(w17A));
-  assertGt(baselineActivity,0,'precondition: week 18 needs natural waterfall activity to test suppression against');
-  assertGt(w18A.chk-OP_FL,1000,'precondition: modeled week 18 needs meaningful room above floor for this scenario to be a fair test');
+  var baselineActivity=_r2(wfTotal(w15A)-wfTotal(w14A));
+  assertGt(baselineActivity,0,'precondition: week 15 needs natural waterfall activity to test suppression against');
+  assertGt(w15A.chk-OP_FL,1000,'precondition: modeled week 15 needs meaningful room above floor for this scenario to be a fair test');
 
   // Reconciled chk pulled below the operating floor — "the bank shows less
   // than the model projected," a realistic reconciliation scenario — despite
   // the model believing there was real room to sweep.
   var reconciledChk=_r2(OP_FL-500);
-  assertLt(reconciledChk,w18A.chk-1000,'precondition: reconciled chk must be materially lower than modeled chk');
+  assertLt(reconciledChk,w15A.chk-1000,'precondition: reconciled chk must be materially lower than modeled chk');
   var reserveAmountCents=30000; // $300 reserved commitment, stacked on top of the below-floor balance
 
   withCashAvailability(
-    [baseCommitment({id:'devcheck',origin_model_week:18,commitment_source:'wd_reconciliation',amount_cents:reserveAmountCents})],
-    {18:{chk:reconciledChk,sav:w18A.sav,amx:w18A.amx,tax:w18A.tax,lc:w18A.lc,balance_basis:'posted_current_balance'}},
+    [baseCommitment({id:'devcheck',origin_model_week:15,commitment_source:'wd_reconciliation',amount_cents:reserveAmountCents})],
+    {15:{chk:reconciledChk,sav:w15A.sav,amx:w15A.amx,tax:w15A.tax,lc:w15A.lc,balance_basis:'posted_current_balance'}},
     function(weeksB){
-      var w17B=weeksB.find(function(w){return w.num===17;});
-      var w18B=weeksB.find(function(w){return w.num===18;});
-      var capFromActual=getCashAvailabilityEngine(Math.round(reconciledChk*100),Math.round(OP_FL*100),[baseCommitment({amount_cents:reserveAmountCents})],'truist_checking',18).adjustedDeployableSurplusCents/100;
-      var capFromModeled=getCashAvailabilityEngine(Math.round(w18A.chk*100),Math.round(OP_FL*100),[baseCommitment({amount_cents:reserveAmountCents})],'truist_checking',18).adjustedDeployableSurplusCents/100;
+      var w14B=weeksB.find(function(w){return w.num===14;});
+      var w15B=weeksB.find(function(w){return w.num===15;});
+      var capFromActual=getCashAvailabilityEngine(Math.round(reconciledChk*100),Math.round(OP_FL*100),[baseCommitment({amount_cents:reserveAmountCents})],'truist_checking',15).adjustedDeployableSurplusCents/100;
+      var capFromModeled=getCashAvailabilityEngine(Math.round(w15A.chk*100),Math.round(OP_FL*100),[baseCommitment({amount_cents:reserveAmountCents})],'truist_checking',15).adjustedDeployableSurplusCents/100;
       assertLt(capFromActual,capFromModeled-0.01,'precondition: reconciled-chk cap must be materially smaller than a modeled-chk cap would be, or this test cannot distinguish the two implementations');
       assert(capFromActual===0,'sanity: below-floor reconciled balance should clamp the actual-chk cap to exactly 0, got '+capFromActual);
       assertGt(capFromModeled,1000,'sanity: modeled chk should have shown meaningful room to sweep, got '+capFromModeled);
       // 1. adjustedAvailableForSweep must match the reconciled/actual-chk cap (0), not the modeled-chk cap (>$1,000 of apparent room).
-      assertApprox(w18B.cashAvailability.adjustedAvailableForSweep,capFromActual,'engine must use reconciled chk, not modeled chk — got '+w18B.cashAvailability.adjustedAvailableForSweep+', expected '+capFromActual+' (a modeled-chk implementation would have produced '+capFromModeled+')',0.01);
+      assertApprox(w15B.cashAvailability.adjustedAvailableForSweep,capFromActual,'engine must use reconciled chk, not modeled chk — got '+w15B.cashAvailability.adjustedAvailableForSweep+', expected '+capFromActual+' (a modeled-chk implementation would have produced '+capFromModeled+')',0.01);
       // 2. Waterfall funding this week is fully suppressed despite modeled chk showing room — no dollars get swept
       //    to goals beyond what the real (lower) balance can support. Money that's blocked is simply never moved
       //    (mv() returns 0 before touching any account) — it doesn't vanish, it's never deployed in the first place.
-      var fundedThisWeek=_r2(wfTotal(w18B)-wfTotal(w17B));
+      var fundedThisWeek=_r2(wfTotal(w15B)-wfTotal(w14B));
       assertLt(fundedThisWeek,baselineActivity,'expected waterfall funding suppressed vs. baseline given the lower reconciled balance');
       assert(fundedThisWeek===0,'waterfall funding must be fully suppressed once the reconciled-chk-based cap is 0, got '+fundedThisWeek);
       // 3. Non-negative guarantee holds under this scenario too.
-      assert(w18B.cashAvailability.remainingAdjustedSweepEnd>=0,'remainingAdjustedSweepEnd must stay >= 0, got '+w18B.cashAvailability.remainingAdjustedSweepEnd);
+      assert(w15B.cashAvailability.remainingAdjustedSweepEnd>=0,'remainingAdjustedSweepEnd must stay >= 0, got '+w15B.cashAvailability.remainingAdjustedSweepEnd);
     }
   );
 });
@@ -9190,13 +9319,13 @@ test('WD tagging: all eids across the tagged array are unique',()=>{
 test('WD tagging: non-protected events (paychecks, and a constructed unmatched ob event) are left untagged',()=>{
   var paycheck=tagged.find(function(wd){return wd[0]===1;})[4].find(function(ev){return ev.t==='in';});
   assert(paycheck===undefined||(!paycheck.eid&&!paycheck.cc&&!paycheck.rod),'inflow events must never be tagged');
-  var untaggedOb=tagProtectedWDEvent({l:'Costco Visa ~$300 due ~7/5',t:'ob',a:-300},7);
+  var untaggedOb=tagProtectedWDEvent({l:'Chase Sapphire ~$300 due ~7/5',t:'ob',a:-300},7);
   assert(!untaggedOb.eid&&!untaggedOb.cc&&!untaggedOb.rod,'a non-protected-payee ob event must not be tagged, got '+JSON.stringify(untaggedOb));
 });
 
 // ── Phase 2 Step 1: additive payee/displayLabel/due_date metadata (eid unchanged) ──
 test('WD tagging (Phase 2 metadata): every rule-matched tagged event carries a clean payee/displayLabel, never ev.l',()=>{
-  var expect={amex_gold:'AMEX Gold',amex_platinum:'AMEX Platinum',disney_visa:'Disney Visa',rent_tiffany_dye:'Rent (Tiffany Dye)',kia_payment:'Kia payment'};
+  var expect={amex_gold:'AMEX Gold',amex_platinum:'AMEX Platinum',disney_visa:'Disney Visa',costco_visa:'Costco Visa',amex_blue:'AMEX Blue',rent_tiffany_dye:'Rent (Tiffany Dye)',kia_payment:'Kia payment'};
   var rows=allTaggedEvents().filter(function(ev){return ev.eid&&!ev.synthetic;});
   assertGt(rows.length,40,'sanity: expected many rule-matched tagged events, got '+rows.length);
   rows.forEach(function(ev){
@@ -9227,7 +9356,7 @@ test('WD tagging (Phase 2 metadata): due_date is additive ISO YYYY-MM-DD and lea
 });
 
 test('WD tagging (Phase 2 metadata): non-protected ob events get no payee/displayLabel/due_date',()=>{
-  var untaggedOb=tagProtectedWDEvent({l:'Costco Visa ~$300 due ~7/5',t:'ob',a:-300},7);
+  var untaggedOb=tagProtectedWDEvent({l:'Chase Sapphire ~$300 due ~7/5',t:'ob',a:-300},7);
   assert(untaggedOb.payee===undefined&&untaggedOb.displayLabel===undefined&&untaggedOb.due_date===undefined,'unmatched ob event must carry no Phase 2 metadata, got '+JSON.stringify(untaggedOb));
 });
 })();
@@ -11859,8 +11988,12 @@ console.log('\n── Section PHASE-A: AMEX-hold sub-MIN_XFR waterfall deadlock 
       assertGt(xfer.length,0,'no goal transfers executed after mw6 — waterfall still halted');
     });
 
-    test('[Phase A] all five held goals reach target end-of-model (pinned run)',function(){
-      IDS.forEach(function(id){assertGt((w31.goalSaved[id]||0),g(id).target-0.01,id+' did not reach target');});
+    // P3c-1: behavioural under the controlled liquidity fixture. Intent: once the Phase A MIN_XFR deadlock is fixed,
+    // the held-goal waterfall can carry EVERY held goal to target when capacity exists. The pinned production-state
+    // run keeps its early-week assertions (above) unchanged; only this end-of-model capacity check uses the fixture.
+    test('[Phase A] all five held goals reach target end-of-model when capacity exists (pinned run + liquidity fixture)',function(){
+      var w31L=withAmpleLiquidity(function(){var WL=runModel(null,null);return WL[WL.length-1];});
+      IDS.forEach(function(id){assertGt((w31L.goalSaved[id]||0),g(id).target-0.01,id+' did not reach target');});
     });
 
     test('[Phase A] carve-out predicate: floor-SAFE sub-$100 remainder is rescued',function(){
@@ -12005,19 +12138,24 @@ console.log('\n── Section 5G-1C-2/C3: Goal Funding Overlay ──');
   });
 
   // (11) goalCompletion unchanged under monotonic / no-snapshot
-  test('C3-11 goalCompletion stays-complete == first-crossing under monotonic',function(){
-    var W=runModel(AK,RT), comp=buildDashboardViewModel(W,{ak:AK,rt:RT}).goalCompletion['adam_ira'];
-    var firstCross=W.find(function(w){return w.goalSaved&&(w.goalSaved['adam_ira']||0)>=IRA_TGT-0.01;});
-    assert(comp&&firstCross&&comp.num===firstCross.num,'stays-complete == first-crossing week under monotonic funding');
+  // P3c-1: C3-11/C3-12 test completion SEMANTICS, which need adam_ira to complete in-model; run on the liquidity fixture.
+  test('C3-11 goalCompletion stays-complete == first-crossing under monotonic [liquidity fixture]',function(){
+    withAmpleLiquidity(function(){
+      var W=runModel(AK,RT), comp=buildDashboardViewModel(W,{ak:AK,rt:RT}).goalCompletion['adam_ira'];
+      var firstCross=W.find(function(w){return w.goalSaved&&(w.goalSaved['adam_ira']||0)>=IRA_TGT-0.01;});
+      assert(comp&&firstCross&&comp.num===firstCross.num,'stays-complete == first-crossing week under monotonic funding');
+    });
   });
 
   // (12) goalCompletion corrected under a downward anchor
-  test('C3-12 goalCompletion clears when a downward anchor breaks completion through wk31',function(){
-    var compBase=buildDashboardViewModel(runModel(AK,RT),{ak:AK,rt:RT}).goalCompletion['adam_ira'];
-    assert(compBase&&compBase.num>0,'baseline: adam_ira completes in-model');
-    withSnap({31:{adam_ira:r(IRA_TGT-1000)}},function(){
-      var comp=buildDashboardViewModel(runModel(AK,RT),{ak:AK,rt:RT}).goalCompletion['adam_ira'];
-      assert(comp===null,'stays-complete clears: no week stays ≥ target through wk 31');
+  test('C3-12 goalCompletion clears when a downward anchor breaks completion through wk31 [liquidity fixture]',function(){
+    withAmpleLiquidity(function(){
+      var compBase=buildDashboardViewModel(runModel(AK,RT),{ak:AK,rt:RT}).goalCompletion['adam_ira'];
+      assert(compBase&&compBase.num>0,'baseline: adam_ira completes in-model');
+      withSnap({31:{adam_ira:r(IRA_TGT-1000)}},function(){
+        var comp=buildDashboardViewModel(runModel(AK,RT),{ak:AK,rt:RT}).goalCompletion['adam_ira'];
+        assert(comp===null,'stays-complete clears: no week stays ≥ target through wk 31');
+      });
     });
   });
 
@@ -12271,15 +12409,17 @@ console.log('\n── Section 5G-1C-2/C3: Goal Funding Overlay ──');
   test('5G1C21-07: reconciled fixture -> NO post-anchor seed re-fire',function(){
     assert(runFix(NINE,true).seed.length===0,'seed must not re-fire under the anchor; got '+JSON.stringify(runFix(NINE,true).seed));
   });
-  test('5G1C21-08: residual == (target - anchored funded), emitted EXACTLY once',function(){
+  // P3c-1: 08/09 prove residual completion mechanics (emit once, land exactly on target), which require capacity to
+  // sweep the $61.06 residual; they run the same anchored fixture under the liquidity fixture.
+  test('5G1C21-08: residual == (target - anchored funded), emitted EXACTLY once [liquidity fixture]',function(){
     var expected=Math.round((IRA_TGT-NINE.adam_ira)*100)/100;   // derived, not hardcoded
     assert(Math.abs(expected-61.06)<0.001,'fixture residual should be 61.06, derived '+expected);
-    var m=runFix(NINE,true);
+    var m=withAmpleLiquidity(function(){return runFix(NINE,true);});
     assert(m.resid.length===1,'exactly one Adam IRA residual action; got '+JSON.stringify(m.resid));
     assert(Math.abs(m.resid[0].amt-expected)<0.01,'residual amount '+m.resid[0].amt+' != derived '+expected);
   });
-  test('5G1C21-09: final Adam IRA == 7500.00 and never over target',function(){
-    var m=runFix(NINE,true);
+  test('5G1C21-09: final Adam IRA == 7500.00 and never over target [liquidity fixture]',function(){
+    var m=withAmpleLiquidity(function(){return runFix(NINE,true);});
     assert(Math.abs(m.finalIra-IRA_TGT)<0.01,'final adam_ira must equal target 7500, got '+m.finalIra);
     assert(m.finalIra<=IRA_TGT+0.01,'adam_ira must never exceed target');
   });

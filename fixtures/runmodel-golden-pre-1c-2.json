@@ -2,7 +2,7 @@
  "_meta": {
   "purpose": "Pre-5G-1C-2 golden master. Zero-snapshot identity baseline for goal_funding_snapshots. PROTECTED: do not regenerate or edit without explicit Adam approval.",
   "phase": "5G-1C-2 / C1",
-  "capturedFromCommit": "18401b4",
+  "capturedFromCommit": "3751a16+P3c-1 working tree (uncommitted)",
   "runModelArgs": [
    7000,
    7694.87
@@ -30,9 +30,10 @@
    "getGoalFunded"
   ],
   "excludes": "No DOM/auth/live-Supabase/production-data. No currentW-dependent vm fields (current/futureWeeks/pastWeeks/openActions) — those are not identity-gate surfaces.",
-  "capturedAt": "2026-09-12",
+  "capturedAt": "2026-09-13",
   "rebaselineHistory": [
-   "Re-baselined 2026-09-12 (owner-approved in session). Prior basis e1eac07 was invalidated by caed4737 (2026-08-08, card Phase 1 stabilization), which changed reminder/action emission inside runModel. Delta proven confined to action arrays and week[0].totalTasks 4->3; all 31 weeks of cash/trough/balance/goal numbers byte-identical. Filename retained for doc-reference stability; 'pre-1c-2' is historical."
+   "Re-baselined 2026-09-12 (owner-approved in session). Prior basis e1eac07 was invalidated by caed4737 (2026-08-08, card Phase 1 stabilization), which changed reminder/action emission inside runModel. Delta proven confined to action arrays and week[0].totalTasks 4->3; all 31 weeks of cash/trough/balance/goal numbers byte-identical. Filename retained for doc-reference stability; 'pre-1c-2' is historical.",
+   "2026-09-12 P3c-1 re-baseline (owner-approved): WD card-obligation baselines on full-statement basis for model weeks 16-31 (Nov/Dec Gold ~8822). Delta characterised in owner-held P3C-1-BUILD-EVIDENCE rev 2: card obligations +11385.68 cumulative, weeks 1-14 identical, inflows identical, household-cash residual 0.00, only goal transfers withheld/deferred."
   ]
  },
  "weeks": [
@@ -1434,54 +1435,44 @@
      "_key": "alaska_draw"
     },
     {
-     "l": "Adam IRA $3,623.62 → AMEX Savings — Adam IRA funded!",
+     "l": "Adam IRA $2,802.74 → AMEX Savings: $820.88 remaining",
      "r": "done",
      "rsn": "Waterfall allocation",
      "_key": "goal_adam_ira"
     },
     {
-     "l": "Wendy IRA $1,031.40 → AMEX Savings: $6,468.60 remaining",
-     "r": "done",
-     "rsn": "Waterfall allocation",
-     "_key": "goal_wendy_ira"
-    },
-    {
-     "l": "Bailey 529 deferred — 5-wk lookahead: floor risk",
+     "l": "Wendy IRA deferred — 5-wk lookahead: floor risk",
      "r": "defer",
      "rsn": "Projected checking <$6,500 within 5 weeks"
     }
    ],
    "ac": [
     "Transfer $7,000 from Truist Savings to Truist Checking (Alaska cruise card bills — Sep Gold & Disney Visa)",
-    "Transfer $3,623.62 from Truist Checking to AMEX Savings (Adam IRA)",
-    "Transfer $1,031.40 from Truist Checking to AMEX Savings (Wendy IRA)"
+    "Transfer $2,802.74 from Truist Checking to AMEX Savings (Adam IRA)"
    ],
    "acKeys": [
     "alaska_draw",
-    "goal_adam_ira",
-    "goal_wendy_ira"
+    "goal_adam_ira"
    ],
    "recActs": [],
    "realActs": [
     "Transfer $7,000 from Truist Savings to Truist Checking (Alaska cruise card bills — Sep Gold & Disney Visa)",
-    "Transfer $3,623.62 from Truist Checking to AMEX Savings (Adam IRA)",
-    "Transfer $1,031.40 from Truist Checking to AMEX Savings (Wendy IRA)"
+    "Transfer $2,802.74 from Truist Checking to AMEX Savings (Adam IRA)"
    ],
    "realActKeys": [
     "alaska_draw",
-    "goal_adam_ira",
-    "goal_wendy_ira"
+    "goal_adam_ira"
    ],
-   "totalTasks": 3,
+   "totalTasks": 2,
    "doneTasks": 0,
-   "chk": 7431,
+   "chk": 9283.28,
    "sav": 0.03,
-   "amx": 9631.4,
+   "amx": 7779.12,
    "tax": 1228.54,
    "lc": 13488.88,
-   "mChk": 7431,
+   "mChk": 9283.28,
    "mSav": 0.03,
-   "mAmx": 9631.4,
+   "mAmx": 7779.12,
    "mTax": 1228.54,
    "mLc": 13488.88,
    "goalSaved": {
@@ -1489,8 +1480,8 @@
     "alaska": 7000,
     "wewe_rccl": 600,
     "wewe_dcl": 500,
-    "adam_ira": 7500,
-    "wendy_ira": 1031.4,
+    "adam_ira": 6679.12,
+    "wendy_ira": 0,
     "bailey_529": 0,
     "bryce_529": 0,
     "preston_529": 0,
@@ -1500,8 +1491,8 @@
    },
    "akSaved": 7000,
    "akRem": 0,
-   "retRem": 0,
-   "ol": 7431.03,
+   "retRem": 820.88,
+   "ol": 9283.31,
    "surplusSwept": 0,
    "surplusStart": null,
    "startChk": 10586.02,
@@ -1518,7 +1509,7 @@
     "adjustedAvailableCashCents": 1208602,
     "adjustedDeployableSurplusCents": 558602,
     "adjustedAvailableForSweep": 5586.02,
-    "remainingAdjustedSweepEnd": 931,
+    "remainingAdjustedSweepEnd": 2783.28,
     "reservedCommitmentCount": 0,
     "hasActiveReserves": false,
     "balanceBasisUnknown": false,
@@ -1534,14 +1525,19 @@
    "calNote": "",
    "evs": [
     {
+     "l": "Costco Visa $1,660.24 due 9/20 (statement)",
+     "t": "ob",
+     "a": -1660.24
+    },
+    {
      "l": "Adam paycheck (9/22)",
      "t": "in",
      "a": 5816.5
     },
     {
-     "l": "Disney Visa ~$3,500 due ~9/23",
+     "l": "Disney Visa $519.98 due 9/23 (statement)",
      "t": "ob",
-     "a": -3500
+     "a": -519.98
     },
     {
      "l": "Wendy paycheck (9/25)",
@@ -1568,14 +1564,14 @@
    "realActKeys": [],
    "totalTasks": 0,
    "doneTasks": 0,
-   "chk": 11900,
+   "chk": 15072.06,
    "sav": 0.03,
-   "amx": 9631.4,
+   "amx": 7779.12,
    "tax": 1228.54,
    "lc": 13488.88,
-   "mChk": 11900,
+   "mChk": 15072.06,
    "mSav": 0.03,
-   "mAmx": 9631.4,
+   "mAmx": 7779.12,
    "mTax": 1228.54,
    "mLc": 13488.88,
    "goalSaved": {
@@ -1583,8 +1579,8 @@
     "alaska": 7000,
     "wewe_rccl": 600,
     "wewe_dcl": 500,
-    "adam_ira": 7500,
-    "wendy_ira": 1031.4,
+    "adam_ira": 6679.12,
+    "wendy_ira": 0,
     "bailey_529": 0,
     "bryce_529": 0,
     "preston_529": 0,
@@ -1594,25 +1590,25 @@
    },
    "akSaved": 7000,
    "akRem": 0,
-   "retRem": 0,
-   "ol": 11900.03,
+   "retRem": 820.88,
+   "ol": 15072.09,
    "surplusSwept": 0,
    "surplusStart": null,
-   "startChk": 7431,
+   "startChk": 9283.28,
    "startSav": 0.03,
-   "startAmx": 9631.4,
+   "startAmx": 7779.12,
    "startTax": 1228.54,
    "startLc": 13488.88,
    "reconciled": false,
    "variance": null,
    "actualBals": null,
    "cashAvailability": {
-    "rawSurplusAboveFloorCents": 540000,
+    "rawSurplusAboveFloorCents": 857206,
     "reservedProtectedCents": 0,
-    "adjustedAvailableCashCents": 1190000,
-    "adjustedDeployableSurplusCents": 540000,
-    "adjustedAvailableForSweep": 5400,
-    "remainingAdjustedSweepEnd": 5400,
+    "adjustedAvailableCashCents": 1507206,
+    "adjustedDeployableSurplusCents": 857206,
+    "adjustedAvailableForSweep": 8572.06,
+    "remainingAdjustedSweepEnd": 8572.06,
     "reservedCommitmentCount": 0,
     "hasActiveReserves": false,
     "balanceBasisUnknown": false,
@@ -1627,6 +1623,16 @@
    "managed": false,
    "calNote": "All three rent payments due this week with no income — avoid discretionary spending",
    "evs": [
+    {
+     "l": "AMEX Platinum $3,122.16 due 9/27 (statement)",
+     "t": "ob",
+     "a": -3122.16
+    },
+    {
+     "l": "AMEX Blue $49.90 due 9/27 (statement)",
+     "t": "ob",
+     "a": -49.9
+    },
     {
      "l": "Rent $2,000 — Zelle to Tiffany Dye (10/1)",
      "t": "ob",
@@ -1664,12 +1670,12 @@
    "doneTasks": 0,
    "chk": 6500,
    "sav": 0.03,
-   "amx": 9631.4,
+   "amx": 7779.12,
    "tax": 1228.54,
    "lc": 13488.88,
    "mChk": 6500,
    "mSav": 0.03,
-   "mAmx": 9631.4,
+   "mAmx": 7779.12,
    "mTax": 1228.54,
    "mLc": 13488.88,
    "goalSaved": {
@@ -1677,8 +1683,8 @@
     "alaska": 7000,
     "wewe_rccl": 600,
     "wewe_dcl": 500,
-    "adam_ira": 7500,
-    "wendy_ira": 1031.4,
+    "adam_ira": 6679.12,
+    "wendy_ira": 0,
     "bailey_529": 0,
     "bryce_529": 0,
     "preston_529": 0,
@@ -1688,13 +1694,13 @@
    },
    "akSaved": 7000,
    "akRem": 0,
-   "retRem": 0,
+   "retRem": 820.88,
    "ol": 6500.03,
    "surplusSwept": 0,
    "surplusStart": null,
-   "startChk": 11900,
+   "startChk": 15072.06,
    "startSav": 0.03,
-   "startAmx": 9631.4,
+   "startAmx": 7779.12,
    "startTax": 1228.54,
    "startLc": 13488.88,
    "reconciled": false,
@@ -1744,37 +1750,28 @@
      "rsn": "Pre-tax payroll deduction — no checking impact"
     },
     {
-     "l": "Wendy IRA $1,678.00 → AMEX Savings: $4,790.60 remaining",
-     "r": "done",
-     "rsn": "Waterfall allocation",
-     "_key": "goal_wendy_ira"
+     "l": "Adam IRA deferred — 5-wk lookahead: floor risk",
+     "r": "defer",
+     "rsn": "Projected checking <$6,500 within 5 weeks"
     }
    ],
-   "ac": [
-    "Transfer $1,678.00 from Truist Checking to AMEX Savings (Wendy IRA)"
-   ],
-   "acKeys": [
-    "goal_wendy_ira"
-   ],
+   "ac": [],
+   "acKeys": [],
    "recActs": [
     "📌 MONTHLY LC BOOST — Transfer $250 Vio Bank - Emergency → Lending Club (first of month, maintains LC APR rate tier)."
    ],
-   "realActs": [
-    "Transfer $1,678.00 from Truist Checking to AMEX Savings (Wendy IRA)"
-   ],
-   "realActKeys": [
-    "goal_wendy_ira"
-   ],
-   "totalTasks": 1,
+   "realActs": [],
+   "realActKeys": [],
+   "totalTasks": 0,
    "doneTasks": 0,
-   "chk": 12000,
+   "chk": 13678,
    "sav": 0.03,
-   "amx": 11309.4,
+   "amx": 7779.12,
    "tax": 1228.54,
    "lc": 13488.88,
-   "mChk": 12000,
+   "mChk": 13678,
    "mSav": 0.03,
-   "mAmx": 11309.4,
+   "mAmx": 7779.12,
    "mTax": 1228.54,
    "mLc": 13488.88,
    "goalSaved": {
@@ -1782,8 +1779,8 @@
     "alaska": 7000,
     "wewe_rccl": 600,
     "wewe_dcl": 500,
-    "adam_ira": 7500,
-    "wendy_ira": 2709.4,
+    "adam_ira": 6679.12,
+    "wendy_ira": 0,
     "bailey_529": 0,
     "bryce_529": 0,
     "preston_529": 0,
@@ -1793,13 +1790,13 @@
    },
    "akSaved": 7000,
    "akRem": 0,
-   "retRem": 0,
-   "ol": 12000.03,
+   "retRem": 820.88,
+   "ol": 13678.03,
    "surplusSwept": 0,
    "surplusStart": null,
    "startChk": 6500,
    "startSav": 0.03,
-   "startAmx": 9631.4,
+   "startAmx": 7779.12,
    "startTax": 1228.54,
    "startLc": 13488.88,
    "reconciled": false,
@@ -1811,7 +1808,7 @@
     "adjustedAvailableCashCents": 1367800,
     "adjustedDeployableSurplusCents": 717800,
     "adjustedAvailableForSweep": 7178,
-    "remainingAdjustedSweepEnd": 5500,
+    "remainingAdjustedSweepEnd": 7178,
     "reservedCommitmentCount": 0,
     "hasActiveReserves": false,
     "balanceBasisUnknown": false,
@@ -1825,37 +1822,29 @@
    "trough": false,
    "managed": false,
    "calNote": "",
-   "evs": [
-    {
-     "l": "AMEX Gold ~$5,500 due ~10/16",
-     "t": "ob",
-     "a": -5500
-    }
-   ],
+   "evs": [],
    "tr": [
     {
-     "l": "No transfers this week",
-     "r": "info",
-     "rsn": "No surplus above floor after obligations"
+     "l": "Adam IRA deferred — 5-wk lookahead: floor risk",
+     "r": "defer",
+     "rsn": "Projected checking <$6,500 within 5 weeks"
     }
    ],
-   "ac": [
-    "No transfers this week — monitor balances"
-   ],
+   "ac": [],
    "acKeys": [],
    "recActs": [],
    "realActs": [],
    "realActKeys": [],
    "totalTasks": 0,
    "doneTasks": 0,
-   "chk": 6500,
+   "chk": 13678,
    "sav": 0.03,
-   "amx": 11309.4,
+   "amx": 7779.12,
    "tax": 1228.54,
    "lc": 13488.88,
-   "mChk": 6500,
+   "mChk": 13678,
    "mSav": 0.03,
-   "mAmx": 11309.4,
+   "mAmx": 7779.12,
    "mTax": 1228.54,
    "mLc": 13488.88,
    "goalSaved": {
@@ -1863,8 +1852,8 @@
     "alaska": 7000,
     "wewe_rccl": 600,
     "wewe_dcl": 500,
-    "adam_ira": 7500,
-    "wendy_ira": 2709.4,
+    "adam_ira": 6679.12,
+    "wendy_ira": 0,
     "bailey_529": 0,
     "bryce_529": 0,
     "preston_529": 0,
@@ -1874,25 +1863,25 @@
    },
    "akSaved": 7000,
    "akRem": 0,
-   "retRem": 0,
-   "ol": 6500.03,
+   "retRem": 820.88,
+   "ol": 13678.03,
    "surplusSwept": 0,
    "surplusStart": null,
-   "startChk": 12000,
+   "startChk": 13678,
    "startSav": 0.03,
-   "startAmx": 11309.4,
+   "startAmx": 7779.12,
    "startTax": 1228.54,
    "startLc": 13488.88,
    "reconciled": false,
    "variance": null,
    "actualBals": null,
    "cashAvailability": {
-    "rawSurplusAboveFloorCents": 0,
+    "rawSurplusAboveFloorCents": 717800,
     "reservedProtectedCents": 0,
-    "adjustedAvailableCashCents": 650000,
-    "adjustedDeployableSurplusCents": 0,
-    "adjustedAvailableForSweep": 0,
-    "remainingAdjustedSweepEnd": 0,
+    "adjustedAvailableCashCents": 1367800,
+    "adjustedDeployableSurplusCents": 717800,
+    "adjustedAvailableForSweep": 7178,
+    "remainingAdjustedSweepEnd": 7178,
     "reservedCommitmentCount": 0,
     "hasActiveReserves": false,
     "balanceBasisUnknown": false,
@@ -1908,14 +1897,24 @@
    "calNote": "",
    "evs": [
     {
+     "l": "AMEX Gold ~$11,800 due ~10/18",
+     "t": "ob",
+     "a": -11800
+    },
+    {
+     "l": "Costco Visa ~$1,400 due ~10/20",
+     "t": "ob",
+     "a": -1400
+    },
+    {
      "l": "Adam paycheck (10/22)",
      "t": "in",
      "a": 5816.5
     },
     {
-     "l": "Disney Visa ~$3,500 due ~10/23",
+     "l": "Disney Visa ~$150 due ~10/23",
      "t": "ob",
-     "a": -3500
+     "a": -150
     },
     {
      "l": "Wendy paycheck (10/23)",
@@ -1928,46 +1927,27 @@
      "l": "401(k) $1,020.83 auto-deducted payroll (Empower)",
      "r": "info",
      "rsn": "Pre-tax payroll deduction — no checking impact"
-    },
-    {
-     "l": "Wendy IRA $2,469.00 → AMEX Savings: $2,321.60 remaining",
-     "r": "done",
-     "rsn": "Waterfall allocation",
-     "_key": "goal_wendy_ira"
-    },
-    {
-     "l": "Bailey 529 deferred — 5-wk lookahead: floor risk",
-     "r": "defer",
-     "rsn": "Projected checking <$6,500 within 5 weeks"
     }
    ],
-   "ac": [
-    "Transfer $2,469.00 from Truist Checking to AMEX Savings (Wendy IRA)"
-   ],
-   "acKeys": [
-    "goal_wendy_ira"
-   ],
+   "ac": [],
+   "acKeys": [],
    "recActs": [
     "Review Jabian reimbursements — compare expected vs. received. If a large or unusual amount is pending or recently arrived, add it as a one-time inflow via Edit Week. No action needed if reimbursements are on schedule.",
     "💳 AMEX Gold statement closes this week (23rd) — log in and confirm the actual bill amount due Cal Wk 46 (~$5,500 estimated). Open Edit Week on Cal Wk 46 and update the actual amount.",
     "💳 Costco Visa (primary Visa) statement closes this week (24th) — confirm the statement and add the payment due Cal Wk 46 via Edit Week (manual true-up; no baseline modeled yet)."
    ],
-   "realActs": [
-    "Transfer $2,469.00 from Truist Checking to AMEX Savings (Wendy IRA)"
-   ],
-   "realActKeys": [
-    "goal_wendy_ira"
-   ],
-   "totalTasks": 1,
+   "realActs": [],
+   "realActKeys": [],
+   "totalTasks": 0,
    "doneTasks": 0,
-   "chk": 8500,
+   "chk": 8297,
    "sav": 0.03,
-   "amx": 13778.4,
+   "amx": 7779.12,
    "tax": 1228.54,
    "lc": 13488.88,
-   "mChk": 8500,
+   "mChk": 8297,
    "mSav": 0.03,
-   "mAmx": 13778.4,
+   "mAmx": 7779.12,
    "mTax": 1228.54,
    "mLc": 13488.88,
    "goalSaved": {
@@ -1975,8 +1955,8 @@
     "alaska": 7000,
     "wewe_rccl": 600,
     "wewe_dcl": 500,
-    "adam_ira": 7500,
-    "wendy_ira": 5178.4,
+    "adam_ira": 6679.12,
+    "wendy_ira": 0,
     "bailey_529": 0,
     "bryce_529": 0,
     "preston_529": 0,
@@ -1986,25 +1966,25 @@
    },
    "akSaved": 7000,
    "akRem": 0,
-   "retRem": 0,
-   "ol": 8500.03,
+   "retRem": 820.88,
+   "ol": 8297.03,
    "surplusSwept": 0,
    "surplusStart": null,
-   "startChk": 6500,
+   "startChk": 13678,
    "startSav": 0.03,
-   "startAmx": 11309.4,
+   "startAmx": 7779.12,
    "startTax": 1228.54,
    "startLc": 13488.88,
    "reconciled": false,
    "variance": null,
    "actualBals": null,
    "cashAvailability": {
-    "rawSurplusAboveFloorCents": 446900,
+    "rawSurplusAboveFloorCents": 179700,
     "reservedProtectedCents": 0,
-    "adjustedAvailableCashCents": 1096900,
-    "adjustedDeployableSurplusCents": 446900,
-    "adjustedAvailableForSweep": 4469,
-    "remainingAdjustedSweepEnd": 2000,
+    "adjustedAvailableCashCents": 829700,
+    "adjustedDeployableSurplusCents": 179700,
+    "adjustedAvailableForSweep": 1797,
+    "remainingAdjustedSweepEnd": 1797,
     "reservedCommitmentCount": 0,
     "hasActiveReserves": false,
     "balanceBasisUnknown": false,
@@ -2019,6 +1999,16 @@
    "managed": false,
    "calNote": "",
    "evs": [
+    {
+     "l": "AMEX Platinum ~$1,200 due ~10/27",
+     "t": "ob",
+     "a": -1200
+    },
+    {
+     "l": "AMEX Blue ~$50 due ~10/27",
+     "t": "ob",
+     "a": -50
+    },
     {
      "l": "Rent $2,000 — Zelle to Tiffany Dye (sent 10/31, due 11/1)",
      "t": "ob",
@@ -2043,14 +2033,14 @@
    "realActKeys": [],
    "totalTasks": 0,
    "doneTasks": 0,
-   "chk": 6500,
+   "chk": 5047,
    "sav": 0.03,
-   "amx": 13778.4,
+   "amx": 7779.12,
    "tax": 1228.54,
    "lc": 13488.88,
-   "mChk": 6500,
+   "mChk": 5047,
    "mSav": 0.03,
-   "mAmx": 13778.4,
+   "mAmx": 7779.12,
    "mTax": 1228.54,
    "mLc": 13488.88,
    "goalSaved": {
@@ -2058,8 +2048,8 @@
     "alaska": 7000,
     "wewe_rccl": 600,
     "wewe_dcl": 500,
-    "adam_ira": 7500,
-    "wendy_ira": 5178.4,
+    "adam_ira": 6679.12,
+    "wendy_ira": 0,
     "bailey_529": 0,
     "bryce_529": 0,
     "preston_529": 0,
@@ -2069,22 +2059,22 @@
    },
    "akSaved": 7000,
    "akRem": 0,
-   "retRem": 0,
-   "ol": 6500.03,
+   "retRem": 820.88,
+   "ol": 5047.03,
    "surplusSwept": 0,
    "surplusStart": null,
-   "startChk": 8500,
+   "startChk": 8297,
    "startSav": 0.03,
-   "startAmx": 13778.4,
+   "startAmx": 7779.12,
    "startTax": 1228.54,
    "startLc": 13488.88,
    "reconciled": false,
    "variance": null,
    "actualBals": null,
    "cashAvailability": {
-    "rawSurplusAboveFloorCents": 0,
+    "rawSurplusAboveFloorCents": -145300,
     "reservedProtectedCents": 0,
-    "adjustedAvailableCashCents": 650000,
+    "adjustedAvailableCashCents": 504700,
     "adjustedDeployableSurplusCents": 0,
     "adjustedAvailableForSweep": 0,
     "remainingAdjustedSweepEnd": 0,
@@ -2135,7 +2125,7 @@
      "rsn": "Pre-tax payroll deduction — no checking impact"
     },
     {
-     "l": "Wendy IRA deferred — 5-wk lookahead: floor risk",
+     "l": "Adam IRA deferred — 5-wk lookahead: floor risk",
      "r": "defer",
      "rsn": "Projected checking <$6,500 within 5 weeks"
     }
@@ -2151,14 +2141,14 @@
    "realActKeys": [],
    "totalTasks": 0,
    "doneTasks": 0,
-   "chk": 10278,
+   "chk": 8825,
    "sav": 0.03,
-   "amx": 13778.4,
+   "amx": 7779.12,
    "tax": 1228.54,
    "lc": 13488.88,
-   "mChk": 10278,
+   "mChk": 8825,
    "mSav": 0.03,
-   "mAmx": 13778.4,
+   "mAmx": 7779.12,
    "mTax": 1228.54,
    "mLc": 13488.88,
    "goalSaved": {
@@ -2166,8 +2156,8 @@
     "alaska": 7000,
     "wewe_rccl": 600,
     "wewe_dcl": 500,
-    "adam_ira": 7500,
-    "wendy_ira": 5178.4,
+    "adam_ira": 6679.12,
+    "wendy_ira": 0,
     "bailey_529": 0,
     "bryce_529": 0,
     "preston_529": 0,
@@ -2177,25 +2167,25 @@
    },
    "akSaved": 7000,
    "akRem": 0,
-   "retRem": 0,
-   "ol": 10278.03,
+   "retRem": 820.88,
+   "ol": 8825.03,
    "surplusSwept": 0,
    "surplusStart": null,
-   "startChk": 6500,
+   "startChk": 5047,
    "startSav": 0.03,
-   "startAmx": 13778.4,
+   "startAmx": 7779.12,
    "startTax": 1228.54,
    "startLc": 13488.88,
    "reconciled": false,
    "variance": null,
    "actualBals": null,
    "cashAvailability": {
-    "rawSurplusAboveFloorCents": 377800,
+    "rawSurplusAboveFloorCents": 232500,
     "reservedProtectedCents": 0,
-    "adjustedAvailableCashCents": 1027800,
-    "adjustedDeployableSurplusCents": 377800,
-    "adjustedAvailableForSweep": 3778,
-    "remainingAdjustedSweepEnd": 3778,
+    "adjustedAvailableCashCents": 882500,
+    "adjustedDeployableSurplusCents": 232500,
+    "adjustedAvailableForSweep": 2325,
+    "remainingAdjustedSweepEnd": 2325,
     "reservedCommitmentCount": 0,
     "hasActiveReserves": false,
     "balanceBasisUnknown": false,
@@ -2212,7 +2202,7 @@
    "evs": [],
    "tr": [
     {
-     "l": "Wendy IRA deferred — 5-wk lookahead: floor risk",
+     "l": "Adam IRA deferred — 5-wk lookahead: floor risk",
      "r": "defer",
      "rsn": "Projected checking <$6,500 within 5 weeks"
     }
@@ -2224,14 +2214,14 @@
    "realActKeys": [],
    "totalTasks": 0,
    "doneTasks": 0,
-   "chk": 10278,
+   "chk": 8825,
    "sav": 0.03,
-   "amx": 13778.4,
+   "amx": 7779.12,
    "tax": 1228.54,
    "lc": 13488.88,
-   "mChk": 10278,
+   "mChk": 8825,
    "mSav": 0.03,
-   "mAmx": 13778.4,
+   "mAmx": 7779.12,
    "mTax": 1228.54,
    "mLc": 13488.88,
    "goalSaved": {
@@ -2239,8 +2229,8 @@
     "alaska": 7000,
     "wewe_rccl": 600,
     "wewe_dcl": 500,
-    "adam_ira": 7500,
-    "wendy_ira": 5178.4,
+    "adam_ira": 6679.12,
+    "wendy_ira": 0,
     "bailey_529": 0,
     "bryce_529": 0,
     "preston_529": 0,
@@ -2250,25 +2240,25 @@
    },
    "akSaved": 7000,
    "akRem": 0,
-   "retRem": 0,
-   "ol": 10278.03,
+   "retRem": 820.88,
+   "ol": 8825.03,
    "surplusSwept": 0,
    "surplusStart": null,
-   "startChk": 10278,
+   "startChk": 8825,
    "startSav": 0.03,
-   "startAmx": 13778.4,
+   "startAmx": 7779.12,
    "startTax": 1228.54,
    "startLc": 13488.88,
    "reconciled": false,
    "variance": null,
    "actualBals": null,
    "cashAvailability": {
-    "rawSurplusAboveFloorCents": 377800,
+    "rawSurplusAboveFloorCents": 232500,
     "reservedProtectedCents": 0,
-    "adjustedAvailableCashCents": 1027800,
-    "adjustedDeployableSurplusCents": 377800,
-    "adjustedAvailableForSweep": 3778,
-    "remainingAdjustedSweepEnd": 3778,
+    "adjustedAvailableCashCents": 882500,
+    "adjustedDeployableSurplusCents": 232500,
+    "adjustedAvailableForSweep": 2325,
+    "remainingAdjustedSweepEnd": 2325,
     "reservedCommitmentCount": 0,
     "hasActiveReserves": false,
     "balanceBasisUnknown": false,
@@ -2284,9 +2274,9 @@
    "calNote": "",
    "evs": [
     {
-     "l": "AMEX Gold ~$5,500 due ~11/17",
+     "l": "AMEX Gold ~$8,822 due ~11/18",
      "t": "ob",
-     "a": -5500
+     "a": -8822
     },
     {
      "l": "Adam paycheck (11/20)",
@@ -2297,6 +2287,11 @@
      "l": "Wendy paycheck (11/20)",
      "t": "in",
      "a": 2152.5
+    },
+    {
+     "l": "Costco Visa ~$1,400 due ~11/20",
+     "t": "ob",
+     "a": -1400
     }
    ],
    "tr": [
@@ -2306,7 +2301,7 @@
      "rsn": "Pre-tax payroll deduction — no checking impact"
     },
     {
-     "l": "Wendy IRA deferred — 5-wk lookahead: floor risk",
+     "l": "Adam IRA deferred — 5-wk lookahead: floor risk",
      "r": "defer",
      "rsn": "Projected checking <$6,500 within 5 weeks"
     }
@@ -2320,14 +2315,14 @@
    "realActKeys": [],
    "totalTasks": 0,
    "doneTasks": 0,
-   "chk": 12747,
+   "chk": 6572,
    "sav": 0.03,
-   "amx": 13778.4,
+   "amx": 7779.12,
    "tax": 1228.54,
    "lc": 13488.88,
-   "mChk": 12747,
+   "mChk": 6572,
    "mSav": 0.03,
-   "mAmx": 13778.4,
+   "mAmx": 7779.12,
    "mTax": 1228.54,
    "mLc": 13488.88,
    "goalSaved": {
@@ -2335,8 +2330,8 @@
     "alaska": 7000,
     "wewe_rccl": 600,
     "wewe_dcl": 500,
-    "adam_ira": 7500,
-    "wendy_ira": 5178.4,
+    "adam_ira": 6679.12,
+    "wendy_ira": 0,
     "bailey_529": 0,
     "bryce_529": 0,
     "preston_529": 0,
@@ -2346,25 +2341,25 @@
    },
    "akSaved": 7000,
    "akRem": 0,
-   "retRem": 0,
-   "ol": 12747.03,
+   "retRem": 820.88,
+   "ol": 6572.03,
    "surplusSwept": 0,
    "surplusStart": null,
-   "startChk": 10278,
+   "startChk": 8825,
    "startSav": 0.03,
-   "startAmx": 13778.4,
+   "startAmx": 7779.12,
    "startTax": 1228.54,
    "startLc": 13488.88,
    "reconciled": false,
    "variance": null,
    "actualBals": null,
    "cashAvailability": {
-    "rawSurplusAboveFloorCents": 624700,
+    "rawSurplusAboveFloorCents": 7200,
     "reservedProtectedCents": 0,
-    "adjustedAvailableCashCents": 1274700,
-    "adjustedDeployableSurplusCents": 624700,
-    "adjustedAvailableForSweep": 6247,
-    "remainingAdjustedSweepEnd": 6247,
+    "adjustedAvailableCashCents": 657200,
+    "adjustedDeployableSurplusCents": 7200,
+    "adjustedAvailableForSweep": 72,
+    "remainingAdjustedSweepEnd": 72,
     "reservedCommitmentCount": 0,
     "hasActiveReserves": false,
     "balanceBasisUnknown": false,
@@ -2380,9 +2375,14 @@
    "calNote": "",
    "evs": [
     {
-     "l": "Disney Visa ~$3,500 due ~11/23",
+     "l": "Disney Visa $500 due ~11/23 (DCL onboard)",
      "t": "ob",
-     "a": -3500
+     "a": -500
+    },
+    {
+     "l": "AMEX Platinum ~$494.70 due ~11/27",
+     "t": "ob",
+     "a": -494.7
     }
    ],
    "tr": [
@@ -2405,14 +2405,14 @@
    "realActKeys": [],
    "totalTasks": 0,
    "doneTasks": 0,
-   "chk": 9247,
+   "chk": 5577.3,
    "sav": 0.03,
-   "amx": 13778.4,
+   "amx": 7779.12,
    "tax": 1228.54,
    "lc": 13488.88,
-   "mChk": 9247,
+   "mChk": 5577.3,
    "mSav": 0.03,
-   "mAmx": 13778.4,
+   "mAmx": 7779.12,
    "mTax": 1228.54,
    "mLc": 13488.88,
    "goalSaved": {
@@ -2420,8 +2420,8 @@
     "alaska": 7000,
     "wewe_rccl": 600,
     "wewe_dcl": 500,
-    "adam_ira": 7500,
-    "wendy_ira": 5178.4,
+    "adam_ira": 6679.12,
+    "wendy_ira": 0,
     "bailey_529": 0,
     "bryce_529": 0,
     "preston_529": 0,
@@ -2431,25 +2431,25 @@
    },
    "akSaved": 7000,
    "akRem": 0,
-   "retRem": 0,
-   "ol": 9247.03,
+   "retRem": 820.88,
+   "ol": 5577.33,
    "surplusSwept": 0,
    "surplusStart": null,
-   "startChk": 12747,
+   "startChk": 6572,
    "startSav": 0.03,
-   "startAmx": 13778.4,
+   "startAmx": 7779.12,
    "startTax": 1228.54,
    "startLc": 13488.88,
    "reconciled": false,
    "variance": null,
    "actualBals": null,
    "cashAvailability": {
-    "rawSurplusAboveFloorCents": 274700,
+    "rawSurplusAboveFloorCents": -92270,
     "reservedProtectedCents": 0,
-    "adjustedAvailableCashCents": 924700,
-    "adjustedDeployableSurplusCents": 274700,
-    "adjustedAvailableForSweep": 2747,
-    "remainingAdjustedSweepEnd": 2747,
+    "adjustedAvailableCashCents": 557730,
+    "adjustedDeployableSurplusCents": 0,
+    "adjustedAvailableForSweep": 0,
+    "remainingAdjustedSweepEnd": 0,
     "reservedCommitmentCount": 0,
     "hasActiveReserves": false,
     "balanceBasisUnknown": false,
@@ -2504,14 +2504,14 @@
    "realActKeys": [],
    "totalTasks": 0,
    "doneTasks": 0,
-   "chk": 5999.5,
+   "chk": 2329.8,
    "sav": 0.03,
-   "amx": 13778.4,
+   "amx": 7779.12,
    "tax": 1228.54,
    "lc": 13488.88,
-   "mChk": 5999.5,
+   "mChk": 2329.8,
    "mSav": 0.03,
-   "mAmx": 13778.4,
+   "mAmx": 7779.12,
    "mTax": 1228.54,
    "mLc": 13488.88,
    "goalSaved": {
@@ -2519,8 +2519,8 @@
     "alaska": 7000,
     "wewe_rccl": 600,
     "wewe_dcl": 500,
-    "adam_ira": 7500,
-    "wendy_ira": 5178.4,
+    "adam_ira": 6679.12,
+    "wendy_ira": 0,
     "bailey_529": 0,
     "bryce_529": 0,
     "preston_529": 0,
@@ -2530,22 +2530,22 @@
    },
    "akSaved": 7000,
    "akRem": 0,
-   "retRem": 0,
-   "ol": 5999.53,
+   "retRem": 820.88,
+   "ol": 2329.83,
    "surplusSwept": 0,
    "surplusStart": null,
-   "startChk": 9247,
+   "startChk": 5577.3,
    "startSav": 0.03,
-   "startAmx": 13778.4,
+   "startAmx": 7779.12,
    "startTax": 1228.54,
    "startLc": 13488.88,
    "reconciled": false,
    "variance": null,
    "actualBals": null,
    "cashAvailability": {
-    "rawSurplusAboveFloorCents": -50050,
+    "rawSurplusAboveFloorCents": -417020,
     "reservedProtectedCents": 0,
-    "adjustedAvailableCashCents": 599950,
+    "adjustedAvailableCashCents": 232980,
     "adjustedDeployableSurplusCents": 0,
     "adjustedAvailableForSweep": 0,
     "remainingAdjustedSweepEnd": 0,
@@ -2579,40 +2579,26 @@
      "l": "401(k) $1,020.83 auto-deducted payroll (Empower)",
      "r": "info",
      "rsn": "Pre-tax payroll deduction — no checking impact"
-    },
-    {
-     "l": "Wendy IRA $1,177.50 → AMEX Savings: $1,144.10 remaining",
-     "r": "done",
-     "rsn": "Waterfall allocation",
-     "_key": "goal_wendy_ira"
     }
    ],
-   "ac": [
-    "Transfer $1,177.50 from Truist Checking to AMEX Savings (Wendy IRA)"
-   ],
-   "acKeys": [
-    "goal_wendy_ira"
-   ],
+   "ac": [],
+   "acKeys": [],
    "recActs": [
     "📌 QUARTERLY LC RETURN — Transfer $750 Lending Club → Vio Bank - Emergency before this month's deposit (end-of-quarter APR cycle return: Jun/Jul/Aug or Sep/Oct/Nov).",
     "📌 MONTHLY LC BOOST — Transfer $250 Vio Bank - Emergency → Lending Club (first of month, maintains LC APR rate tier)."
    ],
-   "realActs": [
-    "Transfer $1,177.50 from Truist Checking to AMEX Savings (Wendy IRA)"
-   ],
-   "realActKeys": [
-    "goal_wendy_ira"
-   ],
-   "totalTasks": 1,
+   "realActs": [],
+   "realActKeys": [],
+   "totalTasks": 0,
    "doneTasks": 0,
-   "chk": 9847.5,
+   "chk": 7355.3,
    "sav": 0.03,
-   "amx": 14955.9,
+   "amx": 7779.12,
    "tax": 1228.54,
    "lc": 13488.88,
-   "mChk": 9847.5,
+   "mChk": 7355.3,
    "mSav": 0.03,
-   "mAmx": 14955.9,
+   "mAmx": 7779.12,
    "mTax": 1228.54,
    "mLc": 13488.88,
    "goalSaved": {
@@ -2620,8 +2606,8 @@
     "alaska": 7000,
     "wewe_rccl": 600,
     "wewe_dcl": 500,
-    "adam_ira": 7500,
-    "wendy_ira": 6355.9,
+    "adam_ira": 6679.12,
+    "wendy_ira": 0,
     "bailey_529": 0,
     "bryce_529": 0,
     "preston_529": 0,
@@ -2631,25 +2617,25 @@
    },
    "akSaved": 7000,
    "akRem": 0,
-   "retRem": 0,
-   "ol": 9847.53,
+   "retRem": 820.88,
+   "ol": 7355.33,
    "surplusSwept": 0,
    "surplusStart": null,
-   "startChk": 5999.5,
+   "startChk": 2329.8,
    "startSav": 0.03,
-   "startAmx": 13778.4,
+   "startAmx": 7779.12,
    "startTax": 1228.54,
    "startLc": 13488.88,
    "reconciled": false,
    "variance": null,
    "actualBals": null,
    "cashAvailability": {
-    "rawSurplusAboveFloorCents": 452500,
+    "rawSurplusAboveFloorCents": 85530,
     "reservedProtectedCents": 0,
-    "adjustedAvailableCashCents": 1102500,
-    "adjustedDeployableSurplusCents": 452500,
-    "adjustedAvailableForSweep": 4525,
-    "remainingAdjustedSweepEnd": 3347.5,
+    "adjustedAvailableCashCents": 735530,
+    "adjustedDeployableSurplusCents": 85530,
+    "adjustedAvailableForSweep": 855.3,
+    "remainingAdjustedSweepEnd": 855.3,
     "reservedCommitmentCount": 0,
     "hasActiveReserves": false,
     "balanceBasisUnknown": false,
@@ -2665,9 +2651,9 @@
    "calNote": "",
    "evs": [
     {
-     "l": "AMEX Gold ~$5,500 due ~12/17",
+     "l": "AMEX Gold ~$8,822 due ~12/18",
      "t": "ob",
-     "a": -5500
+     "a": -8822
     },
     {
      "l": "Wendy paycheck (12/18)",
@@ -2691,14 +2677,14 @@
    "realActKeys": [],
    "totalTasks": 0,
    "doneTasks": 0,
-   "chk": 6500,
+   "chk": 685.8,
    "sav": 0.03,
-   "amx": 14955.9,
+   "amx": 7779.12,
    "tax": 1228.54,
    "lc": 13488.88,
-   "mChk": 6500,
+   "mChk": 685.8,
    "mSav": 0.03,
-   "mAmx": 14955.9,
+   "mAmx": 7779.12,
    "mTax": 1228.54,
    "mLc": 13488.88,
    "goalSaved": {
@@ -2706,8 +2692,8 @@
     "alaska": 7000,
     "wewe_rccl": 600,
     "wewe_dcl": 500,
-    "adam_ira": 7500,
-    "wendy_ira": 6355.9,
+    "adam_ira": 6679.12,
+    "wendy_ira": 0,
     "bailey_529": 0,
     "bryce_529": 0,
     "preston_529": 0,
@@ -2717,22 +2703,22 @@
    },
    "akSaved": 7000,
    "akRem": 0,
-   "retRem": 0,
-   "ol": 6500.03,
+   "retRem": 820.88,
+   "ol": 685.83,
    "surplusSwept": 0,
    "surplusStart": null,
-   "startChk": 9847.5,
+   "startChk": 7355.3,
    "startSav": 0.03,
-   "startAmx": 14955.9,
+   "startAmx": 7779.12,
    "startTax": 1228.54,
    "startLc": 13488.88,
    "reconciled": false,
    "variance": null,
    "actualBals": null,
    "cashAvailability": {
-    "rawSurplusAboveFloorCents": 0,
+    "rawSurplusAboveFloorCents": -581420,
     "reservedProtectedCents": 0,
-    "adjustedAvailableCashCents": 650000,
+    "adjustedAvailableCashCents": 68580,
     "adjustedDeployableSurplusCents": 0,
     "adjustedAvailableForSweep": 0,
     "remainingAdjustedSweepEnd": 0,
@@ -2751,14 +2737,14 @@
    "calNote": "",
    "evs": [
     {
+     "l": "Costco Visa ~$1,400 due ~12/20",
+     "t": "ob",
+     "a": -1400
+    },
+    {
      "l": "Adam paycheck (12/22)",
      "t": "in",
      "a": 5816.5
-    },
-    {
-     "l": "Disney Visa ~$3,500 due ~12/23",
-     "t": "ob",
-     "a": -3500
     }
    ],
    "tr": [
@@ -2766,47 +2752,28 @@
      "l": "401(k) $1,020.83 auto-deducted payroll (Empower)",
      "r": "info",
      "rsn": "Pre-tax payroll deduction — no checking impact"
-    },
-    {
-     "l": "Wendy IRA $469.00 → AMEX Savings: $675.10 remaining",
-     "r": "done",
-     "rsn": "Waterfall allocation",
-     "_key": "goal_wendy_ira"
-    },
-    {
-     "l": "Bailey 529 deferred — 5-wk lookahead: floor risk",
-     "r": "defer",
-     "rsn": "Projected checking <$6,500 within 5 weeks"
     }
    ],
-   "ac": [
-    "Transfer $469.00 from Truist Checking to AMEX Savings (Wendy IRA)"
-   ],
-   "acKeys": [
-    "goal_wendy_ira"
-   ],
+   "ac": [],
+   "acKeys": [],
    "recActs": [
     "Review Jabian reimbursements — compare expected vs. received. If a large or unusual amount is pending or recently arrived, add it as a one-time inflow via Edit Week. No action needed if reimbursements are on schedule.",
     "💳 AMEX Gold statement closes this week (23rd) — log in and confirm the actual bill amount due next statement period (~$5,500 estimated). Open Edit Week on next statement period and update the actual amount.",
     "💳 Disney Visa statement closes this week (26th) — log in and confirm the actual bill amount due next statement period (~$3,500 estimated). Open Edit Week on next statement period and update the actual amount.",
     "💳 Costco Visa (primary Visa) statement closes this week (24th) — confirm the statement and add the payment due next statement period via Edit Week (manual true-up; no baseline modeled yet)."
    ],
-   "realActs": [
-    "Transfer $469.00 from Truist Checking to AMEX Savings (Wendy IRA)"
-   ],
-   "realActKeys": [
-    "goal_wendy_ira"
-   ],
-   "totalTasks": 1,
+   "realActs": [],
+   "realActKeys": [],
+   "totalTasks": 0,
    "doneTasks": 0,
-   "chk": 8347.5,
+   "chk": 5102.3,
    "sav": 0.03,
-   "amx": 15424.9,
+   "amx": 7779.12,
    "tax": 1228.54,
    "lc": 13488.88,
-   "mChk": 8347.5,
+   "mChk": 5102.3,
    "mSav": 0.03,
-   "mAmx": 15424.9,
+   "mAmx": 7779.12,
    "mTax": 1228.54,
    "mLc": 13488.88,
    "goalSaved": {
@@ -2814,8 +2781,8 @@
     "alaska": 7000,
     "wewe_rccl": 600,
     "wewe_dcl": 500,
-    "adam_ira": 7500,
-    "wendy_ira": 6824.9,
+    "adam_ira": 6679.12,
+    "wendy_ira": 0,
     "bailey_529": 0,
     "bryce_529": 0,
     "preston_529": 0,
@@ -2825,25 +2792,25 @@
    },
    "akSaved": 7000,
    "akRem": 0,
-   "retRem": 0,
-   "ol": 8347.53,
+   "retRem": 820.88,
+   "ol": 5102.33,
    "surplusSwept": 0,
    "surplusStart": null,
-   "startChk": 6500,
+   "startChk": 685.8,
    "startSav": 0.03,
-   "startAmx": 14955.9,
+   "startAmx": 7779.12,
    "startTax": 1228.54,
    "startLc": 13488.88,
    "reconciled": false,
    "variance": null,
    "actualBals": null,
    "cashAvailability": {
-    "rawSurplusAboveFloorCents": 231650,
+    "rawSurplusAboveFloorCents": -139770,
     "reservedProtectedCents": 0,
-    "adjustedAvailableCashCents": 881650,
-    "adjustedDeployableSurplusCents": 231650,
-    "adjustedAvailableForSweep": 2316.5,
-    "remainingAdjustedSweepEnd": 1847.5,
+    "adjustedAvailableCashCents": 510230,
+    "adjustedDeployableSurplusCents": 0,
+    "adjustedAvailableForSweep": 0,
+    "remainingAdjustedSweepEnd": 0,
     "reservedCommitmentCount": 0,
     "hasActiveReserves": false,
     "balanceBasisUnknown": false,
@@ -2858,6 +2825,11 @@
    "managed": false,
    "calNote": "",
    "evs": [
+    {
+     "l": "AMEX Platinum ~$494.70 due ~12/27",
+     "t": "ob",
+     "a": -494.7
+    },
     {
      "l": "Wendy paycheck (12/31)",
      "t": "in",
@@ -2893,14 +2865,14 @@
    "realActKeys": [],
    "totalTasks": 0,
    "doneTasks": 0,
-   "chk": 6500,
+   "chk": 2760.1,
    "sav": 0.03,
-   "amx": 15424.9,
+   "amx": 7779.12,
    "tax": 1228.54,
    "lc": 13488.88,
-   "mChk": 6500,
+   "mChk": 2760.1,
    "mSav": 0.03,
-   "mAmx": 15424.9,
+   "mAmx": 7779.12,
    "mTax": 1228.54,
    "mLc": 13488.88,
    "goalSaved": {
@@ -2908,8 +2880,8 @@
     "alaska": 7000,
     "wewe_rccl": 600,
     "wewe_dcl": 500,
-    "adam_ira": 7500,
-    "wendy_ira": 6824.9,
+    "adam_ira": 6679.12,
+    "wendy_ira": 0,
     "bailey_529": 0,
     "bryce_529": 0,
     "preston_529": 0,
@@ -2919,22 +2891,22 @@
    },
    "akSaved": 7000,
    "akRem": 0,
-   "retRem": 0,
-   "ol": 6500.03,
+   "retRem": 820.88,
+   "ol": 2760.13,
    "surplusSwept": 0,
    "surplusStart": null,
-   "startChk": 8347.5,
+   "startChk": 5102.3,
    "startSav": 0.03,
-   "startAmx": 15424.9,
+   "startAmx": 7779.12,
    "startTax": 1228.54,
    "startLc": 13488.88,
    "reconciled": false,
    "variance": null,
    "actualBals": null,
    "cashAvailability": {
-    "rawSurplusAboveFloorCents": 0,
+    "rawSurplusAboveFloorCents": -373990,
     "reservedProtectedCents": 0,
-    "adjustedAvailableCashCents": 650000,
+    "adjustedAvailableCashCents": 276010,
     "adjustedDeployableSurplusCents": 0,
     "adjustedAvailableForSweep": 0,
     "remainingAdjustedSweepEnd": 0,
@@ -2973,49 +2945,25 @@
      "l": "401(k) $1,020.83 auto-deducted payroll (Empower)",
      "r": "info",
      "rsn": "Pre-tax payroll deduction — no checking impact"
-    },
-    {
-     "l": "Wendy IRA $675.10 → AMEX Savings — Wendy IRA funded!",
-     "r": "done",
-     "rsn": "Waterfall allocation",
-     "_key": "goal_wendy_ira"
-    },
-    {
-     "l": "Bailey 529 $2,950.40 → AMEX Savings: $549.60 remaining",
-     "r": "done",
-     "rsn": "Waterfall allocation",
-     "_key": "goal_bailey_529"
     }
    ],
-   "ac": [
-    "Transfer $675.10 from Truist Checking to AMEX Savings (Wendy IRA)",
-    "Transfer $2,950.40 from Truist Checking to AMEX Savings (Bailey 529)"
-   ],
-   "acKeys": [
-    "goal_wendy_ira",
-    "goal_bailey_529"
-   ],
+   "ac": [],
+   "acKeys": [],
    "recActs": [
     "📌 MONTHLY LC BOOST — Transfer $250 Vio Bank - Emergency → Lending Club (first of month, maintains LC APR rate tier)."
    ],
-   "realActs": [
-    "Transfer $675.10 from Truist Checking to AMEX Savings (Wendy IRA)",
-    "Transfer $2,950.40 from Truist Checking to AMEX Savings (Bailey 529)"
-   ],
-   "realActKeys": [
-    "goal_wendy_ira",
-    "goal_bailey_529"
-   ],
-   "totalTasks": 2,
+   "realActs": [],
+   "realActKeys": [],
+   "totalTasks": 0,
    "doneTasks": 0,
-   "chk": 6500,
+   "chk": 6385.6,
    "sav": 0.03,
-   "amx": 19050.4,
+   "amx": 7779.12,
    "tax": 1228.54,
    "lc": 13488.88,
-   "mChk": 6500,
+   "mChk": 6385.6,
    "mSav": 0.03,
-   "mAmx": 19050.4,
+   "mAmx": 7779.12,
    "mTax": 1228.54,
    "mLc": 13488.88,
    "goalSaved": {
@@ -3023,9 +2971,9 @@
     "alaska": 7000,
     "wewe_rccl": 600,
     "wewe_dcl": 500,
-    "adam_ira": 7500,
-    "wendy_ira": 7500,
-    "bailey_529": 2950.4,
+    "adam_ira": 6679.12,
+    "wendy_ira": 0,
+    "bailey_529": 0,
     "bryce_529": 0,
     "preston_529": 0,
     "bryce_vehicle": 0,
@@ -3034,24 +2982,24 @@
    },
    "akSaved": 7000,
    "akRem": 0,
-   "retRem": 0,
-   "ol": 6500.03,
+   "retRem": 820.88,
+   "ol": 6385.63,
    "surplusSwept": 0,
    "surplusStart": null,
-   "startChk": 6500,
+   "startChk": 2760.1,
    "startSav": 0.03,
-   "startAmx": 15424.9,
+   "startAmx": 7779.12,
    "startTax": 1228.54,
    "startLc": 13488.88,
    "reconciled": false,
    "variance": null,
    "actualBals": null,
    "cashAvailability": {
-    "rawSurplusAboveFloorCents": 362550,
+    "rawSurplusAboveFloorCents": -11440,
     "reservedProtectedCents": 0,
-    "adjustedAvailableCashCents": 1012550,
-    "adjustedDeployableSurplusCents": 362550,
-    "adjustedAvailableForSweep": 3625.5,
+    "adjustedAvailableCashCents": 638560,
+    "adjustedDeployableSurplusCents": 0,
+    "adjustedAvailableForSweep": 0,
     "remainingAdjustedSweepEnd": 0,
     "reservedCommitmentCount": 0,
     "hasActiveReserves": false,
@@ -3444,235 +3392,8 @@
     "reviewRequired": false
    }
   },
-  "adam_ira": {
-   "num": 15,
-   "dates": "Sep 13-19",
-   "trough": false,
-   "managed": false,
-   "calNote": "Alaska $7,000 Truist Savings → Checking this week — funds elevated Sep cruise card bills",
-   "evs": [
-    {
-     "l": "AMEX Gold ~$5,500 due 9/17",
-     "t": "ob",
-     "a": -5500
-    }
-   ],
-   "tr": [
-    {
-     "l": "Alaska $7,000 Truist Savings → Truist Checking",
-     "r": "done",
-     "a": 7000,
-     "rsn": "Fund elevated September cruise card bills (Gold + Disney Visa) from Alaska savings",
-     "_key": "alaska_draw"
-    },
-    {
-     "l": "Adam IRA $3,623.62 → AMEX Savings — Adam IRA funded!",
-     "r": "done",
-     "rsn": "Waterfall allocation",
-     "_key": "goal_adam_ira"
-    },
-    {
-     "l": "Wendy IRA $1,031.40 → AMEX Savings: $6,468.60 remaining",
-     "r": "done",
-     "rsn": "Waterfall allocation",
-     "_key": "goal_wendy_ira"
-    },
-    {
-     "l": "Bailey 529 deferred — 5-wk lookahead: floor risk",
-     "r": "defer",
-     "rsn": "Projected checking <$6,500 within 5 weeks"
-    }
-   ],
-   "ac": [
-    "Transfer $7,000 from Truist Savings to Truist Checking (Alaska cruise card bills — Sep Gold & Disney Visa)",
-    "Transfer $3,623.62 from Truist Checking to AMEX Savings (Adam IRA)",
-    "Transfer $1,031.40 from Truist Checking to AMEX Savings (Wendy IRA)"
-   ],
-   "acKeys": [
-    "alaska_draw",
-    "goal_adam_ira",
-    "goal_wendy_ira"
-   ],
-   "recActs": [],
-   "realActs": [
-    "Transfer $7,000 from Truist Savings to Truist Checking (Alaska cruise card bills — Sep Gold & Disney Visa)",
-    "Transfer $3,623.62 from Truist Checking to AMEX Savings (Adam IRA)",
-    "Transfer $1,031.40 from Truist Checking to AMEX Savings (Wendy IRA)"
-   ],
-   "realActKeys": [
-    "alaska_draw",
-    "goal_adam_ira",
-    "goal_wendy_ira"
-   ],
-   "totalTasks": 3,
-   "doneTasks": 0,
-   "chk": 7431,
-   "sav": 0.03,
-   "amx": 9631.4,
-   "tax": 1228.54,
-   "lc": 13488.88,
-   "mChk": 7431,
-   "mSav": 0.03,
-   "mAmx": 9631.4,
-   "mTax": 1228.54,
-   "mLc": 13488.88,
-   "goalSaved": {
-    "adam_401k": 16332.98,
-    "alaska": 7000,
-    "wewe_rccl": 600,
-    "wewe_dcl": 500,
-    "adam_ira": 7500,
-    "wendy_ira": 1031.4,
-    "bailey_529": 0,
-    "bryce_529": 0,
-    "preston_529": 0,
-    "bryce_vehicle": 0,
-    "christmas_cruise": 0,
-    "taxable_etf": 0
-   },
-   "akSaved": 7000,
-   "akRem": 0,
-   "retRem": 0,
-   "ol": 7431.03,
-   "surplusSwept": 0,
-   "surplusStart": null,
-   "startChk": 10586.02,
-   "startSav": 7000.03,
-   "startAmx": 4976.38,
-   "startTax": 1228.54,
-   "startLc": 13488.88,
-   "reconciled": false,
-   "variance": null,
-   "actualBals": null,
-   "cashAvailability": {
-    "rawSurplusAboveFloorCents": 558602,
-    "reservedProtectedCents": 0,
-    "adjustedAvailableCashCents": 1208602,
-    "adjustedDeployableSurplusCents": 558602,
-    "adjustedAvailableForSweep": 5586.02,
-    "remainingAdjustedSweepEnd": 931,
-    "reservedCommitmentCount": 0,
-    "hasActiveReserves": false,
-    "balanceBasisUnknown": false,
-    "hasBankPendingReserve": false,
-    "reviewRequired": false
-   }
-  },
-  "wendy_ira": {
-   "num": 31,
-   "dates": "Jan 3-9 2027",
-   "trough": false,
-   "managed": false,
-   "calNote": "",
-   "evs": [
-    {
-     "l": "Rent $1,400 — Zelle to Tiffany Dye (1/3)",
-     "t": "ob",
-     "a": -1400
-    },
-    {
-     "l": "Adam paycheck (1/7)",
-     "t": "in",
-     "a": 5816.5
-    },
-    {
-     "l": "Kia payment (1/7)",
-     "t": "ob",
-     "a": -791
-    }
-   ],
-   "tr": [
-    {
-     "l": "401(k) $1,020.83 auto-deducted payroll (Empower)",
-     "r": "info",
-     "rsn": "Pre-tax payroll deduction — no checking impact"
-    },
-    {
-     "l": "Wendy IRA $675.10 → AMEX Savings — Wendy IRA funded!",
-     "r": "done",
-     "rsn": "Waterfall allocation",
-     "_key": "goal_wendy_ira"
-    },
-    {
-     "l": "Bailey 529 $2,950.40 → AMEX Savings: $549.60 remaining",
-     "r": "done",
-     "rsn": "Waterfall allocation",
-     "_key": "goal_bailey_529"
-    }
-   ],
-   "ac": [
-    "Transfer $675.10 from Truist Checking to AMEX Savings (Wendy IRA)",
-    "Transfer $2,950.40 from Truist Checking to AMEX Savings (Bailey 529)"
-   ],
-   "acKeys": [
-    "goal_wendy_ira",
-    "goal_bailey_529"
-   ],
-   "recActs": [
-    "📌 MONTHLY LC BOOST — Transfer $250 Vio Bank - Emergency → Lending Club (first of month, maintains LC APR rate tier)."
-   ],
-   "realActs": [
-    "Transfer $675.10 from Truist Checking to AMEX Savings (Wendy IRA)",
-    "Transfer $2,950.40 from Truist Checking to AMEX Savings (Bailey 529)"
-   ],
-   "realActKeys": [
-    "goal_wendy_ira",
-    "goal_bailey_529"
-   ],
-   "totalTasks": 2,
-   "doneTasks": 0,
-   "chk": 6500,
-   "sav": 0.03,
-   "amx": 19050.4,
-   "tax": 1228.54,
-   "lc": 13488.88,
-   "mChk": 6500,
-   "mSav": 0.03,
-   "mAmx": 19050.4,
-   "mTax": 1228.54,
-   "mLc": 13488.88,
-   "goalSaved": {
-    "adam_401k": 24499.62,
-    "alaska": 7000,
-    "wewe_rccl": 600,
-    "wewe_dcl": 500,
-    "adam_ira": 7500,
-    "wendy_ira": 7500,
-    "bailey_529": 2950.4,
-    "bryce_529": 0,
-    "preston_529": 0,
-    "bryce_vehicle": 0,
-    "christmas_cruise": 0,
-    "taxable_etf": 0
-   },
-   "akSaved": 7000,
-   "akRem": 0,
-   "retRem": 0,
-   "ol": 6500.03,
-   "surplusSwept": 0,
-   "surplusStart": null,
-   "startChk": 6500,
-   "startSav": 0.03,
-   "startAmx": 15424.9,
-   "startTax": 1228.54,
-   "startLc": 13488.88,
-   "reconciled": false,
-   "variance": null,
-   "actualBals": null,
-   "cashAvailability": {
-    "rawSurplusAboveFloorCents": 362550,
-    "reservedProtectedCents": 0,
-    "adjustedAvailableCashCents": 1012550,
-    "adjustedDeployableSurplusCents": 362550,
-    "adjustedAvailableForSweep": 3625.5,
-    "remainingAdjustedSweepEnd": 0,
-    "reservedCommitmentCount": 0,
-    "hasActiveReserves": false,
-    "balanceBasisUnknown": false,
-    "hasBankPendingReserve": false,
-    "reviewRequired": false
-   }
-  },
+  "adam_ira": null,
+  "wendy_ira": null,
   "bailey_529": null,
   "bryce_529": null,
   "preston_529": null,

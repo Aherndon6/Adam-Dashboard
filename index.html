@@ -885,7 +885,7 @@ button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-vis
 // ── Constants (unchanged) ──────────────────────────────────────────────────
 // Simplified architecture — $8,250 total from LC · $6,500 operating floor · no legacy mechanics
 // Real-world moves: keep $2,250 in chk, move $2,750 sav→chk, move $1,000 LC→chk, move $2,250 LC→chk (Option 1 correction)
-const BUILD_TS='2026-09-12T11:43:15'; // updated each push — local time string
+const BUILD_TS='2026-09-12T22:35:40'; // updated each push — local time string
 const START_CHK=18037.73,START_SAV=3772.77,START_AMX=103.64,START_TAX=0,START_LC=13488.88;
 const EF_AMT=13488.88; // LC/EF balance — static this model year (no transfers in or out)
 const BASE_TAX=521.36,RET_SAV_XFR=3772.74;
@@ -922,21 +922,21 @@ const WD=[
   [13,'Aug 30-Sep 5',[],[2000,2000,1400],[{l:'Rent $2,000 — Zelle to Tiffany Dye (9/1)',t:'ob',a:-2000},{l:'Rent $2,000 — Zelle to Tiffany Dye (9/2)',t:'ob',a:-2000},{l:'Rent $1,400 — Zelle to Tiffany Dye (9/3)',t:'ob',a:-1400}],0,0,'All three rent payments due this week with no income — avoid discretionary spending'],
   [14,'Sep 6-12',[5816.5,2152.5],[791],[{l:'Adam paycheck (9/7)',t:'in',a:5816.5},{l:'Kia payment (9/7)',t:'ob',a:-791},{l:'Wendy paycheck (9/11)',t:'in',a:2152.5}],0,0,''],
   [15,'Sep 13-19',[],[5500],[{l:'AMEX Gold ~$5,500 due 9/17',t:'ob',a:-5500}],0,0,'Alaska $7,000 Truist Savings → Checking this week — funds elevated Sep cruise card bills'],
-  [16,'Sep 20-26',[5816.5,2152.5],[3500],[{l:'Adam paycheck (9/22)',t:'in',a:5816.5},{l:'Disney Visa ~$3,500 due ~9/23',t:'ob',a:-3500},{l:'Wendy paycheck (9/25)',t:'in',a:2152.5}],0,0,''],
-  [17,'Sep 27-Oct 3',[],[2000,2000,1400],[{l:'Rent $2,000 — Zelle to Tiffany Dye (10/1)',t:'ob',a:-2000},{l:'Rent $2,000 — Zelle to Tiffany Dye (10/2)',t:'ob',a:-2000},{l:'Rent $1,400 — Zelle to Tiffany Dye (10/3)',t:'ob',a:-1400}],0,0,'All three rent payments due this week with no income — avoid discretionary spending'],
+  [16,'Sep 20-26',[5816.5,2152.5],[1660.24,519.98],[{l:'Costco Visa $1,660.24 due 9/20 (statement)',t:'ob',a:-1660.24},{l:'Adam paycheck (9/22)',t:'in',a:5816.5},{l:'Disney Visa $519.98 due 9/23 (statement)',t:'ob',a:-519.98},{l:'Wendy paycheck (9/25)',t:'in',a:2152.5}],0,0,''],
+  [17,'Sep 27-Oct 3',[],[3122.16,49.9,2000,2000,1400],[{l:'AMEX Platinum $3,122.16 due 9/27 (statement)',t:'ob',a:-3122.16},{l:'AMEX Blue $49.90 due 9/27 (statement)',t:'ob',a:-49.9},{l:'Rent $2,000 — Zelle to Tiffany Dye (10/1)',t:'ob',a:-2000},{l:'Rent $2,000 — Zelle to Tiffany Dye (10/2)',t:'ob',a:-2000},{l:'Rent $1,400 — Zelle to Tiffany Dye (10/3)',t:'ob',a:-1400}],0,0,'All three rent payments due this week with no income — avoid discretionary spending'],
   [18,'Oct 4-10',[5816.5,2152.5],[791],[{l:'Adam paycheck (10/7)',t:'in',a:5816.5},{l:'Kia payment (10/7)',t:'ob',a:-791},{l:'Wendy paycheck (10/9)',t:'in',a:2152.5}],0,0,''],
-  [19,'Oct 11-17',[],[5500],[{l:'AMEX Gold ~$5,500 due ~10/16',t:'ob',a:-5500}],0,0,''],
-  [20,'Oct 18-24',[5816.5,2152.5],[3500],[{l:'Adam paycheck (10/22)',t:'in',a:5816.5},{l:'Disney Visa ~$3,500 due ~10/23',t:'ob',a:-3500},{l:'Wendy paycheck (10/23)',t:'in',a:2152.5}],0,0,''],
-  [21,'Oct 25-31',[],[2000],[{l:'Rent $2,000 — Zelle to Tiffany Dye (sent 10/31, due 11/1)',t:'ob',a:-2000}],0,0,''],
+  [19,'Oct 11-17',[],[],[],0,0,''],
+  [20,'Oct 18-24',[5816.5,2152.5],[11800,1400,150],[{l:'AMEX Gold ~$11,800 due ~10/18',t:'ob',a:-11800},{l:'Costco Visa ~$1,400 due ~10/20',t:'ob',a:-1400},{l:'Adam paycheck (10/22)',t:'in',a:5816.5},{l:'Disney Visa ~$150 due ~10/23',t:'ob',a:-150},{l:'Wendy paycheck (10/23)',t:'in',a:2152.5}],0,0,''],
+  [21,'Oct 25-31',[],[1200,50,2000],[{l:'AMEX Platinum ~$1,200 due ~10/27',t:'ob',a:-1200},{l:'AMEX Blue ~$50 due ~10/27',t:'ob',a:-50},{l:'Rent $2,000 — Zelle to Tiffany Dye (sent 10/31, due 11/1)',t:'ob',a:-2000}],0,0,''],
   [22,'Nov 1-7',[5816.5,2152.5],[2000,1400,791],[{l:'Rent $2,000 — Zelle to Tiffany Dye (11/2)',t:'ob',a:-2000},{l:'Rent $1,400 — Zelle to Tiffany Dye (11/3)',t:'ob',a:-1400},{l:'Adam paycheck (11/6)',t:'in',a:5816.5},{l:'Wendy paycheck (11/6)',t:'in',a:2152.5},{l:'Kia payment (11/7)',t:'ob',a:-791}],0,0,''],
   [23,'Nov 8-14',[],[],[],0,0,''],
-  [24,'Nov 15-21',[5816.5,2152.5],[5500],[{l:'AMEX Gold ~$5,500 due ~11/17',t:'ob',a:-5500},{l:'Adam paycheck (11/20)',t:'in',a:5816.5},{l:'Wendy paycheck (11/20)',t:'in',a:2152.5}],0,0,''],
-  [25,'Nov 22-28',[],[3500],[{l:'Disney Visa ~$3,500 due ~11/23',t:'ob',a:-3500}],0,0,''],
+  [24,'Nov 15-21',[5816.5,2152.5],[8822,1400],[{l:'AMEX Gold ~$8,822 due ~11/18',t:'ob',a:-8822},{l:'Adam paycheck (11/20)',t:'in',a:5816.5},{l:'Wendy paycheck (11/20)',t:'in',a:2152.5},{l:'Costco Visa ~$1,400 due ~11/20',t:'ob',a:-1400}],0,0,''],
+  [25,'Nov 22-28',[],[500,494.7],[{l:'Disney Visa $500 due ~11/23 (DCL onboard)',t:'ob',a:-500},{l:'AMEX Platinum ~$494.70 due ~11/27',t:'ob',a:-494.7}],0,0,''],
   [26,'Nov 29-Dec 5',[2152.5],[2000,2000,1400],[{l:'Wendy paycheck (12/4)',t:'in',a:2152.5},{l:'Rent $2,000 — Zelle to Tiffany Dye (12/1)',t:'ob',a:-2000},{l:'Rent $2,000 — Zelle to Tiffany Dye (12/2)',t:'ob',a:-2000},{l:'Rent $1,400 — Zelle to Tiffany Dye (12/3)',t:'ob',a:-1400}],0,0,''],
   [27,'Dec 6-12',[5816.5],[791],[{l:'Adam paycheck (12/7)',t:'in',a:5816.5},{l:'Kia payment (12/7)',t:'ob',a:-791}],0,0,''],
-  [28,'Dec 13-19',[2152.5],[5500],[{l:'AMEX Gold ~$5,500 due ~12/17',t:'ob',a:-5500},{l:'Wendy paycheck (12/18)',t:'in',a:2152.5}],0,0,''],
-  [29,'Dec 20-26',[5816.5],[3500],[{l:'Adam paycheck (12/22)',t:'in',a:5816.5},{l:'Disney Visa ~$3,500 due ~12/23',t:'ob',a:-3500}],0,0,''],
-  [30,'Dec 27-Jan 2',[2152.5],[2000,2000],[{l:'Wendy paycheck (12/31)',t:'in',a:2152.5},{l:'Rent $2,000 — Zelle to Tiffany Dye (1/1)',t:'ob',a:-2000},{l:'Rent $2,000 — Zelle to Tiffany Dye (1/2)',t:'ob',a:-2000}],0,0,''],
+  [28,'Dec 13-19',[2152.5],[8822],[{l:'AMEX Gold ~$8,822 due ~12/18',t:'ob',a:-8822},{l:'Wendy paycheck (12/18)',t:'in',a:2152.5}],0,0,''],
+  [29,'Dec 20-26',[5816.5],[1400],[{l:'Costco Visa ~$1,400 due ~12/20',t:'ob',a:-1400},{l:'Adam paycheck (12/22)',t:'in',a:5816.5}],0,0,''],
+  [30,'Dec 27-Jan 2',[2152.5],[494.7,2000,2000],[{l:'AMEX Platinum ~$494.70 due ~12/27',t:'ob',a:-494.7},{l:'Wendy paycheck (12/31)',t:'in',a:2152.5},{l:'Rent $2,000 — Zelle to Tiffany Dye (1/1)',t:'ob',a:-2000},{l:'Rent $2,000 — Zelle to Tiffany Dye (1/2)',t:'ob',a:-2000}],0,0,''],
   [31,'Jan 3-9 2027',[5816.5],[1400,791],[{l:'Rent $1,400 — Zelle to Tiffany Dye (1/3)',t:'ob',a:-1400},{l:'Adam paycheck (1/7)',t:'in',a:5816.5},{l:'Kia payment (1/7)',t:'ob',a:-791}],0,0,''],
 ];
 
@@ -2493,6 +2493,9 @@ var WD_PROTECTED_PAYEE_RULES=[
   {test:function(l){return/AMEX\s+Gold/i.test(l);},           normalized:'amex_gold',        cc:'credit_card_payment', rod:'protected_required', payee:'AMEX Gold',          displayLabel:'AMEX Gold payment'},
   {test:function(l){return/AMEX\s+Plat(inum)?/i.test(l);},    normalized:'amex_platinum',    cc:'credit_card_payment', rod:'protected_required', payee:'AMEX Platinum',      displayLabel:'AMEX Platinum payment'},
   {test:function(l){return/Disney\s+Visa/i.test(l);},         normalized:'disney_visa',      cc:'credit_card_payment', rod:'protected_required', payee:'Disney Visa',        displayLabel:'Disney Visa payment'},
+  // P3c-1 (2026-09-12, owner-approved): Costco Visa (primary Visa) and AMEX Blue now carry modeled WD payments.
+  {test:function(l){return/Costco\s+Visa/i.test(l);},         normalized:'costco_visa',      cc:'credit_card_payment', rod:'protected_required', payee:'Costco Visa',        displayLabel:'Costco Visa payment'},
+  {test:function(l){return/AMEX\s+Blue/i.test(l);},           normalized:'amex_blue',        cc:'credit_card_payment', rod:'protected_required', payee:'AMEX Blue',          displayLabel:'AMEX Blue payment'},
   {test:function(l){return/Rent\b.*Tiffany\s+Dye/i.test(l);}, normalized:'rent_tiffany_dye', cc:'rent',                rod:'protected_required', payee:'Rent (Tiffany Dye)', displayLabel:'Rent (Zelle to Tiffany Dye)'},
   {test:function(l){return/Kia\s+payment/i.test(l);},         normalized:'kia_payment',      cc:'bill_payment',        rod:'protected_required', payee:'Kia payment',        displayLabel:'Kia auto payment'}
 ];
@@ -6591,7 +6594,7 @@ function _renderGoalsSavings(vm){
     // Key mechanic: look-ahead floor
     '<div style="background:#fef3c7;border:1px solid #f59e0b;border-radius:6px;padding:8px 10px;margin-bottom:12px;font-size:12px">'+
       '<span style="font-weight:700;color:#92400e">⚠ Look-ahead floor: </span>'+
-      '<span style="color:var(--ink)">When next week has large bills (rent $5,300 · AMEX $5,500 · Disney Visa $3,500), the effective floor rises to '+f(_liveFloor)+', locking surplus in checking even when the balance looks high. That\'s why checking can show $8,000+ with zero sweep.</span>'+
+      '<span style="color:var(--ink)">When next week has large bills (the three rents or a card statement payment), the effective floor rises to '+f(_liveFloor)+', locking surplus in checking even when the balance looks high. That\'s why checking can show $8,000+ with zero sweep.</span>'+
     '</div>'+
     // Stats grid
     '<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:12px">'+

@@ -1,5 +1,19 @@
 # Codex Status: Herndon Financial OS
 
+## CURRENCY NOTE (2026-09-12b) — P3c-1 card-obligation baseline correction: COMPLETE pending production verification
+
+**What changed (owner-authorized, reviewed with ChatGPT).** `WD` card-payment rows for model weeks 16-31 (Cal 38-53) corrected to a **full-statement basis** from closed statements, live-accrual projections and owner-confirmed carry-forwards; Costco Visa and AMEX Blue now carry modeled payments. **Final Nov/Dec AMEX Gold planning baseline: ~$8,822** (evidence-based normal month including GLP, baseball and Diablos; it supersedes an earlier ~$11,800 carry that P3c-1 validation showed would carry ~$3,000/month of identified one-off spend). `WD_PROTECTED_PAYEE_RULES` gains `costco_visa` and `amex_blue`. One render-only floor-note string in `_renderGoalsSavings` no longer quotes stale card figures. Weeks 1-15 are byte-identical; no standalone Diablos or GLP rows; Nov Disney Visa $500; no December Disney bill. The original "add Diablos/GLP rows to `WD`" scope was retired because those are card charges and would double count.
+
+**Gates.** Static suite **1814/1814 PASS**. P3c-1 characterization tests **8/8 PASS**. Golden identity tests **PASS**; the golden master (`fixtures/runmodel-golden-pre-1c-2.json`) was **recaptured with explicit owner approval** after a dry-run delta proved fully attributable (weeks 1-14 and all inflows identical; household-cash change equals the cumulative card-obligation change with zero residual; the only behavioural change is withheld/deferred goal transfers; no new money-moving action). Existing tests that pinned old cash outcomes were repaired **by intent**: integration pins re-baselined; false "EF backstop / no negative checking" premises corrected (no such backstop exists); goal-funding success paths preserved under a documented test-only liquidity fixture; floor-violation checks pinned to the exact structural set. **Do-Not-Touch audit PASS**: no change to `runModel`, `reconEffectiveWD`, waterfall, reconciliation RPCs, 5F-1 engine internals, schema, or persisted auto-reminder behaviour.
+
+**e2e: 161/3**, accepted as the unchanged pre-existing baseline **for P3c-1 only**. The three failures remain the known live-production Adam IRA $61.06 residual mismatch (see the 2026-09-12 Register closeout), not a P3c-1 regression.
+
+**Follow-ups recorded, not acted on.** (1) **P3c-2 lookahead-horizon evidence** preserved separately: added liquidity produced *more* later floor breaches with no transfer in the breach week, i.e. transfers approved inside the 5-week lookahead landing beyond it. (2) **Non-hermetic e2e control finding:** with `.env` present the normal e2e suite authenticates to production and sends anonymous production write probes (refused); regression e2e and opt-in production smoke testing should be separated. No P3c-2 implementation and no frozen-logic change was made.
+
+**Evidence** (counts, hashes, per-week tables, test inventory) lives in the owner's evidence folder, outside this public repo.
+
+---
+
 ## CURRENCY NOTE (2026-09-12) — DR-1 CLOSED. Part 3 (documented and tested restore) rehearsed end to end: PASS. All five DR-1 parts are now closed.
 
 **What was done (owner-authorized in session, 2026-09-12).** The 2026-09-07 encrypted off-device production dump was restored into a **blank Supabase Pro preview branch** created for the purpose (`with_data:false`) and deleted the same session. Never production, never staging. The only production contact was read-only catalog queries (grants, policies, function and schema fingerprints, zero row data) to build the comparison oracle. No production DDL, data change, or configuration change.
