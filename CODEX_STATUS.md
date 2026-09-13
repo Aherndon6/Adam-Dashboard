@@ -20,7 +20,7 @@
 5. **Correction to the 2026-09-07b note below:** the production catalog shows `authenticated` holds **no DELETE** on `weekly_reconciliations` (it holds SELECT, TRUNCATE, REFERENCES, TRIGGER, MAINTAIN; client INSERT/UPDATE/DELETE were removed by the 5G-1D Phase-2 revokes). The "direct-delete integrity path remains open" statement is not supported by current evidence. `authenticated` does hold TRUNCATE on every `public` table, which bypasses RLS but has no PostgREST client path. Recorded only; no grant change authorized or made.
 
 **Owner actions still open (not blocking DR-1 closure):**
-- Copy the posture file and fingerprint queries into the **off-device** (cloud) copy of the backup set; today they sit only beside the local copy.
+- ~~Copy the posture file and fingerprint queries into the off-device (cloud) copy of the backup set.~~ **DONE 2026-09-12**; cloud copies verified SHA-256-identical to the local set, including the encrypted archive.
 - Decide on an older **unencrypted** production dump from 2026-08-07 still present in the local backup folder (mode 600). Not touched.
 - Record the SHA-256 of each future encrypted dump at creation; none was stored beside the 2026-09-07 archive.
 
