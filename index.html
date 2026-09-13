@@ -7578,7 +7578,7 @@ var _txCatShowAll=false;     // categories lifecycle toggle
 // ── Phase 5E-1: Register state ────────────────────────────────────────────
 var _txLedgerAccountKey='';          // account key currently loaded in register
 var _txLedgerCache=null;             // fetched transactions array or null
-var _txLedgerLoadStatus='not_loaded';// 'not_loaded' | 'loading' | 'loaded' | 'failed'
+var _txLedgerLoadStatus='not_loaded';// 'not_loaded' | 'loading' | 'loaded' | 'failed' | 'incomplete' (P0: history not verifiably complete)
 // Phase 5F-1.5 A6 / A10 ledger: Register display-sort state. DEFAULT is the Quicken CL
 // reconciliation view ('reconcile'): uncleared rows on top, cleared rows below, newest-first
 // (chronIdx desc) within each group. Each row's Balance reads as the account balance
@@ -7950,26 +7950,174 @@ function setTxLedgerAccount(key){
   _loadTxLedger(key);
 }
 
-// Fetch up to 500 transactions for one account, deterministic order
+// ── P0 Register completeness (2026-09-13): complete-history ledger load ──────────
+// The balance pipeline in _renderTxRegister assumes _txLedgerCache is the COMPLETE account
+// history anchored at accounts.starting_balance, so a truncated load silently corrupts both the
+// visible rows and every running balance. This loader therefore:
+//  - pages by id keyset (id=gt.<last id actually returned>), never by offset, and never assumes
+//    the server honors LEDGER_PAGE_REQUEST_TARGET (a server row cap may return fewer per request);
+//  - reads an exact total + newest updated_at fingerprint (F1) before paging and again after (F2).
+//    Any insert (updated_at defaults to now), update (set_transactions_updated_at trigger) or delete
+//    (count) between F1 and F2 changes the fingerprint; the load restarts once, then fails closed;
+//  - requires loaded unique rows == exact total, strictly increasing ids, and rows for this account;
+//  - restores the canonical order transaction_date asc, created_at asc (microsecond-exact, UTC
+//    normalized), id asc client-side, and fails closed on any value it cannot order exactly;
+//  - commits only if its generation token is still current (account switches discard stale loads).
+// Guarantee: a 'loaded' ledger is the complete account history as observed consistently across the
+// verified F1 -> pages -> F2 interval. It is NOT an atomic database snapshot: a writer could still
+// change the account in the brief interval between F2 and the browser commit (accepted residual).
+var LEDGER_PAGE_REQUEST_TARGET=1000; // client request ceiling only — not an assumption about the server cap
+var _txLedgerLoadGen=0;
+var _txLedgerIncompleteReason='';
+
+// Content-Range: "0-0/1237", "*/0" -> total (non-negative integer) or null when absent/unparseable.
+function _txParseContentRangeTotal(cr){
+  var m=/^\s*(?:\*|\d+-\d+)\/(\d+)\s*$/.exec(String(cr==null?'':cr));
+  if(!m)return null;
+  var n=Number(m[1]);
+  return (Number.isSafeInteger(n)&&n>=0)?n:null;
+}
+// Supported calendar range for the Register ledger parser (fail-closed; not PostgreSQL's full range).
+var TX_LEDGER_YEAR_MIN=1900, TX_LEDGER_YEAR_MAX=2999;
+// Shared calendar validation for transaction_date and the date part of created_at.
+// 'YYYY-MM-DD' -> [year, month, day] when calendar-valid (incl. Gregorian leap years) and in range, else null.
+function _txCalendarDateParts(str){
+  var m=/^(\d{4})-(\d{2})-(\d{2})$/.exec(String(str==null?'':str));
+  if(!m)return null;
+  var y=+m[1],mo=+m[2],d=+m[3];
+  if(y<TX_LEDGER_YEAR_MIN||y>TX_LEDGER_YEAR_MAX||mo<1||mo>12||d<1)return null;
+  var leap=(y%4===0&&y%100!==0)||y%400===0;
+  var dim=[31,leap?29:28,31,30,31,30,31,31,30,31,30,31][mo-1];
+  return d<=dim?[y,mo,d]:null;
+}
+// Days since 1970-01-01 for a validated proleptic-Gregorian date (integer arithmetic; no JS Date).
+function _txDaysFromCivil(y,m,d){
+  y-=(m<=2)?1:0;
+  var era=Math.floor(y/400), yoe=y-era*400;
+  var doy=Math.floor((153*(m+(m>2?-3:9))+2)/5)+d-1;
+  var doe=yoe*365+Math.floor(yoe/4)-Math.floor(yoe/100)+doy;
+  return era*146097+doe-719468;
+}
+// Postgres timestamptz text -> [utcSeconds, microseconds] preserving microsecond precision (no JS Date,
+// which would collapse to milliseconds and silently normalize invalid components).
+// Accepts 'YYYY-MM-DD[T ]HH:MM:SS[.f{1,6}](Z|±HH|±HHMM|±HH:MM)'. Every component is range-checked
+// (calendar-valid date in the supported year range, hour 0-23, minute/second 0-59, offset hour 0-15,
+// offset minute 0-59); anything else returns null so the ledger load fails closed.
+function _txTimestampSortKey(ts){
+  var m=/^(\d{4}-\d{2}-\d{2})[T ](\d{2}):(\d{2}):(\d{2})(?:\.(\d{1,6}))?(Z|([+-])(\d{2})(?::?(\d{2}))?)$/.exec(String(ts==null?'':ts));
+  if(!m)return null;
+  var dp=_txCalendarDateParts(m[1]);
+  if(!dp)return null;
+  var hh=+m[2],mi=+m[3],ss=+m[4];
+  if(hh>23||mi>59||ss>59)return null;
+  var offSec=0;
+  if(m[6]!=='Z'){
+    var oh=+m[8],om=(m[9]!==undefined)?+m[9]:0;
+    if(oh>15||om>59)return null;
+    offSec=(m[7]==='-'?-1:1)*(oh*3600+om*60);
+  }
+  var secs=_txDaysFromCivil(dp[0],dp[1],dp[2])*86400+hh*3600+mi*60+ss-offSec;
+  var micros=m[5]?Number((m[5]+'000000').slice(0,6)):0;
+  return [secs,micros];
+}
+// Canonical Register order: transaction_date asc, created_at asc, id asc (Postgres uuid order ==
+// lowercase hex string order). Returns null when a row cannot be ordered exactly.
+function _txSortLedgerCanonical(rows){
+  var keyed=[];
+  for(var i=0;i<rows.length;i++){
+    var r=rows[i];
+    if(!_txCalendarDateParts(r.transaction_date))return null; // calendar-valid dates only; valid ISO dates order lexically
+    var ck=_txTimestampSortKey(r.created_at);
+    if(!ck)return null;
+    keyed.push({r:r,d:r.transaction_date,s:ck[0],u:ck[1],id:String(r.id).toLowerCase()});
+  }
+  keyed.sort(function(a,b){
+    if(a.d!==b.d)return a.d<b.d?-1:1;
+    if(a.s!==b.s)return a.s-b.s;
+    if(a.u!==b.u)return a.u-b.u;
+    return a.id<b.id?-1:(a.id>b.id?1:0);
+  });
+  return keyed.map(function(k){return k.r;});
+}
+// F1/F2: exact total (Content-Range) + newest updated_at for the account.
+async function _txLedgerFingerprint(h,accountKey){
+  var res=await fetch(SUPA_URL+'/rest/v1/transactions?account_key=eq.'+encodeURIComponent(accountKey)
+    +'&select=updated_at&order=updated_at.desc&limit=1',
+    {headers:Object.assign({},h,{'Prefer':'count=exact'})});
+  if(!res.ok)return {kind:'failed',msg:'HTTP '+res.status};
+  var total=_txParseContentRangeTotal(res.headers.get('content-range'));
+  if(total===null)return {kind:'incomplete',msg:'the exact transaction count was not available'};
+  var body=await res.json();
+  if(!Array.isArray(body))return {kind:'failed',msg:'unexpected response'};
+  var newest=(body.length&&body[0]&&body[0].updated_at)?String(body[0].updated_at):'';
+  if(total>0&&!newest)return {kind:'incomplete',msg:'the ledger change marker was not available'};
+  return {kind:'ok',total:total,key:total+'|'+newest};
+}
+// One verified pass. Returns {kind:'ok',rows} | {kind:'changed'} | {kind:'failed'|'incomplete',msg}.
+async function _txLedgerLoadPass(h,accountKey){
+  var fp1=await _txLedgerFingerprint(h,accountKey);
+  if(fp1.kind!=='ok')return fp1;
+  var rows=[],seen=Object.create(null),cursor=null,requests=0;
+  while(rows.length<fp1.total){
+    requests++;
+    if(requests>fp1.total+2)return {kind:'incomplete',msg:'the load made no forward progress'};
+    var url=SUPA_URL+'/rest/v1/transactions?account_key=eq.'+encodeURIComponent(accountKey)
+      +(cursor!==null?'&id=gt.'+encodeURIComponent(cursor):'')
+      +'&order=id.asc&limit='+LEDGER_PAGE_REQUEST_TARGET;
+    var res=await fetch(url,{headers:h});
+    if(!res.ok)return {kind:'failed',msg:'HTTP '+res.status};
+    var page=await res.json();
+    if(!Array.isArray(page))return {kind:'failed',msg:'unexpected response'};
+    if(!page.length)break; // server has nothing after the cursor; verification below decides
+    for(var i=0;i<page.length;i++){
+      var row=page[i];
+      var id=(row&&row.id!=null)?String(row.id).toLowerCase():'';
+      if(!id||row.account_key!==accountKey||seen[id]||(cursor!==null&&!(id>cursor)))
+        return {kind:'incomplete',msg:'inconsistent pagination'};
+      seen[id]=true;rows.push(row);cursor=id; // advance by the rows actually returned
+    }
+  }
+  var fp2=await _txLedgerFingerprint(h,accountKey);
+  if(fp2.kind!=='ok')return fp2;
+  if(fp2.key!==fp1.key)return {kind:'changed'};
+  if(rows.length!==fp1.total)return {kind:'incomplete',msg:'loaded '+rows.length+' of '+fp1.total+' transactions'};
+  var ordered=_txSortLedgerCanonical(rows);
+  if(!ordered)return {kind:'incomplete',msg:'a transaction could not be ordered exactly'};
+  return {kind:'ok',rows:ordered};
+}
+// Complete-history load for one account (see the P0 block comment above).
 async function _loadTxLedger(accountKey){
   if(!accountKey)return;
+  var gen=++_txLedgerLoadGen;
   _txLedgerAccountKey=accountKey;
   _txLedgerLoadStatus='loading';
+  _txLedgerIncompleteReason='';
   _txLedgerCache=null;
   renderApp();
+  var current=function(){return gen===_txLedgerLoadGen&&_txLedgerAccountKey===accountKey;};
+  var outcome;
   try{
     var h=await getAuthHeaders();
-    var url=SUPA_URL+'/rest/v1/transactions'
-      +'?account_key=eq.'+encodeURIComponent(accountKey)
-      +'&order=transaction_date.asc,created_at.asc,id.asc'
-      +'&limit=500';
-    var res=await fetch(url,{headers:h});
-    if(!res.ok)throw new Error('HTTP '+res.status);
-    _txLedgerCache=await res.json();
-    _txLedgerLoadStatus='loaded';
+    outcome=await _txLedgerLoadPass(h,accountKey);
+    if(outcome.kind==='changed'&&current())outcome=await _txLedgerLoadPass(h,accountKey); // one restart only
+    if(outcome.kind==='changed')outcome={kind:'incomplete',msg:'the ledger changed while loading'};
   }catch(e){
     console.error('[5E] ledger load error:',e);
-    _txLedgerLoadStatus='failed';
+    outcome={kind:'failed',msg:String(e&&e.message||e)};
+  }
+  if(!current())return; // stale: a newer load (or account switch) owns the status
+  if(outcome.kind==='ok'){
+    _txLedgerCache=outcome.rows;
+    _txLedgerLoadStatus='loaded';
+  }else{
+    _txLedgerCache=null; // never render rows or balances from a partial set
+    if(outcome.kind==='incomplete'){
+      _txLedgerLoadStatus='incomplete';
+      _txLedgerIncompleteReason=outcome.msg||'';
+    }else{
+      console.error('[5E] ledger load failed:',outcome.msg);
+      _txLedgerLoadStatus='failed';
+    }
   }
   renderApp();
 }
@@ -8612,6 +8760,11 @@ function _renderTxRegister(){
     body='<div style="padding:24px;color:var(--muted)">Loading transactions…</div>';
   }else if(_txLedgerLoadStatus==='failed'){
     body='<div style="padding:24px;color:var(--red)">Failed to load transactions. Refresh to retry.</div>';
+  }else if(_txLedgerLoadStatus==='incomplete'){
+    // P0: the complete history could not be verified — show no rows and no balances.
+    body='<div id="tx-ledger-incomplete" style="padding:24px;color:var(--red)">Couldn’t verify the complete transaction history for this account'
+      +(_txLedgerIncompleteReason?' ('+_esc(_txLedgerIncompleteReason)+')':'')
+      +'. No transactions or balances are shown. Refresh to retry.</div>';
   }else{
     var selAcct=(_accountsCache||[]).find(function(a){return a.key===_txLedgerAccountKey;})||null;
     var rawBal=(selAcct&&selAcct.starting_balance!==null&&selAcct.starting_balance!==undefined)
@@ -9740,6 +9893,7 @@ function renderApp(){
             ?(_selAcctReg?_selAcctReg.label+' · '+_txCountReg+' transaction'+(_txCountReg!==1?'s':''):'Select an account')
             :_txLedgerLoadStatus==='loading'?'Loading transactions…'
             :_txLedgerLoadStatus==='failed'?'Failed to load transactions'
+            :_txLedgerLoadStatus==='incomplete'?'Transaction history incomplete — not shown'
             :'Register';
         }
       }

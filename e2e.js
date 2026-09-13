@@ -232,7 +232,7 @@ function _buildWishlistFixture() {
   }));
 }
 const WISHLIST_FIXTURE = PROD_VERIFY_MODE ? [] : _buildWishlistFixture();
-const FIXTURE_CORS = { 'access-control-allow-origin': '*', 'access-control-allow-headers': '*', 'access-control-allow-methods': '*' };
+const FIXTURE_CORS = { 'access-control-allow-origin': '*', 'access-control-allow-headers': '*', 'access-control-allow-methods': '*', 'access-control-expose-headers': 'content-range' };
 
 // Request ledger. `test` = the running test (null between tests); `phase` =
 // 'startup' until the page has loaded/authenticated, then 'test'.
@@ -257,7 +257,12 @@ function _fixtureRead(ctx, req, u) {
   if (p === '/auth/v1/user') return _fixtureJson(200, FIXTURE_USER);
   if (p === '/rest/v1/app_users') return _fixtureJson(200, [{ email: FIXTURE_USER.email, active: true, role: 'owner' }]);
   if (p === '/rest/v1/wishlist_items') return _fixtureJson(200, WISHLIST_FIXTURE);
-  if (p.startsWith('/rest/v1/') && !p.startsWith('/rest/v1/rpc/')) return _fixtureJson(200, []);
+  if (p.startsWith('/rest/v1/') && !p.startsWith('/rest/v1/rpc/')) {
+    // Like PostgREST: an empty result carries Content-Range */0 (exact count when requested).
+    const r = _fixtureJson(200, []);
+    r.headers['content-range'] = /count=exact/i.test(req.headers()['prefer'] || '') ? '*/0' : '*/*';
+    return r;
+  }
   ledger.unfixturedReads.push(_where(ctx, req));
   return _fixtureJson(404, { code: 'E2E_NOT_FIXTURED', message: 'hermetic e2e: no fixture for GET ' + p });
 }
@@ -4923,6 +4928,179 @@ async function clickNav(page, id) {
     assert(outflow === 'tx-form-outflow', 'Tab from Category must land on Outflow, got id: ' + outflow);
     await context.close();
   });
+
+  // ── Section P0: Register ledger completeness (2026-09-13) ───────────────────────
+  // A test-owned mock PostgREST ledger: honours account_key=eq, id=gt keyset, order=id.asc,
+  // limit, a configurable server row cap, Prefer: count=exact (Content-Range), and owned POSTs.
+  console.log('── Section P0: Register ledger completeness ──');
+  const p0Prng = (seed) => { let x = seed >>> 0; return () => { x ^= x << 13; x >>>= 0; x ^= x >>> 17; x ^= x << 5; x >>>= 0; return x / 4294967296; }; };
+  const p0Hex = (r, n) => { let o = ''; for (let i = 0; i < n; i++) o += Math.floor(r() * 16).toString(16); return o; };
+  const p0Uuid = (r) => p0Hex(r, 8) + '-' + p0Hex(r, 4) + '-4' + p0Hex(r, 3) + '-' + '89ab'[Math.floor(r() * 4)] + p0Hex(r, 3) + '-' + p0Hex(r, 12);
+  function p0Rows(n, account, seed) {
+    const r = p0Prng(seed), rows = [];
+    for (let i = 0; i < n; i++) {
+      const day = Math.floor(i / 5);
+      const d = new Date(Date.UTC(2026, 0, 1 + day)).toISOString().slice(0, 10);
+      const secs = Math.floor(r() * 80000), micro = String(Math.floor(r() * 1000000)).padStart(6, '0');
+      const t = new Date(Date.UTC(2026, 0, 1 + day) + secs * 1000).toISOString().slice(0, 19) + '.' + micro + '+00:00';
+      rows.push({ id: p0Uuid(r), account_key: account, transaction_date: d, created_at: t, updated_at: t,
+        amount: (i % 3 === 0 ? 1 : -1) * (Math.floor(r() * 50000) + 1) / 100, cleared: i % 7 !== 0,
+        payee: 'P' + i, memo: null, category_key: null, source: 'manual' });
+    }
+    rows[n - 1].payee = 'NEWEST-PAYEE'; rows[n - 1].transaction_date = '2027-01-01'; // unambiguous newest
+    return rows;
+  }
+  function p0Server(rows, cap, opts) {
+    const st = { rows, cap, pages: 0, fps: 0, posts: 0, opts: opts || {} };
+    st.handler = async (route) => {
+      const req = route.request(), u = new NodeURL(req.url()), q = u.searchParams;
+      const hdrs = { 'content-type': 'application/json', 'access-control-allow-origin': '*', 'access-control-expose-headers': 'content-range' };
+      if (req.method() === 'POST') {
+        st.posts++;
+        const body = JSON.parse(req.postData() || '{}'); const now = new Date().toISOString().slice(0, 23) + '123+00:00';
+        st.rows.push(Object.assign({ id: 'ffffffff-ffff-4fff-bfff-' + String(st.posts).padStart(12, '0'), created_at: now, updated_at: now, source: 'manual', cleared: false }, body));
+        return route.fulfill({ status: 201, headers: hdrs, body: '[]' });
+      }
+      if (req.method() !== 'GET') return route.fallback();
+      const acct = (q.get('account_key') || '').replace(/^eq\./, '');
+      const mine = st.rows.filter(x => x.account_key === acct);
+      if (q.get('select') === 'updated_at') {
+        st.fps++;
+        const newest = mine.slice().sort((a, b) => a.updated_at < b.updated_at ? 1 : -1)[0];
+        hdrs['content-range'] = mine.length ? '0-0/' + mine.length : '*/0';
+        return route.fulfill({ status: 200, headers: hdrs, body: JSON.stringify(newest ? [{ updated_at: newest.updated_at }] : []) });
+      }
+      st.pages++;
+      if (st.opts.failPage === st.pages) return route.fulfill({ status: 500, headers: hdrs, body: '{}' });
+      const gt = q.get('id') ? q.get('id').replace(/^gt\./, '') : null;
+      const lim = Math.min(parseInt(q.get('limit'), 10) || 1000, st.cap);
+      let out = mine.slice().sort((a, b) => a.id < b.id ? -1 : 1).filter(x => gt === null || x.id > gt).slice(0, lim);
+      if (st.opts.emptyFromPage && st.pages >= st.opts.emptyFromPage) out = [];
+      if (st.opts.hook) st.opts.hook(st);
+      return route.fulfill({ status: 200, headers: hdrs, body: JSON.stringify(out) });
+    };
+    return st;
+  }
+  // Independent expected canonical (CL) balance per id, anchored at start.
+  function p0ExpectedBalances(rows, start) {
+    const ref = rows.slice().sort((a, b) => a.transaction_date !== b.transaction_date ? (a.transaction_date < b.transaction_date ? -1 : 1)
+      : a.created_at !== b.created_at ? (a.created_at < b.created_at ? -1 : 1) : (a.id < b.id ? -1 : 1)); // fixed-width µs strings: lexical == numeric
+    const cl = ref.filter(t => t.cleared !== true).reverse().concat(ref.filter(t => t.cleared === true).reverse());
+    let run = start; const out = {};
+    for (let i = cl.length - 1; i >= 0; i--) { run += cl[i].amount; out[cl[i].id] = Math.round(run * 100) / 100; }
+    return out;
+  }
+  async function p0OpenLedger(page, server, role) {
+    await page.route('**/rest/v1/transactions**', server.handler);
+    await page.evaluate((r) => {
+      if (r) USER_ROLE = r;
+      FEATURE_FLAGS.showTransactionLedger = true;
+      _accountsCache = [{ key: 'acct_big', label: 'Big Card', account_type: 'credit_card', lifecycle_status: 'active', starting_balance: 1234.56, display_order: 1 }];
+      _categoriesCache = []; _registriesLoadStatus = 'loaded';
+      _txLedgerAccountKey = 'acct_big'; _txLedgerLoadStatus = 'not_loaded'; _txLedgerCache = null;
+      _txLedgerSortCol = 'date'; _txLedgerSortDir = 'desc';
+      _txFilterSearch = ''; _txFilterType = 'all'; _txFilterStatus = 'all'; _txFilterDateFrom = ''; _txFilterDateTo = '';
+      _txFormMode = null;
+      setSection('transactions'); setTxSubNav('register'); renderApp();
+    }, role || null);
+    await page.waitForFunction(() => ['loaded', 'failed', 'incomplete'].includes(_txLedgerLoadStatus), null, { timeout: 30000 });
+  }
+  const p0Snapshot = (page) => page.evaluate(() => {
+    const c = document.getElementById('transactions-content'), rowsEl = c ? c.querySelectorAll('tbody tr') : [];
+    return { status: _txLedgerLoadStatus, n: _txLedgerCache ? _txLedgerCache.length : null, reason: _txLedgerIncompleteReason,
+      html: c ? c.innerHTML : '', topbar: (document.getElementById('topbar-sub') || {}).textContent || '',
+      firstRow: rowsEl.length ? rowsEl[0].textContent : '', rowCount: rowsEl.length };
+  });
+
+  for (const cap of [250, 7]) {
+    await test('P0-E1: 1,237-row account (server cap ' + cap + ') shows newest row, full count, correct balance, searchable', async () => {
+      const { page, context } = await openApp(browser);
+      const rows = p0Rows(1237, 'acct_big', 777);
+      const srv = p0Server(rows, cap);
+      await p0OpenLedger(page, srv);
+      const s1 = await p0Snapshot(page);
+      assert(s1.status === 'loaded', 'status must be loaded, got ' + s1.status + ' (' + s1.reason + ')');
+      assert(s1.n === 1237, 'must load 1,237 rows, got ' + s1.n);
+      assert(s1.html.includes('Showing 1237 of 1237 transactions'), 'Register must show the full count');
+      assert(s1.topbar.includes('1237 transactions'), 'topbar must show 1237 transactions, got: ' + s1.topbar);
+      assert(s1.firstRow.includes('NEWEST-PAYEE'), 'newest transaction must be the first row (date desc)');
+      const exp = p0ExpectedBalances(rows, 1234.56)[rows[1236].id];
+      assert(s1.firstRow.includes('$' + exp.toFixed(2)), 'newest row balance must be $' + exp.toFixed(2) + '; row: ' + s1.firstRow.slice(0, 160));
+      assert(srv.pages >= Math.ceil(1237 / cap), 'must page past the server cap (' + srv.pages + ' page requests)');
+      await page.evaluate(() => setTxFilter('search', 'NEWEST-PAYEE'));
+      const s2 = await p0Snapshot(page);
+      assert(s2.html.includes('Showing 1 of 1237 transactions'), 'search must find the newest row in the complete ledger');
+      await context.close();
+    }, { tags: cap === 250 ? ['smoke'] : [] });
+  }
+
+  await test('P0-E2: a failed page request shows a visible error and no rows', async () => {
+    const { page, context } = await openApp(browser);
+    await p0OpenLedger(page, p0Server(p0Rows(600, 'acct_big', 3), 250, { failPage: 2 }));
+    const s = await p0Snapshot(page);
+    assert(s.status === 'failed' && s.n === null, 'expected failed with no cache, got ' + s.status);
+    assert(s.html.includes('Failed to load transactions') && s.rowCount === 0, 'failure must be visible with no rows');
+    await context.close();
+  });
+
+  await test('P0-E3: zero rows before the exact total is reached shows the incomplete state and no rows', async () => {
+    const { page, context } = await openApp(browser);
+    await p0OpenLedger(page, p0Server(p0Rows(600, 'acct_big', 4), 250, { emptyFromPage: 2 }));
+    const s = await p0Snapshot(page);
+    assert(s.status === 'incomplete' && s.n === null, 'expected incomplete, got ' + s.status);
+    assert(s.html.includes('tx-ledger-incomplete') && s.html.includes('No transactions or balances are shown') && s.rowCount === 0, 'incomplete state must be visible with no rows or balances');
+    assert(s.topbar.includes('incomplete'), 'topbar must show the incomplete state');
+    await context.close();
+  });
+
+  await test('P0-E3b: a row inserted mid-load is picked up by the single restart', async () => {
+    const { page, context } = await openApp(browser);
+    const rows = p0Rows(600, 'acct_big', 5);
+    const later = '2026-12-31T23:59:59.999999+00:00';
+    const srv = p0Server(rows, 250, { hook: (st) => { if (st.pages === 1 && !st.done) { st.done = true;
+      st.rows.push({ id: '00000000-0000-4000-8000-000000000001', account_key: 'acct_big', transaction_date: '2026-02-01', created_at: later, updated_at: later, amount: -1.23, cleared: false, payee: 'INSERTED-MID-LOAD', source: 'manual' }); } } });
+    await p0OpenLedger(page, srv);
+    const s = await p0Snapshot(page);
+    assert(s.status === 'loaded' && s.n === 601, 'expected loaded 601 after restart, got ' + s.status + ' ' + s.n);
+    assert(srv.fps === 4, 'exactly one restart (4 fingerprints), got ' + srv.fps);
+    await page.evaluate(() => setTxFilter('search', 'INSERTED-MID-LOAD'));
+    assert((await p0Snapshot(page)).html.includes('Showing 1 of 601 transactions'), 'inserted row must be visible');
+    await context.close();
+  });
+
+  await test('P0-E3c: a ledger that changes on every attempt shows the incomplete state', async () => {
+    const { page, context } = await openApp(browser);
+    let k = 0;
+    const srv = p0Server(p0Rows(600, 'acct_big', 6), 250, { hook: (st) => { if (st.pages % 3 === 1) { k++; st.rows[k].updated_at = '2026-12-31T23:59:' + String(10 + k).padStart(2, '0') + '.000001+00:00'; } } });
+    await p0OpenLedger(page, srv);
+    const s = await p0Snapshot(page);
+    assert(s.status === 'incomplete' && s.rowCount === 0 && /changed while loading/.test(s.reason), 'expected incomplete (changed while loading), got ' + s.status + ' ' + s.reason);
+    await context.close();
+  });
+
+  await test('P0-E4: saving a new transaction on a 1,237-row account keeps it visible after reload', async () => {
+    const { page, context } = await openApp(browser);
+    const srv = p0Server(p0Rows(1237, 'acct_big', 8), 250);
+    await p0OpenLedger(page, srv);
+    await page.evaluate(() => { _txFormMode = 'add'; _txFormData = { transaction_date: '2027-02-01', payee: 'SAVED-AFTER-500', outflow: '9.99' }; _saveTxForm(); });
+    await page.waitForFunction(() => _txLedgerLoadStatus === 'loaded' && _txLedgerCache && _txLedgerCache.length === 1238, null, { timeout: 30000 });
+    assert(srv.posts === 1, 'exactly one owned POST expected, got ' + srv.posts);
+    const s = await p0Snapshot(page);
+    assert(s.firstRow.includes('SAVED-AFTER-500'), 'the newly saved transaction must be visible at the top (date desc)');
+    await context.close();
+  });
+
+  for (const role of ['owner', 'household_admin']) {
+    await test('P0-E5: complete ledger loads for ' + role + ' with write controls intact', async () => {
+      const { page, context } = await openApp(browser);
+      await p0OpenLedger(page, p0Server(p0Rows(700, 'acct_big', 11), 250), role);
+      const s = await p0Snapshot(page);
+      assert(s.status === 'loaded' && s.n === 700, role + ': expected loaded 700, got ' + s.status + ' ' + s.n);
+      const canWrite = await page.evaluate(() => canWriteFinancials() && !!document.querySelector('#transactions-content button') );
+      assert(canWrite, role + ': write controls must remain available');
+      await context.close();
+    });
+  }
 
   // ── 5G-1D Slice 3/5: combined weekly closeout — browser wiring (mocked wrapper) ──
   // Drives submitCloseout() against a mocked save_weekly_closeout_with_snapshots endpoint.

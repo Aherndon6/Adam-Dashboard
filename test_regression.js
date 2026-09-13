@@ -11,6 +11,12 @@ function test(name, fn) {
   try { fn(); pass++; process.stdout.write('  ✓ ' + name + '\n'); }
   catch(e) { fail++; failures.push({name,error:e.message}); process.stdout.write('  ✗ ' + name + '\n    → ' + e.message + '\n'); }
 }
+// Async tests (added for the P0 Register completeness slice, 2026-09-13): queued and run
+// sequentially after all synchronous tests, before RESULTS; counted in the same pass/fail totals.
+// Async tests must yield only to microtasks (no setTimeout/real I/O): synchronous tests leave app
+// timers scheduled that historically never ran because the suite exited synchronously.
+const _asyncTests = [];
+function testAsync(name, fn) { _asyncTests.push({ name, fn }); }
 function assert(c,m){ if(!c) throw new Error(m||'Assertion failed'); }
 function assertApprox(a,b,m,tol=0.05){ if(Math.abs(a-b)>tol) throw new Error((m||'')+` expected ~${b}, got ${a}`); }
 function assertGt(a,b,m){ if(a<=b) throw new Error((m||'')+` expected > ${b}, got ${a}`); }
@@ -5936,14 +5942,26 @@ test('5E1-12: _txLedgerLoadStatus initialized to not_loaded',()=>{
     "_txLedgerLoadStatus must be initialized to 'not_loaded'");
 });
 
-test('5E1-13: Supabase query applies limit=500 at query level',()=>{
-  assertIncludes(html,'&limit=500',
-    'Transaction fetch must include &limit=500 in URL (query-level cap, not client-side slice)');
+// P0 Register completeness (2026-09-13, owner-approved repair by intent): the old pin on a single
+// oldest-first &limit=500 fetch encoded the defect itself (newest rows silently dropped past 500).
+// The contract is now complete-history id-keyset pagination with an exact-total fingerprint.
+test('5E1-13: Register ledger loads complete history (no single-shot row cap)',()=>{
+  var a=html.indexOf('async function _loadTxLedger('),b=html.indexOf('function toggleTxCatShowAll(',a);
+  var loaderBlock=html.slice(html.indexOf('var LEDGER_PAGE_REQUEST_TARGET='),b);
+  assert(loaderBlock.indexOf('&limit=500')<0,'ledger loader must not use a single-shot &limit=500 cap');
+  assertIncludes(loaderBlock,"'&order=id.asc&limit='+LEDGER_PAGE_REQUEST_TARGET",'ledger pages must be id-keyset ordered with the request target');
+  assertIncludes(loaderBlock,"'&id=gt.'+encodeURIComponent(cursor)",'ledger pages must advance by the last id actually returned');
+  assertIncludes(loaderBlock,"'Prefer':'count=exact'",'ledger fingerprint must request an exact total');
+  assert(typeof LEDGER_PAGE_REQUEST_TARGET==='number'&&LEDGER_PAGE_REQUEST_TARGET>0&&LEDGER_PAGE_REQUEST_TARGET<=1000,'request target must be a positive number <= 1000');
 });
 
-test('5E1-14: Supabase query sort order is deterministic three-level tie-break',()=>{
-  assertIncludes(html,'order=transaction_date.asc,created_at.asc,id.asc',
-    'Transaction fetch must use deterministic three-level ORDER BY');
+// P0 (repair by intent): pagination is by id, so the canonical three-level order
+// (transaction_date asc, created_at asc, id asc) is now restored client-side, microsecond-exact.
+test('5E1-14: Register ledger restores the deterministic three-level order',()=>{
+  var a=html.indexOf('async function _txLedgerLoadPass(');
+  var passBody=html.slice(a,html.indexOf('async function _loadTxLedger(',a));
+  assertIncludes(passBody,'_txSortLedgerCanonical(rows)','the verified pass must restore canonical order before commit');
+  assert(typeof _txSortLedgerCanonical==='function'&&typeof _txTimestampSortKey==='function','canonical ordering helpers must exist');
 });
 
 test('5E1-15: Starting balance not-set warning text present in register HTML',()=>{
@@ -5982,6 +6000,310 @@ test('5E1-20: _loadTxLedger does not reference budget_transactions',()=>{
     html.indexOf('async function _loadTxLedger(')+500);
   assert(!ledgerFn.includes('budget_transactions'),
     '_loadTxLedger must not reference budget_transactions table');
+});
+
+// ─────────────────────────────────────────────────────────────────────────
+// P0 Register completeness (2026-09-13) — behavioural contract S1–S8
+// Mock PostgREST server: honours account_key=eq, id=gt keyset, order=id.asc / updated_at.desc,
+// limit, a configurable per-request server row cap, and Prefer: count=exact (Content-Range).
+// ─────────────────────────────────────────────────────────────────────────
+var P0 = (function(){
+  // Deterministic PRNG so fixtures are reproducible.
+  function prng(seed){ var x=seed>>>0; return function(){ x^=x<<13; x>>>=0; x^=x>>>17; x^=x<<5; x>>>=0; return x/4294967296; }; }
+  function hex(r,n){ var s=''; for(var i=0;i<n;i++) s+=Math.floor(r()*16).toString(16); return s; }
+  function uuid(r){ return hex(r,8)+'-'+hex(r,4)+'-4'+hex(r,3)+'-'+'89ab'[Math.floor(r()*4)]+hex(r,3)+'-'+hex(r,12); }
+  // created_at text in PostgREST form with variable fractional digits; true value kept as BigInt micros.
+  function tsText(micros){ // micros: BigInt since epoch (UTC)
+    var ms=Number(micros/1000n), frac=Number(micros%1000000n);
+    var d=new Date(ms), iso=d.toISOString().slice(0,19);
+    var f=String(frac).padStart(6,'0').replace(/0+$/,'');
+    return iso+(f?'.'+f:'')+'+00:00';
+  }
+  function makeRows(n, account, seed){
+    var r=prng(seed||12345), rows=[], base=Date.UTC(2026,0,1)*1000;
+    for(var i=0;i<n;i++){
+      var day=Math.floor(i/5), dateMs=Date.UTC(2026,0,1+day);
+      var d=new Date(dateMs).toISOString().slice(0,10);
+      var micros=BigInt(base)+BigInt(day)*86400000000n+BigInt(Math.floor(r()*80000))*1000000n+BigInt(Math.floor(r()*1000000));
+      if(i%97===3||i%97===4) micros=BigInt(base)+BigInt(day)*86400000000n+43200000000n; // same date + identical created_at -> id tiebreak
+      rows.push({id:uuid(r),account_key:account,transaction_date:d,created_at:tsText(micros),_micros:micros,
+        updated_at:tsText(micros),amount:(i%3===0?1:-1)*(Math.floor(r()*50000)+1)/100,
+        cleared:(i%7!==0),payee:'P'+i,memo:null,category_key:null,source:'manual'});
+    }
+    refOrder(rows)[0].cleared=false; // the OLDEST row is uncleared
+    return rows;
+  }
+  function refOrder(rows){ // independent reference using true BigInt micros
+    return rows.slice().sort(function(a,b){
+      if(a.transaction_date!==b.transaction_date) return a.transaction_date<b.transaction_date?-1:1;
+      if(a._micros!==b._micros) return a._micros<b._micros?-1:1;
+      return a.id<b.id?-1:(a.id>b.id?1:0);
+    });
+  }
+  function server(opts){
+    var st={rows:opts.rows, cap:opts.cap||1000, log:[], pages:0, hook:opts.hook||null, faults:opts.faults||{}};
+    st.fetch=async function(url,init){
+      var u=new URL(url), q=u.searchParams, hdr=(init&&init.headers)||{};
+      var acct=(q.get('account_key')||'').replace(/^eq\./,'');
+      var mine=st.rows.filter(function(x){return x.account_key===acct;});
+      var isFp=q.get('select')==='updated_at';
+      st.log.push({fp:isFp,url:url});
+      if(isFp){
+        if(st.faults.fpStatus) return {ok:false,status:st.faults.fpStatus,headers:{get:function(){return null;}},json:async function(){return {};}};
+        var total=mine.length;
+        var newest=mine.map(function(x){return x.updated_at_sort||x.updated_at;}).sort().pop();
+        var newestRow=mine.slice().sort(function(a,b){var ka=a.updated_at_sort||a.updated_at,kb=b.updated_at_sort||b.updated_at;return ka<kb?1:(ka>kb?-1:0);})[0];
+        var cr=st.faults.noContentRange?null:(st.faults.badContentRange?'garbage':(total?('0-0/'+(st.faults.totalOverride!=null?st.faults.totalOverride:total)):('*/'+(st.faults.totalOverride!=null?st.faults.totalOverride:0))));
+        return {ok:true,status:200,headers:{get:function(h){return String(h).toLowerCase()==='content-range'?cr:null;}},
+          json:async function(){return newestRow?[{updated_at:newestRow.updated_at}]:[];}};
+      }
+      st.pages++;
+      if(st.faults.pageStatusOn===st.pages) return {ok:false,status:500,headers:{get:function(){return null;}},json:async function(){return {};}};
+      if(st.faults.notArrayOn===st.pages) return {ok:true,status:200,headers:{get:function(){return null;}},json:async function(){return {message:'x'};}};
+      var gt=q.get('id')?q.get('id').replace(/^gt\./,''):null;
+      var lim=Math.min(parseInt(q.get('limit'),10)||1000, st.cap);
+      var sorted=mine.slice().sort(function(a,b){return a.id<b.id?-1:(a.id>b.id?1:0);});
+      var out=sorted.filter(function(x){return gt===null||x.id>gt;}).slice(0,lim);
+      if(st.faults.emptyFromPage&&st.pages>=st.faults.emptyFromPage) out=[];
+      if(st.faults.dupOnPage===st.pages&&st.lastPage&&st.lastPage.length) out=[st.lastPage[st.lastPage.length-1]].concat(out.slice(0,lim-1));
+      if(st.faults.backwardsOnPage===st.pages) out=[{id:'00000000-0000-4000-8000-000000000000',account_key:acct,transaction_date:'2026-01-01',created_at:'2026-01-01T00:00:00+00:00',updated_at:'2026-01-01T00:00:00+00:00',amount:1,cleared:true}].concat(out);
+      if(st.faults.foreignOnPage===st.pages&&out.length) out=[Object.assign({},out[0],{account_key:'someone_else'})].concat(out.slice(1));
+      var copy=out.map(function(x){var c=Object.assign({},x);delete c._micros;delete c.updated_at_sort;return c;});
+      st.lastPage=copy;
+      if(st.hook) st.hook(st);
+      return {ok:true,status:200,headers:{get:function(){return null;}},json:async function(){return copy;}};
+    };
+    return st;
+  }
+  async function run(st, acct){
+    var of=fetch, og=getAuthHeaders, orr=renderApp;
+    fetch=st.fetch; getAuthHeaders=async function(){return {apikey:'t',Authorization:'Bearer t'};}; renderApp=function(){};
+    try{ _txLedgerAccountKey=null; _txLedgerLoadStatus='not_loaded'; await _loadTxLedger(acct); }
+    finally{ fetch=of; getAuthHeaders=og; renderApp=orr; }
+    return {status:_txLedgerLoadStatus, cache:_txLedgerCache, reason:_txLedgerIncompleteReason};
+  }
+  function r2(n){return Math.round(n*100)/100;}
+  return {makeRows:makeRows,refOrder:refOrder,server:server,run:run,r2:r2,tsText:tsText};
+})();
+
+// S1 (static shape) is 5E1-13/5E1-14 above plus this render/commit contract check.
+test('P0-S1: loader commits only verified sets; incomplete state renders no rows or balances',()=>{
+  var a=html.indexOf('async function _loadTxLedger('),b=html.indexOf('function toggleTxCatShowAll(',a);
+  var fn=html.slice(a,b);
+  assertIncludes(fn,"if(!current())return;",'stale loads must be discarded before any state write');
+  assertIncludes(fn,"_txLedgerCache=null; // never render rows or balances from a partial set",'non-ok outcomes must clear the ledger cache');
+  assertIncludes(fn,"if(outcome.kind==='changed'&&current())outcome=await _txLedgerLoadPass(h,accountKey); // one restart only",'exactly one restart on a changed fingerprint');
+  var reg=html.slice(html.indexOf('function _renderTxRegister('));
+  assertIncludes(reg,"}else if(_txLedgerLoadStatus==='incomplete'){",'Register must render a distinct incomplete state');
+  assertIncludes(html,"_txLedgerLoadStatus==='incomplete'?'Transaction history incomplete — not shown'",'topbar must show the incomplete state');
+});
+
+[1000,250,7].forEach(function(cap){
+  testAsync('P0-S2: 1,237-row account loads completely in canonical order with a server cap of '+cap,async function(){
+    var rows=P0.makeRows(1237,'acct_big',777).concat(P0.makeRows(40,'acct_other',99));
+    var st=P0.server({rows:rows,cap:cap});
+    var out=await P0.run(st,'acct_big');
+    assert(out.status==='loaded','status must be loaded, got '+out.status+' ('+out.reason+')');
+    assert(out.cache.length===1237,'must load all 1,237 rows, got '+(out.cache&&out.cache.length));
+    var ref=P0.refOrder(rows.filter(function(x){return x.account_key==='acct_big';}));
+    for(var i=0;i<ref.length;i++) if(out.cache[i].id!==ref[i].id) throw new Error('order differs from Postgres reference at index '+i);
+    assert(out.cache[out.cache.length-1].id===ref[ref.length-1].id,'the newest transaction must be present and last in canonical order');
+    var pages=st.log.filter(function(l){return !l.fp;}).length;
+    assert(pages>=Math.ceil(1237/cap),'must page past the server cap ('+pages+' page requests)');
+  });
+});
+
+testAsync('P0-S3: balances over the complete load (top, cleared-group top, newest row, old uncleared row)',async function(){
+  var rows=P0.makeRows(1237,'acct_big',4242);
+  var st=P0.server({rows:rows,cap:250});
+  var out=await P0.run(st,'acct_big');
+  assert(out.status==='loaded','loaded expected, got '+out.status);
+  var start=1234.56;
+  var rwb=_computeLedgerBalances(out.cache,start);
+  var recon=_sortTxRows(rwb,'reconcile','desc');
+  _applyDisplayOrderBalances(recon,start,true);
+  var sumAll=0,sumCleared=0; out.cache.forEach(function(t){sumAll+=t.amount; if(t.cleared===true)sumCleared+=t.amount;});
+  assertApprox(recon[0].bal,P0.r2(start+sumAll),'top canonical balance = starting + all rows',0.005);
+  var firstCleared=recon.find(function(e){return e.tx.cleared===true;});
+  assertApprox(firstCleared.bal,P0.r2(start+sumCleared),'top of cleared group = starting + cleared rows',0.005);
+  // Independent expected balances: CL order = uncleared newest-first, then cleared newest-first; accumulate bottom-up.
+  var ref=P0.refOrder(rows);
+  var unc=ref.filter(function(t){return t.cleared!==true;}).reverse(), clr=ref.filter(function(t){return t.cleared===true;}).reverse();
+  var cl=unc.concat(clr), run=start, expect={};
+  for(var i=cl.length-1;i>=0;i--){ run+=cl[i].amount; expect[cl[i].id]=Math.round(run*100)/100; }
+  var newest=ref[ref.length-1], oldest=ref[0];
+  var byId={}; recon.forEach(function(e){byId[e.tx.id]=e;});
+  assertApprox(byId[newest.id].bal,expect[newest.id],'newest row balance',0.005);
+  assert(oldest.cleared===false,'fixture must include an old uncleared row');
+  var oldIdx=recon.findIndex(function(e){return e.tx.id===oldest.id;}), clIdx=recon.findIndex(function(e){return e.tx.cleared===true;});
+  assert(oldIdx>=0&&oldIdx<clIdx,'old uncleared row must stay in the uncleared group above cleared rows');
+  assertApprox(byId[oldest.id].bal,expect[oldest.id],'old uncleared row layered balance',0.005);
+});
+
+[
+  ['page request fails',{pageStatusOn:2},'failed'],
+  ['page body not an array',{notArrayOn:1},'failed'],
+  ['fingerprint request fails',{fpStatus:500},'failed'],
+  ['Content-Range missing',{noContentRange:true},'incomplete'],
+  ['Content-Range unparseable',{badContentRange:true},'incomplete'],
+  ['zero rows returned while loaded < total (no progress)',{emptyFromPage:2},'incomplete'],
+  ['duplicate id across pages',{dupOnPage:2},'incomplete'],
+  ['id not greater than cursor',{backwardsOnPage:2},'incomplete'],
+  ['row for another account',{foreignOnPage:1},'incomplete'],
+  ['final unique count != authoritative total',{totalOverride:1236},'incomplete']
+].forEach(function(c){
+  testAsync('P0-S4: '+c[0]+' -> '+c[2]+' (no partial rows)',async function(){
+    var rows=P0.makeRows(1237,'acct_big',31337);
+    var st=P0.server({rows:rows,cap:500,faults:c[1]});
+    var out=await P0.run(st,'acct_big');
+    assert(out.status===c[2],'expected '+c[2]+', got '+out.status+' ('+out.reason+')');
+    assert(out.cache===null,'no partial ledger may be committed');
+  });
+});
+testAsync('P0-S4: unparseable created_at -> incomplete (never a guessed order)',async function(){
+  var rows=P0.makeRows(20,'acct_big',5); rows[7].created_at='2026-01-02 10:00:00'; // no offset
+  var out=await P0.run(P0.server({rows:rows,cap:1000}),'acct_big');
+  assert(out.status==='incomplete'&&out.cache===null,'expected incomplete, got '+out.status);
+});
+[250,7].forEach(function(cap){
+  testAsync('P0-S4: short pages under a server cap of '+cap+' are NOT a failure',async function(){
+    var out=await P0.run(P0.server({rows:P0.makeRows(300,'acct_big',8),cap:cap}),'acct_big');
+    assert(out.status==='loaded'&&out.cache.length===300,'short pages must load fully, got '+out.status);
+  });
+});
+testAsync('P0-S4: empty account loads as an empty verified ledger',async function(){
+  var out=await P0.run(P0.server({rows:P0.makeRows(5,'acct_other',1),cap:1000}),'acct_big');
+  assert(out.status==='loaded'&&Array.isArray(out.cache)&&out.cache.length===0,'empty account must be loaded/empty, got '+out.status);
+});
+
+function p0Mutate(kind){
+  return function(st){
+    if(st._mutated||st.pages!==1) return; st._mutated=true;
+    var mine=st.rows.filter(function(x){return x.account_key==='acct_big';});
+    var later='2026-12-31T23:59:59.999999+00:00';
+    if(kind==='insert'||kind==='swap'){
+      st.rows.push({id:'00000000-0000-4000-8000-000000000001',account_key:'acct_big',transaction_date:'2026-02-01',created_at:later,_micros:BigInt(Date.UTC(2026,11,31,23,59,59))*1000n+999999n,updated_at:later,amount:-12.34,cleared:false,payee:'LATE',source:'manual'});
+    }
+    if(kind==='delete'||kind==='swap'){
+      var victim=st.lastPage[0].id; st.rows=st.rows.filter(function(x){return x.id!==victim;}); st._deleted=victim;
+    }
+    if(kind==='edit'){
+      var t=st.rows.find(function(x){return x.id===st.lastPage[0].id;}); t.transaction_date='2026-12-30'; t.updated_at=later; st._edited=t.id;
+    }
+  };
+}
+[['insert behind the cursor','insert'],['delete of a fetched row','delete'],['edit moving a fetched row','edit'],['offsetting insert + delete','swap']].forEach(function(c){
+  testAsync('P0-S4b: concurrent '+c[0]+' is detected, restarted once, and loads the final state exactly',async function(){
+    var st=P0.server({rows:P0.makeRows(900,'acct_big',2026),cap:250,hook:p0Mutate(c[1])});
+    var out=await P0.run(st,'acct_big');
+    assert(out.status==='loaded','expected loaded after restart, got '+out.status+' ('+out.reason+')');
+    var fps=st.log.filter(function(l){return l.fp;}).length;
+    assert(fps===4,'must restart exactly once (4 fingerprints), got '+fps);
+    var ref=P0.refOrder(st.rows.filter(function(x){return x.account_key==='acct_big';}));
+    assert(out.cache.length===ref.length,'final row count must equal server state');
+    var ids={}; out.cache.forEach(function(t){ assert(!ids[t.id],'duplicate row '+t.id); ids[t.id]=1; });
+    for(var i=0;i<ref.length;i++) if(out.cache[i].id!==ref[i].id) throw new Error('final order differs at '+i);
+    if(st._deleted) assert(!ids[st._deleted],'deleted row must be absent');
+  });
+});
+testAsync('P0-S4b: change on every attempt -> incomplete (visible), no partial rows',async function(){
+  var n=0;
+  var st=P0.server({rows:P0.makeRows(600,'acct_big',9),cap:250,hook:function(s){ if(s.pages%3===1){ n++; var t=s.rows[n%s.rows.length]; t.updated_at='2026-12-31T23:59:'+String(10+n).padStart(2,'0')+'.000001+00:00'; } }});
+  var out=await P0.run(st,'acct_big');
+  assert(out.status==='incomplete'&&out.cache===null,'expected incomplete, got '+out.status);
+  assert(/changed while loading/.test(out.reason),'reason must say the ledger changed, got: '+out.reason);
+});
+
+testAsync('P0-S5: switching accounts mid-load discards the stale load',async function(){
+  var rows=P0.makeRows(300,'acct_A',1).concat(P0.makeRows(5,'acct_B',2));
+  var stA=P0.server({rows:rows,cap:100}), stB=P0.server({rows:rows,cap:100});
+  var release; var gate=new Promise(function(r){release=r;});
+  var of=fetch, og=getAuthHeaders, orr=renderApp;
+  getAuthHeaders=async function(){return {};}; renderApp=function(){};
+  fetch=async function(url,init){ if(url.indexOf('account_key=eq.acct_A')>=0){ await gate; return stA.fetch(url,init);} return stB.fetch(url,init); };
+  try{
+    _txLedgerAccountKey=null;
+    var pA=_loadTxLedger('acct_A');
+    for(var y=0;y<20;y++) await Promise.resolve(); // microtask-only yield (see testAsync note)
+    _txLedgerLoadStatus='not_loaded'; _txLedgerCache=null;
+    await _loadTxLedger('acct_B');
+    assert(_txLedgerLoadStatus==='loaded'&&_txLedgerCache.length===5,'account B must be loaded');
+    release(); await pA;
+    assert(_txLedgerAccountKey==='acct_B'&&_txLedgerCache.length===5&&_txLedgerLoadStatus==='loaded','stale account A load must not overwrite B');
+  } finally { fetch=of; getAuthHeaders=og; renderApp=orr; }
+});
+
+test('P0-S6: timestamp ordering is microsecond-exact and timezone-normalized (Postgres semantics)',()=>{
+  var k=_txTimestampSortKey;
+  function cmp(a,b){var x=k(a),y=k(b);return x[0]!==y[0]?x[0]-y[0]:x[1]-y[1];}
+  assert(cmp('2026-07-01T10:00:00.123456+00:00','2026-07-01T10:00:00.5+00:00')<0,'.123456 < .5 (variable fraction length)');
+  assert(cmp('2026-07-01T10:00:00.000001+00:00','2026-07-01T10:00:00.000002+00:00')<0,'microsecond-only difference must order');
+  assert(new Date('2026-07-01T10:00:00.000001Z').getTime()===new Date('2026-07-01T10:00:00.000002Z').getTime(),'(control) JS Date collapses these values');
+  assert(cmp('2026-07-01T06:00:00.000001-04:00','2026-07-01T10:00:00.000001Z')===0,'-04:00 offset normalizes to UTC');
+  assert(cmp('2026-07-01T15:30:00+05:30','2026-07-01T10:00:00+00:00')===0,'+05:30 offset normalizes to UTC');
+  assert(cmp('2026-07-01 10:00:00.1+00','2026-07-01T10:00:00.100000+0000')===0,'Postgres text form (+00, space) equals ISO form');
+  assert(k('2026-07-01T10:00:00')===null&&k('garbage')===null,'values without an offset or malformed must be rejected');
+  var rows=[
+    {id:'bbbbbbbb-0000-4000-8000-000000000000',transaction_date:'2026-07-02',created_at:'2026-06-30T00:00:00+00:00'},
+    {id:'aaaaaaaa-0000-4000-8000-000000000000',transaction_date:'2026-07-01',created_at:'2026-07-01T10:00:00.5+00:00'},
+    {id:'cccccccc-0000-4000-8000-000000000000',transaction_date:'2026-07-01',created_at:'2026-07-01T10:00:00.123456+00:00'},
+    {id:'99999999-0000-4000-8000-000000000000',transaction_date:'2026-07-01',created_at:'2026-07-01T06:00:00.123456-04:00'},
+    {id:'dddddddd-0000-4000-8000-000000000000',transaction_date:'2026-07-01',created_at:'2026-07-01T10:00:00.000001+00:00'}
+  ];
+  var got=_txSortLedgerCanonical(rows).map(function(r){return r.id.slice(0,2);}).join(',');
+  assert(got==='dd,99,cc,aa,bb','canonical order (date, µs-exact created_at, id) expected dd,99,cc,aa,bb got '+got);
+  assert(_txSortLedgerCanonical([{id:'x',transaction_date:'2026-7-1',created_at:'2026-07-01T00:00:00Z'}])===null,'malformed transaction_date must be rejected');
+});
+
+test('P0-S6b: malformed or out-of-range timestamps and dates are rejected, never normalized',()=>{
+  var k=_txTimestampSortKey;
+  [
+    '2026-02-30T10:00:00Z',        // calendar-invalid day
+    '2026-13-40T10:00:00Z',        // month and day out of range
+    '2026-07-01T24:00:00Z',        // hour out of range
+    '2026-07-01T10:60:61Z',        // minute and second out of range
+    '2026-07-01T10:00:00+99:99',   // offset components out of range
+    '2026-07-01T10:00:00+16:00',   // offset hour beyond supported range
+    '2026-07-01T10:00:00+05:60',   // offset minute out of range
+    '0026-07-01T10:00:00Z',        // two-digit-year edge that JS Date.UTC maps to 1926
+    '2026-02-29T10:00:00Z',        // not a leap year
+    '2100-02-29T10:00:00Z',        // century non-leap year
+    '2026-04-31T10:00:00Z',        // 30-day month
+    '2026-07-01T10:00:00+05:30:00',// offset with seconds (unsupported form)
+    '2026-07-01T10:00:00.1234567Z' // more than microsecond precision
+  ].forEach(function(v){ assert(k(v)===null,'must reject '+v+', got '+JSON.stringify(k(v))); });
+  ['2026-02-30','2026-04-31','2026-13-01','2026-00-10','2026-06-00','0026-01-01'].forEach(function(d){
+    assert(_txCalendarDateParts(d)===null,'transaction_date '+d+' must be rejected');
+    assert(_txSortLedgerCanonical([{id:'a',transaction_date:d,created_at:'2026-07-01T00:00:00Z'}])===null,'ledger containing transaction_date '+d+' must not order');
+  });
+  // Positive calendar boundaries still accepted.
+  assert(_txCalendarDateParts('2024-02-29')&&_txCalendarDateParts('2000-02-29')&&_txCalendarDateParts('2026-12-31'),'valid leap/boundary dates accepted');
+  assert(k('2024-02-29T23:59:59.999999+00:00')!==null,'valid leap-day timestamp accepted');
+  // Nonzero ±HH form normalizes.
+  var a=k('2026-07-01T15:00:00+05'),b=k('2026-07-01T10:00:00Z');
+  assert(a&&b&&a[0]===b[0]&&a[1]===b[1],'+05 (±HH) normalizes to UTC');
+  var c=k('2026-07-01T04:30:00-0530'),e=k('2026-07-01T10:00:00Z');
+  assert(c&&c[0]===e[0],'-0530 (±HHMM) normalizes to UTC');
+  // Integer epoch arithmetic agrees with Date.UTC (whole seconds) for valid inputs across the range.
+  var seed=4242; function rnd(n){ seed=(seed*1103515245+12345)%2147483648; return seed%n; }
+  for(var i=0;i<2000;i++){
+    var y=1900+rnd(1100), mo=1+rnd(12), dmax=[31,((y%4===0&&y%100!==0)||y%400===0)?29:28,31,30,31,30,31,31,30,31,30,31][mo-1];
+    var d=1+rnd(dmax), hh=rnd(24), mi=rnd(60), ss=rnd(60), oh=rnd(15), om=rnd(60), sg=rnd(2)?'+':'-';
+    var p2=function(n){return String(n).padStart(2,'0');};
+    var ts=y+'-'+p2(mo)+'-'+p2(d)+'T'+p2(hh)+':'+p2(mi)+':'+p2(ss)+sg+p2(oh)+':'+p2(om);
+    var got=k(ts);
+    var dt=new Date(0); dt.setUTCFullYear(y,mo-1,d); dt.setUTCHours(hh,mi,ss,0);
+    var expect=dt.getTime()/1000-(sg==='-'?-1:1)*(oh*3600+om*60);
+    assert(got&&got[0]===expect,'epoch mismatch for '+ts+': got '+JSON.stringify(got)+' expected '+expect);
+  }
+});
+
+test('P0-S8: frozen surfaces untouched by the P0 slice (hash pins)',()=>{
+  var crypto2=require('crypto');
+  function bh(tok){var i=html.indexOf(tok);var j=html.indexOf('\nfunction ',i+tok.length);var s2=html.slice(i,j<0?html.length:j);return s2.length+'/'+crypto2.createHash('sha256').update(s2).digest('hex').slice(0,16);}
+  assert(bh('function runModel(')==='33892/86f3f3082151fe56','runModel changed');
+  assert(bh('function computeGoalTransferNetting(')==='10309/4670447ce489dd8b','netting changed');
+  assert(bh('function resolveWeekTransfers(')==='5583/20d17438996ac8ba','resolver changed');
 });
 
 // ─────────────────────────────────────────────────────────────────────────
@@ -15176,6 +15498,11 @@ console.log('\n── Section 5G-1D Slice 4c: half-close repair confirmation ─
   });
 })();
 
+(async () => {
+for (const t of _asyncTests) {
+  try { await t.fn(); pass++; process.stdout.write('  ✓ ' + t.name + '\n'); }
+  catch(e) { fail++; failures.push({name:t.name,error:e.message}); process.stdout.write('  ✗ ' + t.name + '\n    → ' + e.message + '\n'); }
+}
 console.log('\n╔══════════════════════════════════════════════════════════════╗');
 console.log('║                       RESULTS                               ║');
 console.log('╚══════════════════════════════════════════════════════════════╝');
@@ -15187,3 +15514,4 @@ if(failures.length){
 }
 console.log(fail===0?'\n  ✅ ALL TESTS PASSED\n':'\n  ❌ FAILURES ABOVE\n');
 process.exit(fail>0?1:0);
+})();
