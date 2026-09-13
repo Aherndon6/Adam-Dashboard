@@ -1,8 +1,9 @@
-# P3b-1 — Register & Budget Data Integrity: Specification (FROZEN — revision 3.1, 2026-09-13)
+# P3b-1 — Register & Budget Data Integrity: Specification (FROZEN — revision 3.2, 2026-09-13)
 
-**Status:** **FROZEN.** Frozen revision: **3.1** (controlled amendment of revision 3). Frozen date: **2026-09-13**.
+**Status:** **FROZEN.** Frozen revision: **3.2** (controlled amendment of revision 3.1). Frozen date: **2026-09-13**.
 - Revision 3 was approved for freeze by the owner (Adam) after independent review and committed at `dfbdbb4`.
-- Revision 3.1 applies owner rulings arising from the read-only production preflight through the owner-controlled change process (§30).
+- Revision 3.1 applies owner rulings arising from the read-only production preflight through the owner-controlled change process (§30); committed at `9824779`.
+- Revision 3.2 resolves the §30(a) Week 1 finding by owner decision under the existing Week/Event rule, which adds one budget-line correction to C1 (§30.1).
 **Authority:** this is the controlling design specification for roadmap phase P3b-1 (including P3b-1.MX). It is subordinate to `AGENTS.md` (Law) and `CODEX_STATUS.md` (State); plan position is `docs/roadmap/canonical-roadmap.md` §3.
 **Change control:**
 - Any change requires the normal owner-controlled change process: an explicit owner decision, recorded as a new dated revision with a change note.
@@ -54,7 +55,7 @@ P3b-1 makes normal-workflow data entry honest, makes Budget actuals verified, vi
   - create live backing for the four reusable Entertainment slots `entertainment.event_3`, `event_4`, `event_5`, `week_5` (§12.2);
   - archive four unused legacy entertainment leaves (`entertainment.birthday_dinner`, `entertainment.brunch`, `entertainment.big_dinner_out`, `entertainment.entertainment_other`; zero Register rows in E0-1), metadata preserved;
   - change the live display label of `misc.goal_sweep` and its two active budget-line labels to "Planned for Goals" (§12.4);
-  - correct the two Week allowance budget lines stored on Event keys (Week 4 on `entertainment.event_4`, Week 5 on `entertainment.event_5`) to their Week keys (§13).
+  - correct the three Week allowance budget lines stored on Event keys (Week 1 on `entertainment.event_1`, Week 4 on `entertainment.event_4`, Week 5 on `entertainment.event_5`) to their Week keys (§13).
 - **Register save validation** (§6) for add and edit through the Register form.
 - **Uncategorized visibility:** Register count/filter; Budget COMPLETE WITH UNCATEGORIZED state (§19).
 - **Budget representation/exclusion contract** (§7) and invariants INV-A…INV-G (§8).
@@ -123,7 +124,7 @@ P3b-1 makes normal-workflow data entry honest, makes Budget actuals verified, vi
 | F-21 | Allocation and Goals wording: registry `misc.goal_sweep` label "Available for Goals"; live category label "Extra Pay Going to Spreadsheet"; Goals card "Available for Goals / Month"; Budget out-of-balance hint "adjust Misc → Available for Goals". | `index.html` ~10526, ~6600, ~9499; E0-1 |
 | F-22 | **Registry expense-parent budget line (intentional).** Phase 5E-6 split `entertainment` into ten child slots and ended the parent line at `end_month=2026-06-01`. As of E0-4 (2026-09-13), production had one active budget line on the parent key `entertainment` covering June 2026 (live category active, non-leaf; not a grid leaf). June is a Budget-displayable month (`_budgetAvailableMonths`: Jun 2026–Jan 2027). The Budget legacy rollup adds `_getBudgetAmount(parent.key)` to the group header and Total Planned exactly once each; `_getBudgetLivingExpenses` also includes it. Manage Lines cannot add or edit parent-key lines (Add lists registry leaves; parent header rows have no Edit/Archive controls). | E0-4; `docs/phase-5e-6-migration.sql`; `index.html` ~9396–9406, ~10653 |
 | F-24 | **Production preflight (read-only, executed once 2026-09-13).** P3B1-PF (sha256 `2cef8481…`; executed = reviewed) returned 19/19 blocking checks: 17 MATCHES FROZEN EXPECTATION, 2 EXPECTED OWNER CONFIRMATION (PF-09 repayment category, PF-10B `misc.goal_sweep` line labels, both resolved in §14 and §12.4), 0 NON-MATERIAL DRIFT, 0 MATERIAL DRIFT. The 51/49/2 cleanup population was confirmed unchanged. `budget_transactions` = 0 rows; exactly one BACKED_PARENT line. Evidence is preserved outside the repository (§30). | `~/Herndon-Financial-OS-Evidence/p3b-1-preflight-2026-09-13/` |
-| F-25 | **Week allowances on Event keys (preflight PF-05B).** The active Sep 2026→open line on `entertainment.event_4` (dated 9/20–9/26, labelled "Entertainment Event 4") is the Week 4 allowance. The active Sep 2026→open line on `entertainment.event_5` (labelled "Entertainment Week 5") is the Week 5 allowance. No active `week_4` or `week_5` line overlaps those months. A third active instance exists: the September-only Week 1 allowance on `entertainment.event_1`. It is recorded as an open finding (§30), not part of the owner's correction ruling. Several open-ended weekly lines also carry September-specific date labels into later months, which is a presentation follow-up (§30). | PF-05B |
+| F-25 | **Week allowances on Event keys (preflight PF-05B).** The active Sep 2026→open line on `entertainment.event_4` (dated 9/20–9/26, labelled "Entertainment Event 4") is the Week 4 allowance. The active Sep 2026→open line on `entertainment.event_5` (labelled "Entertainment Week 5") is the Week 5 allowance. No active `week_4` or `week_5` line overlaps those months. A third active instance exists: the September-only Week 1 allowance on `entertainment.event_1` (labelled "Entertainment Week 1"). Rev 3.2 adds it to the owner's correction ruling (§30.1). Several open-ended weekly lines also carry September-specific date labels into later months, which is a presentation follow-up (§30). | PF-05B |
 | F-23 | **Legacy source volume.** The DR-1 production dump manifest (2026-09-12) records `public.budget_transactions` = 0 rows. No local fixture or evidence shows a legacy row on a parent key or `misc.goal_sweep`. | `~/Herndon-Financial-OS-Evidence/dr-1-restore-rehearsal-2026-09-12/` manifest; `test_regression.js`, `e2e.js` |
 
 ## 5. Category data contract
@@ -405,11 +406,13 @@ Display orders were unused in E0-1 and require no renumbering of existing rows; 
 
 The ten-slot structure is intentional (§9). The four missing backings are created in the category package (§12.2), as taxonomy completion rather than invariant-driven category creation. The family repayment ruling (§14) does not remove or reduce Event slots.
 
-**Week/Event budget-line key correction (rev 3.1).** The preflight (F-25) showed the active Sep 2026→open `event_4` and `event_5` lines are Week 4 and Week 5 allowances. These are data defects, not legitimate Event uses. C1 corrects them narrowly:
+**Week/Event budget-line key correction (rev 3.1; Week 1 added rev 3.2).** The preflight (F-25) showed three active Week allowances stored on Event keys: the September-only Week 1 line on `event_1`, and the Sep 2026→open `event_4` and `event_5` lines (Week 4, Week 5). These are data defects, not legitimate Event uses. C1 corrects them narrowly:
+- Week 1 allowance: key `entertainment.event_1` → `entertainment.week_1`. The label already reads Week 1 and stays.
 - Week 4 allowance: key `entertainment.event_4` → `entertainment.week_4`. The label changes only where it misdescribes the role ("Entertainment Event 4 …" → "Entertainment Week 4 …").
 - Week 5 allowance: key `entertainment.event_5` → `entertainment.week_5`. The label already reads Week 5 and stays.
-- No amount, period, active-flag or Budget arithmetic change. No collision with an active `week_4`/`week_5` line. Inactive lines are untouched.
-- Out of scope: other Entertainment history, legitimate Event uses, weekly recurrence architecture, and September-dated labels on open-ended lines (follow-up, §30). The September Week 1 allowance on `event_1` is an open finding awaiting owner disposition (§30).
+- No amount, period, active-flag or Budget arithmetic change. No collision with an active `week_1` (September), `week_4` or `week_5` line. Inactive lines are untouched.
+- The correction targets these three known records only. It places no restriction on legitimate, separately planned Event lines on `event_1`–`event_5`.
+- Out of scope: other Entertainment history, legitimate Event uses, weekly recurrence architecture, and September-dated labels on open-ended lines (follow-up, §30).
 
 ## 14. August family repayment — CLOSED (owner decision 2026-09-13; amended rev 3.1)
 
@@ -637,7 +640,7 @@ P3b-1 makes such violations harder through normal workflows, fail-visible when t
   - create the four new categories (§12.1) and the four Entertainment slot backings (§12.2);
   - archive the four unused legacy leaves (metadata preserved);
   - change the live `misc.goal_sweep` display label and its two active budget-line labels to "Planned for Goals" (§12.4);
-  - correct the Week 4 / Week 5 allowance lines from Event keys to Week keys (§13).
+  - correct the Week 1 / Week 4 / Week 5 allowance lines from Event keys to Week keys (§13).
 - **R1** Historical correction package: exactly 49 transaction writes (12 existing + 36 new + 1 family repayment → `misc.extra`).
 - **A1** Application release: §6, §7–§10, §16–§19 (incl. §16.7, §8.1, §18.3), uncategorized visibility, and §15 wording. MX workflow pieces may ship as their own slice; Wendy's walkthrough is a post-build operating acceptance gate (§26).
 - **V1** Post-execution audit (§27).
@@ -746,7 +749,7 @@ P3b-1 makes such violations harder through normal workflows, fail-visible when t
 - The 12 existing-category corrections exact.
 - The family repayment on `misc.extra`; the original purchase unchanged.
 - Budget deltas limited to §11 expectations.
-- Week/Event line correction: the Week 4 and Week 5 allowance lines are on `week_4` / `week_5` with unchanged amounts and periods. No active line remains on `event_4` / `event_5`. Entertainment group planned totals and Goals living expenses are identical before and after C1.
+- Week/Event line correction: the three known Week allowance records are on `week_1` / `week_4` / `week_5` with unchanged amounts and periods. All other budget lines, including inactive historical lines, are untouched. Legitimate Event lines are not restricted. Entertainment group planned totals and Goals living expenses are identical before and after C1.
 
 ### Family repayment convention
 - An inflow in a SPEND_COUNTABLE category reduces that month's Spent by its amount.
@@ -823,7 +826,7 @@ Raw outputs are preserved outside the repository with exact SQL, timestamps and 
 
 - **NULL-category Register rows**, split by the owner evidence id list held outside the repository into approved historical exceptions (expected exactly 2) and actionable NULL defects (expected 0). This split is audit-only; runtime does not perform it.
 - **Legacy `budget_transactions`:** total rows, and L4–L8 counts (expected 0 unless owner-dispositioned).
-- **Per-category row counts** for §11 targets; opposite-direction pair checks for card payments and between-account transfers; the family repayment on `misc.extra`; Week 4 / Week 5 allowance lines on Week keys.
+- **Per-category row counts** for §11 targets; opposite-direction pair checks for card payments and between-account transfers; the family repayment on `misc.extra`; the Week 1 / Week 4 / Week 5 allowance records on Week keys.
 - **INV-A…INV-D** clean against production data (all 32 registry leaves backed; no invalid active budget lines); exclusion declaration consistent with live categories.
 - **Budget spot checks** for July, August and September:
   - expected state — July COMPLETE WITH UNCATEGORIZED (the two exceptions), others VERIFIED unless evidence shows otherwise;
@@ -868,9 +871,9 @@ Raw outputs are preserved outside the repository with exact SQL, timestamps and 
 - Legacy key contract L1–L8 (parent-key and `misc.goal_sweep` actuals fail closed; planned parent rollup retained).
 - Week/Event semantics (rev 3.1): Event only for separately planned items; incidental one-time spending may be `misc.extra`; Week allowances must use Week keys.
 - PF-10B (rev 3.1): two active `misc.goal_sweep` lines → "Planned for Goals"; inactive unchanged.
-- Week 4 / Week 5 allowance line key correction in C1 (rev 3.1).
+- Week 4 / Week 5 allowance line key correction in C1 (rev 3.1); Week 1 added (rev 3.2).
 
-**Freeze record:** revision 3 frozen 2026-09-13 by owner approval (`dfbdbb4`); revision 3.1 controlled amendment 2026-09-13 (§30).
+**Freeze record:** revision 3 frozen 2026-09-13 by owner approval (`dfbdbb4`); revision 3.1 controlled amendment 2026-09-13 (`9824779`, §30); revision 3.2 controlled amendment 2026-09-13 (§30.1).
 
 **True owner design decisions remaining:** none.
 
@@ -880,8 +883,6 @@ Raw outputs are preserved outside the repository with exact SQL, timestamps and 
 **Execution/preflight evidence gates:**
 - The §25 preflight is complete (F-24).
 - Remaining: owner approval of exact C1/R1 package SQL, the §26 rehearsal, and per-package production authorizations.
-
-**Open finding (not a design decision; not in C1 unless the owner adds it):** the September-only Week 1 allowance stored on `entertainment.event_1` (F-25).
 
 ---
 
@@ -906,10 +907,28 @@ Raw outputs are preserved outside the repository with exact SQL, timestamps and 
 7. **Calendar hold superseded:** the prior Sep 26 calendar-only production hold is superseded by owner ruling. Execution is gate-based; Cal 38 remains protected, and any gate failure stops work (State: `CODEX_STATUS.md`).
 
 **Open findings recorded, not decided here:**
-- **(a)** The September-only Week 1 allowance on `entertainment.event_1` (active) is the same defect class as amendment 5. It is not in the owner's explicit correction list; owner disposition is required before it is added to any package.
-- **(b)** Open-ended weekly lines (`week_2`, `week_3`, and the corrected Week 4 / Week 5 lines) carry September-specific date ranges into October–January. Presentation/data-hygiene follow-up only.
+- **(a)** The September-only Week 1 allowance on `entertainment.event_1` (active) is the same defect class as amendment 5. **Resolved in rev 3.2 (§30.1):** corrected in C1.
+- **(b)** Open-ended weekly lines (`week_2`, `week_3`, and the corrected Week 4 / Week 5 lines; the corrected Week 1 line is September-only) carry September-specific date ranges into October–January. Presentation/data-hygiene follow-up only.
 - **(c)** Inactive Event-key lines labelled Week 1 / Week 5 are not loaded by the application and are left unchanged.
+
+## 30.1 Revision 3.2 amendment record (owner-controlled change, 2026-09-13)
+
+**Trigger:** owner decision on the §30(a) finding after package review.
+
+**Amendment:** the active September-only Week 1 allowance stored on `entertainment.event_1` is corrected to `entertainment.week_1` in C1.
+- Label unchanged; it already reads Week 1.
+- Amount, period, active flag and Budget arithmetic unchanged.
+- The preserved preflight evidence shows no active `week_1` line covering September 2026.
+
+**Unchanged:**
+- the Rev 3.1 Week/Event rule (applied, not altered);
+- the ten-slot taxonomy;
+- R1 (49 writes);
+- inactive historical Event-key lines (untouched);
+- open-ended September date wording (follow-up, not P3b-1 scope).
+
+C1 grows from 17 to 18 row mutations. No other contract change.
 
 ---
 
-*FROZEN — revision 3.1, 2026-09-13. Balance-free and identifier-free. Changes only through the owner-controlled change process.*
+*FROZEN — revision 3.2, 2026-09-13. Balance-free and identifier-free. Changes only through the owner-controlled change process.*
