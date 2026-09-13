@@ -166,7 +166,8 @@ Current functionality:
 Codex/Claude sandbox constraints:
 - Cannot push to GitHub from sandbox
 - Adam runs push from Terminal
-- Playwright e2e may need to be run manually by Adam from Terminal: `node e2e.js`
+- Normal e2e (`node e2e.js`, `node e2e.js --smoke`) is production-isolated by default: it must not read real credentials or contact any production system, and it must fail closed if isolation cannot be established.
+- Production verification (`node e2e.js --prod-verify`) is a separate, explicit production contact that requires Adam's authorization at the time of each run. It is never invoked by push scripts, hooks, or normal development.
 - `push_to_github.sh` gates on both test suites and may fail in sandbox
 - use git directly from Terminal when sandbox cannot run the full gate
 

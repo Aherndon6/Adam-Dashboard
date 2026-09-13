@@ -7,8 +7,24 @@
 //   npx playwright install chromium
 //
 // Usage:
-//   node e2e.js                          # runs against ./index.html (file://)
-//   HFOS_URL=https://your-url node e2e.js  # runs against a live deployment
+//   node e2e.js                          # hermetic, production-isolated (default)
+//   node e2e.js --smoke                  # hermetic, smoke-tagged tests only
+//   node e2e.js --prod-verify            # EXPLICIT production verification — owner-approved
+//                                        # runs only; also requires
+//                                        # HFOS_PROD_VERIFY_CONFIRM=<production project ref>
+//
+// Production isolation (E2E-ISO-1). A normal or --smoke run must never contact
+// production, even when real credentials exist in .env or the shell:
+//   L0  real credentials are never read (.env is not opened; TEST_EMAIL/TEST_PASSWORD
+//       are removed from the environment) and a non-local HFOS_URL is refused;
+//   L1  Chromium resolves no host except the two CDN hosts the app loads its
+//       libraries from, so nothing — including a test's route.continue() — can
+//       reach a Supabase project;
+//   L2  every context routes the app's Supabase traffic to a hermetic fixture
+//       backend: deterministic reads, a fixture owner session, and DENY-BY-DEFAULT
+//       writes (an unowned POST/PATCH/PUT/DELETE/RPC fails the test that caused it);
+//   a preflight canary proves L1 before any app page loads, and a request ledger
+//   fails the run on any real non-CDN network contact.
 //
 // What this covers:
 //   Section A   — Tab smoke test (no blank panels, no layout breaks)
@@ -31,23 +47,8 @@
 const { chromium } = require('playwright');
 const path = require('path');
 const fs = require('fs');
-
-// ── Load .env credentials (never committed to repo) ───────────────────────
-// Add TEST_EMAIL and TEST_PASSWORD to ~/.env or ~/Adam-Dashboard/.env
-// For Playwright auth tests (AUTH-E2E-2 through AUTH-E2E-8) to run, credentials must be set.
-// AUTH-E2E-1 (login form visible) runs without credentials.
-const dotenvPath = path.join(__dirname, '.env');
-if (fs.existsSync(dotenvPath)) {
-  fs.readFileSync(dotenvPath,'utf8').split('\n').forEach(line => {
-    const m = line.match(/^([^#\s][^=]*)=(.*)$/);
-    if (m) { const k=m[1].trim(),v=m[2].trim(); if (!process.env[k]) process.env[k]=v; }
-  });
-}
-const TEST_EMAIL = process.env.TEST_EMAIL || '';
-const TEST_PASSWORD = process.env.TEST_PASSWORD || '';
-
-const URL = process.env.HFOS_URL ||
-  'file://' + path.resolve(process.env.HFOS_INDEX || './index.html');
+const vm = require('vm');
+const { fileURLToPath, URL: NodeURL } = require('url'); // `URL` below is the target-URL string
 
 // ── Run mode: full (default) vs smoke ─────────────────────────────────────
 // Full mode (default) runs the entire suite and ignores tags — behavior is
@@ -62,11 +63,15 @@ const URL = process.env.HFOS_URL ||
 // values, and conflicting CLI/env modes are rejected before any browser launches
 // or any test runs (nonzero exit). Malformed input never silently falls back to
 // full mode.
+const PROD_VERIFY_FLAG = '--prod-verify';
+const PROD_VERIFY_CONFIRM_ENV = 'HFOS_PROD_VERIFY_CONFIRM';
 const ACCEPTED_INVOCATIONS = [
-  'node e2e.js                 → full mode (default)',
-  'node e2e.js --smoke         → smoke mode',
-  'E2E_MODE=smoke node e2e.js  → smoke mode',
-  'E2E_MODE=full node e2e.js   → full mode (explicit)',
+  'node e2e.js                 → full mode (default, hermetic)',
+  'node e2e.js --smoke         → smoke mode (hermetic)',
+  'E2E_MODE=smoke node e2e.js  → smoke mode (hermetic)',
+  'E2E_MODE=full node e2e.js   → full mode (explicit, hermetic)',
+  PROD_VERIFY_CONFIRM_ENV + '=<production project ref> node e2e.js ' + PROD_VERIFY_FLAG
+    + '  → production verification (owner-approved runs only)',
 ];
 function _rejectInvocation(reason) {
   console.error('\n✗ E2E invocation error: ' + reason);
@@ -75,14 +80,15 @@ function _rejectInvocation(reason) {
   console.error('  (no browser launched, no tests executed)');
   process.exit(2);
 }
-// CLI: the only recognized script argument is --smoke. Node/Playwright flags are
-// passed before the script name (node --flag e2e.js) and never appear in
-// argv.slice(2), so rejecting unknown script args does not catch ordinary
-// runtime flags.
+// CLI: the only recognized script arguments are --smoke and --prod-verify.
+// Node/Playwright flags are passed before the script name (node --flag e2e.js)
+// and never appear in argv.slice(2), so rejecting unknown script args does not
+// catch ordinary runtime flags.
 const _cliArgs = process.argv.slice(2);
-const _unknownCli = _cliArgs.filter(a => a !== '--smoke');
+const _unknownCli = _cliArgs.filter(a => a !== '--smoke' && a !== PROD_VERIFY_FLAG);
 if (_unknownCli.length) _rejectInvocation('unknown argument(s): ' + _unknownCli.join(' '));
 const _cliSmoke = _cliArgs.includes('--smoke');
+const _cliProdVerify = _cliArgs.includes(PROD_VERIFY_FLAG);
 // Env: E2E_MODE may be unset/empty, 'smoke', or 'full'. Any other value rejects.
 const _envRaw = process.env.E2E_MODE;
 const _envMode = (_envRaw === undefined || _envRaw === '') ? null : _envRaw;
@@ -93,10 +99,254 @@ if (_envMode !== null && _envMode !== 'smoke' && _envMode !== 'full') {
 if (_cliSmoke && _envMode === 'full') {
   _rejectInvocation('conflicting mode: --smoke (CLI) vs E2E_MODE=full (env)');
 }
-const SMOKE_MODE = _cliSmoke || _envMode === 'smoke';
+
+// ── Production isolation configuration (E2E-ISO-1) ────────────────────────
+// The app hardcodes its Supabase project in index.html; the harness reads that
+// source (read-only) so it knows which host its fixture backend impersonates and
+// what the production verification confirmation must match.
+const _hfosUrlRaw = process.env.HFOS_URL;
+const _hfosUrl = (_hfosUrlRaw === undefined || _hfosUrlRaw === '') ? null : _hfosUrlRaw;
+const APP_INDEX = (_hfosUrl && _hfosUrl.startsWith('file://'))
+  ? fileURLToPath(_hfosUrl)
+  : path.resolve(process.env.HFOS_INDEX || './index.html');
+let _appSource = '';
+try { _appSource = fs.readFileSync(APP_INDEX, 'utf8'); } catch (e) {}
+const _supaUrlMatches = _appSource.match(/const SUPA_URL='(https:\/\/[a-z0-9]+\.supabase\.co)';/g) || [];
+if (_supaUrlMatches.length !== 1) {
+  _rejectInvocation('cannot determine the app backend host from ' + APP_INDEX
+    + ' (expected exactly one SUPA_URL declaration, found ' + _supaUrlMatches.length + ')');
+}
+const SUPA_HOST = new NodeURL(_supaUrlMatches[0].match(/'(https:[^']+)'/)[1]).hostname;
+const SUPA_REF = SUPA_HOST.split('.')[0];
+
+// Production verification lock: the flag AND the exact project-ref confirmation,
+// never combined with smoke/E2E_MODE, and a stray confirmation without the flag
+// is refused rather than ignored.
+const _confirmRaw = process.env[PROD_VERIFY_CONFIRM_ENV];
+const _confirm = (_confirmRaw === undefined || _confirmRaw === '') ? null : _confirmRaw;
+if (_cliProdVerify && (_cliSmoke || _envMode !== null)) {
+  _rejectInvocation(PROD_VERIFY_FLAG + ' cannot be combined with --smoke or E2E_MODE');
+}
+if (_cliProdVerify && _confirm === null) {
+  _rejectInvocation(PROD_VERIFY_FLAG + ' requires ' + PROD_VERIFY_CONFIRM_ENV + '=<production project ref>');
+}
+if (_cliProdVerify && _confirm !== SUPA_REF) {
+  _rejectInvocation(PROD_VERIFY_CONFIRM_ENV + ' does not match the project ref in the app source');
+}
+if (!_cliProdVerify && _confirm !== null) {
+  _rejectInvocation(PROD_VERIFY_CONFIRM_ENV + ' is set but ' + PROD_VERIFY_FLAG
+    + ' was not given (refusing an ambiguous invocation)');
+}
+const PROD_VERIFY_MODE = _cliProdVerify;
+const SMOKE_MODE = !PROD_VERIFY_MODE && (_cliSmoke || _envMode === 'smoke');
+
+// Normal (hermetic) mode may only target a local file.
+if (!PROD_VERIFY_MODE && _hfosUrl !== null && !_hfosUrl.startsWith('file://')) {
+  _rejectInvocation('HFOS_URL must be a local file:// URL in normal/smoke mode (production-isolated); '
+    + 'a deployed target is production verification');
+}
+const URL = _hfosUrl || ('file://' + APP_INDEX);
+
+// L0 — credentials. Normal mode never opens .env and removes any shell-provided
+// credentials, so a real sign-in cannot even be attempted. Only production
+// verification reads them.
+const dotenvPath = path.join(__dirname, '.env');
+const CREDENTIALS_PRESENT = !!(process.env.TEST_EMAIL || process.env.TEST_PASSWORD) || fs.existsSync(dotenvPath);
+if (PROD_VERIFY_MODE) {
+  if (fs.existsSync(dotenvPath)) {
+    fs.readFileSync(dotenvPath,'utf8').split('\n').forEach(line => {
+      const m = line.match(/^([^#\s][^=]*)=(.*)$/);
+      if (m) { const k=m[1].trim(),v=m[2].trim(); if (!process.env[k]) process.env[k]=v; }
+    });
+  }
+} else {
+  delete process.env.TEST_EMAIL;
+  delete process.env.TEST_PASSWORD;
+}
+const TEST_EMAIL = PROD_VERIFY_MODE ? (process.env.TEST_EMAIL || '') : '';
+const TEST_PASSWORD = PROD_VERIFY_MODE ? (process.env.TEST_PASSWORD || '') : '';
+
+// L1 — name resolution. Only the CDN hosts the app loads its libraries from
+// resolve (plus the production project in production verification).
+const CDN_HOSTS = ['cdnjs.cloudflare.com', 'cdn.jsdelivr.net'];
+const RESOLVER_ALLOW = PROD_VERIFY_MODE ? CDN_HOSTS.concat([SUPA_HOST]) : CDN_HOSTS.slice();
+const RESOLVER_RULES = 'MAP * ~NOTFOUND, ' + RESOLVER_ALLOW.map(h => 'EXCLUDE ' + h).join(', ');
+const LAUNCH_ARGS = ['--host-resolver-rules=' + RESOLVER_RULES, '--no-proxy-server'];
+// Optional evidence aid (does not affect isolation): Chromium network log.
+if (process.env.E2E_NETLOG) {
+  LAUNCH_ARGS.push('--log-net-log=' + path.resolve(process.env.E2E_NETLOG), '--net-log-capture-mode=Default');
+}
+// Canary: a harmless, resolvable, non-production host that is NOT allow-listed.
+// It must fail name resolution; the canary never targets anything Supabase.
+const ISOLATION_CANARY_URL = 'https://example.com/e2e-isolation-canary';
+
+function _staticIsolationProblems() {
+  const p = [];
+  if (!RESOLVER_RULES.startsWith('MAP * ~NOTFOUND, ')) p.push('resolver rule is not deny-by-default');
+  if (!LAUNCH_ARGS.includes('--host-resolver-rules=' + RESOLVER_RULES)) p.push('resolver rule is not in the browser launch arguments');
+  if (!LAUNCH_ARGS.includes('--no-proxy-server')) p.push('proxy bypass not disabled');
+  if (!PROD_VERIFY_MODE) {
+    if (!URL.startsWith('file://')) p.push('target is not a local file');
+    if (process.env.TEST_EMAIL || process.env.TEST_PASSWORD || TEST_EMAIL || TEST_PASSWORD) p.push('credentials still in memory');
+    if (RESOLVER_ALLOW.length !== CDN_HOSTS.length || RESOLVER_ALLOW.some(h => !CDN_HOSTS.includes(h))) p.push('resolver allow-list is not exactly the CDN hosts');
+    if (RESOLVER_ALLOW.some(h => /supabase/i.test(h))) p.push('resolver allow-list contains a Supabase host');
+  }
+  return p;
+}
+function _refuseIsolation(problems) {
+  console.error('\n✗ ISOLATION NOT ESTABLISHED — refusing to run');
+  problems.forEach(x => console.error('    - ' + x));
+  console.error('  (no app page loaded, no tests executed)');
+  process.exit(2);
+}
+{ const _p = _staticIsolationProblems(); if (_p.length) _refuseIsolation(_p); }
+
+// L2 — hermetic fixture backend (normal/smoke mode).
+const FIXTURE_EXP = 4102444800; // 2100-01-01 — no refresh is ever due
+const FIXTURE_USER = {
+  id: '00000000-0000-4000-8000-00000000e2e0', aud: 'authenticated', role: 'authenticated',
+  email: 'e2e-owner@hermetic.invalid', app_metadata: { provider: 'email', providers: ['email'] },
+  user_metadata: {}, created_at: '2026-01-01T00:00:00Z',
+};
+const _b64url = o => Buffer.from(JSON.stringify(o)).toString('base64url');
+const FIXTURE_ACCESS_TOKEN = _b64url({ alg: 'HS256', typ: 'JWT' }) + '.'
+  + _b64url({ sub: FIXTURE_USER.id, email: FIXTURE_USER.email, role: 'authenticated', aud: 'authenticated', exp: FIXTURE_EXP, iat: 1767225600, iss: 'hermetic-e2e' })
+  + '.hermetic-e2e-unsigned';
+const FIXTURE_SESSION_KEY = 'sb-' + SUPA_REF + '-auth-token';
+const FIXTURE_SESSION_JSON = JSON.stringify({
+  access_token: FIXTURE_ACCESS_TOKEN, token_type: 'bearer', expires_in: 3600,
+  expires_at: FIXTURE_EXP, refresh_token: 'hermetic-e2e-refresh', user: FIXTURE_USER,
+});
+// Wishlist fixture = the app's own WISHLIST_SEED, which is already in the
+// post-migration steady state, so startup seed/merge/phase-migration stays
+// read-only (no write is issued, none needs blessing).
+function _buildWishlistFixture() {
+  const a = _appSource.indexOf('var WISHLIST_SEED=[');
+  const b = a >= 0 ? _appSource.indexOf('\n];', a) : -1;
+  if (a < 0 || b < 0) return [];
+  const seed = vm.runInNewContext('(' + _appSource.slice(_appSource.indexOf('[', a), b + 2) + ')');
+  return seed.map((s, i) => ({
+    id: '00000000-0000-4000-9000-' + String(i + 1).padStart(12, '0'),
+    title: s.title, notes: s.notes || '', phase: s.phase, status: s.status,
+    priority: 0, item_type: 'feature', created_at: new Date(Date.UTC(2026, 0, 1, 0, 0, i)).toISOString(),
+  }));
+}
+const WISHLIST_FIXTURE = PROD_VERIFY_MODE ? [] : _buildWishlistFixture();
+const FIXTURE_CORS = { 'access-control-allow-origin': '*', 'access-control-allow-headers': '*', 'access-control-allow-methods': '*' };
+
+// Request ledger. `test` = the running test (null between tests); `phase` =
+// 'startup' until the page has loaded/authenticated, then 'test'.
+let _currentTest = null, _currentSeq = 0;
+const ledger = {
+  supabaseRequests: 0, fixtureReads: 0, prodPassThrough: 0, prodContacts: 0,
+  unownedWrites: [], escapes: [], foreignBlocked: [], realContacts: [], unfixturedReads: [],
+};
+const _pendingLedger = new Set();
+function _where(ctx, req) {
+  const u = new NodeURL(req.url());
+  return { test: _currentTest, seq: _currentTest === null ? 0 : _currentSeq, phase: (ctx && ctx.__phase) || 'startup', method: req.method(), endpoint: u.host + u.pathname };
+}
+function _isNonCdnHttp(u) {
+  return (u.protocol === 'http:' || u.protocol === 'https:') && !CDN_HOSTS.includes(u.hostname);
+}
+function _fixtureJson(status, body) {
+  return { status, headers: Object.assign({ 'content-type': 'application/json' }, FIXTURE_CORS), body: JSON.stringify(body) };
+}
+function _fixtureRead(ctx, req, u) {
+  const p = u.pathname;
+  if (p === '/auth/v1/user') return _fixtureJson(200, FIXTURE_USER);
+  if (p === '/rest/v1/app_users') return _fixtureJson(200, [{ email: FIXTURE_USER.email, active: true, role: 'owner' }]);
+  if (p === '/rest/v1/wishlist_items') return _fixtureJson(200, WISHLIST_FIXTURE);
+  if (p.startsWith('/rest/v1/') && !p.startsWith('/rest/v1/rpc/')) return _fixtureJson(200, []);
+  ledger.unfixturedReads.push(_where(ctx, req));
+  return _fixtureJson(404, { code: 'E2E_NOT_FIXTURED', message: 'hermetic e2e: no fixture for GET ' + p });
+}
+async function _policyRoute(ctx, route) {
+  const req = route.request();
+  const u = new NodeURL(req.url());
+  const method = req.method();
+  if (u.hostname !== SUPA_HOST) {
+    ledger.foreignBlocked.push(_where(ctx, req));
+    return route.abort('blockedbyclient');
+  }
+  if (PROD_VERIFY_MODE) {
+    const authMechanics = method === 'POST' && (u.pathname === '/auth/v1/token' || u.pathname === '/auth/v1/logout');
+    if (method === 'GET' || method === 'HEAD' || method === 'OPTIONS' || authMechanics) {
+      ledger.prodPassThrough++;
+      return route.continue();
+    }
+    ledger.unownedWrites.push(_where(ctx, req));
+    return route.abort('blockedbyclient');
+  }
+  if (method === 'OPTIONS') return route.fulfill({ status: 204, headers: FIXTURE_CORS });
+  if (method === 'GET' || method === 'HEAD') {
+    ledger.fixtureReads++;
+    return route.fulfill(_fixtureRead(ctx, req, u));
+  }
+  // Deny-by-default: a test that exercises a write must own it with its own page.route().
+  ledger.unownedWrites.push(_where(ctx, req));
+  return route.fulfill(_fixtureJson(403, { code: 'E2E_UNOWNED_WRITE',
+    message: 'hermetic e2e: unowned ' + method + ' ' + u.pathname + ' denied (a test must mock the writes it exercises)' }));
+}
+async function _installNetworkPolicy(ctx) {
+  ctx.__phase = 'startup';
+  ctx.on('request', req => {
+    try { if (new NodeURL(req.url()).hostname === SUPA_HOST) ledger.supabaseRequests++; } catch (e) {}
+  });
+  ctx.on('requestfailed', req => {
+    try {
+      const u = new NodeURL(req.url());
+      const f = req.failure();
+      // A name-resolution failure on a non-CDN host means the request bypassed the
+      // policy route (e.g. a test's route.continue()) and was stopped only by L1.
+      if (_isNonCdnHttp(u) && f && f.errorText === 'net::ERR_NAME_NOT_RESOLVED') ledger.escapes.push(_where(ctx, req));
+    } catch (e) {}
+  });
+  ctx.on('response', resp => {
+    const pr = (async () => {
+      const u = new NodeURL(resp.url());
+      if (!_isNonCdnHttp(u)) return;
+      const addr = await resp.serverAddr().catch(() => null);
+      if (!addr) return; // fulfilled by a fixture/test route — no server was contacted
+      if (PROD_VERIFY_MODE && u.hostname === SUPA_HOST) { ledger.prodContacts++; return; }
+      ledger.realContacts.push(Object.assign(_where(ctx, resp.request()), { serverAddr: addr.ipAddress + ':' + addr.port }));
+    })().catch(() => {});
+    _pendingLedger.add(pr); pr.finally(() => _pendingLedger.delete(pr));
+  });
+  await ctx.route(u => _isNonCdnHttp(u), route => _policyRoute(ctx, route));
+}
+function _seedFixtureSession(a) {
+  try {
+    if (location.protocol !== 'file:') return;
+    // Seed once per tab: a reload must rely on the app's own session persistence.
+    if (sessionStorage.getItem('__hfos_e2e_session_seeded') === '1') return;
+    localStorage.setItem(a.key, a.value);
+    sessionStorage.setItem('__hfos_e2e_session_seeded', '1');
+  } catch (e) {}
+}
+async function _isolationCanary(b) {
+  const ctx = await b.newContext();
+  const page = await ctx.newPage();
+  let failure = null, contacted = false;
+  page.on('requestfailed', r => { if (r.url().startsWith(ISOLATION_CANARY_URL)) failure = (r.failure() || {}).errorText || 'unknown'; });
+  page.on('response', r => { if (r.url().startsWith(ISOLATION_CANARY_URL)) contacted = true; });
+  // An explicit pass-through must not escape name resolution either.
+  await page.route(ISOLATION_CANARY_URL + '**', route => route.continue());
+  const threw = await page.evaluate(async u => {
+    try { await fetch(u, { mode: 'no-cors', cache: 'no-store' }); return false; } catch (e) { return true; }
+  }, ISOLATION_CANARY_URL);
+  for (let i = 0; i < 40 && failure === null && !contacted; i++) await page.waitForTimeout(50);
+  await ctx.close();
+  const problems = [];
+  if (!threw || contacted) problems.push('canary host was reachable — name resolution is not blocked (proxy/DoH/flag failure?)');
+  else if (failure !== 'net::ERR_NAME_NOT_RESOLVED') problems.push('canary failed for an unexpected reason: ' + failure);
+  return problems;
+}
 
 let pass = 0, fail = 0, skipped = 0, registered = 0;
 const failures = [];
+const skippedProdVerify = [];
+const runLevelViolations = [];
 
 // Slice B (5G-QA-1): deterministic readiness waits replace the old fixed sleeps
 // in openApp/clickNav. If a deterministic wait ever times out we fall back to
@@ -108,16 +358,41 @@ const readinessFallbackHits = { openApp: 0, clickNav: 0 };
 // test(name, fn, opts?) — opts.tags is an explicit string array (default []).
 // In smoke mode a test with no 'smoke' tag is skipped (no browser opened, not
 // counted pass/fail). In full mode tags are ignored and every test runs.
+// Tests tagged 'prod-verify' need live production; they run ONLY under
+// --prod-verify and are counted as skipped (never passed) in normal/smoke mode.
+// Every executed test also fails if the isolation ledger attributes an unowned
+// write, an escaped request, or real non-CDN network contact to it.
+function _fmtViolation(v) {
+  return v.method + ' ' + v.endpoint + ' [' + v.phase + ']' + (v.serverAddr ? ' server=' + v.serverAddr : '');
+}
+async function _assertIsolation(seq) {
+  await Promise.all([..._pendingLedger]);
+  const mine = arr => arr.filter(v => v.seq === seq);
+  const msgs = [];
+  const uw = mine(ledger.unownedWrites), es = mine(ledger.escapes), rc = mine(ledger.realContacts);
+  if (uw.length) msgs.push('UNOWNED WRITE(S) denied by the hermetic backend: ' + uw.map(_fmtViolation).join('; '));
+  if (es.length) msgs.push('REQUEST(S) ESCAPED the policy route (stopped only by name-resolution block): ' + es.map(_fmtViolation).join('; '));
+  if (rc.length) msgs.push('REAL NETWORK CONTACT: ' + rc.map(_fmtViolation).join('; '));
+  if (msgs.length) throw new Error('E2E-ISO violation — ' + msgs.join(' | '));
+}
 function test(name, fn, opts = {}) {
   registered++;
   const tags = opts.tags || [];
-  if (SMOKE_MODE && !tags.includes('smoke')) {
+  const isProdVerify = tags.includes('prod-verify');
+  const selected = PROD_VERIFY_MODE ? isProdVerify
+    : (!isProdVerify && (!SMOKE_MODE || tags.includes('smoke')));
+  if (!selected) {
     skipped++;
+    if (isProdVerify) skippedProdVerify.push(name);
     return Promise.resolve();
   }
+  const seq = ++_currentSeq;
+  _currentTest = name;
   return fn()
+    .then(() => _assertIsolation(seq))
     .then(() => { pass++; console.log('  ✓ ' + name); })
-    .catch(e => { fail++; failures.push({ name, error: e.message }); console.log('  ✗ ' + name + '\n    → ' + e.message); });
+    .catch(e => { fail++; failures.push({ name, error: e.message }); console.log('  ✗ ' + name + '\n    → ' + e.message); })
+    .finally(() => { _currentTest = null; });
 }
 
 function assert(cond, msg) { if (!cond) throw new Error(msg || 'Assertion failed'); }
@@ -127,7 +402,16 @@ function assert(cond, msg) { if (!cond) throw new Error(msg || 'Assertion failed
 // Login through the auth overlay when credentials are available.
 // Safe to call even if overlay is absent or already hidden.
 async function loginIfNeeded(page) {
-  if (!TEST_EMAIL || !TEST_PASSWORD) return;
+  if (!TEST_EMAIL || !TEST_PASSWORD) {
+    // Hermetic mode: the fixture session is already authenticated, so there is no sign-in to wait
+    // for. Preserve the pre-isolation timing contract: the credential path below always settled
+    // 500 ms after reaching 'ready', and loadAll() re-renders asynchronously after 'ready' (the
+    // registry load), so tests that read the DOM immediately depend on that settle.
+    const ready = await page.evaluate(() => typeof AUTH_STATE !== 'undefined' && AUTH_STATE === 'ready').catch(() => false);
+    if (ready) await page.waitForTimeout(500);
+    page.context().__phase = 'test';
+    return;
+  }
   const overlayVisible = await page.evaluate(() => {
     const o = document.getElementById('auth-overlay');
     return o && !o.classList.contains('hidden');
@@ -142,6 +426,7 @@ async function loginIfNeeded(page) {
     { timeout: 12000 }
   ).catch(() => {}); // don't hard-fail if Supabase is unreachable
   await page.waitForTimeout(500);
+  page.context().__phase = 'test';
 }
 
 async function openApp(browser, opts = {}) {
@@ -160,10 +445,12 @@ async function openApp(browser, opts = {}) {
     { timeout: 1500 }
   ).catch(() => { readinessFallbackHits.openApp++; });
   await loginIfNeeded(page);
+  context.__phase = 'test';
   return { page, context, consoleErrors };
 }
 
 async function clickNav(page, id) {
+  page.context().__phase = 'test';
   await page.click('#nav-' + id);
   // setSection() synchronously sets activeSection and toggles .active on the nav
   // button and the section panel, so this resolves immediately on success.
@@ -182,9 +469,15 @@ async function clickNav(page, id) {
   console.log('║     Herndon Financial OS — E2E Suite (Playwright)           ║');
   console.log('╚══════════════════════════════════════════════════════════════╝');
   console.log('  Target: ' + URL);
-  console.log(SMOKE_MODE
-    ? '  ▶▶ SMOKE MODE — running smoke-tagged tests only ◀◀'
-    : '  ▶ FULL MODE (default) — running the complete suite');
+  console.log(PROD_VERIFY_MODE
+    ? '  ▶▶▶ PRODUCTION VERIFICATION — live production contact (' + SUPA_HOST + '); prod-verify tests only ◀◀◀'
+    : SMOKE_MODE
+      ? '  ▶▶ SMOKE MODE — running smoke-tagged tests only ◀◀'
+      : '  ▶ FULL MODE (default) — running the complete suite');
+  console.log(PROD_VERIFY_MODE
+    ? '  Isolation: PRODUCTION VERIFY — resolver allows CDN + production project; data writes blocked'
+    : '  Isolation: HERMETIC — resolver allows CDN hosts only; fixture backend; unowned writes denied');
+  if (!PROD_VERIFY_MODE) console.log('  Credentials: ' + (CREDENTIALS_PRESENT ? 'present in shell/.env — IGNORED (not read)' : 'none present'));
   console.log('');
 
   // Lazy Chromium (5G-QA-1 hardening): launch on first actual use (newContext)
@@ -192,11 +485,27 @@ async function clickNav(page, id) {
   // Every browser use in this suite is browser.newContext()/browser.close(), so
   // this two-method wrapper is a complete substitute and leaves all call sites
   // unchanged. Timing of the readiness waits inside openApp is untouched.
+  // E2E-ISO-1: the launch applies the L1 resolver block and immediately runs the
+  // isolation canary; every context gets the L2 policy route (and, in hermetic
+  // mode, the fixture owner session unless opts.hermeticSession === false).
   let _realBrowser = null;
   const browser = {
     async newContext(opts) {
-      if (!_realBrowser) _realBrowser = await chromium.launch({ headless: true });
-      return _realBrowser.newContext(opts);
+      if (!_realBrowser) {
+        const b = await chromium.launch({ headless: true, args: LAUNCH_ARGS });
+        const canaryProblems = await _isolationCanary(b);
+        if (canaryProblems.length) { await b.close(); _refuseIsolation(canaryProblems); }
+        _realBrowser = b;
+      }
+      const o = Object.assign({}, opts || {});
+      const hermeticSession = o.hermeticSession !== false;
+      delete o.hermeticSession;
+      const ctx = await _realBrowser.newContext(o);
+      await _installNetworkPolicy(ctx);
+      if (!PROD_VERIFY_MODE && hermeticSession) {
+        await ctx.addInitScript(_seedFixtureSession, { key: FIXTURE_SESSION_KEY, value: FIXTURE_SESSION_JSON });
+      }
+      return ctx;
     },
     async close() { if (_realBrowser) await _realBrowser.close(); },
   };
@@ -510,51 +819,28 @@ async function clickNav(page, id) {
     await context.close();
   });
 
-  // ── WL-PW-2: Done grouping smoke ─────────────────────────────────────────
-  console.log('── WL-PW-2: Wishlist Done grouping smoke ──');
-  await test('WL-PW-2: Done column contains Auth v1 group with Authentication (Phase 6A)', async () => {
-    const context = await browser.newContext();
-    const page = await context.newPage();
-    await page.goto(URL, { waitUntil: 'domcontentloaded', timeout: 15000 });
-    await page.waitForTimeout(1000);
-    await loginIfNeeded(page);
-    await clickNav(page, 'roadmap');
-    await page.waitForFunction(() => {
-      const el = document.getElementById('roadmap-content');
-      return el && el.innerText.includes('Phase');
-    }, { timeout: 8000 }).catch(() => null);
-    await page.waitForTimeout(500);
+  // ── WL-PW-2: RETIRED (E2E-ISO-1, owner decision 2026-09-13) ─────────────
+  // Asserted that production wishlist data carried an "Auth v1" build group, i.e.
+  // that a July 2026 close-out SQL had been applied to production. That is a
+  // one-time production data state, not an ongoing control, and it coupled the
+  // normal suite to live production. Retired without a weaker replacement.
 
-    // Find Done column
-    const doneCol = await page.$('[data-col="done"]');
-    assert(doneCol, 'Done column (data-col="done") not found');
-
-    // Find Auth v1 group container scoped inside Done column
-    const authV1Group = await doneCol.$('[data-build-group="Auth v1"]');
-    assert(authV1Group, 'Auth v1 group container not found inside Done column — confirm Auth v1 close-out SQL has been run');
-
-    // Assert the card title inside that group
-    const authCard = await authV1Group.$('.wl-card-title');
-    const authCardText = authCard ? await authCard.textContent() : '';
-    assert(
-      authCardText.includes('Authentication (Phase 6A)'),
-      'Authentication (Phase 6A) not found inside Auth v1 group. Got: ' + authCardText.slice(0, 100)
-    );
-    await context.close();
-  });
-
-  // ── AUTH-ANON-1: Anon key blocked after RLS tightening ────────────────────
-  // NOTE: This test calls live Supabase directly using SUPA_URL + SUPA_KEY from
-  // page context. It runs against the production Supabase project regardless of
-  // whether e2e.js is targeting file:// or the live URL.
-  console.log('── AUTH-ANON-1: Anon key blocked on live Supabase ──');
-  await test('AUTH-ANON-1: Anon key returns no protected rows and cannot write', async () => {
+  // ── AUTH-ANON-1: anonymous READ posture on live production (prod-verify only) ──
+  // Proves, end to end through the deployed anon key, grants, RLS and PostgREST,
+  // that anonymous callers get no protected rows. This is a property of the live
+  // production project and cannot be proven hermetically, so it runs ONLY under
+  // --prod-verify (an owner-approved production contact).
+  // Part 2 (anonymous INSERT + cleanup DELETE probe on wishlist_items) is RETIRED
+  // (E2E-ISO-1, owner decision 2026-09-13): it attempted production writes, covered
+  // one table and one verb, and is superseded by the owner-run read-only production
+  // grant/catalog fingerprint, which covers every table and privilege.
+  console.log('── AUTH-ANON-1: Anon key read posture on live Supabase (prod-verify) ──');
+  await test('AUTH-ANON-1: Anon key returns no protected rows (production read posture)', async () => {
     const context = await browser.newContext();
     const page = await context.newPage();
     await page.goto(URL, { waitUntil: 'domcontentloaded', timeout: 15000 });
     await page.waitForTimeout(500);
 
-    // Part 1: anon SELECT returns no protected rows
     const readResults = await page.evaluate(async () => {
       const tables = ['weekly_reconciliations','goals','model_week_overrides','wishlist_items'];
       const out = [];
@@ -577,39 +863,8 @@ async function clickNav(page, id) {
       assert(blocked, 'AUTH-ANON-1 SELECT: anon key returned protected rows on ' + r.table +
         ' (status=' + r.status + ', rows=' + r.rows + (r.error ? ', error=' + r.error : '') + ')');
     }
-
-    // Part 2: anon INSERT is blocked
-    const writeResult = await page.evaluate(async () => {
-      try {
-        const r = await fetch(SUPA_URL + '/rest/v1/wishlist_items', {
-          method: 'POST',
-          headers: {
-            'apikey': SUPA_KEY, 'Authorization': 'Bearer ' + SUPA_KEY,
-            'Content-Type': 'application/json', 'Prefer': 'return=representation'
-          },
-          body: JSON.stringify({ title: '__anon_write_test_should_be_blocked__',
-            phase: 'Backlog', status: 'idea', priority: 0, item_type: 'feature' })
-        });
-        const body = await r.json();
-        const rowCreated = r.ok && Array.isArray(body) && body.length > 0;
-        if (rowCreated && body[0] && body[0].id) {
-          await fetch(SUPA_URL + '/rest/v1/wishlist_items?id=eq.' + body[0].id, {
-            method: 'DELETE',
-            headers: { 'apikey': SUPA_KEY, 'Authorization': 'Bearer ' + SUPA_KEY }
-          });
-        }
-        return { status: r.status, rowCreated };
-      } catch (e) { return { status: -1, rowCreated: false, error: e.message }; }
-    });
-    assert(!writeResult.rowCreated,
-      'AUTH-ANON-1 INSERT: anon key successfully wrote a row to wishlist_items — ' +
-      'RLS is not blocking anon writes (status=' + writeResult.status + (writeResult.error ? ', error=' + writeResult.error : '') + '). ' +
-      'Cleanup attempted. Phase 4A SQL may not have been applied.');
-    // NOTE: If AUTH-ANON-1 fails because anon insert unexpectedly succeeded,
-    // check wishlist_items for title '__anon_write_test_should_be_blocked__' and
-    // manually delete it. The anon cleanup may fail depending on active policies.
     await context.close();
-  });
+  }, { tags: ['prod-verify'] });
 
   // ── Section H: XSS safety ─────────────────────────────────────────────
   console.log('── Section H: XSS safety ──');
@@ -655,7 +910,7 @@ async function clickNav(page, id) {
   // ── Section I: Offline graceful failure ───────────────────────────────
   console.log('── Section I: Offline / Supabase failure ──');
   await test('App loads and renders without network (Supabase offline)', async () => {
-    const context = await browser.newContext();
+    const context = await browser.newContext({ hermeticSession: false }); // original semantics: no session
     const page = await context.newPage();
     // Block all fetch/XHR before navigating
     await page.route('**/*supabase*/**', route => route.abort());
@@ -1026,6 +1281,26 @@ async function clickNav(page, id) {
     await context.close();
   }, { tags: [] });
 
+  // SCENARIO CONSTRUCTION FOR THESE TESTS — NOT A MODEL CORRECTION (owner-approved 2026-09-13).
+  // E2E-ISO-1 (hermetic): TEST-ONLY liquidity fixture, identical to the static suite's documented
+  // withAmpleLiquidity (test_regression.js, P3c-1, owner-directed): weeks 15-31 keep their WD events and
+  // gain ONE synthetic $1,000 inflow labelled as a fixture, via the existing Edit-Week override path.
+  // The Adam IRA residual tests below declare "the model emits the residual exactly once"; with the
+  // canonical full-statement WD that premise holds only WHEN CAPACITY EXISTS (otherwise the 5-week
+  // lookahead defers it). These tests previously got that capacity from live production override data;
+  // hermetically it must be declared. Evaluates in the page; returns the prior overrideData to restore.
+  const LIQUIDITY_FIXTURE_APPLY = `(function(){
+    var saved = overrideData, ov = Object.assign({}, overrideData);
+    for (var n = 15; n <= 31; n++) {
+      if (ov[n]) continue;
+      var wd = WD.find(function(x){ return x[0] === n; });
+      ov[n] = { week_num: n, events_json: wd[4].map(function(e){ return Object.assign({}, e); })
+        .concat([{ l: 'TEST FIXTURE: ample liquidity (not real income)', t: 'in', a: 1000 }]) };
+    }
+    overrideData = ov;
+    return saved;
+  })()`;
+
   // 5G-1C-2.1 Leg 1: injected snapshot/reconciliation state -> real runModel -> real Weekly renderer.
   // An above-threshold Adam IRA anchor + reconciled wk1-5 must NOT re-emit the IRA seed, must emit the
   // derived (target - anchor) residual exactly once, and the rendered Weekly view must show that
@@ -1034,8 +1309,9 @@ async function clickNav(page, id) {
   await test('Weekly › Model: above-threshold anchor suppresses seed; derived residual once (5G-1C-2.1)', async () => {
     const { page, context } = await openApp(browser);
     await clickNav(page, 'weekly');
-    const res = await page.evaluate(() => {
+    const res = await page.evaluate((LIQ) => {
       const _s = goalSnapData, _r = reconData, anchor = 7438.94;
+      const _ov = eval(LIQ);
       goalSnapData = { 5: { adam_ira: anchor, wendy_ira: 0, alaska: 7000, bailey_529: 0, bryce_529: 0, preston_529: 0, bryce_vehicle: 0, christmas_cruise: 0 } };
       const rc = (chk, amx) => ({ chk, sav: 200, amx, tax: 1500, lc: 13488.88, balance_basis: 'posted_current_balance' });
       reconData = { 1: rc(9000, 104), 2: rc(8000, 104), 3: rc(7200, 104), 4: rc(6800, 104), 5: rc(6700, 8539.20) };
@@ -1053,8 +1329,8 @@ async function clickNav(page, id) {
         const html = document.getElementById('weekly-content').innerHTML || '';
         return { threshold: IRA_SEED_EMBEDDED_THRESHOLD, seedCount, residCount: resid.length, residAmt: resid.length ? resid[0].amt : null,
           derived, residWk, weeklyHasResidual: html.indexOf('(Adam IRA)') >= 0, weeklyHasSeed: html.indexOf('Adam IRA seed') >= 0 };
-      } finally { goalSnapData = _s; reconData = _r; renderApp(); }
-    });
+      } finally { goalSnapData = _s; reconData = _r; overrideData = _ov; renderApp(); }
+    }, LIQUIDITY_FIXTURE_APPLY);
     assert(res.seedCount === 0, 'no post-anchor Adam IRA seed row anywhere in the model; got seedCount=' + res.seedCount);
     assert(res.residCount === 1, 'derived residual must appear exactly once; got ' + res.residCount);
     assert(Math.abs(res.residAmt - res.derived) < 0.01, 'residual amount ' + res.residAmt + ' != derived (target-anchor) ' + res.derived);
@@ -1085,8 +1361,9 @@ async function clickNav(page, id) {
   await test('5G1B-NET-E1: executed Adam IRA residual is suppressed (no enabled duplicate) after recalc', async () => {
     const { page, context } = await openApp(browser);
     await clickNav(page, 'weekly');
-    const res = await page.evaluate((INJECT) => {
+    const res = await page.evaluate(([INJECT, LIQ]) => {
       const _s = goalSnapData, _r = reconData, _st = _goalSnapLoadStatus, _saved = {};
+      const _ov = eval(LIQ);
       try {
         const resid = eval(INJECT);
         if (!resid) return { skip: true };
@@ -1103,9 +1380,9 @@ async function clickNav(page, id) {
           hasSatisfied: html.indexOf('Satisfied by completed transfer') >= 0 };
       } finally {
         Object.keys(_saved).forEach(k => { if (_saved[k] === undefined) delete taskData[k]; else taskData[k] = _saved[k]; });
-        goalSnapData = _s; reconData = _r; _goalSnapLoadStatus = _st; renderApp();
+        goalSnapData = _s; reconData = _r; _goalSnapLoadStatus = _st; overrideData = _ov; renderApp();
       }
-    }, NET_INJECT);
+    }, [NET_INJECT, LIQUIDITY_FIXTURE_APPLY]);
     assert(!res.skip, 'model must emit an Adam IRA residual to exercise this test');
     assert(res.iraRowCount >= 1, 'the Adam IRA residual row must be present in the Weekly view');
     assert(res.enabledIra === 0, 'NO enabled Adam IRA transfer checkbox may appear (got ' + res.enabledIra + ')');
@@ -1140,8 +1417,9 @@ async function clickNav(page, id) {
   await test('5G1B-NET-E3: write-guard rejects a stale-UI toggle of a suppressed obligation', async () => {
     const { page, context } = await openApp(browser);
     await clickNav(page, 'weekly');
-    const res = await page.evaluate(async (INJECT) => {
+    const res = await page.evaluate(async ([INJECT, LIQ]) => {
       const _s = goalSnapData, _r = reconData, _st = _goalSnapLoadStatus, _cwf = canWriteFinancials, _saved = {};
+      const _ov = eval(LIQ);
       try {
         const resid = eval(INJECT);
         if (!resid) return { skip: true };
@@ -1159,9 +1437,9 @@ async function clickNav(page, id) {
       } finally {
         canWriteFinancials = _cwf;
         Object.keys(_saved).forEach(k => { if (_saved[k] === undefined) delete taskData[k]; else taskData[k] = _saved[k]; });
-        goalSnapData = _s; reconData = _r; _goalSnapLoadStatus = _st; renderApp();
+        goalSnapData = _s; reconData = _r; _goalSnapLoadStatus = _st; overrideData = _ov; renderApp();
       }
-    }, NET_INJECT);
+    }, [NET_INJECT, LIQUIDITY_FIXTURE_APPLY]);
     assert(!res.skip, 'model must emit an Adam IRA residual to exercise this test');
     assert(!res.wroteOptimistic, 'write-guard must reject the suppressed toggle: no optimistic completed state may be set');
     await context.close();
@@ -1922,12 +2200,13 @@ async function clickNav(page, id) {
   }, { tags: ['smoke'] });
 
   // ── Section AUTH-E2E: Auth v1 end-to-end tests ────────────────────────
-  // AUTH-E2E-1 through AUTH-E2E-5 can run against file:// with or without credentials.
-  // AUTH-E2E-6 through AUTH-E2E-8 are Phase 3 gates — require credentials AND Supabase connectivity.
+  // E2E-ISO-1: AUTH-E2E-1/2/4/5/6 are hermetic (fixture session / fixture auth responses, no real
+  // credentials). AUTH-E2E-3 is production verification (live sign-in) and runs only under
+  // --prod-verify. AUTH-E2E-7/8 are retired as redundant with AUTH-E2E-3 (see below).
   console.log('\n── Section AUTH-E2E: Auth v1 ──');
 
   await test('AUTH-E2E-1: Fresh page load with no cached session shows login form', async () => {
-    const context = await browser.newContext();
+    const context = await browser.newContext({ hermeticSession: false }); // must observe a session-less load
     const page = await context.newPage();
     // Open without loginIfNeeded so we can observe the overlay
     await page.goto(URL, { waitUntil: 'domcontentloaded', timeout: 15000 });
@@ -1955,19 +2234,24 @@ async function clickNav(page, id) {
   });
 
   await test('AUTH-E2E-2: Invalid credentials show inline error, no crash, no console exception', async () => {
-    if (!TEST_EMAIL) {
-      console.log('    (skipped — TEST_EMAIL not set; requires .env)');
-      return; // skip gracefully
-    }
-    const context = await browser.newContext();
+    // Hermetic: no session is seeded, and the test OWNS the sign-in response — the fixture auth
+    // endpoint rejects the credentials exactly as Supabase does for a wrong password.
+    const context = await browser.newContext({ hermeticSession: false });
     const page = await context.newPage();
+    let tokenPosts = 0;
+    await page.route('**/auth/v1/token**', route => {
+      tokenPosts++;
+      route.fulfill({ status: 400, contentType: 'application/json', headers: { 'access-control-allow-origin': '*' },
+        body: JSON.stringify({ code: 400, error_code: 'invalid_credentials', msg: 'Invalid login credentials',
+          error: 'invalid_grant', error_description: 'Invalid login credentials' }) });
+    });
     const errs = [];
     page.on('pageerror', e => errs.push(e.message));
     await page.goto(URL, { waitUntil: 'domcontentloaded', timeout: 15000 });
     await page.waitForTimeout(1500);
     // Wait for login form
     await page.waitForSelector('#auth-password', { timeout: 10000 }).catch(() => {});
-    await page.fill('#auth-email', TEST_EMAIL).catch(() => {});
+    await page.fill('#auth-email', FIXTURE_USER.email).catch(() => {});
     await page.fill('#auth-password', 'wrong-password-that-will-not-work-xyz987').catch(() => {});
     await page.click('#auth-submit-btn').catch(() => {});
     await page.waitForTimeout(3000); // wait for Supabase auth attempt
@@ -1981,16 +2265,16 @@ async function clickNav(page, id) {
       const o = document.getElementById('auth-overlay');
       return o && !o.classList.contains('hidden');
     });
+    assert(tokenPosts >= 1, 'the sign-in attempt must reach the (mocked) auth endpoint');
+    assert(errVisible, 'Inline auth error must be visible after invalid login attempt');
     assert(overlayStillUp, 'Overlay must remain visible after invalid login attempt');
     assert(errs.length === 0, 'Uncaught JS exception after failed login: ' + errs.join('; '));
     await context.close();
   });
 
   await test('AUTH-E2E-3: Valid login renders dashboard, no console errors', async () => {
-    if (!TEST_EMAIL || !TEST_PASSWORD) {
-      console.log('    (skipped — TEST_EMAIL/TEST_PASSWORD not set; requires .env + Supabase setup)');
-      return;
-    }
+    // Production verification only: missing credentials is a failure, never a silent pass.
+    assert(TEST_EMAIL && TEST_PASSWORD, 'AUTH-E2E-3 (prod-verify) requires TEST_EMAIL/TEST_PASSWORD in .env');
     const context = await browser.newContext();
     const consoleErrors = [];
     const failedRequests = []; // capture 4xx/5xx for diagnostics
@@ -2026,13 +2310,11 @@ async function clickNav(page, id) {
     const diagSuffix = failedRequests.length ? ' | Failed requests: ' + failedRequests.join(', ') : '';
     assert(authErrors.length === 0, 'Console errors after login: ' + authErrors.slice(0,3).join('; ') + diagSuffix);
     await context.close();
-  });
+  }, { tags: ['prod-verify'] });
 
   await test('AUTH-E2E-4: Session persists across page reload — no re-login prompt', async () => {
-    if (!TEST_EMAIL || !TEST_PASSWORD) {
-      console.log('    (skipped — requires credentials + Supabase setup)');
-      return;
-    }
+    // Hermetic: the fixture session is seeded once per tab; the reload relies on the app's own
+    // (supabase-js localStorage) session persistence, not on re-seeding.
     const { page, context } = await openApp(browser);
     // Reload — supabase-js restores session from localStorage
     await page.reload({ waitUntil: 'domcontentloaded', timeout: 15000 });
@@ -2046,11 +2328,10 @@ async function clickNav(page, id) {
   });
 
   await test('AUTH-E2E-5: Sign out clears session and returns to login form', async () => {
-    if (!TEST_EMAIL || !TEST_PASSWORD) {
-      console.log('    (skipped — requires credentials + Supabase setup)');
-      return;
-    }
+    // Hermetic: fixture session; the test OWNS the sign-out request (supabase-js POST /auth/v1/logout).
     const { page, context } = await openApp(browser);
+    let logoutPosts = 0;
+    await page.route('**/auth/v1/logout**', route => { logoutPosts++; route.fulfill({ status: 204, headers: { 'access-control-allow-origin': '*' } }); });
     // Wait for #auth-user-bar to become visible (Playwright native visibility check)
     await page.locator('#auth-user-bar').waitFor({ state: 'visible', timeout: 10000 })
       .catch(e => { throw new Error('AUTH-E2E-5: #auth-user-bar never became visible after login — ' + e.message); });
@@ -2072,14 +2353,12 @@ async function clickNav(page, id) {
     assert(overlayVisible, 'Login overlay must reappear after sign out');
     const authState = await page.evaluate(() => AUTH_STATE);
     assert(authState === 'unauthenticated', 'AUTH_STATE must be unauthenticated after sign out, got: ' + authState);
+    assert(logoutPosts >= 1, 'sign out must call the (mocked) logout endpoint');
     await context.close();
   });
 
   await test('AUTH-E2E-6: Post-login Supabase calls use Bearer token distinct from anon key (Phase 3 gate)', async () => {
-    if (!TEST_EMAIL || !TEST_PASSWORD) {
-      console.log('    (skipped — requires credentials + Supabase setup)');
-      return;
-    }
+    // Hermetic: fixture session; requests fall back to the fixture backend after their headers are recorded.
     const context = await browser.newContext();
     const page = await context.newPage();
     const authHeaders = [];
@@ -2087,7 +2366,7 @@ async function clickNav(page, id) {
     await page.route('**/rest/v1/**', async route => {
       const h = route.request().headers();
       if (h['authorization']) authHeaders.push(h['authorization']);
-      await route.continue();
+      await route.fallback();
     });
     await page.goto(URL, { waitUntil: 'domcontentloaded', timeout: 15000 });
     await page.waitForTimeout(1000);
@@ -2103,54 +2382,12 @@ async function clickNav(page, id) {
     await context.close();
   });
 
-  await test('AUTH-E2E-7: After login, all 9 tables return data without 401 errors', async () => {
-    if (!TEST_EMAIL || !TEST_PASSWORD) {
-      console.log('    (skipped — requires credentials + Supabase setup)');
-      return;
-    }
-    const context = await browser.newContext();
-    const page = await context.newPage();
-    const restErrors = [];
-    page.on('response', response => {
-      if (response.url().includes('/rest/v1/') && response.status() === 401) {
-        restErrors.push(response.url().split('/rest/v1/')[1].split('?')[0] + ' → 401');
-      }
-    });
-    await page.goto(URL, { waitUntil: 'domcontentloaded', timeout: 15000 });
-    await page.waitForTimeout(1000);
-    await loginIfNeeded(page);
-    await page.waitForTimeout(3000); // let all tables load
-    assert(restErrors.length === 0, '401 errors on table fetch: ' + restErrors.join(', '));
-    await context.close();
-  });
-
-  await test('AUTH-E2E-8: app_users returns Adam row with active=true after login', async () => {
-    if (!TEST_EMAIL || !TEST_PASSWORD) {
-      console.log('    (skipped — requires credentials + Supabase setup)');
-      return;
-    }
-    const context = await browser.newContext();
-    const page = await context.newPage();
-    await page.goto(URL, { waitUntil: 'domcontentloaded', timeout: 15000 });
-    await page.waitForTimeout(1000);
-    await loginIfNeeded(page);
-    await page.waitForTimeout(1000);
-    // Verify auth reached 'ready' — which means checkAuthorization found active=true
-    const authState = await page.evaluate(() => typeof AUTH_STATE !== 'undefined' ? AUTH_STATE : 'undefined');
-    assert(authState === 'ready', 'AUTH_STATE must be ready after login with active app_users row, got: ' + authState);
-    // Double-check by querying app_users directly via supabase-js
-    const row = await page.evaluate(async () => {
-      try {
-        var h = await getAuthHeaders();
-        var r = await fetch(SUPA_URL+'/rest/v1/app_users?email=eq.'+encodeURIComponent((await _supabase.auth.getSession()).data.session.user.email)+'&select=email,role,active&limit=1',{headers:h});
-        var data = await r.json();
-        return data && data[0] ? data[0] : null;
-      } catch(e) { return {error:e.message}; }
-    });
-    assert(row && !row.error, 'Could not query app_users: ' + (row && row.error));
-    assert(row.active === true, 'app_users.active must be true for logged-in user, got: ' + row.active);
-    await context.close();
-  });
+  // AUTH-E2E-7 and AUTH-E2E-8: RETIRED (E2E-ISO-1, 2026-09-13) as redundant production verification.
+  // AUTH-E2E-7 (no 401 on table fetches after live login) is subsumed by AUTH-E2E-3, whose strict
+  // console gate fails on any failed resource load (a 401 logs "Failed to load resource").
+  // AUTH-E2E-8 (active app_users row after live login) is subsumed by AUTH-E2E-3's overlay-hidden
+  // assertion: the overlay hides only on AUTH_STATE 'ready', which checkAuthorization reaches only
+  // with an active app_users row. Hermetic versions would only test the fixture, so neither moves.
 
   // ── Section BUD: Budget Module interactive tests ──────────────────────
   // Tests use page.evaluate() so they work in file:// mode without Supabase.
@@ -4895,24 +5132,51 @@ async function clickNav(page, id) {
   // above, reaching here in the empty case means no Chromium was launched and no
   // test executed — fail loudly and exit nonzero before the normal results block.
   const _selected = registered - skipped;
-  if (SMOKE_MODE && _selected === 0) {
-    console.error('\n✗ E2E smoke selection is empty: 0 of ' + registered
-      + ' registered tests are tagged "smoke".');
-    console.error('  Smoke mode must select at least one test.'
+  if ((SMOKE_MODE || PROD_VERIFY_MODE) && _selected === 0) {
+    const _tag = PROD_VERIFY_MODE ? 'prod-verify' : 'smoke';
+    console.error('\n✗ E2E ' + _tag + ' selection is empty: 0 of ' + registered
+      + ' registered tests are tagged "' + _tag + '".');
+    console.error('  The selection must contain at least one test.'
       + ' No browser was launched and no test executed.');
     process.exit(2);
   }
 
   await browser.close();
+  await Promise.all([..._pendingLedger]);
+  // Anything recorded outside a running test (block setup, stragglers) fails the run.
+  ['unownedWrites', 'escapes', 'realContacts'].forEach(k => ledger[k].filter(v => v.test === null)
+    .forEach(v => runLevelViolations.push(k + ': ' + _fmtViolation(v))));
+  if (runLevelViolations.length) {
+    fail++;
+    failures.push({ name: '(outside any test) E2E-ISO run-level violations', error: runLevelViolations.join(' | ') });
+  }
 
   // ── Results ───────────────────────────────────────────────────────────
   console.log('\n╔══════════════════════════════════════════════════════════════╗');
   console.log('║                       RESULTS                               ║');
   console.log('╚══════════════════════════════════════════════════════════════╝');
-  console.log('  Mode:    ' + (SMOKE_MODE ? 'SMOKE (smoke-tagged only)' : 'FULL (default)'));
+  console.log('  Mode:    ' + (PROD_VERIFY_MODE ? 'PRODUCTION VERIFY (prod-verify only)' : SMOKE_MODE ? 'SMOKE (smoke-tagged only)' : 'FULL (default)'));
   console.log('  Passed:  ' + pass);
   console.log('  Failed:  ' + fail);
-  console.log('  Skipped: ' + skipped + (SMOKE_MODE ? ' (non-smoke tests)' : ''));
+  console.log('  Skipped: ' + skipped + (PROD_VERIFY_MODE ? ' (non-prod-verify tests)' : SMOKE_MODE ? ' (non-smoke tests, incl. prod-verify)' : ' (prod-verify tests)'));
+  if (!PROD_VERIFY_MODE && skippedProdVerify.length) {
+    console.log('    prod-verify (not run in this mode): ' + skippedProdVerify.join(' | '));
+  }
+  console.log('  Isolation ledger (E2E-ISO-1):');
+  console.log('    Supabase-host requests seen:            ' + ledger.supabaseRequests);
+  if (PROD_VERIFY_MODE) {
+    console.log('    passed through to production:           ' + ledger.prodPassThrough + ' (server responses: ' + ledger.prodContacts + ')');
+  } else {
+    console.log('    served by fixture backend (reads):      ' + ledger.fixtureReads);
+    console.log('    unfixtured reads (404):                 ' + ledger.unfixturedReads.length
+      + (ledger.unfixturedReads.length ? ' — ' + ledger.unfixturedReads.map(_fmtViolation).join('; ') : ''));
+  }
+  console.log('    unowned writes denied:                  ' + ledger.unownedWrites.length);
+  console.log('    escaped requests (blocked by resolver): ' + ledger.escapes.length);
+  console.log('    foreign-host requests blocked:          ' + ledger.foreignBlocked.length
+    + (ledger.foreignBlocked.length ? ' — ' + [...new Set(ledger.foreignBlocked.map(v => v.endpoint))].join(', ') : ''));
+  console.log('    REAL non-CDN network contact:           ' + ledger.realContacts.length
+    + (PROD_VERIFY_MODE ? ' (excluding the production project)' : ''));
   console.log('  Readiness fallback hits — openApp: ' + readinessFallbackHits.openApp
     + ', clickNav: ' + readinessFallbackHits.clickNav
     + ((readinessFallbackHits.openApp || readinessFallbackHits.clickNav)
@@ -4921,6 +5185,11 @@ async function clickNav(page, id) {
   if (failures.length) {
     console.log('\n  FAILURES:');
     failures.forEach((f, i) => console.log('  ' + (i+1) + '. ' + f.name + '\n     ' + f.error));
+  }
+  if (ledger.realContacts.length) {
+    console.log('\n  ⛔ ISOLATION BREACH — real non-CDN network contact: '
+      + ledger.realContacts.map(v => (v.test || '(outside any test)') + ': ' + _fmtViolation(v)).join(' | '));
+    process.exit(3);
   }
   console.log(fail === 0 ? '\n  ✅ ALL TESTS PASSED\n' : '\n  ❌ FAILURES ABOVE\n');
   process.exit(fail > 0 ? 1 : 0);

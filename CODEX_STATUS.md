@@ -1,5 +1,44 @@
 # Codex Status: Herndon Financial OS
 
+## CURRENCY NOTE (2026-09-13b) — E2E-ISO-1 COMPLETE: normal e2e is production-isolated (control fix before P3b-1)
+
+**Why.** During P3c-1 the normal e2e suite was found to be non-hermetic: with `.env` present it signed in to production, ran against live data, and AUTH-ANON-1 sent anonymous production write probes (refused). Normal test runs must not depend on remembering to remove credentials.
+
+**What changed (`e2e.js` only, owner-approved design).**
+- **Credentials:** normal and `--smoke` runs never read `.env` and remove any shell-provided test credentials, so a real sign-in cannot be attempted.
+- **Network:** Chromium resolves no host except the two CDN hosts the app loads its libraries from; a non-local `HFOS_URL` is refused.
+- **Fixture backend:** the app's Supabase traffic is served by a hermetic fixture backend with a fixture owner session. **Writes are denied by default:** any POST/PATCH/PUT/DELETE/RPC a test does not explicitly mock fails that test, naming method, endpoint and startup-vs-test phase. Startup stays read-only through fixture state (the wishlist fixture is the app's own already-migrated seed); no background write is blessed.
+- **Fail closed:** a static preflight and a live canary refuse to run (exit 2, before any app page loads) if isolation is not established. A request ledger fails the run on any real non-CDN network contact.
+- **Production verification:** `--prod-verify` is a separate mode requiring the exact production project-ref confirmation. It is incompatible with smoke/`E2E_MODE`, blocks data writes, and is not referenced by the push script or hooks. **Built and structurally validated but NOT executed**; its first run is a separate production contact requiring owner authorization.
+
+**Test dispositions (owner decisions 2026-09-13).**
+- **Retired:**
+  - AUTH-ANON-1 anonymous INSERT/DELETE probe: a narrow production write attempt, superseded by the owner-run read-only production grant fingerprint.
+  - WL-PW-2: asserted a one-time July production data state; no ongoing control value.
+  - AUTH-E2E-7 and AUTH-E2E-8: redundant with AUTH-E2E-3. Its strict console gate catches failed loads such as a 401, and its overlay-hidden check requires the `ready` state, which requires an active `app_users` row.
+- **Production verification only:** AUTH-ANON-1 anonymous read posture; AUTH-E2E-3 live sign-in, where missing credentials now fail rather than pass.
+- **Made hermetic:** AUTH-E2E-1/2/4/5/6. Previously 2/4/5/6 returned early and counted as passes without credentials. AUTH-E2E-2 gained assertions that the mocked sign-in endpoint was reached and the inline error is visible.
+- **Adam IRA residual tests** (`Weekly › Model` 5G-1C-2.1, 5G1B-NET-E1, 5G1B-NET-E3): these declare "the model emits the $61.06 residual exactly once", which holds only when forward cash headroom exists; the old production-coupled runs got that headroom from live override data. They now apply the static suite's owner-approved test-only liquidity fixture. **This is scenario construction for the tests, not a model correction**; no assertion changed.
+- **Harness timing:** hermetic mode keeps the 500 ms post-`ready` settle the real-login path always had. Without it, tests reading the DOM raced the app's asynchronous post-`ready` registry render (reproduced in 10 of 40 loads, 0 of 40 with the settle).
+
+**Baseline (measured 2026-09-13 on this change).** The prior **161/3** e2e baseline was **production-coupled** and is **superseded**.
+- **e2e full:** 159 passed / 0 failed / 2 skipped (prod-verify); readiness fallbacks 0. Identical result with no credentials present and with real credentials present in `.env` and the shell (ignored).
+- **e2e smoke:** 20 passed / 0 failed.
+- **Static:** 1814 passed / 0 failed.
+- **Zero real production contact**, shown by the request ledger and a Chromium netlog audit: no resolver lookup or connection for the production host; connections only to the two CDN hosts.
+
+**Negative controls (scratch-only, never committed):**
+- broken launch flags → refused by the canary;
+- resolver rule missing from the launch arguments → refused by the static preflight;
+- a test's own `route.continue()` → blocked and failed by name;
+- unowned writes at startup and during test execution → denied and failed by name.
+
+**Unchanged:** `index.html` (byte-identical; `BUILD_TS` 2026-09-12T22:35:40), `test_regression.js`, golden-master fixtures, `push_to_github.sh`, hooks, application runtime and model logic, Supabase schema/RLS/grants/data. `AGENTS.md` gains only the durable isolation rule. Evidence lives outside this public repo.
+
+**Next:** product work remains the **P3b-1 specification** (Sep 18 scope-freeze gate); not started.
+
+---
+
 ## CURRENCY NOTE (2026-09-13) — ROADMAP DECISION: P3b-1 is next product work; P3c-2 deferred post-rollover (specification NOT authorized); manual Saturday cash certification stays authoritative
 
 **Status at a glance (owner decision 2026-09-13).**
@@ -833,7 +872,7 @@ Prepare the system for Wendy using the Budget tab in live household workflow whi
 
 ## Next Candidate Work
 
-**Current pointer (2026-09-13):** see the 2026-09-13 currency note at the top of this file. Sequence: e2e production-isolation control → **P3b-1** (Sep 18 scope-freeze gate) → 2027 rollover (spec ~Oct 12; production Dec 12-19, Dec 19 hard latest) → P3c-2 (first post-rollover; spec not authorized) → 5G-2. DR-1 and P3c-1 are closed. The list below is historical.
+**Current pointer (2026-09-13):** see the 2026-09-13 and 2026-09-13b currency notes at the top of this file. Sequence: e2e production-isolation control (E2E-ISO-1, COMPLETE 2026-09-13) → **P3b-1** (Sep 18 scope-freeze gate) → 2027 rollover (spec ~Oct 12; production Dec 12-19, Dec 19 hard latest) → P3c-2 (first post-rollover; spec not authorized) → 5G-2. DR-1 and P3c-1 are closed. The list below is historical.
 
 Active next-phase pointer: 5G-0 CLOSED, 5G-1A SHIPPED, UX-0 SHIPPED, UX-0.5 SHIPPED, 5G-1A.5 SHIPPED+pushed, **5G-1C-1 SHIPPED+pushed** (`de4e3c0`, production-verified 2026-07-08). **5G-1 staging DB/security layer is validated and pushed** (RLS smoke `eeee4cb`, `app_environment` hardening `7f0d0a0`); **production DDL and the app-side functional build remain gated**. IRA-goal correction ($7,000→$7,500, funded amounts preserved) is DONE (commit `1dcc686`); the AMEX sub-`MIN_XFR` waterfall deadlock it exposed is FIXED by 5G-1A.5 (commit `f307db7`, pushed — see "## 5G-1A.5 SHIPPED"). **5G-1C-2 — Goal Funding State Integrity** (review doc §5/§7 Phase B: week-anchored `goal_funding_snapshots` + runModel overlay): the plan doc was updated with Fable R1–R13 (`e1eac07`), the pre-snapshot golden-master identity gate was captured (`e0be9dc`), **C2 (the staging SQL package) is staging-validated + pushed** (`5bbcab2`), and **C3 (the app-side overlay) is SHIPPED + DEPLOYED** (`c6fbb32`, pushed; live `BUILD_TS 2026-07-09T08:51:21` on dashboard.herndons.us; static 1392/0, e2e 133/0; inert until snapshot rows exist — see "## 5G-1C-2 C3 SHIPPED + DEPLOYED"). **5G-QA-1 is COMPLETE and pushed** (Slice A `05a5558` tag-based smoke mode + Slice B `d8e21a0` deterministic waits; `e2e.js`-only; full 133/0 default gate preserved, runtime 538.45s→415.77s, smoke 19/0 opt-in ~44–50s, fallback 0/0 — see "## 5G-QA-1 SHIPPED"). **5G-1C-2 production SQL package is CREATED + PUSHED** (`3061644`; six `docs/phase-5g-1c-2-prod-*` files — see "## 5G-1C-2 PRODUCTION SQL PACKAGE COMMITTED"). **E1 (production DDL) is COMPLETE + GREEN (2026-07-09)** — preflight/migration/validation/inert-check all PASS against Adam-Dashboard (usayoldrawwmjsmretin) under runbook `e1b9252`; production now holds `goal_funding_snapshots` + `save_goal_funding_snapshots`, schema-only and EMPTY; app behavior-inert (see "## 5G-1C-2 E1 COMPLETE"). **Immediate next work item is E2 (first-anchor seed)** — manual Supabase in Adam-Dashboard (usayoldrawwmjsmretin), separate explicit in-session Adam go-ahead required; **do NOT start E2 without it.** **E2 reconfirm:** production's latest reconciled week is **4** (E1 preflight P6), so the First-Anchor Value Card must use the **wk-4 basis** or wait for a wk-5 reconciliation. No first-anchor seed has run. THEN 5G-1D write-through. Optional still-open: the capped pre-5G UX cleanup bundle (FLOW-2, FLOW-1, WK-1, REG-1, SYS-2; rider REG-2). Future candidate (not sequenced): TX-1 — see `docs/tx-1-candidate.md`. **SUPERSEDED (2026-07-10):** the "wk-4 basis or wait for wk-5" language above is superseded by the cleared E2 runbook §2 decision to **wait for the Week-5 reconciliation** (wk-4 basis not used). The 5G-1D planning stack (plan + correction spec + implementation-readiness package) is now **CLEARED and on main**; **E2 is Gate 0 (OPEN / BLOCKING)** and **5G-1D implementation is BLOCKED until Gate 0 closes** — see "## 5G-1D READINESS CLEARED — E2 / GATE 0 BLOCKING (2026-07-10)".
 
