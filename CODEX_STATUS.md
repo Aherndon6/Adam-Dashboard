@@ -1,5 +1,30 @@
 # Codex Status: Herndon Financial OS
 
+## CURRENCY NOTE (2026-09-13c) — P3b-1 SPEC FROZEN (rev 3 → controlled rev 3.1); read-only production preflight complete; NO production mutation
+
+**Specification.**
+- `docs/specs/p3b-1-register-budget-data-integrity-spec-2026-09-13.md` was frozen at revision 3 (`dfbdbb4`).
+- Revision 3.1 is an owner-controlled amendment arising from the production preflight (spec §30).
+
+**Preflight.**
+- P3B1-PF (spec §25 items 1–12) was executed **once, read-only**, on production 2026-09-13.
+- Result: 19/19 blocking checks; 17 match; 2 owner confirmations, both resolved; 0 non-material drift; 0 material drift.
+- Evidence is outside the repo in `~/Herndon-Financial-OS-Evidence/p3b-1-preflight-2026-09-13/`.
+- **No production mutation** has occurred.
+
+**Confirmed and ruled (owner, 2026-09-13):**
+- **Cleanup population:** 51 / 49 / 2 confirmed. R1 = exactly 49 transaction writes.
+- **Family repayment:** the August repayment → `misc.extra`. The original purchase stays `misc.extra` and is untouched. No Event slot.
+- **`misc.goal_sweep` labels:** the live category label and its two active budget-line labels → "Planned for Goals". Inactive lines unchanged. Display only.
+- **Week/Event correction:** the Week 4 / Week 5 allowance lines stored on `entertainment.event_4` / `event_5` are corrected to `week_4` / `week_5` in C1. No arithmetic change. The ten-slot taxonomy is unchanged.
+
+**Calendar hold superseded.**
+- The prior "P3b-1 production push held until after the Cal 38 sitting (Sep 26); verification Sep 28" rule (2026-09-13 note below) is **superseded by owner ruling**.
+- Execution is now **gate-based**: P3b-1 may reach production earlier only if every frozen/amended gate passes and the system returns to a fully verified clean state before the session ends.
+- This is not deploy authorization. **Cal 38 remains protected.** Any drift, unresolved confirmation, package/rehearsal mismatch, test failure, rollback uncertainty, incomplete verification, unsafe intermediate state, or impairment of the Saturday cash-certification workflow = STOP.
+
+**Next gate.** C1/R1 package authoring and owner review, then rehearsal (spec §26), then production execution and the application release under separate authorizations, per the amended dependency graph (spec §21).
+
 ## CURRENCY NOTE (2026-09-13b) — E2E-ISO-1 COMPLETE: normal e2e is production-isolated (control fix before P3b-1)
 
 **Why.** During P3c-1 the normal e2e suite was found to be non-hermetic: with `.env` present it signed in to production, ran against live data, and AUTH-ANON-1 sent anonymous production write probes (refused). Normal test runs must not depend on remembering to remove credentials.
