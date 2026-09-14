@@ -1,5 +1,55 @@
 # Codex Status: Herndon Financial OS
 
+## CURRENCY NOTE (2026-09-14b): P3b-1 GATE STEP 1 (OFFLINE PRODUCTION-EXECUTION READINESS) PASS; decisions recorded; execution runbook rev 2.5 APPROVED; NO production contact; next gate = controlled-session isolation prerequisite, then separately owner-authorized production precheck and application-view authority
+
+**Status at a glance.**
+- **Gate Step 1 (offline production-execution readiness): PASS** (owner and architect adjudication, 2026-09-14). This closes the offline gate only.
+- **Production contact: NOT AUTHORIZED.**
+- **AUTH-RECON: NOT AUTHORIZED** (not needed; the window-day Step 2 database precheck is read-only and fail-closed before package mutation).
+- **AUTH-PRE (bounded pre-execution authority: S-3A host lookup plus named read-only database path): NOT AUTHORIZED.**
+- **AUTH-APPVIEW (bounded application-view authority): NOT AUTHORIZED.**
+- **Production C1 and R1 (AUTH-C1, AUTH-R1): NOT AUTHORIZED.**
+- **Rollback: NOT AUTHORIZED** except under later explicit runbook authority.
+- **Household no-edit agreement for the controlled window (P-4): satisfied and in force since 2026-09-14,** until Adam explicitly says "all clear". The window-day no-edit-intact attestation is still separately required.
+- **Supplemental household no-viewing agreement and controlled-session isolation (P-11): NOT YET SATISFIED.**
+
+**Decisions D1 to D9 (owner and architect, 2026-09-14).** The full record is in the owner evidence folder.
+- **D1 (D1-A):** if C1 passes and R1 then refuses, C1 is rolled back in the same window through the tested rollback path. A C1-only persistent state is not approved.
+- **D2:** the frozen R1-1 runs before C1 and must fail on exactly its two C1-dependent checks; any other shape is STOP.
+- **D3:** a strict fresh-preflight comparator is the Step 2 acceptance control. Independent adversarial review PASS. Approved hardenings PASS: primary-session-only, non-empty category on tolerated additions, determined event key always exact.
+- **R-1: ACCEPT T2.** A bounded tolerance for two date-unbounded preflight text-match lists: preserved entries stay exact, frozen rows are rejected, and verdicts stay exact.
+- **D4:** Adam runs all production SQL through the reviewed Terminal/psql session helpers. Claude never holds production credentials or runs production SQL.
+- **D5 (revised):** the Sep 27 window was a selected operating window, not a technical dependency. Sep 14 is the primary sitting; Sep 15 is a new-sitting fallback only. Saturday certification stays protected: the window closes, or any unresolved S4 is owner-adjudicated, before the next Saturday sitting.
+- **D6:** standing rollback authority exists only for mechanically established conditions (the C1 rollback after S2, or after a completed R1 rollback). There is no standing R1 rollback.
+- **D7:** interim protective guidance; certification always wins.
+- **D8:** a read-only database-side writer inventory is required at Step 2. Remediation PASS (view-dependency check, SQL-standard function bodies, lint hardening, trigger-exclusion correction, pg_cron consistency, scoped verdict). **N1 / W12 PASS** (the session must report `standard_conforming_strings = on`). The clean contract is 12/12. The offline logic evidence is emulation, not PostgreSQL execution; the first PostgreSQL execution of D8 is at the separately authorized precheck, where any execution error is a pre-package-mutation STOP (S0).
+- **D9:** a fresh encrypted restore point plus a verified off-device copy is required. **P-9 off-device dry run PASS.**
+
+**Readiness evidence** (outside this public repository; hash-pinned there).
+- **Execution runbook rev 2.5 approved at SHA-256 `4b3a3aaaf65a9c200cd0dabf84204af0f38af5592063276c3efee2956276cab7`.** This approval is hash-specific; any content change requires re-review.
+- **Execution runbook rev 2.3** approved at SHA-256 `5c2d4f951197e4779d23e7b4270d7cebcc41b5df8ba0118b510d9cbb5321180c` (historical; superseded by rev 2.5). Rev 2.4 was an intermediate draft and was never approved.
+- **Unchanged:** frozen spec rev 3.2, the C1/R1 packages, the read-only preflight SQL, the session helpers and every other executable control.
+- **Readiness pins:** 18/18, unchanged.
+- **No production, staging, Supabase or live-dashboard contact** occurred during readiness work.
+- **Offline tests and mutation suites:** green.
+
+**Review findings and next gate.** A literal reading of rev 2.3 found three authorization-boundary defects, all accepted by the architect:
+1. **F-1:** the decisions were not yet recorded in State. **Closed by this currency note when committed to `main`.**
+2. **F-2:** the first production identity read ran before the logged read-only authorization and was not named in its scope.
+3. **F-3:** the normal postchecks, the fresh post-C1 R1-1 precheck and the application checks were not named by any authorization.
+
+Follow-on review (all accepted by the architect; F-2 to F-4 and X-1 to X-7 are closed in approved rev 2.5):
+- **F-2 and F-3:** database-authorization corrections (first drafted in rev 2.4).
+- **F-4:** the required signed-in application verification can have bounded automatic write side effects (existing application migration behavior and Supabase Auth session activity), so it is not a read-only operation. Closed by a separate, one-sitting, bounded application-view authorization (AUTH-APPVIEW) with a browser network observation control; any unexpected application write is S4.
+- **X-1:** the STOP class S0 is redefined as pre-package-mutation: no C1, R1 or rollback package mutation has committed, and no unauthorized or unclassifiable production change is established to have occurred during the controlled sitting. Observed, allowlisted AUTH-APPVIEW side effects do not move a sitting out of S0.
+- **X-2:** pre-existing or timing-unknown drift found when a sitting begins stops the sitting cleanly (S0). An unauthorized change that the sitting itself proves occurred during the sitting is S4 and requires owner adjudication before any later sitting.
+- **X-3 to X-7:** precondition and wording corrections: the Supabase management-dashboard boundary; the connection-host lookup happens only after the sitting authorization; every precondition is recorded in the sitting log; no unprovable "no write" claims; the window-plan summary.
+- **Controlled-session isolation (new prerequisite):** no dashboard session outside the observed procedure may run during the sitting. It requires a supplemental household no-viewing agreement and Adam's closure of every other dashboard session, recorded before production contact (P-11). **NOT YET SATISFIED.**
+
+**Next gate:** satisfaction of the controlled-session isolation prerequisite (P-11) and the remaining sitting preconditions, with P-1 satisfied only once this note is committed to `main`; then **separately owner-authorized** AUTH-PRE for the bounded S-3A host lookup and named read-only database path, plus AUTH-APPVIEW for bounded application verification, under approved rev 2.5. C1 and R1 each need their own later authorization. Any production drift = STOP. **Production remains NOT AUTHORIZED.**
+
+**Documentation only.** No code, test, schema, SQL, data, production or deployment change. Not pushed.
+
 ## CURRENCY NOTE (2026-09-14) — P3b-1 C1/R1 PRODUCTION-PACKAGE REHEARSAL PASS (owner-accepted); NO production mutation; next gate = PRODUCTION EXECUTION READINESS / FRESH PRECHECK
 
 **Authority (unchanged).**
