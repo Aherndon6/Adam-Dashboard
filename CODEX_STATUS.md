@@ -39,17 +39,30 @@
 6. **STOP logging:** the STOP line depended on stderr being open. The log file is now written first; terminal display is best-effort.
 7. **Verifier identity:** the filled branch identity was initially self-derived in the verifier. It is now tied to the identity observed on the branch.
 
-**Canonical next gate: PRODUCTION EXECUTION READINESS / FRESH PRECHECK. Production C1/R1 execution is NOT authorized.** Production execution stays separately owner-controlled and requires, in order:
-1. **Edit window.** An explicit production edit window, scheduled away from the Saturday cash-certification sitting (Cal 38 remains protected).
+**Canonical next gate: PRODUCTION EXECUTION READINESS / FRESH PRECHECK. Production C1/R1 execution is NOT authorized.**
+
+**Nothing in this gate has started:** no fresh P3B1-PF run, no C1-1, no R1-1, no restore-point dump, no production edit window, no C1/R1 mutation, no A1 application work.
+
+Production execution stays separately owner-controlled and requires, in order:
+1. **Offline readiness — no production contact.**
+   - Re-verify package, manifest and evidence hashes.
+   - Write and review the production runbook: exact commands, STOP criteria and rollback triggers.
+   - Plan the production edit window away from the Saturday cash-certification sitting, and establish the no-edit period with Wendy.
+2. **Fresh read-only precheck — separately owner-authorized; no mutation.**
+   - Re-run the frozen P3B1-PF preflight, and run C1-1.
+   - P3B1-PF must match the preserved Sep 13 result, including the 51 NULL rows. C1-1 must return EXPECTED_PRE_STATE.
+   - **This is the early drift gate.** R1-1 cannot pass before C1 (its guard G06 requires the C1 categories), so drift in R1's targets must be caught here.
+   - Any drift = STOP before any mutation.
+3. **Edit window.** An explicit production edit window, scheduled away from the Saturday cash-certification sitting (Cal 38 remains protected).
    - No Register or Budget/Manage Lines writes by Adam or Wendy during the window.
    - Per the package README, the window opens with a **fresh encrypted production restore point** (DR-1 method).
-2. **Integrity before any mutation.**
+4. **Integrity before any mutation.**
    - Package and manifest hash verification.
-   - The **fresh production C1-1** precheck, immediately before C1, must read EXPECTED_PRE_STATE, with every exact before-image and guard still matching.
-3. **C1.** Separate owner authorization before C1 → C1 apply → **C1 postcheck PASS** before R1 can be considered, then a read-only check of the current app.
-4. **R1.** The **fresh production R1-1** precheck, which can only pass after C1 is applied (its guard G06 requires the C1 categories) → separate owner authorization before R1 → R1 apply → **R1 postcheck PASS**.
-5. **Close.** Final application-level (read-only) verification before the edit window closes.
-6. **After the window.** A1 (application release) and V1 (spec §27 audit) remain separate, later authorizations (spec §21 order C1 → R1 → A1 → V1).
+   - The **fresh production C1-1** precheck, re-run immediately before C1, must read EXPECTED_PRE_STATE, with every exact before-image and guard still matching.
+5. **C1.** Separate owner authorization before C1 → C1 apply → **C1 postcheck PASS** before R1 can be considered, then a read-only check of the current app.
+6. **R1.** The **fresh production R1-1** precheck, which can only pass after C1 is applied (its guard G06 requires the C1 categories) → separate owner authorization before R1 → R1 apply → **R1 postcheck PASS**.
+7. **Close.** Final application-level (read-only) verification and evidence closeout before the edit window closes.
+8. **After the window.** A1 (application release) and V1 (spec §27 audit) remain separate, later authorizations (spec §21 order C1 → R1 → A1 → V1).
 
 **Any production drift = STOP.** Do not regenerate packages, relax guards, update expected values, or repair production automatically. Return the exact drift for owner review.
 
