@@ -1,5 +1,58 @@
 # Codex Status: Herndon Financial OS
 
+## CURRENCY NOTE (2026-09-14) — P3b-1 C1/R1 PRODUCTION-PACKAGE REHEARSAL PASS (owner-accepted); NO production mutation; next gate = PRODUCTION EXECUTION READINESS / FRESH PRECHECK
+
+**Authority (unchanged).**
+- The P3b-1 spec **rev 3.2** (`docs/specs/p3b-1-register-budget-data-integrity-spec-2026-09-13.md`, §30.1) remains authoritative and **frozen**.
+- The read-only production preflight (P3B1-PF, 2026-09-13) **passed** against the Sep 13 production state: 19/19 blocking checks, 0 material drift, the 2 owner confirmations resolved (2026-09-13c note).
+
+**Packages — frozen, unchanged.**
+- The guarded SQL packages live outside this public repo, hash-pinned by their package manifest.
+- **C1** = 18 controlled mutations (categories, slot backings, archive, labels, Week/Event line keys).
+- **R1** = 49 transaction categorizations (12 existing + 36 new + 1 family repayment → `misc.extra`).
+- The **2 owner-approved historical NULL-category exceptions remain by design** (spec §11). They are not defects.
+- Each package ships a read-only precheck and postcheck, a guarded apply, and a rollback with its own postcheck.
+- **No package, spec, schema, data or `index.html` change** came from the rehearsal.
+
+**Rehearsal (spec §26 gate 3) — Run 2, Attempt 2: PASS (2026-09-14), accepted by the owner as the authoritative P3b-1 production-package rehearsal.**
+- **Environment:** a disposable Supabase preview branch holding a DR-1-method restore of the pinned, encrypted Sep 13 production snapshot. The encrypted and plaintext hashes were verified before use. The harness has no production code path.
+- **Sequence passed in full:**
+  - **T0:** the branch reproduces the production preflight exactly (23/23, 0 diffs), and the C1-1 precheck reads EXPECTED_PRE_STATE.
+  - **T4 atomicity:** an injected mid-C1 failure left zero C1 effects.
+  - **T3 guard refusals (C1 G08/G02/G10b; R1 G06/G01/G03):** each refused with zero mutation.
+  - **T1 success:** C1 → C1 postcheck PASS; R1 → R1 postcheck PASS.
+  - **T2:** re-runs of C1 and R1 refused.
+  - **T3f:** C1 rollback while R1 was applied refused.
+  - **T5:** R1 rollback then C1 rollback, both postchecks PASS; content and schema fingerprints returned to baseline. `updated_at` advancement is the only strict-fingerprint difference, by design.
+- **35/35 post-run evidence checks** passed, verified from the output files rather than log text.
+- **Three-part PASS contract satisfied:** process exit status 0; `ALL REHEARSAL TESTS PASS` is the final log line; no STOP line anywhere in the run log.
+- **Teardown:** the branch was deleted and confirmed absent; plaintext was removed; the encrypted archive and all 10 package files re-verified hash-valid after the run.
+- **Evidence** is frozen read-only outside the repo in `~/Herndon-Financial-OS-Evidence/p3b-1-rehearsal-2026-09-13/run2-attempt2-pass/`, with a hash manifest. The full run history is in `REHEARSAL-RECORD.md` in the same folder.
+- **Limitation:** the rehearsal proves **package behavior against the pinned Sep 13 snapshot only**. It does **not** establish current production pre-state.
+
+**Execution history — closed rehearsal-harness findings (NOT outstanding P3b-1 production defects).** The earlier attempts STOPped fail-closed on harness defects. Each was fixed in the harness only, proven offline under macOS Bash 3.2 (a control suite plus mutation testing), and re-gated by the owner:
+1. **Fingerprint SQL:** `pg_trigger.tgenabled` (catalog type `"char"`) needed an explicit text cast (run 1).
+2. **Fail-open capture:** a fingerprint captured inside `$(...)` lost `set -e`; capture is now main-shell only and validated (run 1).
+3. **Manifest ordering:** the dump manifest's row order followed locale collation (`en_US` vs `C`). Fixed by pinning `LC_ALL=C` and comparing manifests canonically (run 2 attempt 1; zero database contact).
+4. **Incomplete-run exit 0:** Bash 3.2 reports status 0 to the EXIT trap after a `set -u` abort. Fixed with an explicit success epilogue; every incomplete run now exits 1 with a STOP line.
+5. **Timezone:** `pg_restore` renders the TOC archive time in the process time zone. Fixed by pinning `TZ` plus a self-test.
+6. **STOP logging:** the STOP line depended on stderr being open. The log file is now written first; terminal display is best-effort.
+7. **Verifier identity:** the filled branch identity was initially self-derived in the verifier. It is now tied to the identity observed on the branch.
+
+**Canonical next gate: PRODUCTION EXECUTION READINESS / FRESH PRECHECK. Production C1/R1 execution is NOT authorized.** Production execution stays separately owner-controlled and requires, in order:
+1. **Edit window.** An explicit production edit window, scheduled away from the Saturday cash-certification sitting (Cal 38 remains protected).
+   - No Register or Budget/Manage Lines writes by Adam or Wendy during the window.
+   - Per the package README, the window opens with a **fresh encrypted production restore point** (DR-1 method).
+2. **Integrity before any mutation.**
+   - Package and manifest hash verification.
+   - The **fresh production C1-1** precheck, immediately before C1, must read EXPECTED_PRE_STATE, with every exact before-image and guard still matching.
+3. **C1.** Separate owner authorization before C1 → C1 apply → **C1 postcheck PASS** before R1 can be considered, then a read-only check of the current app.
+4. **R1.** The **fresh production R1-1** precheck, which can only pass after C1 is applied (its guard G06 requires the C1 categories) → separate owner authorization before R1 → R1 apply → **R1 postcheck PASS**.
+5. **Close.** Final application-level (read-only) verification before the edit window closes.
+6. **After the window.** A1 (application release) and V1 (spec §27 audit) remain separate, later authorizations (spec §21 order C1 → R1 → A1 → V1).
+
+**Any production drift = STOP.** Do not regenerate packages, relax guards, update expected values, or repair production automatically. Return the exact drift for owner review.
+
 ## CURRENCY NOTE (2026-09-13c) — P3b-1 SPEC FROZEN (rev 3 → controlled rev 3.1 → rev 3.2); read-only production preflight complete; NO production mutation
 
 **Specification.**
@@ -24,7 +77,7 @@
 - Execution is now **gate-based**: P3b-1 may reach production earlier only if every frozen/amended gate passes and the system returns to a fully verified clean state before the session ends.
 - This is not deploy authorization. **Cal 38 remains protected.** Any drift, unresolved confirmation, package/rehearsal mismatch, test failure, rollback uncertainty, incomplete verification, unsafe intermediate state, or impairment of the Saturday cash-certification workflow = STOP.
 
-**Next gate.** C1/R1 guarded packages are authored (outside the repo) and await independent review. Then rehearsal authorization (spec §26), then production execution and the application release under separate authorizations, per the amended dependency graph (spec §21).
+**Next gate** *(superseded by the 2026-09-14 note: packages independently reviewed; rehearsal PASS)*. C1/R1 guarded packages are authored (outside the repo) and await independent review. Then rehearsal authorization (spec §26), then production execution and the application release under separate authorizations, per the amended dependency graph (spec §21).
 
 ## CURRENCY NOTE (2026-09-13b) — E2E-ISO-1 COMPLETE: normal e2e is production-isolated (control fix before P3b-1)
 
@@ -898,7 +951,7 @@ Prepare the system for Wendy using the Budget tab in live household workflow whi
 
 ## Next Candidate Work
 
-**Current pointer (2026-09-13):** see the 2026-09-13 and 2026-09-13b currency notes at the top of this file. Sequence: e2e production-isolation control (E2E-ISO-1, COMPLETE 2026-09-13) → **P3b-1** (Sep 18 scope-freeze gate) → 2027 rollover (spec ~Oct 12; production Dec 12-19, Dec 19 hard latest) → P3c-2 (first post-rollover; spec not authorized) → 5G-2. DR-1 and P3c-1 are closed. The list below is historical.
+**Current pointer (2026-09-14):** see the 2026-09-14 currency note at the top of this file (P3b-1 spec rev 3.2 frozen; production preflight passed; C1/R1 rehearsal PASS; next gate = production execution readiness / fresh precheck; production C1/R1 not authorized). Sequence: e2e production-isolation control (E2E-ISO-1, COMPLETE 2026-09-13) → **P3b-1** (spec frozen; C1 → R1 → A1 → V1 under separate authorizations) → 2027 rollover (spec ~Oct 12; production Dec 12-19, Dec 19 hard latest) → P3c-2 (first post-rollover; spec not authorized) → 5G-2. DR-1 and P3c-1 are closed. The list below is historical.
 
 Active next-phase pointer: 5G-0 CLOSED, 5G-1A SHIPPED, UX-0 SHIPPED, UX-0.5 SHIPPED, 5G-1A.5 SHIPPED+pushed, **5G-1C-1 SHIPPED+pushed** (`de4e3c0`, production-verified 2026-07-08). **5G-1 staging DB/security layer is validated and pushed** (RLS smoke `eeee4cb`, `app_environment` hardening `7f0d0a0`); **production DDL and the app-side functional build remain gated**. IRA-goal correction ($7,000→$7,500, funded amounts preserved) is DONE (commit `1dcc686`); the AMEX sub-`MIN_XFR` waterfall deadlock it exposed is FIXED by 5G-1A.5 (commit `f307db7`, pushed — see "## 5G-1A.5 SHIPPED"). **5G-1C-2 — Goal Funding State Integrity** (review doc §5/§7 Phase B: week-anchored `goal_funding_snapshots` + runModel overlay): the plan doc was updated with Fable R1–R13 (`e1eac07`), the pre-snapshot golden-master identity gate was captured (`e0be9dc`), **C2 (the staging SQL package) is staging-validated + pushed** (`5bbcab2`), and **C3 (the app-side overlay) is SHIPPED + DEPLOYED** (`c6fbb32`, pushed; live `BUILD_TS 2026-07-09T08:51:21` on dashboard.herndons.us; static 1392/0, e2e 133/0; inert until snapshot rows exist — see "## 5G-1C-2 C3 SHIPPED + DEPLOYED"). **5G-QA-1 is COMPLETE and pushed** (Slice A `05a5558` tag-based smoke mode + Slice B `d8e21a0` deterministic waits; `e2e.js`-only; full 133/0 default gate preserved, runtime 538.45s→415.77s, smoke 19/0 opt-in ~44–50s, fallback 0/0 — see "## 5G-QA-1 SHIPPED"). **5G-1C-2 production SQL package is CREATED + PUSHED** (`3061644`; six `docs/phase-5g-1c-2-prod-*` files — see "## 5G-1C-2 PRODUCTION SQL PACKAGE COMMITTED"). **E1 (production DDL) is COMPLETE + GREEN (2026-07-09)** — preflight/migration/validation/inert-check all PASS against Adam-Dashboard (usayoldrawwmjsmretin) under runbook `e1b9252`; production now holds `goal_funding_snapshots` + `save_goal_funding_snapshots`, schema-only and EMPTY; app behavior-inert (see "## 5G-1C-2 E1 COMPLETE"). **Immediate next work item is E2 (first-anchor seed)** — manual Supabase in Adam-Dashboard (usayoldrawwmjsmretin), separate explicit in-session Adam go-ahead required; **do NOT start E2 without it.** **E2 reconfirm:** production's latest reconciled week is **4** (E1 preflight P6), so the First-Anchor Value Card must use the **wk-4 basis** or wait for a wk-5 reconciliation. No first-anchor seed has run. THEN 5G-1D write-through. Optional still-open: the capped pre-5G UX cleanup bundle (FLOW-2, FLOW-1, WK-1, REG-1, SYS-2; rider REG-2). Future candidate (not sequenced): TX-1 — see `docs/tx-1-candidate.md`. **SUPERSEDED (2026-07-10):** the "wk-4 basis or wait for wk-5" language above is superseded by the cleared E2 runbook §2 decision to **wait for the Week-5 reconciliation** (wk-4 basis not used). The 5G-1D planning stack (plan + correction spec + implementation-readiness package) is now **CLEARED and on main**; **E2 is Gate 0 (OPEN / BLOCKING)** and **5G-1D implementation is BLOCKED until Gate 0 closes** — see "## 5G-1D READINESS CLEARED — E2 / GATE 0 BLOCKING (2026-07-10)".
 
