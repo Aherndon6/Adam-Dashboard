@@ -1,5 +1,30 @@
 # Codex Status: Herndon Financial OS
 
+## CURRENCY NOTE (2026-09-15): P3b-1 rev 2.6 N-OPTIONS candidate — R2b ACCEPTED and CLOSED (design/offline track only); S-01, R-T01, R-T02 CLOSED; NO production/CDN contact; CDN/hash acquisition remains a separate unopened owner-authorized gate; no rev 2.6 runbook authorized
+
+**What this closes.** The rev 2.6 application-view Network-observation *candidate* design and offline tooling (the response to the Sep 14 S4 at Step 3.5 — OPTIONS preflights outside the rev 2.5 allowlist) reached **R2b, owner-accepted and CLOSED (2026-09-15)**. This is the offline design/tooling track only. It does **not** touch production, does not change rev 2.5, and authorizes nothing production-facing.
+
+**Where it lives.** Candidate design + tooling + regression evidence are in the private owner evidence folder `~/Herndon-Financial-OS-Evidence/p3b-1-rev26-design-2026-09-14/` (outside this public repo). Durable closeout: `R2b-CLOSEOUT-2026-09-15.md` there. Candidate design `N-OPTIONS-DESIGN.md` SHA-256 `86aed97d8f92a0dae23ac298d3ef2919825423f075940cadf682a348ac4a7498`; candidate production-tooling pins recorded in that closeout and in `tooling-evidence/20260915T185103Z/tool-hashes.txt` (33-entry inventory, `INVENTORY PASS`).
+
+**Closed findings.**
+- **S-01 (environment root of trust): CLOSED by construction.** Executable Perl `shasum` removed from production/gate trust paths; hashing anchored on `python3 -I -B` hashlib; launchers positively construct a minimal environment; fail-closed environment-name allowlisting protects the boundary; trust chain is runbook → independently authenticated gate → authenticated execution set.
+- **R-T01: CLOSED.** Production-vs-test mode is decided by canonical production-step identity (`smoke`/`3.5`/`5.4`/`7.1`/`rb`); `--test` (any form) cannot redirect a production invocation into test containment; runner and collector share one definition.
+- **R-T02: CLOSED.** `python3 -I -B` is the security boundary; the classifier's in-process isolated-mode self-check detects only a benign omission of `-I` and is not represented as protection against hostile pre-`main()` Python startup influence.
+
+**Final validation** (`tooling-evidence/20260915T185103Z/`, every required rc=0): env-trust 34/34; S-2 gate simulation 28/28; hermetic-python 6/6; classifier 310/310; mutation **0 load-bearing survivors** (5 documented-equivalent mutants preserved as such); localhost 98/98 headed and 98/98 headless; exact-build 19/19 headed and 19/19 headless; collector-secret 6/6; meta/population forgery 20/20; production smoke under real PTY PASS; non-TTY refusals 3/3; N16 0 hits; N17 clean.
+
+**Fable disposition:** PASS — R-T01 CLOSED, R-T02 CLOSED, no BLOCKING, no REQUIRED.
+
+**Deferred (NON-BLOCKING), does not reopen R2b:** the classifier comment at `netview_classify.py:841-842` still overclaims ("without -I no verdict is produced"); design §19 governs. Bounded documentation/code-comment harmonization to address only when `netview_classify.py` is next legitimately modified/re-pinned.
+
+**Not authorized by this acceptance.**
+- **CDN/hash acquisition** (exact Chart.js 4.4.1 and served Supabase JS bodies/hashes; real-library headed exact-build): a **separate owner-authorized gate that has NOT started.** Production script pins remain null (`SCRIPT_HASH_UNPINNED`).
+- **rev 2.6 production runbook:** NOT authorized (not drafted/frozen).
+- **Production, staging, Supabase, live dashboard, CDN, GitHub, npm:** no contact occurred.
+- **Rev 2.5** stays historically frozen and operationally blocked at `4b3a3aaaf65a9c200cd0dabf84204af0f38af5592063276c3efee2956276cab7`. **Production remains NOT AUTHORIZED.** The P3b-1 production-readiness track (below) is unchanged.
+
+**Documentation only.** No code, test, schema, SQL, data, production or deployment change in this public repo. Not pushed.
+
 ## CURRENCY NOTE (2026-09-14b): P3b-1 GATE STEP 1 (OFFLINE PRODUCTION-EXECUTION READINESS) PASS; decisions recorded; execution runbook rev 2.5 APPROVED; NO production contact; next gate = controlled-session isolation prerequisite, then separately owner-authorized production precheck and application-view authority
 
 **Status at a glance.**
