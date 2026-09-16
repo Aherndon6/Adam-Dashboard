@@ -1,5 +1,19 @@
 # Codex Status: Herndon Financial OS
 
+## CURRENCY NOTE (2026-09-16b): P3b-1 C1/R1 execution runbook rev 2.7.1 FROZEN (current execution authority); production sitting NOT started; C1/R1 NOT AUTHORIZED
+
+**Current C1/R1 production execution authority: rev 2.7.1, FROZEN 2026-09-16.** Path `~/Herndon-Financial-OS-Evidence/p3b-1-rev271-execution-runbook-2026-09-16/RUNBOOK-rev2.7.1.md`, SHA-256 `ffa2cf4a8e957fb922ac7277bcf6b12cca9bc47ae1c8212242a46affad281245`. Freeze record `FREEZE-RECORD.md` in the same folder.
+
+- **What it is:** an integration, not a redesign. The backbone is rev 2.5 (`4b3a3aaa…`). Its manual DevTools app-view control is replaced by the validated rev 2.6 N-OPTIONS control (`0321afdd…`, CLOSED/PASS) at checkpoints 3.5 / 5.4 / 7.1 / rb. No tooling changed.
+- **History:** rev 2.7 (`a4a496e2…`) was frozen earlier the same day. **D-FRZ-1** was then found, after the freeze and before any execution: rev 2.7 required repository `HEAD` to equal commit `d601c11`, so a docs-only commit would have caused a false STOP. **No production sitting took place under rev 2.7.** Rev 2.7.1 closes D-FRZ-1 by checking three things separately: repository consistency (`HEAD` == live remote `main`), application build (`index.html` blob `6bf72fc5…`), and served identity (unchanged). `d601c11` remains historical provenance. Rev 2.7 is superseded for execution and kept as history.
+- **Pinned inputs (all verified unchanged):** C1/R1 package manifest `c8791ad1…` (C1 = 18 mutations, R1 = 49 writes); Step-2/3 toolchain `expected-hashes.sha256` `3b3423c0…`; N-OPTIONS EXPECTED `f854680d…`, classifier `3c41825e…`, population `e90d9afa…`; build `index.html` blob `6bf72fc5…` / served Document `7be1538a`.
+- **Execution:** the sitting uses a RUN folder created on the day the owner chooses; no calendar date is frozen, and Saturday certification wins. Normal recovery is the guarded C1-9/R1-9 rollback. The Step-3 restore point is for disaster recovery only.
+- **Status:** **Production sitting NOT started. C1 = NOT AUTHORIZED. R1 = NOT AUTHORIZED.** AUTH-C1 and AUTH-R1 remain separate gates; A1 and V1 are later, separate authorizations. Deferred and non-blocking: NB-A (served-identity files are overwritten at each checkpoint) and N-3 (classifier comment). Details are in the private freeze records.
+
+**Documentation only.** No code, SQL, schema, data, production, tooling, package, or evidence change.
+
+---
+
 ## CURRENCY NOTE (2026-09-16): P3b-1 rev 2.6 N-OPTIONS — PRODUCTION SITTING ACCEPTED (PASS); application-view validation CLOSED; Option C exact-version build deployed; exact-byte window CLOSED; C1/R1 STILL NOT AUTHORIZED
 
 **Canonical state.** The rev 2.6 N-OPTIONS application-view network-observation control (the response to the Sep-14 S4 at Step 3.5 — OPTIONS preflights outside the rev 2.5 allowlist) reached its **production sitting, owner-accepted PASS (2026-09-16)**. This closes the application-view observation gate for P3b-1. It does **not** close P3b-1 as a whole (see governance line below).
