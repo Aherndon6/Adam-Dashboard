@@ -1,6 +1,34 @@
 # Codex Status: Herndon Financial OS
 
+## CURRENCY NOTE (2026-09-16): P3b-1 rev 2.6 N-OPTIONS — PRODUCTION SITTING ACCEPTED (PASS); application-view validation CLOSED; Option C exact-version build deployed; exact-byte window CLOSED; C1/R1 STILL NOT AUTHORIZED
+
+**Canonical state.** The rev 2.6 N-OPTIONS application-view network-observation control (the response to the Sep-14 S4 at Step 3.5 — OPTIONS preflights outside the rev 2.5 allowlist) reached its **production sitting, owner-accepted PASS (2026-09-16)**. This closes the application-view observation gate for P3b-1. It does **not** close P3b-1 as a whole (see governance line below).
+
+**Deployed production build (Option C exact-version dependency hardening).**
+- Commit **`d601c11d717520a40ded3a90e87ad1b0bfb790b7`** (HEAD == origin/main), pinning supabase-js CDN from floating `@2` → exact `@2.116.0` (index.html:809) so the approved-body hash is maintainable (F9 closed-realm).
+- Served Document (index.html) SHA-256 **`7be1538af6cdf7a5584f569336bfc7d57fe5c210da955fbbd6b6b46e4cbea02e`**; BUILD_TS **`2026-09-15T18:21:53`**.
+- supabase-js@2.116.0 body **`84ee9bf45695c1dd3ba1595b6bcfb0f09672434631351ffc8ebe9140545d5ff6`**; Chart.js@4.4.1 body **`74401d738dd3e03ee5dfb3b6841210fe2c4ead8a960c4011ca4ba0b78a9fd8f3`**.
+
+**Frozen rev 2.6 authorities (re-frozen 2026-09-16 after the macOS 27.0 /usr/bin/python3 drift re-pin; gate bytes unchanged).** RUNBOOK `0321afddf0f2aef81a78ec9fa8ed911efb3463fdf655239de9e57fd673d0da3d`; OWNER-RUN-CARD `02891da70279a4d468b09ecb39f41685f1b3a7db480616d7180ab8f53900033b`; S2-EXPECTED `f854680dec0ad77d7d71571575a1907b17d16dcaa03e5684501b71a43ddd470a` (python3 pin `34129c71…`); S-2 gate `b07713a54e5e401e96f8e3eb67321d22e10cd79ac0474c3785aa83d863a128d0`. Package: `~/Herndon-Financial-OS-Evidence/p3b-1-rev26-runbook-2026-09-15/` (freeze record `OWNER-REFREEZE-2026-09-16.md`).
+
+**Accepted sitting.** RUN `~/Herndon-Financial-OS-Evidence/p3b-1-production-20260916-065309` (single accepted sitting; no rerun of the graded step; no replacement RUN).
+- Production 3.5 classifier **PASS**: `conditions=- requests=55 A=0/0 A_stack=none B=0/0 B_stack=none`; `doc_sha256_ok=true`, `scripts_sha256_ok=true`, reads 25/25. Independently reproduced from the raw jsonl with the frozen classifier/population.
+- Smoke **PASS**; containment/residue **PASS** (`ROOT_REMOVED COLLECTOR_EXIT=0 CONTAIN_EXIT=0`, zero residual roots, zero writes beyond the allowlisted Auth token POST); pre/post production identity **PASS** (served bytes = frozen pins at both bookends).
+- A/B = 0/0 is contract-valid (no migration write needed; the live A/B caller-chain was validated in Stage-A). The smoke argparse operator typo was pre-classification and left no evidentiary footprint.
+
+**Exact-byte publication exception window: CLOSED** by this accepted sitting closeout under the frozen RUNBOOK authority (§20.8). The standing repository publication procedure (`push_to_github.sh` / pre-commit BUILD_TS stamping) resumes for ordinary future work.
+
+**Governance — do NOT over-claim.** Rev 2.6 / N-OPTIONS application-view validation: **CLOSED / PASS**. P3b-1 production data-integrity execution: **PENDING**. **AUTH-C1 / AUTH-R1 remain NOT AUTHORIZED** and each requires its own separate owner authorization; this sitting is not authorization for either package. D4 stands (Adam runs all production SQL; Claude never holds production credentials).
+
+**Durable evidentiary authority (do not reproduce here):** `~/Herndon-Financial-OS-Evidence/p3b-1-rev26-sitting-closeout-2026-09-16/CLOSEOUT.md`.
+
+**Documentation only.** No code, test, schema, SQL, data, production, tooling, RUNBOOK/RUN-CARD, or sitting-evidence change from this closeout.
+
+---
+
 ## CURRENCY NOTE (2026-09-15): P3b-1 rev 2.6 N-OPTIONS candidate — R2b ACCEPTED and CLOSED (design/offline track only); S-01, R-T01, R-T02 CLOSED; NO production/CDN contact; CDN/hash acquisition remains a separate unopened owner-authorized gate; no rev 2.6 runbook authorized
+
+> **[SUPERSEDED for currency by the 2026-09-16 note above — preserved as historical truth.]** As of 2026-09-15 the statements below were accurate: no rev 2.6 runbook was authorized and the CDN/hash acquisition gate was unopened. Both have since been opened and completed under later owner authorizations: the CDN/hash acquisition was performed, Option C (exact-version pin) was deployed to production as `d601c11`, the rev 2.6 runbook was drafted/frozen/re-frozen, and the production sitting passed (see the 2026-09-16 note). The "not authorized / unopened" statements in this note describe the 2026-09-15 state only and no longer reflect current authorization.
 
 **What this closes.** The rev 2.6 application-view Network-observation *candidate* design and offline tooling (the response to the Sep 14 S4 at Step 3.5 — OPTIONS preflights outside the rev 2.5 allowlist) reached **R2b, owner-accepted and CLOSED (2026-09-15)**. This is the offline design/tooling track only. It does **not** touch production, does not change rev 2.5, and authorizes nothing production-facing.
 
