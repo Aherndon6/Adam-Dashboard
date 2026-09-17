@@ -1,5 +1,43 @@
 # Codex Status: Herndon Financial OS
 
+## CURRENCY NOTE (2026-09-17): P3b-1 C1/R1 execution runbook rev 2.7.2 FROZEN (current execution authority); 2026-09-17 sitting closed FAILED S0-RESTORE with no production mutation; production sitting NOT authorized; C1/R1 NOT AUTHORIZED
+
+**Current C1/R1 production execution authority: rev 2.7.2, FROZEN 2026-09-17.** Path `~/Herndon-Financial-OS-Evidence/p3b-1-rev272-execution-runbook-2026-09-17/RUNBOOK-rev2.7.2.md`, SHA-256 `30aafc7d001600a22204e94f60550150fa8637643778833b00743d99a8d9a6c0`. Freeze record `FREEZE-RECORD.md` in the same folder. It supersedes rev 2.7.1 (`ffa2cf4a…`), which stays preserved unchanged. Rev 2.5 (`4b3a3aaa…`), rev 2.6 (`0321afdd…`) and rev 2.7 (`a4a496e2…`) are also unchanged.
+
+- **Why:** the 2026-09-17 sitting (`p3b-1-production-20260917T094210Z`, run under rev 2.7.1) stopped at Step 3.2. The restore-point archive listed 57 `TABLE DATA` entries against a frozen expectation of 53. **Classification: CLOSED / FAILED S0-RESTORE. Production mutation: NONE.** The owner-directed cleanup deleted the plaintext dump; closeout manifest `ac3712b6…`.
+  - The four extra entries are Supabase Auth tables (`scim_users`, `scim_tokens`, `mfa_recovery_code_sets`, `mfa_recovery_codes`). Their source is proven in public supabase/auth v2.197.0 migrations.
+  - That the provider rollout reached this project is strongly supported, not proven. **U-2 (production Auth version / rollout time): not required for this freeze.**
+- **D-RESTORE-1 (closed):** the aggregate `TABLE_DATA` count is withdrawn. It both false-STOPped on provider additions and could false-PASS a missing application table. It is replaced by a hash-pinned restore gate that checks:
+  - the exact public population, owners and sequences;
+  - the DR-critical auth tables;
+  - that no reference provider table was removed or re-owned, while provider additions PASS + REPORT;
+  - saved-vs-fresh TOC binding;
+  - gzip compression;
+  - that every data block is present and decodes;
+  - exact counts bound to Step 2.2.
+- **D-RESTORE-1b (closed):** a real synthetic archive showed the first gate's full-read check passes a TOC corruption that silently drops a table's data. It is now caught by COPY-block accounting.
+- **C6/T3 (closed by G14, owner-adopted):** altered DDL text inside the archive passed the second gate. **G14** takes a second read-only `pg_dump --schema-only` of the same database right after the restore-point dump, under a fresh identity gate. It requires the archive's schema render to be byte-identical to that read, using `pg_restore --restrict-key` so there is no normalization.
+  - AUTH-PRE covers this read (runbook §9.9, item 6a). No production write is added.
+  - **A trial restore is not required in the production sitting.**
+- **Gate versions:** current `restore_toc_gate_v3.py` `7b1f1d14…`. Superseded and preserved as evidence: v2 `715162f7…` (C6/T3 false PASS) and v1 `45c42551…` (false PASS on a dropped table's data).
+- **Operating model:**
+  - one fresh RUN;
+  - one consolidated owner preflight attestation, plus machine-checked preconditions;
+  - AUTH-PRE and AUTH-APPVIEW;
+  - ten owner-run fail-closed batches, each checked by Claude before the next;
+  - the 4.5 contemporaneous attestation;
+  - a hard STOP before AUTH-C1.
+
+  AUTH-C1 and AUTH-R1 are procedural owner gates: the apply helper does not check them. No mutation command appears before its authorization. From S-1 to the STOP: 2 attestations, 2 gates, 5 private entries, 11 owner-entered lines, 6 collector inputs.
+- **Validation (offline/synthetic):** gate unit tests 97/97; v1/v2/v3 regression 0 mismatches; G14 real-archive 27/27; batches on the exact frozen text 105/105 non-interactive and 6/6 interactive; supersession proof 35/35; non-authoritative launch card validated 60/60.
+- **Unchanged pinned inputs:** C1/R1 package manifest `c8791ad1…` (10/10); `expected-hashes.sha256` 18/18; `session-functions.sh` `06aa13c2…`; N-OPTIONS S2-EXPECTED `f854680d…` and tools; `index.html` blob `6bf72fc5…`, BUILD_TS `2026-09-15T18:21:53`.
+- **Follow-ups outside this freeze:** historical plaintext pre-operation dumps need a disposition decision (no cleanup authorized). A local PostgreSQL test install is kept unlinked and is not part of the sitting toolchain.
+- **Status:** **Production sitting NOT authorized. C1 = NOT AUTHORIZED. R1 = NOT AUTHORIZED.** A1 and V1 are later, separate authorizations. P3b-1 production data-integrity execution remains **PENDING**.
+
+**Documentation only.** No code, SQL, schema, data, production, tooling, package or evidence change.
+
+---
+
 ## CURRENCY NOTE (2026-09-16b): P3b-1 C1/R1 execution runbook rev 2.7.1 FROZEN (current execution authority); production sitting NOT started; C1/R1 NOT AUTHORIZED
 
 **Current C1/R1 production execution authority: rev 2.7.1, FROZEN 2026-09-16.** Path `~/Herndon-Financial-OS-Evidence/p3b-1-rev271-execution-runbook-2026-09-16/RUNBOOK-rev2.7.1.md`, SHA-256 `ffa2cf4a8e957fb922ac7277bcf6b12cca9bc47ae1c8212242a46affad281245`. Freeze record `FREEZE-RECORD.md` in the same folder.
