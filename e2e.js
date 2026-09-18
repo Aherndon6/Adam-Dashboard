@@ -252,6 +252,20 @@ function _isNonCdnHttp(u) {
 function _fixtureJson(status, body) {
   return { status, headers: Object.assign({ 'content-type': 'application/json' }, FIXTURE_CORS), body: JSON.stringify(body) };
 }
+// P3b-1 A1a: Register saves perform a fresh single-key category-authority read
+// (GET /rest/v1/categories?key=eq.<key>). Tests that exercise a save own that read and answer it
+// like PostgREST: only the requested key's row, [] for anything else.
+async function routeCategoryAuthority(page, rows) {
+  await page.route('**/rest/v1/categories?**', route => {
+    const m = /[?&]key=eq\.([^&]*)/.exec(route.request().url());
+    const key = m ? decodeURIComponent(m[1]) : null;
+    route.fulfill({ status: 200, contentType: 'application/json',
+      body: JSON.stringify((rows || []).filter(c => c.key === key)) });
+  });
+}
+const A1A_E2E_GROCERIES = { key: 'groceries', label: 'Groceries', parent_key: null, is_leaf: true,
+  lifecycle_status: 'active', behavior_class: 'discretionary', budget_treatment: 'expense' };
+
 function _fixtureRead(ctx, req, u) {
   const p = u.pathname;
   if (p === '/auth/v1/user') return _fixtureJson(200, FIXTURE_USER);
@@ -2594,6 +2608,7 @@ async function clickNav(page, id) {
       _budgetRegisterSpendLoadStatus = 'loaded';
       _budgetSelectedMonth = '2026-07-01';
       setSection('budget');
+      _budgetTransLoadStatus = 'loaded'; _budgetRegisterSpendLoadStatus = 'loaded'; // P3b-1 A1a (K3): entering Budget re-requests both sources; re-assert the loaded fixture pair so the grid renders from a complete pair, not a partial in-flight one
       renderApp();
       var el = document.getElementById('budget-content');
       var innerHtml = el ? el.innerHTML : '';
@@ -2623,6 +2638,7 @@ async function clickNav(page, id) {
       _budgetRegisterSpendLoadStatus = 'loaded';
       _budgetShowHelp = true; // expand the help panel so its text is present in the DOM
       setSection('budget');
+      _budgetTransLoadStatus = 'loaded'; _budgetRegisterSpendLoadStatus = 'loaded'; // P3b-1 A1a (K3): entering Budget re-requests both sources; re-assert the loaded fixture pair so the grid renders from a complete pair, not a partial in-flight one
       renderApp();
       var el = document.getElementById('budget-content');
       var innerHtml = el ? el.innerHTML : '';
@@ -2682,6 +2698,7 @@ async function clickNav(page, id) {
       _budgetRegisterSpendLoadStatus = 'loaded';
       _budgetSelectedMonth = '2026-07-01';
       setSection('budget');
+      _budgetTransLoadStatus = 'loaded'; _budgetRegisterSpendLoadStatus = 'loaded'; // P3b-1 A1a (K3): entering Budget re-requests both sources; re-assert the loaded fixture pair so the grid renders from a complete pair, not a partial in-flight one
       renderApp();
       var el = document.getElementById('budget-content');
       var innerText = el ? el.innerText : '';
@@ -3878,7 +3895,7 @@ async function clickNav(page, id) {
       _accountsCache = [{ key:'amex_gold', label:'AMEX Gold', lifecycle_status:'active' }];
       _registriesLoadStatus = 'loaded';
       _budgetTransactions = []; _budgetTransLoadStatus = 'loaded';
-      _budgetLineRulesCache = null; _budgetLineRulesLoadStatus = 'not_loaded';
+      _budgetLineRulesCache = []; _budgetLineRulesLoadStatus = 'loaded'; // P3b-1 A1a (K1): budget lines must be loaded for figures; an empty list keeps the row spend-only
       _budgetRegisterSpendCache = [{ category_key:'entertainment.week_1', amount:-40.00, transaction_date:'2026-07-01' }];
       _budgetRegisterSpendLoadStatus = 'loaded';
       _budgetSelectedMonth = '2026-07-01';
@@ -3892,7 +3909,7 @@ async function clickNav(page, id) {
           { id:'e1', transaction_date:'2026-07-01', account_key:'amex_gold', payee:'Mend Coffee', memo:'', category_key:'entertainment.week_1', amount:-12.98, cleared:true }
         ]); } });
       };
-      setSection('budget'); renderApp();
+      setSection('budget'); _budgetTransLoadStatus = 'loaded'; _budgetRegisterSpendLoadStatus = 'loaded'; renderApp(); // P3b-1 A1a (K3): re-assert the loaded fixture pair after entering Budget
       var bc = document.getElementById('budget-content');
       var h = bc ? bc.innerHTML : '';
       return {
@@ -4286,8 +4303,9 @@ async function clickNav(page, id) {
       if (route.request().method() === 'POST') { postFired = true; }
       route.fulfill({ status: 201, body: '[]' });
     });
+    await routeCategoryAuthority(page, [A1A_E2E_GROCERIES]); // P3b-1 A1a: valid category + authority
     await setupRegister(page, { txCache: [], formMode: 'add',
-      formData: { transaction_date: '2026-06-27', outflow: '45.00', payee: 'Fandango' } });
+      formData: { transaction_date: '2026-06-27', outflow: '45.00', payee: 'Fandango', category_key: 'groceries' } });
     await page.evaluate(() => { _saveTxForm(); });
     await page.waitForTimeout(200);
     assert(postFired, 'POST must fire once a non-blank payee is provided alongside a valid date/amount/account');
@@ -4323,16 +4341,18 @@ async function clickNav(page, id) {
         route.continue();
       }
     });
+    await routeCategoryAuthority(page, [A1A_E2E_GROCERIES]); // P3b-1 A1a: valid category + authority
     await setupRegister(page, { txCache: [], formMode: 'add',
-      formData: { transaction_date: '2026-06-27', payee: 'Walmart', outflow: '45.00' } });
-    await page.evaluate(() => {
+      formData: { transaction_date: '2026-06-27', payee: 'Walmart', outflow: '45.00', category_key: 'groceries' } });
+    await page.evaluate((cat) => {
       _accountsCache = [{ key: 'truist_checking', label: 'Truist Checking', lifecycle_status: 'active', starting_balance: 1000 }];
-      _categoriesCache = [];
+      _categoriesCache = [cat];
       _txLedgerAccountKey = 'truist_checking';
       _saveTxForm();
-    });
+    }, A1A_E2E_GROCERIES);
     await page.waitForTimeout(300);
     assert(capturedBody !== null, 'POST must have fired');
+    assert(capturedBody.category_key === 'groceries', 'POST body must carry the authorized category_key, got: ' + capturedBody.category_key);
     assert(capturedBody.amount === -45.00, 'amount must be negative for outflow, got: ' + capturedBody.amount);
     assert(capturedBody.source === 'manual', 'source must be manual');
     assert(capturedBody.account_key === 'truist_checking', 'account_key must be set');
@@ -4354,14 +4374,15 @@ async function clickNav(page, id) {
         route.continue();
       }
     });
+    await routeCategoryAuthority(page, [A1A_E2E_GROCERIES]); // P3b-1 A1a: valid category + authority
     await setupRegister(page, { txCache: [], formMode: 'add',
-      formData: { transaction_date: '2026-06-27', payee: 'Paycheck', inflow: '2000.00' } });
-    await page.evaluate(() => {
+      formData: { transaction_date: '2026-06-27', payee: 'Paycheck', inflow: '2000.00', category_key: 'groceries' } });
+    await page.evaluate((cat) => {
       _accountsCache = [{ key: 'truist_checking', label: 'Truist Checking', lifecycle_status: 'active', starting_balance: 1000 }];
-      _categoriesCache = [];
+      _categoriesCache = [cat];
       _txLedgerAccountKey = 'truist_checking';
       _saveTxForm();
-    });
+    }, A1A_E2E_GROCERIES);
     await page.waitForTimeout(300);
     assert(capturedBody !== null, 'POST must have fired');
     assert(capturedBody.amount === 2000.00, 'amount must be positive for inflow, got: ' + capturedBody.amount);
@@ -4421,13 +4442,14 @@ async function clickNav(page, id) {
         route.continue();
       }
     });
+    await routeCategoryAuthority(page, [A1A_E2E_GROCERIES]); // P3b-1 A1a: authority for the edit
     await setupRegister(page, { txCache: WR_MOCK_TX, formMode: 'edit',
       formData: { transaction_date: '2026-06-01', payee: 'Kroger Updated', memo: 'Edited',
                   amount: -85.50, outflow: '85.50', category_key: 'groceries', cleared: true },
       editId: 'wr-tx-001' });
     await page.evaluate(() => {
       _accountsCache = [{ key: 'truist_checking', label: 'Truist Checking', lifecycle_status: 'active', starting_balance: 1000 }];
-      _categoriesCache = [{ key: 'groceries', label: 'Groceries', lifecycle_status: 'active' }];
+      _categoriesCache = [{ key: 'groceries', label: 'Groceries', lifecycle_status: 'active', is_leaf: true, behavior_class: 'discretionary', budget_treatment: 'expense' }]; // P3b-1 A1a: full metadata
       _txLedgerAccountKey = 'truist_checking';
       _saveTxForm();
     });
@@ -4801,7 +4823,9 @@ async function clickNav(page, id) {
       setSection('transactions');
       setTxSubNav('register');
       _openTxForm('add', null); // do NOT pass a date
+      _txFormData.category_key = 'groceries'; // P3b-1 A1a: a category is required (date stays untouched)
     }, [WR_MOCK_ACCOUNTS, WR_MOCK_CATEGORIES, WR_MOCK_TX]);
+    await routeCategoryAuthority(page, WR_MOCK_CATEGORIES);
     // Do NOT touch the date field — leave it at whatever the form initialized
     // Enter outflow and payee (Phase 5E-10: payee is now required — this test's purpose is
     // verifying the default date is used untouched, not testing payee validation, so a valid
@@ -5082,7 +5106,8 @@ async function clickNav(page, id) {
     const { page, context } = await openApp(browser);
     const srv = p0Server(p0Rows(1237, 'acct_big', 8), 250);
     await p0OpenLedger(page, srv);
-    await page.evaluate(() => { _txFormMode = 'add'; _txFormData = { transaction_date: '2027-02-01', payee: 'SAVED-AFTER-500', outflow: '9.99' }; _saveTxForm(); });
+    await routeCategoryAuthority(page, [A1A_E2E_GROCERIES]); // P3b-1 A1a: valid category + authority
+    await page.evaluate((cat) => { _categoriesCache = [cat]; _txFormMode = 'add'; _txFormData = { transaction_date: '2027-02-01', payee: 'SAVED-AFTER-500', outflow: '9.99', category_key: 'groceries' }; _saveTxForm(); }, A1A_E2E_GROCERIES);
     await page.waitForFunction(() => _txLedgerLoadStatus === 'loaded' && _txLedgerCache && _txLedgerCache.length === 1238, null, { timeout: 30000 });
     assert(srv.posts === 1, 'exactly one owned POST expected, got ' + srv.posts);
     const s = await p0Snapshot(page);
@@ -5098,6 +5123,144 @@ async function clickNav(page, id) {
       assert(s.status === 'loaded' && s.n === 700, role + ': expected loaded 700, got ' + s.status + ' ' + s.n);
       const canWrite = await page.evaluate(() => canWriteFinancials() && !!document.querySelector('#transactions-content button') );
       assert(canWrite, role + ': write controls must remain available');
+      await context.close();
+    });
+  }
+
+  // ── Section A1A: P3b-1 A1a (spec rev 3.3 §21 A1a; owner rulings K1–K4) ─────────────────────
+  // Browser-level proof of the A1a contract for BOTH roles, against the hermetic fixture backend.
+  // Every write is owned by the test (deny-by-default stays in force); no production contact.
+  console.log('\n── Section A1A: P3b-1 A1a (category authority, uncategorized, Goals, Manage Lines, Budget load) ──');
+  const A1A_ARCHIVED = Object.assign({}, A1A_E2E_GROCERIES, { lifecycle_status: 'archived' });
+  for (const role of ['owner', 'household_admin']) {
+    await test('A1A-E1: ' + role + ' — stale cache cannot authorize a save; a valid save writes only after the fresh category read', async () => {
+      const { page, context } = await openApp(browser);
+      const posts = [], catReads = [];
+      let authRow = A1A_ARCHIVED;
+      await page.route('**/rest/v1/transactions**', route => {
+        if (route.request().method() === 'POST') { posts.push(JSON.parse(route.request().postData() || '{}')); return route.fulfill({ status: 201, contentType: 'application/json', body: '[]' }); }
+        return route.fulfill({ status: 200, contentType: 'application/json', body: '[]' });
+      });
+      await page.route('**/rest/v1/categories?**', route => { catReads.push({ url: route.request().url(), at: posts.length }); route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify([authRow]) }); });
+      await setupRegister(page, { txCache: [], formMode: 'add', categories: [A1A_E2E_GROCERIES],
+        formData: { transaction_date: '2026-09-10', payee: 'A1A Payee', outflow: '5.00', category_key: 'groceries' } });
+      await page.evaluate((r) => { USER_ROLE = r; _saveTxForm(); }, role);
+      await page.waitForTimeout(300);
+      assert(catReads.length === 1 && /key=eq\.groceries/.test(catReads[0].url), role + ': exactly one single-key category read expected, got ' + catReads.length);
+      assert(posts.length === 0, role + ': an archived authority result must refuse the save (POST fired)');
+      const err = await page.evaluate(() => ({ e: _txFormError, open: _txFormMode === 'add' }));
+      assert(err.e === 'That category is no longer active — choose another.' && err.open, role + ': refusal message / open form expected, got ' + JSON.stringify(err));
+      authRow = A1A_E2E_GROCERIES;
+      await page.evaluate(() => { _saveTxForm(); });
+      await page.waitForTimeout(300);
+      assert(catReads.length === 2 && catReads[1].at === 0, role + ': the second fresh read must happen before the write');
+      assert(posts.length === 1 && posts[0].category_key === 'groceries', role + ': the valid save must POST the authorized key, got ' + JSON.stringify(posts));
+      await context.close();
+    });
+  }
+
+  await test('A1A-E2: clicking the Cleared checkbox sends exactly {cleared} and never reads category authority', async () => {
+    const { page, context } = await openApp(browser);
+    const patches = []; let catReads = 0;
+    await page.route('**/rest/v1/transactions**', route => {
+      if (route.request().method() === 'PATCH') { patches.push({ url: route.request().url(), body: route.request().postData() }); return route.fulfill({ status: 204, body: '' }); }
+      return route.fulfill({ status: 200, contentType: 'application/json', body: '[]' });
+    });
+    await page.route('**/rest/v1/categories?**', route => { catReads++; route.fulfill({ status: 200, contentType: 'application/json', body: '[]' }); });
+    const uncatRow = Object.assign({}, WR_MOCK_TX[0], { id: 'a1a-null-1', category_key: null });
+    await setupRegister(page, { txCache: [uncatRow], categories: [A1A_E2E_GROCERIES] });
+    await page.click('input[type="checkbox"][onchange*="_toggleTxCleared(\'a1a-null-1\'"]');
+    await page.waitForTimeout(300);
+    assert(patches.length === 1, 'exactly one PATCH expected, got ' + patches.length);
+    assert(JSON.stringify(JSON.parse(patches[0].body)) === JSON.stringify({ cleared: true }), 'PATCH body must be exactly {"cleared":true}, got ' + patches[0].body);
+    assert(catReads === 0, 'clearing must not read category authority');
+    await context.close();
+  });
+
+  await test('A1A-E3: the category picker has a disabled "Select a category…" prompt; with no category authority Save is disabled with the cannot-save message', async () => {
+    const { page, context } = await openApp(browser);
+    await setupRegister(page, { txCache: [], formMode: 'add', categories: [A1A_E2E_GROCERIES], formData: { transaction_date: '2026-09-10', category_key: '' } });
+    const prompt = await page.$eval('#tx-form-category option[value=""]', o => ({ disabled: o.disabled, text: o.textContent }));
+    assert(prompt.disabled && prompt.text === 'Select a category…', 'prompt must be disabled "Select a category…", got ' + JSON.stringify(prompt));
+    await setupRegister(page, { txCache: [], formMode: 'add', categories: [], formData: { transaction_date: '2026-09-10', category_key: '' } });
+    const st = await page.evaluate(() => ({ disabled: !!document.querySelector('button[onclick="_saveTxForm()"]').disabled,
+      msg: (document.getElementById('tx-cat-unavailable') || {}).textContent || '' }));
+    assert(st.disabled, 'Save must be disabled while category authority is unavailable');
+    assert(/Categories unavailable — transactions can't be saved right now/.test(st.msg), 'cannot-save message missing, got: ' + st.msg);
+    await context.close();
+  });
+
+  await test('A1A-E4: selected-account uncategorized count and "Uncategorized only" filter (no extra fetch)', async () => {
+    const { page, context } = await openApp(browser);
+    let txReads = 0;
+    await page.route('**/rest/v1/transactions**', route => { txReads++; route.fulfill({ status: 200, contentType: 'application/json', body: '[]' }); });
+    const rows = [Object.assign({}, WR_MOCK_TX[0], { id: 'a1a-c1' }),
+      Object.assign({}, WR_MOCK_TX[0], { id: 'a1a-n1', category_key: null, transaction_date: '2026-06-02', created_at: '2026-06-02T10:00:00Z' }),
+      Object.assign({}, WR_MOCK_TX[0], { id: 'a1a-n2', category_key: null, transaction_date: '2026-06-03', created_at: '2026-06-03T10:00:00Z' })];
+    await setupRegister(page, { txCache: rows, categories: [A1A_E2E_GROCERIES] });
+    const before = txReads;
+    const count = await page.$eval('#tx-uncat-count', e => e.textContent);
+    assert(count === '2 uncategorized in this account', 'count text expected "2 uncategorized in this account", got ' + count);
+    await page.click('#tx-filter-uncat');
+    const shown = await page.$$eval('input[type="checkbox"][onchange*="_toggleTxCleared"]', els => els.map(e => /_toggleTxCleared\('([^']+)'/.exec(e.getAttribute('onchange'))[1]).sort());
+    assert(JSON.stringify(shown) === JSON.stringify(['a1a-n1', 'a1a-n2']), 'filter must show only the uncategorized rows, got ' + shown);
+    assert(txReads === before, 'count/filter must not fetch transactions');
+    await context.close();
+  });
+
+  await test('A1A-E5: a failed Register-spend load shows the whole-grid load error (no figures); Retry reloads both sources and restores the grid', async () => {
+    const { page, context } = await openApp(browser);
+    let failSpend = true;
+    await page.route('**/rest/v1/transactions?**', route => {
+      if (failSpend) return route.fulfill({ status: 500, contentType: 'application/json', body: '{"message":"fixture failure"}' });
+      return route.fulfill({ status: 200, contentType: 'application/json', body: '[]' });
+    });
+    await page.evaluate(() => {
+      _categoriesCache = [{ key: 'food_dining.groceries', label: 'Groceries', is_leaf: true, lifecycle_status: 'active', behavior_class: 'expense', budget_treatment: 'tracked' }];
+      _registriesLoadStatus = 'loaded';
+      _budgetLineRulesCache = [{ id: 'l1', category_key: 'food_dining.groceries', line_label: 'Groceries', amount: 500, start_month: '2026-06-01', end_month: null, is_active: true }];
+      _budgetLineRulesLoadStatus = 'loaded';
+      _budgetSelectedMonth = '2026-08-01';
+      setSection('budget');
+    });
+    await page.waitForSelector('#budget-load-error', { timeout: 10000 });
+    const failed = await page.evaluate(() => { const h = document.getElementById('budget-content').innerHTML; return { table: /<table/.test(h), strip: /Planned remaining/.test(h), text: document.getElementById('budget-load-error').textContent, retry: !!document.getElementById('budget-load-retry') }; });
+    assert(!failed.table && !failed.strip, 'no grid or figure strip may render after a failed current load');
+    assert(/Register transactions for this month couldn't be loaded/.test(failed.text) && failed.retry, 'failed source + Retry expected, got ' + failed.text);
+    failSpend = false;
+    await page.click('#budget-load-retry');
+    await page.waitForFunction(() => { const h = document.getElementById('budget-content').innerHTML; return /<table/.test(h) && !document.getElementById('budget-load-error'); }, null, { timeout: 10000 });
+    await context.close();
+  });
+
+  await test('A1A-E6: Goals shows "—" with a reason for Living Expenses and Planned Monthly Margin (Base Pay) when budget lines failed', async () => {
+    const { page, context } = await openApp(browser);
+    const h = await page.evaluate(() => { _budgetLineRulesLoadStatus = 'failed'; setSection('goals'); renderApp(); return document.getElementById('goals-content').innerHTML; });
+    assert(/Monthly Living Expenses<\/div>\s*<div[^>]*>—<\/div>/.test(h), 'Monthly Living Expenses must render "—"');
+    assert(/Planned Monthly Margin \(Base Pay\)<\/div>\s*<div[^>]*>—<\/div>/.test(h), 'Planned Monthly Margin (Base Pay) must render "—"');
+    assert(/Budget lines couldn't be loaded/.test(h) && /Planning estimate — not cash available to move\./.test(h), 'reason and frozen subtext expected');
+    assert(h.indexOf('Available for Goals / Month') === -1, 'superseded label must be gone');
+    await context.close();
+  });
+
+  for (const role of ['owner', 'household_admin']) {
+    await test('A1A-E7: ' + role + ' — Manage Lines is unavailable and refuses writes while budget lines are not loaded', async () => {
+      const { page, context } = await openApp(browser);
+      let blrWrites = 0;
+      await page.route('**/rest/v1/budget_line_rules**', route => {
+        if (route.request().method() !== 'GET') { blrWrites++; return route.fulfill({ status: 201, body: '' }); }
+        return route.fulfill({ status: 200, contentType: 'application/json', body: '[]' });
+      });
+      const r = await page.evaluate(async (role) => {
+        USER_ROLE = role; _budgetLineRulesLoadStatus = 'failed';
+        window._blrOpenAdd('2026-10-01');
+        const shown = !!document.getElementById('blr-unavailable');
+        _blrModal = { mode: 'add', key: 'home.google', monthIso: '2026-10-01', label: 'Google', amount: '10', scope: 'forward', saving: false, error: null, isIncome: false };
+        await _blrSaveAdd();
+        return { shown, err: _blrModal && _blrModal.error };
+      }, role);
+      assert(r.shown, role + ': the unavailable state must be visible');
+      assert(r.err && blrWrites === 0, role + ': the Add mutation must refuse (writes=' + blrWrites + ')');
       await context.close();
     });
   }

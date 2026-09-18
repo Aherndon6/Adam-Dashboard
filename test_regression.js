@@ -566,19 +566,21 @@ test('_renderGoalsSavings: monthly income = $15,938',()=>{
   assertIncludes(h,'15,938','Monthly income $15,938 not found');
 });
 test('_renderGoalsSavings: monthly living expenses correct for current week',()=>{
-  const h=_renderGoalsSavings(fullVm);
-  const w=getCurrentWeek();
-  // Use monthIso-based formula matching the actual fallback in _getBudgetLivingExpenses.
-  // Week 4 starts June 28 (still June), so monthIso='2026-06-01' — fallback returns base only.
-  // Using week-number thresholds diverges from the monthIso fallback on boundary weeks.
-  const wsd=getWeekStartDate(w);
-  const mo=wsd.getFullYear()+'-'+String(wsd.getMonth()+1).padStart(2,'0')+'-01';
-  const base=13638;
-  const rent=(mo>='2026-07-01')?100:0;
-  const diablos=(mo>='2026-07-01'&&mo<='2026-12-01')?750:0;
-  const glp=(mo>='2026-08-01'&&mo<='2026-12-01')?404:0;
-  const expected=(base+rent+diablos+glp).toLocaleString();
-  assertIncludes(h,expected,'Monthly living expenses '+expected+' not found for week '+w);
+  // P3b-1 A1a supersedes the old fallback-constant expectation: the card shows the budget-line sum
+  // when budget-line/category authority is loaded, and "—" (never a constant) when it is not.
+  const oS=_budgetLineRulesLoadStatus,oC=_budgetLineRulesCache,oR=_registriesLoadStatus,oK=_categoriesCache;
+  try{
+    _registriesLoadStatus='loaded'; _categoriesCache=[{key:'food_dining.groceries',is_leaf:true,lifecycle_status:'active',behavior_class:'expense',budget_treatment:'tracked'}];
+    _budgetLineRulesLoadStatus='loaded';
+    _budgetLineRulesCache=[{is_active:true,category_key:'home.mortgage_rent',amount:5300,start_month:'2026-06-01',end_month:null},
+      {is_active:true,category_key:'food_dining.groceries',amount:2000,start_month:'2026-06-01',end_month:null},
+      {is_active:true,category_key:'misc.goal_sweep',amount:2300,start_month:'2026-06-01',end_month:null}];
+    const h=_renderGoalsSavings(fullVm);
+    assert(/Monthly Living Expenses<\/div>\s*<div[^>]*>\$7,300\.00<\/div>/.test(h),'loaded: Monthly Living Expenses must show $7,300.00 for week '+getCurrentWeek());
+    _budgetLineRulesLoadStatus='not_loaded'; _budgetLineRulesCache=null;
+    const h2=_renderGoalsSavings(fullVm);
+    assert(/Monthly Living Expenses<\/div>\s*<div[^>]*>—<\/div>/.test(h2),'not loaded: Monthly Living Expenses must show "—", not a fallback figure');
+  }finally{_budgetLineRulesLoadStatus=oS;_budgetLineRulesCache=oC;_registriesLoadStatus=oR;_categoriesCache=oK;}
 });
 test('_renderGoalsSavings: funded definition present',()=>{
   const h=_renderGoalsSavings(fullVm);
@@ -5218,31 +5220,31 @@ test('5B-3: Income keys are not assignable',()=>{
   });
 });
 
-test('5B-4: _getBudgetLivingExpenses falls back to JS constants when cache is not loaded',()=>{
-  var origStatus=_budgetLineRulesLoadStatus;
-  var origCache=_budgetLineRulesCache;
-  _budgetLineRulesLoadStatus='not_loaded';
-  _budgetLineRulesCache=null;
-  // Fallback now uses monthIso from week start date — not weekNum thresholds.
-  // Wk1=Jun 7, Wk4=Jun 28 (still June!), Wk5=Jul 5, Wk8=Jul 26, Wk9=Aug 2, Wk30=Dec 27, Wk31=Jan 3 2027
-  // June: base $13,638
-  assert(_getBudgetLivingExpenses(1)===13638,'Wk1 (Jun 7) fallback must be $13,638');
-  assert(_getBudgetLivingExpenses(4)===13638,'Wk4 (Jun 28) fallback must be $13,638 — still June, not July');
-  // July: base + rent $100 + Diablos $750 = $14,488 (Wk5=Jul 5, Wk8=Jul 26 both July)
-  assert(_getBudgetLivingExpenses(5)===14488,'Wk5 (Jul 5) fallback must be $14,488');
-  assert(_getBudgetLivingExpenses(8)===14488,'Wk8 (Jul 26) fallback must be $14,488 — still July, GLP starts Aug');
-  // Aug-Dec: + GLP $404 = $14,892 (Wk9=Aug 2)
-  assert(_getBudgetLivingExpenses(9)===14892,'Wk9 (Aug 2) fallback must be $14,892');
-  assert(_getBudgetLivingExpenses(30)===14892,'Wk30 (Dec 27) fallback must be $14,892');
-  // Jan 2027: base + rent $100 = $13,738 (no Diablos, no GLP)
-  assert(_getBudgetLivingExpenses(31)===13738,'Wk31 (Jan 3 2027) fallback must be $13,738');
-  _budgetLineRulesLoadStatus=origStatus;
-  _budgetLineRulesCache=origCache;
+test('5B-4: _getBudgetLivingExpenses returns no value (null) when budget lines are not loaded or failed; month boundaries follow the calendar month',()=>{
+  // P3b-1 A1a supersedes the old fallback-constant expectation (spec §8.1: no fallback constants).
+  var oS=_budgetLineRulesLoadStatus,oC=_budgetLineRulesCache,oR=_registriesLoadStatus,oK=_categoriesCache;
+  try{
+    _registriesLoadStatus='loaded'; _categoriesCache=[{key:'food_dining.groceries',is_leaf:true,lifecycle_status:'active',behavior_class:'expense',budget_treatment:'tracked'}];
+    [['not_loaded',null],['failed',[{is_active:true,category_key:'x.y',amount:1,start_month:'2026-06-01',end_month:null}]]].forEach(function(st){
+      _budgetLineRulesLoadStatus=st[0]; _budgetLineRulesCache=st[1];
+      [1,4,5,8,9,30,31].forEach(function(wk){ assert(_getBudgetLivingExpenses(wk)===null,'Wk'+wk+' must be null when budget lines are '+st[0]+', got '+_getBudgetLivingExpenses(wk)); });
+    });
+    // Calendar-month (not week-number) boundaries, now proven on the loaded path: Wk4 starts Jun 28
+    // (still June) and counts a June-only line; Wk5 (Jul 5) does not.
+    _budgetLineRulesLoadStatus='loaded';
+    _budgetLineRulesCache=[{is_active:true,category_key:'home.mortgage_rent',amount:100,start_month:'2026-06-01',end_month:'2026-06-01'},
+      {is_active:true,category_key:'food_dining.groceries',amount:1000,start_month:'2026-06-01',end_month:null}];
+    assert(_getBudgetLivingExpenses(4)===1100,'Wk4 (Jun 28) is June: must include the June-only line');
+    assert(_getBudgetLivingExpenses(5)===1000,'Wk5 (Jul 5) is July: must exclude the June-only line');
+  }finally{_budgetLineRulesLoadStatus=oS;_budgetLineRulesCache=oC;_registriesLoadStatus=oR;_categoriesCache=oK;}
 });
 
 test('5B-5: _getBudgetLivingExpenses reads from cache when loaded',()=>{
   var origStatus=_budgetLineRulesLoadStatus;
   var origCache=_budgetLineRulesCache;
+  // P3b-1 A1a: category authority is now required too (spec §24 fixture repair; sums unchanged).
+  var oR=_registriesLoadStatus,oK=_categoriesCache;
+  _registriesLoadStatus='loaded'; _categoriesCache=[{key:'food_dining.groceries',is_leaf:true,lifecycle_status:'active',behavior_class:'expense',budget_treatment:'tracked'}];
   try{
     // Simulate a loaded cache with two rules (June only)
     _budgetLineRulesLoadStatus='loaded';
@@ -5260,6 +5262,7 @@ test('5B-5: _getBudgetLivingExpenses reads from cache when loaded',()=>{
   }finally{
     _budgetLineRulesLoadStatus=origStatus;
     _budgetLineRulesCache=origCache;
+    _registriesLoadStatus=oR; _categoriesCache=oK;
   }
 });
 
@@ -5422,6 +5425,9 @@ test('5B-15: Budget UI shows Spent | Budget | Remaining columns in correct order
 test('5B-16: misc.goal_sweep is excluded from living expense total in _getBudgetLivingExpenses',()=>{
   var origStatus=_budgetLineRulesLoadStatus;
   var origCache=_budgetLineRulesCache;
+  // P3b-1 A1a: category authority is now required too (spec §24 fixture repair; sum unchanged).
+  var oR=_registriesLoadStatus,oK=_categoriesCache;
+  _registriesLoadStatus='loaded'; _categoriesCache=[{key:'misc.extra',is_leaf:true,lifecycle_status:'active',behavior_class:'expense',budget_treatment:'tracked'}];
   _budgetLineRulesLoadStatus='loaded';
   _budgetLineRulesCache=[
     {is_active:true,category_key:'misc.goal_sweep',amount:2300,start_month:'2026-06-01',end_month:null},
@@ -5431,6 +5437,7 @@ test('5B-16: misc.goal_sweep is excluded from living expense total in _getBudget
   assert(result===1869,'goal_sweep must be excluded; only misc.extra counts toward living expenses');
   _budgetLineRulesLoadStatus=origStatus;
   _budgetLineRulesCache=origCache;
+  _registriesLoadStatus=oR; _categoriesCache=oK;
 });
 
 test('5B-17: _budgetGetMonthIso returns current month when no selection made',()=>{
@@ -5465,29 +5472,21 @@ test('5B-20: _renderGoalsSavings uses _getBudgetLivingExpenses (not hardcoded co
   assert(htmlSrc.includes('_getBudgetLivingExpenses(currentW)'),'stats panel must call _getBudgetLivingExpenses(currentW)');
 });
 
-test('5B-21: _getBudgetLivingExpenses: stats panel monthly living expenses correct for current week',()=>{
+test('5B-21: _getBudgetLivingExpenses: current-week value is the budget-line sum when available and null (never a constant) when not',()=>{
+  // P3b-1 A1a supersedes the forced-fallback expectation (spec §8.1).
   const w=getCurrentWeek();
-  const origStatus=_budgetLineRulesLoadStatus;
-  const origCache=_budgetLineRulesCache;
+  const oS=_budgetLineRulesLoadStatus,oC=_budgetLineRulesCache,oR=_registriesLoadStatus,oK=_categoriesCache;
   try{
-    // Force fallback path. Expected value uses monthIso logic (matching the fixed fallback).
-    _budgetLineRulesLoadStatus='not_loaded';
-    _budgetLineRulesCache=null;
-    const fallback=_getBudgetLivingExpenses(w);
-    // Compute expected using same monthIso logic as the fixed fallback
-    var wsd=getWeekStartDate(w);
-    var mo=wsd.getFullYear()+'-'+String(wsd.getMonth()+1).padStart(2,'0')+'-01';
-    const base=13638;
-    const rentD=(mo>='2026-07-01')?100:0;
-    const diablosD=(mo>='2026-07-01'&&mo<='2026-12-01')?750:0;
-    const glpD=(mo>='2026-08-01'&&mo<='2026-12-01')?404:0;
-    const expected=base+rentD+diablosD+glpD;
-    assert(fallback===expected,'fallback for week '+w+' (month '+mo+') must equal '+expected+', got '+fallback);
-    assert(typeof fallback==='number'&&fallback>10000&&fallback<20000,'living expenses must be $10k-$20k, got: '+fallback);
-  }finally{
-    _budgetLineRulesLoadStatus=origStatus;
-    _budgetLineRulesCache=origCache;
-  }
+    _registriesLoadStatus='loaded'; _categoriesCache=[{key:'food_dining.groceries',is_leaf:true,lifecycle_status:'active',behavior_class:'expense',budget_treatment:'tracked'}];
+    _budgetLineRulesLoadStatus='loaded';
+    _budgetLineRulesCache=[{is_active:true,category_key:'home.mortgage_rent',amount:1234,start_month:'2026-06-01',end_month:null},
+      {is_active:true,category_key:'income.net_salary',amount:9999,start_month:'2026-06-01',end_month:null}];
+    assert(_getBudgetLivingExpenses(w)===1234,'available: week '+w+' must equal the non-income line sum 1234');
+    _budgetLineRulesLoadStatus='not_loaded'; _budgetLineRulesCache=null;
+    assert(_getBudgetLivingExpenses(w)===null,'not loaded: must be null');
+    _budgetLineRulesLoadStatus='loaded'; _budgetLineRulesCache=[{is_active:true,category_key:'home.mortgage_rent',amount:1234,start_month:'2026-06-01',end_month:null}]; _registriesLoadStatus='failed';
+    assert(_getBudgetLivingExpenses(w)===null,'categories failed: must be null');
+  }finally{_budgetLineRulesLoadStatus=oS;_budgetLineRulesCache=oC;_registriesLoadStatus=oR;_categoriesCache=oK;}
 });
 
 test('5B-22: seed SQL uses DO block with adam_id lookup and supplies created_by explicitly',()=>{
@@ -5524,7 +5523,9 @@ test('5B-24: Budget printout total row uses "Total Planned Budget" label (update
   var budgetFnSrc=htmlSrc.slice(budgetFnIdx,budgetFnIdx+24000); // widened for UX-0 row-treatment additions
   assert(budgetFnSrc.includes('Total Planned Budget'),'total row must say Total Planned Budget');
   assert(!budgetFnSrc.includes('excl. goal sweep'),'goal sweep exclusion note must be removed');
-  assert(budgetFnSrc.includes('Available for Goals'),'misc.goal_sweep must still render');
+  // P3b-1 A1a (§15): the allocation concept is now worded "Planned for Goals".
+  assert(budgetFnSrc.includes('Planned for Goals'),'misc.goal_sweep must still render (as Planned for Goals)');
+  assert(!budgetFnSrc.includes('Available for Goals'),'the superseded "Available for Goals" wording must be gone');
   assert(budgetFnSrc.includes('Budget out of balance'),'out-of-balance warning must exist');
 });
 
@@ -5627,16 +5628,14 @@ test('5B-33: cleared checkbox shown for all transaction types (not just househol
   assert(htmlSrc.includes('// Cleared (all transaction types'),'cleared checkbox must be documented as applying to all types');
 });
 
-test('5B-34: fallback monthIso comment present — no weekNum threshold logic',()=>{
-  var htmlSrc='';
-  try{htmlSrc=require('fs').readFileSync(require('path').join(__dirname,'index.html'),'utf8');}catch(e){}
-  assert(htmlSrc.length>0,'Could not read index.html');
-  // New monthIso-based fallback
-  assert(htmlSrc.includes("monthIso>='2026-07-01'"),'fallback must gate rent increase on monthIso >= 2026-07-01');
-  assert(htmlSrc.includes("monthIso>='2026-08-01'&&monthIso<='2026-12-01'"),'fallback must gate GLP on monthIso 2026-08-01 to 2026-12-01');
-  // Old weekNum-based thresholds must be gone from the fallback
-  assert(!htmlSrc.includes('weekNum>=4)?100:0'),'old weekNum>=4 rent threshold must not exist in fallback');
-  assert(!htmlSrc.includes('weekNum>=8&&weekNum<=30)?404:0'),'old weekNum>=8 GLP threshold must not exist in fallback');
+test('5B-34: _getBudgetLivingExpenses carries no fallback constants and no weekNum threshold logic',()=>{
+  // P3b-1 A1a supersedes the monthIso-fallback expectation: the fallback is removed entirely (§8.1).
+  var fi=html.indexOf('function _getBudgetLivingExpenses(');
+  var fb=html.slice(fi,html.indexOf('\n}\n',fi));
+  assert(fi>-1&&fb.length>0,'_getBudgetLivingExpenses must exist');
+  assert(fb.indexOf('13638')===-1&&fb.indexOf('?750:0')===-1&&fb.indexOf('?404:0')===-1,'fallback constants must be gone');
+  assert(!/weekNum>=/.test(fb),'no weekNum threshold logic');
+  assert(/return null;/.test(fb)&&/_blrUnavailable\(\)/.test(fb),'must return null through the _blrUnavailable() availability primitive');
 });
 
 test('5B-35: reconciliation statement balance input uses onchange (not oninput) — prevents focus loss on every keystroke',()=>{
@@ -7897,12 +7896,14 @@ test('5E7-N11: USER_ROLE comment uses household_admin not editor',()=>{
   });
 
   test('5E8-R2: Register add/edit dropdown sources from live _categoriesCache via _normalizeCatRow, filtered to leaf&&assignable',()=>{
-    assertIncludes(registerBlock,"filter(function(c){return c.lifecycle_status==='active';})",
-      'Register dropdown must start from active rows in _categoriesCache');
+    // P3b-1 A1a: eligibility now comes from the ONE shared ASSIGNABLE predicate (active + leaf +
+    // not an allocation), which _normalizeCatRow also uses for its derived assignable flag.
+    assertIncludes(registerBlock,'.filter(_isAssignableCategory)',
+      'Register dropdown must select rows with the shared _isAssignableCategory predicate');
     assertIncludes(registerBlock,'.map(_normalizeCatRow)',
       'Register dropdown must normalize rows via _normalizeCatRow (same leaf/assignable derivation as Supabase-backed Budget)');
-    assertIncludes(registerBlock,'.filter(function(c){return c.leaf&&c.assignable;})',
-      'Register dropdown must filter normalized rows to leaf&&assignable');
+    var nf=html.slice(html.indexOf('function _normalizeCatRow('),html.indexOf('function _normalizeCatRow(')+200);
+    assertIncludes(nf,'var assignable=_isAssignableCategory(c);','_normalizeCatRow must derive assignable from the same shared predicate');
   });
 
   test('5E8-R2b: Register does NOT depend on _getActiveCategoryRegistry() or BUDGET_CATEGORY_REGISTRY (the Budget-scoped, useSupabaseRegistries-gated registry)',()=>{
@@ -8291,10 +8292,11 @@ test('5E8-R20c: category select carries the id, and only month-derived options c
     'category select needs a stable id so labels can be refreshed without a re-render');
   assertIncludes(regFn,"catOpts+='<option data-mlabel=\"1\" value=\"'+_esc(c.key)",
     'month-derived options must be tagged data-mlabel="1"');
-  // The placeholder and the legacy option are NOT month-derived and must stay untagged,
-  // or the refresh would overwrite "— No category —" and the "(legacy — re-categorize)" hint.
-  assertIncludes(regFn,'<option value="">— No category —</option>',
-    'placeholder option must stay untagged');
+  // The prompt and the legacy option are NOT month-derived and must stay untagged, or the refresh
+  // would overwrite them. P3b-1 A1a (§6): the prompt is non-selectable ("Select a category…").
+  assertIncludes(regFn,"var catOpts='<option value=\"\" disabled'+(fd.category_key?'':' selected')+'>Select a category…</option>';",
+    'prompt option must be disabled and untagged');
+  assert(regFn.indexOf('<option value="">')===-1,'no selectable blank category option may remain');
   assertIncludes(regFn,"catOpts+='<option value=\"'+_esc(fd.category_key)+'\" selected>'",
     'legacy re-categorize option must stay untagged');
 });
@@ -8377,7 +8379,9 @@ test('5E9-13: _budgetLoadRegisterSpend exists and queries public.transactions wi
   assert(fnIdx>-1,'_budgetLoadRegisterSpend must be defined');
   var fnBlock=html.slice(fnIdx,fnIdx+1200);
   assertIncludes(fnBlock,"/rest/v1/transactions?transaction_date=gte.",'_budgetLoadRegisterSpend must query public.transactions filtered by transaction_date');
-  assertIncludes(fnBlock,'_budgetRegisterSpendCache=await r.json()','_budgetLoadRegisterSpend must populate _budgetRegisterSpendCache');
+  // P3b-1 A1a (§17): the parsed body commits to the cache only after the generation/month re-check.
+  assertIncludes(fnBlock,'var body=await r.json();','_budgetLoadRegisterSpend must parse the response');
+  assertIncludes(fnBlock,'_budgetRegisterSpendCache=body;','_budgetLoadRegisterSpend must populate _budgetRegisterSpendCache');
   assertIncludes(fnBlock,"new Date(y,m+1,0)",'_budgetLoadRegisterSpend must use the same local-date last-day-of-month math as _budgetLoadTransactions (avoids UTC-shift bug)');
 });
 
@@ -8423,7 +8427,8 @@ test('5E9-19: setSection resets Register spend status when entering Budget, so a
   var fnIdx=html.indexOf('function setSection(s){');
   assert(fnIdx>-1,'setSection must be defined');
   var fnBlock=html.slice(fnIdx,fnIdx+500);
-  assertIncludes(fnBlock,"if(s==='budget'){_budgetRegisterSpendLoadStatus='not_loaded';}",'setSection must force a fresh Register-spend fetch on Budget tab entry');
+  // P3b-1 A1a (§17): entering Budget requests a fresh current PAIR (Register spend AND budget_transactions).
+  assertIncludes(fnBlock,"if(s==='budget'){_budgetRegisterSpendLoadStatus='not_loaded';_budgetTransLoadStatus='not_loaded';}",'setSection must force a fresh fetch of both month sources on Budget tab entry');
 });
 
 test('5E9-20: no schema/RLS changes — this fix is confined to index.html only',()=>{
@@ -15496,6 +15501,657 @@ console.log('\n── Section 5G-1D Slice 4c: half-close repair confirmation ─
     assert(bh('function resolveWeekTransfers(')==='5583/20d17438996ac8ba','resolver changed');
     assert(/p_expected_count:9/.test(html)&&/snapshot_count===9/.test(html)&&/rows\.length!==9/.test(html),'nine-contract intact');
   });
+})();
+
+// ═══════════════════════════════════════════════════════════════════════════
+// P3b-1 A1a acceptance (spec rev 3.3 §21 A1a; owner rulings K1–K4). Authored tests-first (red on the
+// pre-A1a app, green after). Scoped in a function so helper names cannot collide with this suite;
+// app state is still reached through the evaluated script scope (direct eval) and restored per test.
+// ═══════════════════════════════════════════════════════════════════════════
+(function(){
+const crypto = require('crypto');
+// ── Shared helpers ─────────────────────────────────────────────────────────
+// Global state touched by these tests; saved and restored around every test so tests are independent.
+const STATE = ['fetch','getAuthHeaders','renderApp','_loadTxLedger','USER_ROLE','_categoriesCache','_registriesLoadStatus',
+  '_accountsCache','_txLedgerAccountKey','_txLedgerCache','_txLedgerLoadStatus','_txFormMode','_txFormData','_txEditId',
+  '_txFormError','_txFormSaving','_txClearedSavingId','_txClearedError','_txFilterSearch','_txFilterType','_txFilterStatus',
+  '_txFilterDateFrom','_txFilterDateTo','_budgetSelectedMonth','_budgetTransactions','_budgetTransLoadStatus',
+  '_budgetRegisterSpendCache','_budgetRegisterSpendLoadStatus','_budgetLineRulesCache','_budgetLineRulesLoadStatus',
+  '_blrModal','_computeRegisterSpend','_txLedgerSortCol','_txLedgerSortDir','activeSection'];
+const OPTIONAL_STATE = ['_txFilterUncategorized']; // introduced by A1a; may not exist pre-A1a
+const _docGet = document.getElementById;
+function snap(){ var s={}; STATE.concat(OPTIONAL_STATE).forEach(function(n){ try{ s[n]=eval(n); }catch(e){ s[n]='__absent__'; } }); s.__doc=document.getElementById; return s; }
+function restore(s){ STATE.concat(OPTIONAL_STATE).forEach(function(n){ var __v=s[n]; if(__v==='__absent__')return; try{ eval(n+'=__v'); }catch(e){} }); document.getElementById=s.__doc; }
+function isolated(fn){ return function(){ var s=snap(); try{ return fn(); } finally { restore(s); } }; }
+function isolatedAsync(fn){ return async function(){ var s=snap(); try{ return await fn(); } finally { restore(s); } }; }
+function T(name, fn){ test(name, isolated(fn)); }
+function TA(name, fn){ testAsync(name, isolatedAsync(fn)); }
+
+function resp(status, body, opts){
+  opts=opts||{};
+  return { ok: status>=200&&status<300, status: status, statusText: String(status),
+    headers: { get: function(k){ return (opts.headers||{})[String(k).toLowerCase()]||null; } },
+    json: function(){ return opts.jsonReject?Promise.reject(new Error('malformed json')):Promise.resolve(body); },
+    text: function(){ return Promise.resolve(typeof body==='string'?body:JSON.stringify(body)); } };
+}
+function deferred(){ var a,b; var p=new Promise(function(r,j){a=r;b=j;}); return {p:p,resolve:a,reject:b}; }
+async function flush(n){ for(var i=0;i<(n||40);i++) await Promise.resolve(); }
+// Fetch router: records every request; first matching handler answers; default = 200 [].
+function router(handlers){
+  var log=[];
+  var f=async function(url,init){
+    var e={url:String(url),method:(init&&init.method)||'GET',body:(init&&init.body!==undefined)?init.body:null};
+    log.push(e);
+    for(var i=0;i<handlers.length;i++){ if(handlers[i][0](e)) return handlers[i][1](e); }
+    return resp(200,[]);
+  };
+  f.log=log; return f;
+}
+const isCatRead = e => e.method==='GET' && /\/rest\/v1\/categories\?/.test(e.url);
+const isTxWrite = e => /\/rest\/v1\/transactions/.test(e.url) && e.method!=='GET';
+const isBlrWrite = e => /\/rest\/v1\/budget_line_rules/.test(e.url) && e.method!=='GET';
+function cat(key, over){ return Object.assign({key:key,label:key,parent_key:key.split('.')[0],is_leaf:true,lifecycle_status:'active',
+  behavior_class:'expense',budget_treatment:'tracked',cashflow_treatment:'operating',display_order:1},over||{}); }
+const GROC='food_dining.groceries';
+// Register save fixture: a valid add form for account acct_t; ledger reload stubbed out.
+function regSetup(o){
+  o=o||{};
+  USER_ROLE=o.role||'owner';
+  _registriesLoadStatus='loaded';
+  _accountsCache=[{key:'acct_t',label:'Test Checking',lifecycle_status:'active',starting_balance:0}];
+  _txLedgerAccountKey='acct_t';
+  _categoriesCache=o.cache||[cat(GROC)];
+  _txFormMode=o.mode||'add';
+  _txEditId=o.editId||null;
+  _txFormData=Object.assign({transaction_date:'2026-09-10',payee:'Test Payee',memo:'',category_key:GROC,outflow:'12.34',inflow:'',cleared:false},o.fd||{});
+  _txFormError=''; _txFormSaving=false;
+  getAuthHeaders=async function(){ return {apikey:'test'}; };
+  renderApp=function(){};
+  _loadTxLedger=async function(){};
+}
+// Authority handler for a given categories response.
+function authority(replyFn){ return [isCatRead, replyFn]; }
+const writeOk = [isTxWrite, function(){ return resp(201,null); }];
+function writes(f){ return f.log.filter(isTxWrite); }
+function catReads(f){ return f.log.filter(isCatRead); }
+function refused(f, label){
+  assert(writes(f).length===0, label+': a transaction write was issued ('+writes(f).map(function(w){return w.method;}).join(',')+') — the save was NOT refused');
+  assert(_txFormError&&String(_txFormError).length>0, label+': no visible error message after a refused save');
+  assert(_txFormMode!==null, label+': the form was reset as if the save succeeded');
+}
+// Capturing document for render tests.
+function captureDom(){ var store={}; document.getElementById=function(id){ if(!store[id]) store[id]={id:id,innerHTML:'',value:'',textContent:'',style:{},classList:{add:function(){},remove:function(){}},addEventListener:function(){},scrollIntoView:function(){}}; return store[id]; }; return store; }
+function selectHtml(h, id){ var i=h.indexOf('id="'+id+'"'); if(i<0) return null; var j=h.indexOf('</select>',i); return h.slice(i, j); }
+function options(selHtml){ var out=[]; var re=/<option([^>]*)>([^<]*)<\/option>/g, m; while((m=re.exec(selHtml))){ var attrs=m[1]; var v=/value="([^"]*)"/.exec(attrs); out.push({value:v?v[1]:null,disabled:/\bdisabled\b/.test(attrs),text:m[2]}); } return out; }
+function elementText(h, id){ var re=new RegExp('id="'+id+'"[^>]*>([\\s\\S]*?)</'); var m=re.exec(h); return m?m[1].replace(/<[^>]+>/g,''):null; }
+// Brace-matched source of a top-level function (tolerant of code inserted before/after it).
+function fnSrc(name){
+  var tok='function '+name+'('; var i=html.indexOf(tok); if(i<0) return null;
+  var j=html.indexOf('{',i), d=0, k=j, q=null;
+  for(;k<html.length;k++){ var ch=html[k];
+    if(q){ if(ch==='\\'){k++;continue;} if(ch===q)q=null; continue; }
+    if(ch==='/'&&html[k+1]==='/'){ k=html.indexOf('\n',k); continue; }
+    if(ch==="'"||ch==='"'||ch==='`'){ q=ch; continue; }
+    if(ch==='{')d++; else if(ch==='}'){ d--; if(d===0) break; } }
+  return html.slice(i,k+1);
+}
+function pin(name){ var s=fnSrc(name); return s===null?'MISSING':s.length+'/'+crypto.createHash('sha256').update(s).digest('hex').slice(0,16); }
+
+console.log('\n── A1a: boundary pins and invariants ──');
+// [A1a] Byte-level pins. Class A = spec-frozen (§23 "frozen hashes unchanged" / §28), class B = A1a boundary.
+T('[A1a] X1a: _filterTxRows byte-identical (class A+B: spec §23/§28 frozen; A1a uncategorized filter must compose outside it)',function(){
+  assert(pin('_filterTxRows')==='1169/01186d010c979220','_filterTxRows changed: '+pin('_filterTxRows')); });
+T('[A1a] X1b: _isCountableBudgetSpend byte-identical (class A: spec §10/§28 frozen predicate)',function(){
+  assert(pin('_isCountableBudgetSpend')==='495/00b0a532e31f6c51','_isCountableBudgetSpend changed: '+pin('_isCountableBudgetSpend')); });
+T('[A1a] X1c: _sortTxRows / _computeLedgerBalances / _applyDisplayOrderBalances byte-identical (class A: spec §23 frozen list; A1a edits their caller)',function(){
+  assert(pin('_sortTxRows')==='1727/8b04aa7713f27c0b','_sortTxRows changed: '+pin('_sortTxRows'));
+  assert(pin('_computeLedgerBalances')==='374/c6ab1fc9bf055b5b','_computeLedgerBalances changed: '+pin('_computeLedgerBalances'));
+  assert(pin('_applyDisplayOrderBalances')==='526/08443d5c9cb5161e','_applyDisplayOrderBalances changed: '+pin('_applyDisplayOrderBalances')); });
+T('[A1a] X2: no schema/SQL/RPC/RLS surface in the app script is reachable from A1a (no rpc/ call added for transactions or categories)',function(){
+  assert(!/rest\/v1\/rpc\/[^'"]*(transaction|categor)/i.test(html),'an RPC path for transactions/categories exists'); });
+T('[A1a] X3: Budget arithmetic characterization — fixture month renders Planned remaining $659.50',function(){
+  var dom=captureDom(); renderApp=function(){};
+  USER_ROLE='owner'; _registriesLoadStatus='loaded';
+  _categoriesCache=[cat('home.mortgage_rent'),cat(GROC),cat('misc.goal_sweep',{behavior_class:'savings_allocation',budget_treatment:'planned_allocation'}),cat('income.net_salary',{behavior_class:'income',budget_treatment:'display_only'})];
+  _budgetSelectedMonth='2026-08-01';
+  _budgetLineRulesLoadStatus='loaded';
+  _budgetLineRulesCache=[
+    {id:'l1',category_key:'home.mortgage_rent',line_label:'Rent',amount:1000,start_month:'2026-06-01',end_month:null,is_active:true},
+    {id:'l2',category_key:GROC,line_label:'Groceries',amount:500,start_month:'2026-06-01',end_month:null,is_active:true},
+    {id:'l3',category_key:'misc.goal_sweep',line_label:'Planned for Goals',amount:300,start_month:'2026-06-01',end_month:null,is_active:true},
+    {id:'l4',category_key:'income.net_salary',line_label:'Net Salary',amount:5000,start_month:'2026-06-01',end_month:null,is_active:true}];
+  _budgetTransactions=[]; _budgetTransLoadStatus='loaded';
+  _budgetRegisterSpendCache=[{category_key:GROC,amount:-120.50,transaction_date:'2026-08-03'},{category_key:GROC,amount:-30,transaction_date:'2026-08-09'},
+    {category_key:GROC,amount:10,transaction_date:'2026-08-10'},{category_key:'home.mortgage_rent',amount:-1000,transaction_date:'2026-08-01'},
+    {category_key:null,amount:-99,transaction_date:'2026-08-12'},{category_key:'income.net_salary',amount:5000,transaction_date:'2026-08-15'}];
+  _budgetRegisterSpendLoadStatus='loaded';
+  renderBudget();
+  var h=dom['budget-content'].innerHTML;
+  // budget 1800 (rent+groceries+goal sweep line) minus spent 1140.50 (groceries 150.50-10 + rent 1000) = 659.50
+  var m=/Planned remaining<\/span><span[^>]*>([^<]*)</.exec(h);
+  assert(m,'Planned remaining strip not rendered');
+  assert(m[1]==='$659.50','Planned remaining should be $659.50, got '+m[1]);
+});
+
+console.log('\n── A1a: Register category authority (§6) ──');
+TA('[A1a] R1: blank category is refused with no request at all',async function(){
+  var f=router([writeOk]); fetch=f; regSetup({fd:{category_key:''}});
+  await _saveTxForm(); await flush();
+  assert(f.log.length===0,'expected 0 requests for a blank category, got '+f.log.map(function(e){return e.method+' '+e.url;}).join(' | '));
+  refused(f,'R1');
+  assert(_txFormError==='Choose a category.','the refusal must use the field-specific blank-category message (§6), got: '+_txFormError);
+});
+TA('[A1a] R2: nonexistent category (fresh read returns zero rows) is refused, even though the stale cache lists it as active',async function(){
+  var f=router([authority(function(){return resp(200,[]);}),writeOk]); fetch=f; regSetup();
+  await _saveTxForm(); await flush();
+  assert(catReads(f).length===1,'expected exactly 1 fresh category read, got '+catReads(f).length);
+  refused(f,'R2');
+});
+[['archived',{lifecycle_status:'archived'},true],['merged',{lifecycle_status:'merged'},true],
+ ['parent-level (is_leaf=false)',{is_leaf:false},false],['allocation (savings_allocation / planned_allocation)',{behavior_class:'savings_allocation',budget_treatment:'planned_allocation'},false],
+ ['planned_allocation only',{budget_treatment:'planned_allocation'},false]].forEach(function(c,ix){
+  TA('[A1a] R3/R8-'+(ix+1)+': stale ASSIGNABLE cache cannot authorize Save when fresh authority is '+c[0],async function(){
+    var f=router([authority(function(){return resp(200,[cat(GROC,c[1])]);}),writeOk]); fetch=f;
+    regSetup({cache:[cat(GROC)]}); // cache says: active leaf expense (ASSIGNABLE)
+    await _saveTxForm(); await flush();
+    assert(catReads(f).length===1,'the save must consult fresh authority (0 category reads issued; the stale cache was trusted)');
+    refused(f,'R3/R8 '+c[0]);
+    if(c[2]) assert(_txFormError==='That category is no longer active — choose another.','archived/merged must use the §6 message, got: '+_txFormError);
+  });
+});
+[['rejected request (network error)',function(){return Promise.reject(new Error('net down'));},true],
+ ['non-2xx (500)',function(){return resp(500,{message:'boom'});},true],
+ ['malformed JSON body',function(){return resp(200,null,{jsonReject:true});},true],
+ ['non-array body',function(){return resp(200,{key:GROC});},true],
+ ['unexpected multiple rows',function(){return resp(200,[cat(GROC),cat(GROC)]);},false],
+ ['key mismatch',function(){return resp(200,[cat('food_dining.other')]);},false],
+ ['401 unauthorized',function(){return resp(401,{message:'jwt'});},false]].forEach(function(c,ix){
+  TA('[A1a] R7-'+(ix+1)+': authority outcome "'+c[0]+'" refuses the save (fail closed)',async function(){
+    var f=router([authority(c[1]),writeOk]); fetch=f; regSetup();
+    await _saveTxForm(); await flush();
+    assert(catReads(f).length===1,'expected exactly 1 authority read, got '+catReads(f).length);
+    refused(f,'R7 '+c[0]);
+    if(c[2]) assert(_txFormError==="Couldn't verify the category — try again.",'expected the §6 verify-failure message, got: '+_txFormError);
+    assert(_txFormData.category_key===GROC&&_txFormData.payee==='Test Payee','form data must be preserved after a refused save');
+  });
+});
+TA('[A1a] R9: the fresh authority GET completes successfully BEFORE any transaction write',async function(){
+  var d=deferred();
+  var f=router([authority(function(){return d.p;}),writeOk]); fetch=f; regSetup();
+  var p=_saveTxForm(); await flush();
+  assert(catReads(f).length===1,'authority read must be issued first (none issued)');
+  assert(writes(f).length===0,'a write was issued while the authority read was still pending');
+  d.resolve(resp(200,[cat(GROC)])); await p; await flush();
+  var w=writes(f); assert(w.length===1&&w[0].method==='POST','exactly one POST after authority, got '+w.length);
+  assert(f.log.indexOf(catReads(f)[0])<f.log.indexOf(w[0]),'authority GET must precede the write');
+  assert(JSON.parse(w[0].body).category_key===GROC,'POST body must carry the authorized key');
+  assert(/key=eq\.food_dining\.groceries/.test(catReads(f)[0].url),'authority read must be a single-key read, got '+catReads(f)[0].url);
+});
+['owner','household_admin'].forEach(function(role){
+  TA('[A1a] R10-'+role+': valid save = authority GET then POST; stale-cache archived save refused',async function(){
+    var f=router([authority(function(){return resp(200,[cat(GROC)]);}),writeOk]); fetch=f; regSetup({role:role});
+    await _saveTxForm(); await flush();
+    assert(catReads(f).length===1&&writes(f).length===1,role+': expected 1 authority GET + 1 write, got '+catReads(f).length+'/'+writes(f).length);
+    var g=router([authority(function(){return resp(200,[cat(GROC,{lifecycle_status:'archived'})]);}),writeOk]); fetch=g; regSetup({role:role});
+    await _saveTxForm(); await flush();
+    refused(g,role+' archived');
+  });
+});
+TA('[A1a] R10b: owner and household_admin produce identical request sequences for the same save',async function(){
+  var seqs=[];
+  for(const role of ['owner','household_admin']){
+    var f=router([authority(function(){return resp(200,[cat(GROC)]);}),writeOk]); fetch=f; regSetup({role:role});
+    await _saveTxForm(); await flush();
+    seqs.push(JSON.stringify(f.log.map(function(e){return e.method+' '+e.url.replace(/^.*\/rest\/v1\//,'')+' '+(e.body||'');})));
+  }
+  assert(seqs[0]===seqs[1],'role request sequences differ:\n'+seqs[0]+'\n'+seqs[1]);
+});
+TA('[A1a] R11: clearing sends exactly {cleared} and never performs a category-authority read',async function(){
+  var f=router([[function(e){return e.method==='PATCH';},function(){return resp(204,null);}]]); fetch=f; regSetup();
+  _txClearedSavingId=null; _txClearedError={};
+  await _toggleTxCleared('tx-1',false); await flush();
+  assert(catReads(f).length===0,'clearing issued a category read');
+  var p=f.log.filter(function(e){return e.method==='PATCH';});
+  assert(p.length===1,'expected exactly 1 PATCH, got '+p.length);
+  assert(JSON.stringify(JSON.parse(p[0].body))===JSON.stringify({cleared:true}),'PATCH body must be exactly {"cleared":true}, got '+p[0].body);
+  assert(/transactions\?id=eq\.tx-1$/.test(p[0].url),'PATCH must target only the row, got '+p[0].url);
+  assert(f.log.length===1,'clearing must issue no other request, got '+f.log.length);
+});
+TA('[A1a] R12: editing a row with no category requires choosing one (no PATCH with category_key null)',async function(){
+  var f=router([authority(function(){return resp(200,[]);}),writeOk]); fetch=f;
+  regSetup({mode:'edit',editId:'tx-null',fd:{id:'tx-null',category_key:null}});
+  await _saveTxForm(); await flush();
+  refused(f,'R12');
+});
+T('[A1a] R13a: the "(legacy — re-categorize)" option still renders for a row on a retired category',function(){
+  regSetup({mode:'edit',fd:{id:'tx-l',category_key:'entertainment.brunch'},cache:[cat(GROC),cat('entertainment.brunch',{lifecycle_status:'archived'})]});
+  _txLedgerLoadStatus='loaded'; _txLedgerCache=[];
+  var h=_renderTxRegister();
+  assert(/\(legacy — re-categorize\)/.test(h),'legacy option missing');
+});
+TA('[A1a] R13b: saving on the retired category is refused',async function(){
+  var f=router([authority(function(){return resp(200,[cat('entertainment.brunch',{lifecycle_status:'archived'})]);}),writeOk]); fetch=f;
+  regSetup({mode:'edit',editId:'tx-l',fd:{id:'tx-l',category_key:'entertainment.brunch'},cache:[cat(GROC),cat('entertainment.brunch',{lifecycle_status:'archived'})]});
+  await _saveTxForm(); await flush();
+  refused(f,'R13b');
+});
+T('[A1a] R14: picker has a disabled "Select a category…" prompt and NO selectable blank option',function(){
+  regSetup({fd:{category_key:''}}); _txLedgerLoadStatus='loaded'; _txLedgerCache=[];
+  var sel=selectHtml(_renderTxRegister(),'tx-form-category'); assert(sel,'category select not rendered');
+  var opts=options(sel);
+  var blankSelectable=opts.filter(function(o){return o.value===''&&!o.disabled;});
+  assert(blankSelectable.length===0,'a selectable blank category option exists: '+JSON.stringify(blankSelectable));
+  assert(opts.some(function(o){return o.disabled&&/Select a category…/.test(o.text);}),'disabled "Select a category…" prompt missing');
+});
+[['empty category list',[]],['null category cache',null],['no ASSIGNABLE categories',[cat('x.archived',{lifecycle_status:'archived'}),cat('misc.goal_sweep',{behavior_class:'savings_allocation',budget_treatment:'planned_allocation'})]]].forEach(function(c,ix){
+  T('[A1a] R15-'+(ix+1)+'a: category authority unavailable ('+c[0]+') shows the cannot-save state and a disabled Save',function(){
+    regSetup({fd:{category_key:''}}); _categoriesCache=c[1]; _txLedgerLoadStatus='loaded'; _txLedgerCache=[];
+    var h=_renderTxRegister();
+    assert(/Categories unavailable — transactions can't be saved right now/.test(h),'cannot-save message missing');
+    var btn=/<button onclick="_saveTxForm\(\)"([^>]*)>/.exec(h); assert(btn,'save button not found');
+    assert(/\bdisabled\b/.test(btn[1]),'Save must be disabled while category authority is unavailable');
+  });
+  TA('[A1a] R15-'+(ix+1)+'b: category authority unavailable ('+c[0]+') — the save function itself refuses with no request (existing refusal preserved)',async function(){
+    var f=router([authority(function(){return resp(200,[cat(GROC)]);}),writeOk]); fetch=f;
+    regSetup(); _categoriesCache=c[1];
+    await _saveTxForm(); await flush();
+    assert(f.log.length===0,'no request may be issued while category authority is unavailable, got '+f.log.length);
+    refused(f,'R15 '+c[0]);
+  });
+});
+TA('[A1a] R16: two save attempts while authority is pending produce ONE authority read and ONE write',async function(){
+  var d=deferred();
+  var f=router([authority(function(){return d.p;}),writeOk]); fetch=f; regSetup();
+  var p1=_saveTxForm(), p2=_saveTxForm(); await flush();
+  d.resolve(resp(200,[cat(GROC)])); await p1; await p2; await flush();
+  assert(catReads(f).length===1,'expected 1 authority read, got '+catReads(f).length);
+  assert(writes(f).length===1,'expected 1 write, got '+writes(f).length);
+});
+// R17: convergence on ONE predicate. The expected set is whatever the app's own _isAssignableCategory says —
+// the test never re-implements the rule — plus a small spec-anchored truth table (§5.1 / §6).
+const BCS=['expense','reimbursable_expense','goal_linked','income','commission_income','reimbursable_income','transfer','savings_allocation',null];
+const BTS=['tracked','excluded','display_only','planned_allocation',null];
+const LCS=['active','archived','merged'];
+function combos(){ var out=[],n=0; BCS.forEach(function(bc){BTS.forEach(function(bt){LCS.forEach(function(lc){[true,false].forEach(function(leaf){
+  out.push(cat('combo.c'+(n++),{behavior_class:bc,budget_treatment:bt,lifecycle_status:lc,is_leaf:leaf})); });});});}); return out; }
+T('[A1a] R17a: shared predicate _isAssignableCategory exists and matches the spec-anchored §5.1 truth table',function(){
+  assert(typeof _isAssignableCategory==='function','_isAssignableCategory (the single shared ASSIGNABLE definition) is missing');
+  var t=[[{},true],[{behavior_class:'income',budget_treatment:'display_only'},true],[{behavior_class:'transfer',budget_treatment:'excluded'},true],
+    [{lifecycle_status:'archived'},false],[{lifecycle_status:'merged'},false],[{is_leaf:false},false],
+    [{behavior_class:'savings_allocation'},false],[{budget_treatment:'planned_allocation'},false]];
+  t.forEach(function(r){ assert(_isAssignableCategory(cat('t.x',r[0]))===r[1],'truth table mismatch for '+JSON.stringify(r[0])); });
+});
+T('[A1a] R17b: _normalizeCatRow().assignable === _isAssignableCategory(row) for every behavior × treatment × lifecycle × leaf combination',function(){
+  assert(typeof _isAssignableCategory==='function','_isAssignableCategory missing');
+  combos().forEach(function(c){ assert(_normalizeCatRow(c).assignable===_isAssignableCategory(c),'divergence for '+JSON.stringify(c)); });
+});
+T('[A1a] R17c: picker offers exactly the rows _isAssignableCategory accepts (no second definition)',function(){
+  assert(typeof _isAssignableCategory==='function','_isAssignableCategory missing');
+  var cs=combos(); regSetup({cache:cs,fd:{category_key:''}}); _txLedgerLoadStatus='loaded'; _txLedgerCache=[];
+  var offered=options(selectHtml(_renderTxRegister(),'tx-form-category')).filter(function(o){return !o.disabled&&o.value;}).map(function(o){return o.value;}).sort();
+  var expected=cs.filter(function(c){return _isAssignableCategory(c);}).map(function(c){return c.key;}).sort();
+  assert(JSON.stringify(offered)===JSON.stringify(expected),'picker set differs from the shared predicate: offered '+offered.length+', predicate '+expected.length);
+});
+TA('[A1a] R17d: save authority accepts exactly the rows _isAssignableCategory accepts (all combinations)',async function(){
+  assert(typeof _isAssignableCategory==='function','_isAssignableCategory missing');
+  var cs=combos();
+  for(const c of cs){
+    var f=router([authority(function(){return resp(200,[c]);}),writeOk]); fetch=f;
+    regSetup({cache:[cat(c.key)],fd:{category_key:c.key}});
+    await _saveTxForm(); await flush();
+    var wrote=writes(f).length===1;
+    assert(wrote===_isAssignableCategory(c),'save outcome diverges from the shared predicate for '+JSON.stringify(c)+' (wrote='+wrote+')');
+  }
+});
+
+console.log('\n── A1a: Register uncategorized visibility (§19.2) ──');
+function ledgerRows(){ // selected account acct_t: 5 rows, 3 uncategorized
+  return [['r1',GROC,-10],['r2',null,-20],['r3',null,5],['r4',GROC,-7],['r5',null,-3]].map(function(r,i){
+    return {id:r[0],account_key:'acct_t',transaction_date:'2026-09-0'+(i+1),created_at:'2026-09-0'+(i+1)+'T10:00:00+00:00',amount:r[2],payee:'P'+i,memo:'',category_key:r[1],cleared:false,source:'manual'}; });
+}
+function renderedIds(h){ var out=[],re=/_toggleTxCleared\('([^']+)'/g,m; while((m=re.exec(h)))out.push(m[1]); return out.sort(); }
+function rowSegment(h,id){ var parts=h.split('<tr'); for(var i=0;i<parts.length;i++){ if(parts[i].indexOf("_toggleTxCleared('"+id+"'")>=0) return parts[i]; } return null; }
+function regLedger(){ regSetup(); _txFormMode=null; _txLedgerLoadStatus='loaded'; _txLedgerCache=ledgerRows(); clearTxFilters(); }
+T('[A1a] U1: selected account with 3 uncategorized rows shows a count of 3, scoped to this account',function(){
+  regLedger(); var t=elementText(_renderTxRegister(),'tx-uncat-count');
+  assert(t!==null,'uncategorized count element (#tx-uncat-count) not rendered');
+  assert(/\b3\b/.test(t)&&/in this account/.test(t),'expected "3 … in this account", got: '+t);
+});
+T('[A1a] U2: an account with no uncategorized rows shows 0',function(){
+  regLedger(); _txLedgerCache=ledgerRows().map(function(r){return Object.assign({},r,{category_key:GROC});});
+  var t=elementText(_renderTxRegister(),'tx-uncat-count'); assert(t!==null&&/\b0\b/.test(t),'expected 0, got: '+t);
+});
+T('[A1a] U3: uncategorized rows elsewhere (another account / household-wide Budget cache) are not counted',function(){
+  regLedger();
+  _budgetRegisterSpendCache=[{category_key:null,amount:-1,transaction_date:'2026-09-01'},{category_key:null,amount:-2,transaction_date:'2026-09-02'}];
+  var t=elementText(_renderTxRegister(),'tx-uncat-count'); assert(t!==null&&/\b3\b/.test(t),'count must come only from the selected account ledger, got: '+t);
+});
+T('[A1a] U4: "uncategorized only" shows exactly the uncategorized rows with their full-ledger rows unchanged',function(){
+  regLedger(); var full=_renderTxRegister();
+  assert(typeof setTxFilterUncategorized==='function','setTxFilterUncategorized missing');
+  setTxFilterUncategorized(true); var h=_renderTxRegister();
+  assert(JSON.stringify(renderedIds(h))===JSON.stringify(['r2','r3','r5']),'expected r2,r3,r5, got '+renderedIds(h));
+  ['r2','r3','r5'].forEach(function(id){ assert(rowSegment(h,id)===rowSegment(full,id),'row '+id+' markup (incl. balance) changed under the filter'); });
+  assert(_txFiltersActive()===true,'the uncategorized filter must count as an active filter (balance caption)');
+  clearTxFilters(); assert(JSON.stringify(renderedIds(_renderTxRegister()))===JSON.stringify(['r1','r2','r3','r4','r5']),'clearTxFilters must reset the uncategorized filter');
+});
+T('[A1a] U4b: uncategorized filter composes with existing filters by AND',function(){
+  regLedger(); assert(typeof setTxFilterUncategorized==='function','setTxFilterUncategorized missing');
+  setTxFilterUncategorized(true); _txFilterType='inflow';
+  assert(JSON.stringify(renderedIds(_renderTxRegister()))===JSON.stringify(['r3']),'expected only r3 (uncategorized AND inflow)');
+});
+// Independent-review finding 1: the COUNT must come from the complete selected-account P0 ledger
+// (§19.2), never from a filtered population. Each case below makes the displayed rows differ from
+// the ledger, so counting displayRows / _filterTxRows(...) / the uncategorized-only view yields a
+// number other than 3 (0 or 1), while the complete ledger has exactly 3 uncategorized rows.
+T('[A1a] U7: uncategorized COUNT stays the complete-ledger count (3) under search/type/uncategorized-only filters; other sources ignored; no fetch',function(){
+  var f=router([]); fetch=f; regLedger();
+  // Household-wide uncategorized rows elsewhere (another account / Budget cache) must never contribute.
+  _budgetRegisterSpendCache=[{category_key:null,amount:-1,transaction_date:'2026-09-01'},{category_key:null,amount:-2,transaction_date:'2026-09-02'}];
+  function countOf(h){ var t=elementText(h,'tx-uncat-count'); assert(t!==null,'count element missing'); var m=/^(\d+) uncategorized in this account$/.exec(t.trim()); assert(m,'unexpected count text: '+t); return +m[1]; }
+  var cases=[
+    ['search matching one uncategorized row',function(){_txFilterSearch='P1';},['r2']],
+    ['search matching one categorized row',function(){_txFilterSearch='P0';},['r1']],
+    ['search matching nothing',function(){_txFilterSearch='zzz-no-match';},[]],
+    ['type filter inflow',function(){_txFilterType='inflow';},['r3']],
+    ['uncategorized-only plus search',function(){setTxFilterUncategorized(true);_txFilterSearch='P4';},['r5']],
+    ['uncategorized-only plus type outflow',function(){setTxFilterUncategorized(true);_txFilterType='outflow';},['r2','r5']]];
+  cases.forEach(function(c){
+    clearTxFilters(); c[1](); var h=_renderTxRegister();
+    assert(JSON.stringify(renderedIds(h))===JSON.stringify(c[2]),c[0]+': filter precondition not met, displayed '+renderedIds(h));
+    assert(countOf(h)===3,c[0]+': count must stay 3 (complete selected-account ledger), got '+countOf(h));
+  });
+  assert(f.log.length===0,'count/filters issued '+f.log.length+' requests');
+});
+T('[A1a] U5: rendering the Register ledger issues no network request',function(){
+  var f=router([]); fetch=f; regLedger(); _renderTxRegister();
+  if(typeof setTxFilterUncategorized==='function'){ setTxFilterUncategorized(true); _renderTxRegister(); }
+  assert(f.log.length===0,'render/filter issued '+f.log.length+' requests');
+});
+['loading','failed','incomplete','not_loaded'].forEach(function(st){
+  T('[A1a] U6-'+st+': no uncategorized count while the ledger is '+st,function(){
+    regLedger(); _txLedgerLoadStatus=st; _txLedgerCache=(st==='incomplete'||st==='failed')?null:ledgerRows();
+    var s=_txLedgerLoadStatus; _loadTxLedger=async function(){}; var h=_renderTxRegister(); _txLedgerLoadStatus=s;
+    assert(elementText(h,'tx-uncat-count')===null,'a count was rendered for ledger status '+st);
+  });
+});
+
+console.log('\n── A1a: Goals fail-closed (§8.1 UNAVAILABLE for the Goals consumer) ──');
+const WEEKS = runModel(7000, 7694.87);
+function goalsMonth(){ var d=getWeekStartDate(currentW); return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-01'; }
+function goalsLines(){ return [
+  {id:'g1',category_key:'home.mortgage_rent',line_label:'Rent',amount:1000,start_month:'2026-06-01',end_month:null,is_active:true},
+  {id:'g2',category_key:GROC,line_label:'Groceries',amount:500,start_month:'2026-06-01',end_month:null,is_active:true},
+  {id:'g3',category_key:'income.net_salary',line_label:'Net',amount:9999,start_month:'2026-06-01',end_month:null,is_active:true},
+  {id:'g4',category_key:'misc.goal_sweep',line_label:'Planned for Goals',amount:777,start_month:'2026-06-01',end_month:null,is_active:true},
+  {id:'g5',category_key:'home.google',line_label:'Inactive',amount:5000,start_month:'2026-06-01',end_month:null,is_active:false},
+  {id:'g6',category_key:'home.claudai',line_label:'Future',amount:4000,start_month:'2099-01-01',end_month:null,is_active:true}]; }
+function goalsAvailable(){ renderApp=function(){}; _registriesLoadStatus='loaded'; _categoriesCache=[cat(GROC)]; _budgetLineRulesLoadStatus='loaded'; _budgetLineRulesCache=goalsLines(); }
+function goalsCard(){ return _renderGoalsSavings(buildDashboardViewModel(WEEKS,{ak:7000,rt:7694.87})); }
+function cardValue(h,label){ var re=new RegExp(label.replace(/[()]/g,'\\$&')+'</div>\\s*<div[^>]*>([^<]*)</div>'); var m=re.exec(h); return m?m[1]:null; }
+T('[A1a] G1: authority available → living expenses equal the §15.3 sum (rent 1000 + groceries 500)',function(){
+  goalsAvailable(); var v=_getBudgetLivingExpenses(currentW);
+  assert(v===1500,'expected 1500 from the fixture lines, got '+v+' (month '+goalsMonth()+')');
+});
+[['budget lines failed',function(){_budgetLineRulesLoadStatus='failed';}],['budget lines never loaded',function(){_budgetLineRulesLoadStatus='not_loaded';_budgetLineRulesCache=null;}],
+ ['budget lines loaded with zero rows',function(){_budgetLineRulesCache=[];}],
+ ['categories failed',function(){_registriesLoadStatus='failed';}],['categories still loading',function(){_registriesLoadStatus='loading';}],
+ ['category cache null',function(){_categoriesCache=null;}]].forEach(function(c,ix){
+  T('[A1a] G2-'+(ix+1)+': '+c[0]+' → no planning value is produced (null), whatever the fixture lines are',function(){
+    goalsAvailable(); c[1]();
+    var v=_getBudgetLivingExpenses(currentW);
+    assert(v===null,'expected null (unavailable); a plausible value was produced: '+v);
+  });
+  T('[A1a] G3-'+(ix+1)+': '+c[0]+' → Goals card shows "—" for Living Expenses and Planned Monthly Margin, with a reason',function(){
+    goalsAvailable(); c[1](); var h=goalsCard();
+    var le=cardValue(h,'Monthly Living Expenses'), pm=cardValue(h,'Planned Monthly Margin (Base Pay)');
+    assert(le==='—','Monthly Living Expenses should be "—", got '+le);
+    assert(pm==='—','Planned Monthly Margin (Base Pay) should be "—", got '+pm);
+    assert(/Budget lines|Categories|Loading/.test(h.slice(h.indexOf('Monthly Living Expenses'),h.indexOf('Monthly Living Expenses')+1500)),'no reason shown next to the "—"');
+    assert(/\$[0-9]/.test(cardValue(h,'Monthly Income')||''),'Monthly Income must be unaffected (still a figure)');
+  });
+});
+TA('[A1a] G4: a successful load followed by a failed budget-line reload yields no stale Goals value (500 and network error)',async function(){
+  for(const failing of [function(){return resp(500,{});},function(){return Promise.reject(new Error('net'));}]){
+    goalsAvailable(); assert(_getBudgetLivingExpenses(currentW)===1500,'precondition: available value 1500');
+    fetch=router([[function(e){return /budget_line_rules/.test(e.url);},failing]]);
+    await _blrReloadAndRender(); await flush();
+    var v=_getBudgetLivingExpenses(currentW);
+    assert(v===null,'stale value survived a failed reload: '+v);
+  }
+});
+T('[A1a] G5: _blrUnavailable() is the reusable UNAVAILABLE primitive (null when available; {code,message} otherwise)',function(){
+  assert(typeof _blrUnavailable==='function','_blrUnavailable primitive missing');
+  goalsAvailable(); assert(_blrUnavailable()===null,'must be null when budget lines and categories are loaded');
+  var cases=[[function(){_budgetLineRulesLoadStatus='not_loaded';_budgetLineRulesCache=null;},'loading'],[function(){_budgetLineRulesLoadStatus='failed';},'failed'],
+    [function(){_budgetLineRulesCache=[];},'empty'],[function(){_registriesLoadStatus='failed';},'categories'],[function(){_registriesLoadStatus='loading';},'loading']];
+  cases.forEach(function(k){ goalsAvailable(); k[0](); var u=_blrUnavailable();
+    assert(u&&u.code===k[1]&&typeof u.message==='string'&&u.message.length>0,'expected code '+k[1]+', got '+JSON.stringify(u)); });
+});
+T('[A1a] G6: loading is presented differently from failure on the Goals card',function(){
+  goalsAvailable(); _budgetLineRulesLoadStatus='not_loaded'; _budgetLineRulesCache=null; var a=goalsCard();
+  goalsAvailable(); _budgetLineRulesLoadStatus='failed'; var b=goalsCard();
+  var seg=function(h){var i=h.indexOf('Monthly Living Expenses');return h.slice(i,i+1500);};
+  assert(/Loading/.test(seg(a)),'loading state must say it is loading');
+  assert(!/Loading/.test(seg(b))&&/couldn/i.test(seg(b)),'failure state must say it could not load, not loading');
+});
+
+console.log('\n── A1a: Manage Lines unavailable while budget-line state is not loaded (K2) ──');
+function blrLoaded(){ renderApp=function(){}; USER_ROLE='owner'; getAuthHeaders=async function(){return {};};
+  _budgetLineRulesLoadStatus='loaded';
+  _budgetLineRulesCache=[{id:'e1',category_key:'entertainment.event_2',line_label:'Concert',amount:100,start_month:'2026-09-01',end_month:null,is_active:true},
+    {id:'r1',category_key:'home.mortgage_rent',line_label:'Rent',amount:1000,start_month:'2026-06-01',end_month:null,is_active:true}]; }
+const blrOk = [isBlrWrite, function(){ return resp(201,null); }];
+function addModal(key,label){ _blrModal={mode:'add',key:key,monthIso:'2026-10-01',label:label,amount:'50',scope:'forward',saving:false,error:null,isIncome:false}; }
+function editModal(){ _blrModal={mode:'edit',key:'home.mortgage_rent',monthIso:'2026-10-01',label:'Rent',amount:'1100',scope:'forward',saving:false,error:null,isIncome:false,currentRow:_budgetLineRulesCache?_budgetLineRulesCache.find(function(r){return r.id==='r1';})||null:null}; }
+function archiveModal(){ _blrModal={mode:'archive',key:'home.mortgage_rent',monthIso:'2026-10-01',label:'Rent',saving:false,error:null,currentRow:_budgetLineRulesCache?_budgetLineRulesCache.find(function(r){return r.id==='r1';})||null:null}; }
+TA('[A1a] M1: loaded state — a valid Add writes once and reloads',async function(){
+  blrLoaded(); var f=router([blrOk]); fetch=f; captureDom(); addModal('home.google','Google');
+  await _blrSaveAdd(); await flush();
+  assert(f.log.filter(isBlrWrite).length===1,'expected 1 write, got '+f.log.filter(isBlrWrite).length);
+});
+TA('[A1a] M1b: loaded state — the existing duplicate-label guard refuses an overlapping Entertainment label',async function(){
+  blrLoaded(); var f=router([blrOk]); fetch=f; captureDom(); addModal('entertainment.event_3','Concert');
+  await _blrSaveAdd(); await flush();
+  assert(f.log.filter(isBlrWrite).length===0,'duplicate-label guard did not refuse');
+});
+[['never loaded',function(){_budgetLineRulesLoadStatus='not_loaded';_budgetLineRulesCache=null;}],
+ ['loading',function(){_budgetLineRulesLoadStatus='loading';}],
+ ['failed with a stale prior cache',function(){_budgetLineRulesLoadStatus='failed';}],
+ ['failed and cache cleared',function(){_budgetLineRulesLoadStatus='failed';_budgetLineRulesCache=null;}]].forEach(function(c,ix){
+  [['Add (non-duplicate)',function(){addModal('home.google','Google');},'_blrSaveAdd'],
+   ['Add (duplicate Entertainment label — guard must not be bypassed)',function(){addModal('entertainment.event_3','Concert');},'_blrSaveAdd'],
+   ['Edit',editModal,'_blrSaveEdit'],['Archive',archiveModal,'_blrSaveArchive']].forEach(function(op){
+    TA('[A1a] M2-'+(ix+1)+': state "'+c[0]+'" — '+op[0]+' mutation is refused (no write request)',async function(){
+      blrLoaded(); c[1](); var f=router([blrOk]); fetch=f; captureDom(); op[1]();
+      if(op[2]==='_blrSaveArchive'&&!_blrModal.currentRow) _blrModal.currentRow={id:'r1',category_key:'home.mortgage_rent',start_month:'2026-06-01',end_month:null,is_active:true};
+      await eval(op[2])(); await flush();
+      assert(f.log.filter(isBlrWrite).length===0,op[0]+' issued a write while budget-line state was "'+c[0]+'"');
+      assert(_blrModal&&_blrModal.error,'the refusal must be visible (modal error)');
+    });
+  });
+  T('[A1a] M3-'+(ix+1)+': state "'+c[0]+'" — opening Manage Lines shows the unavailable state and no confirm action',function(){
+    blrLoaded(); c[1](); var dom=captureDom(); _blrOpenAdd('2026-10-01');
+    var h=(dom['blr-modal-slot']||{}).innerHTML||'';
+    assert(/id="blr-unavailable"/.test(h),'unavailable message (#blr-unavailable) not shown');
+    assert(!/_blrSaveAdd\(\)/.test(h),'a Save action is still offered');
+  });
+});
+TA('[A1a] M4: success → failed reload → state is failed, and the next write is refused (A1a must not make writes easier)',async function(){
+  blrLoaded(); captureDom();
+  fetch=router([[function(e){return e.method==='GET'&&/budget_line_rules/.test(e.url);},function(){return resp(500,{});}]]);
+  await _blrReloadAndRender(); await flush();
+  assert(_budgetLineRulesLoadStatus!=='loaded','a failed reload left budget lines represented as loaded');
+  var f=router([blrOk]); fetch=f; addModal('entertainment.event_3','Concert');
+  await _blrSaveAdd(); await flush();
+  assert(f.log.filter(isBlrWrite).length===0,'write allowed after a failed reload');
+});
+TA('[A1a] M5: A1b INV-E NOT introduced — Add of a registry key with no live category backing still writes when loaded',async function(){
+  blrLoaded(); _registriesLoadStatus='loaded'; _categoriesCache=[cat(GROC)]; // entertainment.event_1 has no live category here
+  var f=router([blrOk]); fetch=f; captureDom(); addModal('entertainment.event_1','Special Dinner');
+  await _blrSaveAdd(); await flush();
+  assert(f.log.filter(isBlrWrite).length===1,'backed-key (INV-E) enforcement appears to have been introduced early');
+});
+T('[A1a] M5b: A1b INV-E NOT introduced — the Add list still offers every registry leaf',function(){
+  blrLoaded(); var dom=captureDom(); _blrOpenAdd('2026-10-01');
+  var h=(dom['blr-modal-slot']||{}).innerHTML||'';
+  var leaves=BUDGET_CATEGORY_REGISTRY.filter(function(c){return c.leaf;}).map(function(c){return c.key;});
+  leaves.forEach(function(k){ assert(h.indexOf('value="'+k+'"')>=0,'registry leaf '+k+' no longer offered'); });
+});
+
+console.log('\n── A1a: Budget month-read generation guard (§17) and render gate (K3) ──');
+function budRows(tag){ return [{category_key:GROC,amount:-1,transaction_date:'2026-08-01',tag:tag}]; }
+function budSetup(){ renderApp=function(){}; getAuthHeaders=async function(){return {};}; captureDom(); window._budgetChangeMonth('2026-08-01'); }
+[['Register spend','_budgetLoadRegisterSpend','_budgetRegisterSpendCache','_budgetRegisterSpendLoadStatus','/transactions?'],
+ ['budget_transactions','_budgetLoadTransactions','_budgetTransactions','_budgetTransLoadStatus','/budget_transactions?']].forEach(function(src,sx){
+  var L=function(m){return eval(src[1])(m);}, C=function(){return eval(src[2]);}, S=function(){return eval(src[3]);};
+  var isSrc=function(e){return e.url.indexOf(src[4])>=0;};
+  TA('[A1a] B'+(sx+1)+': '+src[0]+' — late month-A response cannot overwrite month B',async function(){
+    budSetup(); var dA=deferred();
+    fetch=router([[function(e){return isSrc(e)&&/gte\.2026-08-01/.test(e.url);},function(){return dA.p;}],[function(e){return isSrc(e)&&/gte\.2026-09-01/.test(e.url);},function(){return resp(200,budRows('SEP'));}]]);
+    var pA=L('2026-08-01'); await flush();
+    window._budgetChangeMonth('2026-09-01'); await L('2026-09-01');
+    dA.resolve(resp(200,budRows('AUG'))); await pA; await flush();
+    assert(C()&&C().length===1&&C()[0].tag==='SEP','stale month A overwrote month B: '+JSON.stringify(C()));
+    assert(S()==='loaded','status must stay loaded for month B, got '+S());
+  });
+  [['success',function(){return resp(200,budRows('AUG-OLD'));}],['HTTP 500',function(){return resp(500,{});}],['network error',function(){return Promise.reject(new Error('net'));}]].forEach(function(v){
+    TA('[A1a] B3-'+(sx+1)+': '+src[0]+' — Aug → Sep → Aug: the late FIRST Aug request ('+v[0]+') is discarded (month string alone cannot tell)',async function(){
+      budSetup(); var d1=deferred(), n=0;
+      fetch=router([[function(e){return isSrc(e)&&/gte\.2026-08-01/.test(e.url);},function(){ n++; return n===1?d1.p:resp(200,budRows('AUG-NEW')); }],
+        [function(e){return isSrc(e)&&/gte\.2026-09-01/.test(e.url);},function(){return resp(200,budRows('SEP'));}]]);
+      var p1=L('2026-08-01'); await flush();
+      window._budgetChangeMonth('2026-09-01'); await L('2026-09-01');
+      window._budgetChangeMonth('2026-08-01'); await L('2026-08-01');
+      d1.resolve(v[1]()); try{ await p1; }catch(e){} await flush();
+      assert(C()&&C().length===1&&C()[0].tag==='AUG-NEW','the first Aug request changed the current state: '+JSON.stringify(C()));
+      assert(S()==='loaded','status must remain loaded, got '+S());
+    });
+  });
+  TA('[A1a] B4-'+(sx+1)+': '+src[0]+' — overlapping same-month loads: the older request cannot beat the newer one',async function(){
+    budSetup(); var d1=deferred(), n=0;
+    fetch=router([[isSrc,function(){ n++; return n===1?d1.p:resp(200,budRows('NEW')); }]]);
+    var p1=L('2026-08-01'); await flush(); await L('2026-08-01');
+    d1.resolve(resp(200,budRows('OLD'))); await p1; await flush();
+    assert(C()&&C()[0].tag==='NEW','older same-month response overwrote the newer one: '+JSON.stringify(C()));
+  });
+});
+[['Register spend','_budgetLoadRegisterSpend','_budgetRegisterSpendCache','_budgetRegisterSpendLoadStatus','/transactions?'],
+ ['budget_transactions','_budgetLoadTransactions','_budgetTransactions','_budgetTransLoadStatus','/budget_transactions?']].forEach(function(src,sx){
+  var L=function(m){return eval(src[1])(m);}, C=function(){return eval(src[2]);}, S=function(){return eval(src[3]);};
+  var isSrc=function(e){return e.url.indexOf(src[4])>=0;};
+  // Ownership is lost AFTER the fetch resolves but BEFORE the body is parsed: only a re-check after
+  // parsing can reject it (a check after the fetch alone passes this sequence).
+  TA('[A1a] B7-'+(sx+1)+': '+src[0]+' — ownership lost between fetch and body parsing: the late body is discarded',async function(){
+    budSetup(); var dj=deferred(), n=0;
+    fetch=router([[isSrc,function(){ n++; if(n===1){ var r0=resp(200,null); r0.json=function(){return dj.p;}; return r0; } return resp(200,budRows('NEW')); }]]);
+    var p1=L('2026-08-01'); await flush();                 // fetch resolved; body parse pending
+    await L('2026-08-01');                                  // a newer same-month request completes
+    dj.resolve(budRows('OLD')); await p1; await flush();    // the older body arrives last
+    assert(C()&&C()[0].tag==='NEW','a body parsed after ownership was lost overwrote current state: '+JSON.stringify(C()));
+    assert(S()==='loaded','status must stay loaded, got '+S());
+  });
+});
+[['Register spend still loading','loaded','loading'],['budget_transactions still loading','loading','loaded']].forEach(function(c,ix){
+  T('[A1a] B5-'+(ix+1)+': '+c[0]+' — no arithmetic/render of figures; loading presentation instead',function(){
+    var dom=captureDom(); renderApp=function(){}; USER_ROLE='owner';
+    _registriesLoadStatus='loaded'; _categoriesCache=[cat(GROC)]; _budgetSelectedMonth='2026-08-01';
+    _budgetLineRulesLoadStatus='loaded'; _budgetLineRulesCache=[];
+    _budgetTransLoadStatus=c[1]; _budgetTransactions=[]; _budgetRegisterSpendLoadStatus=c[2]; _budgetRegisterSpendCache=budRows('PARTIAL');
+    var calls=0, orig=_computeRegisterSpend; _computeRegisterSpend=function(){calls++;return orig.apply(null,arguments);};
+    renderBudget();
+    assert(calls===0,'the spend arithmetic ran while a required source was still loading');
+    var h=dom['budget-content'].innerHTML;
+    assert(/Loading/.test(h)&&!/<table/.test(h),'expected the loading presentation with no grid');
+  });
+});
+T('[A1a] B6: entering the Budget tab resets BOTH month sources (one current pair)',function(){
+  renderApp=function(){}; _budgetTransLoadStatus='loaded'; _budgetRegisterSpendLoadStatus='loaded';
+  setSection('budget');
+  assert(_budgetRegisterSpendLoadStatus==='not_loaded','Register spend not reset');
+  assert(_budgetTransLoadStatus==='not_loaded','budget_transactions not reset on Budget entry (pair can mix old and new requests)');
+});
+
+console.log('\n── A1a: Budget load-failure presentation (K1) ──');
+function budAllLoaded(){ var dom=captureDom(); renderApp=function(){}; USER_ROLE='owner';
+  _registriesLoadStatus='loaded'; _categoriesCache=[cat(GROC),cat('home.mortgage_rent')]; _budgetSelectedMonth='2026-08-01';
+  _budgetLineRulesLoadStatus='loaded'; _budgetLineRulesCache=[{id:'l1',category_key:GROC,line_label:'Groceries',amount:500,start_month:'2026-06-01',end_month:null,is_active:true}];
+  _budgetTransLoadStatus='loaded'; _budgetTransactions=[]; _budgetRegisterSpendLoadStatus='loaded';
+  _budgetRegisterSpendCache=[{category_key:GROC,amount:-4321.09,transaction_date:'2026-08-05'}]; return dom; }
+function noFigures(h,label){ assert(!/<table/.test(h),label+': a grid was rendered'); assert(!/4,321\.09|\$4321/.test(h),label+': a stale figure is visible'); assert(!/Planned remaining/.test(h),label+': the figure strip was rendered'); }
+var panelTexts={};
+[['Register spend failed',function(){_budgetRegisterSpendLoadStatus='failed';}],['budget_transactions failed',function(){_budgetTransLoadStatus='failed';}],
+ ['budget lines failed',function(){_budgetLineRulesLoadStatus='failed';}]].forEach(function(c,ix){
+  T('[A1a] F'+(ix+1)+': '+c[0]+' → whole-grid load-error state, no figures, Retry offered',function(){
+    var dom=budAllLoaded(); c[1](); renderBudget(); var h=dom['budget-content'].innerHTML;
+    assert(/id="budget-load-error"/.test(h),'load-error state (#budget-load-error) not rendered');
+    noFigures(h,c[0]);
+    assert(/id="budget-load-retry"/.test(h),'Retry control (#budget-load-retry) missing');
+    panelTexts[c[0]]=elementText(h,'budget-load-error');
+  });
+});
+T('[A1a] F4: the error state identifies the failed source (each failure reads differently)',function(){
+  var ks=Object.keys(panelTexts); assert(ks.length===3,'error states not all rendered ('+ks.length+'/3)');
+  assert(panelTexts[ks[0]]!==panelTexts[ks[1]]&&panelTexts[ks[1]]!==panelTexts[ks[2]]&&panelTexts[ks[0]]!==panelTexts[ks[2]],'the failed source is not identified');
+});
+TA('[A1a] F5: a prior successful cache cannot survive and render after the CURRENT request fails',async function(){
+  var dom=budAllLoaded(); getAuthHeaders=async function(){return {};};
+  fetch=router([[function(e){return /\/transactions\?/.test(e.url);},function(){return resp(500,{});}]]);
+  await _budgetLoadRegisterSpend('2026-08-01'); await flush();
+  assert(_budgetRegisterSpendLoadStatus==='failed','precondition: status failed');
+  renderBudget(); var h=dom['budget-content'].innerHTML;
+  noFigures(h,'after current failure');
+  assert(/id="budget-load-error"/.test(h),'load-error state not rendered after the current request failed');
+});
+T('[A1a] F6: a legitimate zero-spend month (both sources loaded, no rows) renders the grid, not an error',function(){
+  var dom=budAllLoaded(); _budgetRegisterSpendCache=[]; renderBudget(); var h=dom['budget-content'].innerHTML;
+  assert(/<table/.test(h),'zero-spend month must render the grid');
+  assert(!/id="budget-load-error"/.test(h),'zero-spend month must not look like a failure');
+});
+T('[A1a] F7: Retry resets the current month sources so a fresh pair is requested',function(){
+  var dom=budAllLoaded(); _budgetRegisterSpendLoadStatus='failed'; renderBudget(); var h=dom['budget-content'].innerHTML;
+  var m=/id="budget-load-retry"[^>]*onclick="(?:window\.)?([A-Za-z_$][\w$]*)\(/.exec(h)||/onclick="(?:window\.)?([A-Za-z_$][\w$]*)\([^"]*"[^>]*id="budget-load-retry"/.exec(h);
+  assert(m,'Retry control has no handler');
+  eval(m[1])();
+  assert(['not_loaded','loading'].indexOf(_budgetRegisterSpendLoadStatus)>=0&&['not_loaded','loading'].indexOf(_budgetTransLoadStatus)>=0,'Retry must reset BOTH sources, got '+_budgetRegisterSpendLoadStatus+'/'+_budgetTransLoadStatus);
+});
+T('[A1a] F8: no A1b certification vocabulary in any rendered A1a state',function(){
+  var bad=/\bVERIFIED\b|\bUNVERIFIED\b|COMPLETE WITH UNCATEGORIZED|can't verify|\bverified\b/i;
+  var outs=[];
+  var d1=budAllLoaded(); renderBudget(); outs.push(['normal budget',d1['budget-content'].innerHTML]);
+  var d2=budAllLoaded(); _budgetRegisterSpendLoadStatus='failed'; renderBudget(); outs.push(['budget failure',d2['budget-content'].innerHTML]);
+  var d3=budAllLoaded(); _budgetRegisterSpendLoadStatus='loading'; renderBudget(); outs.push(['budget loading',d3['budget-content'].innerHTML]);
+  goalsAvailable(); _budgetLineRulesLoadStatus='failed'; outs.push(['goals unavailable',goalsCard()]);
+  regLedger(); outs.push(['register',_renderTxRegister()]);
+  regSetup({fd:{category_key:''}}); _categoriesCache=[]; _txLedgerLoadStatus='loaded'; _txLedgerCache=[]; outs.push(['register unavailable',_renderTxRegister()]);
+  outs.forEach(function(o){ var m=bad.exec(o[1]); assert(!m,o[0]+' contains certification vocabulary: "'+(m&&m[0])+'"'); });
+});
+
+console.log('\n── A1a: wording (§15, K4) ──');
+T('[A1a] W1: registry misc.goal_sweep label reads "Planned for Goals"',function(){
+  var e=BUDGET_CATEGORY_REGISTRY.find(function(c){return c.key==='misc.goal_sweep';});
+  assert(e&&e.label==='Planned for Goals','registry label is '+(e&&e.label));
+});
+T('[A1a] W2: Goals card uses "Planned Monthly Margin (Base Pay)" with the frozen subtext, and not the old label',function(){
+  goalsAvailable(); var h=goalsCard();
+  assert(h.indexOf('Planned Monthly Margin (Base Pay)')>=0,'new label missing');
+  assert(h.indexOf('Planning estimate — not cash available to move.')>=0,'frozen subtext missing');
+  assert(h.indexOf('Available for Goals / Month')<0,'old label still rendered');
+});
+T('[A1a] W3: the out-of-balance hint and help copy say "Planned for Goals"; "Available for Goals" is gone from user-facing copy',function(){
+  assert(html.indexOf('adjust Misc → Planned for Goals')>=0,'out-of-balance hint not updated');
+  assert(/<em>Planned for Goals<\/em>/.test(html),'help copy not updated');
+  var user=html.replace(/\/\/[^\n]*/g,''); // ignore code comments
+  assert(user.indexOf('Available for Goals')<0,'"Available for Goals" still present in user-facing copy');
+});
+T('[A1a] W4: misc.goal_sweep key and non-assignability unchanged',function(){
+  var e=BUDGET_CATEGORY_REGISTRY.find(function(c){return c.key==='misc.goal_sweep';});
+  assert(e&&e.assignable===false&&e.leaf===true&&e.parent==='misc','misc.goal_sweep registry entry changed');
+});
+T('[A1a] W5 (K4): "(flexible sweep line)" hint is kept unchanged',function(){
+  assert(html.indexOf('(flexible sweep line)</span>')>=0,'"(flexible sweep line)" hint was changed');
+});
+
 })();
 
 (async () => {

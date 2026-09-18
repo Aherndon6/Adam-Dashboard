@@ -885,7 +885,7 @@ button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-vis
 // ── Constants (unchanged) ──────────────────────────────────────────────────
 // Simplified architecture — $8,250 total from LC · $6,500 operating floor · no legacy mechanics
 // Real-world moves: keep $2,250 in chk, move $2,750 sav→chk, move $1,000 LC→chk, move $2,250 LC→chk (Option 1 correction)
-const BUILD_TS='2026-09-15T18:21:53'; // updated each push — local time string
+const BUILD_TS='2026-09-18T19:47:02'; // updated each push — local time string
 const START_CHK=18037.73,START_SAV=3772.77,START_AMX=103.64,START_TAX=0,START_LC=13488.88;
 const EF_AMT=13488.88; // LC/EF balance — static this model year (no transfers in or out)
 const BASE_TAX=521.36,RET_SAV_XFR=3772.74;
@@ -1362,6 +1362,10 @@ var _budgetTransLoadStatus='not_loaded';  // 'not_loaded'|'loaded'|'failed'
 var _budgetRegisterSpendCache=[];
 var _budgetRegisterSpendLoadStatus='not_loaded'; // 'not_loaded'|'loading'|'loaded'|'failed'
 var _budgetSelectedMonth='';             // ISO first-of-month e.g. '2026-06-01'; '' = current month
+// P3b-1 A1a (§17): per-source request generations. A response commits only while its generation is
+// still the latest for that source AND its month is still the selected month (checked after every await).
+var _budgetTransLoadGen=0;
+var _budgetRegisterSpendLoadGen=0;
 var _budgetShowAddForm=false;
 var _budgetEditId=null;                   // uuid of transaction being edited
 var _budgetDeleteConfirmId=null;          // uuid of transaction pending delete confirm
@@ -4907,7 +4911,7 @@ function setSection(s){
   // Phase 5E-9: force a fresh Register-spend fetch whenever entering Budget, so a Register
   // edit made from a different tab isn't shown stale. budget_transactions itself doesn't
   // need this — Budget's own CRUD already reloads it directly after every mutation.
-  if(s==='budget'){_budgetRegisterSpendLoadStatus='not_loaded';}
+  if(s==='budget'){_budgetRegisterSpendLoadStatus='not_loaded';_budgetTransLoadStatus='not_loaded';} // A1a: fresh pair
   activeSection=s;
   document.querySelectorAll('.section').forEach(function(el){el.classList.remove('active');});
   var sec=document.getElementById('s-'+s);if(sec)sec.classList.add('active');
@@ -6550,7 +6554,9 @@ function _renderGoalsSavings(vm){
   var _incomeMo=_adamMo+_wendyMo;
   // Monthly living expenses — read from budget_line_rules cache; fallback to JS constants
   var _billsMo=_getBudgetLivingExpenses(currentW);
-  var _netMo=_incomeMo-_billsMo; // Available for goals, varies by period
+  var _blrU=_blrUnavailable(); // P3b-1 A1a: null → figures; otherwise "—" plus the reason
+  var _netMo=_billsMo===null?null:_incomeMo-_billsMo; // Planned Monthly Margin (Base Pay)
+  var _blrReason=_blrU?'<div style="font-size:10px;color:var(--amber)">'+esc(_blrU.message)+'</div>':'';
   // Current week data for live numbers
   var _cw=_weeks.find(function(w){return w.num===currentW;})||_weeks[_weeks.length-1]||_weeks[0];
   var _curChk=_cw?_cw.chk:0;
@@ -6605,13 +6611,13 @@ function _renderGoalsSavings(vm){
       '</div>'+
       '<div style="background:var(--bg);border:1px solid var(--border);border-radius:6px;padding:8px 10px">'+
         '<div style="font-size:10px;color:var(--muted);font-weight:600;text-transform:uppercase;letter-spacing:.05em">Monthly Living Expenses</div>'+
-        '<div style="font-size:18px;font-weight:700;color:#ef4444;margin:2px 0">'+f(_billsMo)+'</div>'+
-        '<div style="font-size:10px;color:var(--muted)">All budget categories excl. goal sweep</div>'+
+        '<div style="font-size:18px;font-weight:700;color:#ef4444;margin:2px 0">'+(_billsMo===null?'—':f(_billsMo))+'</div>'+
+        '<div style="font-size:10px;color:var(--muted)">All budget categories excl. goal sweep</div>'+_blrReason+
       '</div>'+
       '<div style="background:var(--bg);border:1px solid var(--border);border-radius:6px;padding:8px 10px">'+
-        '<div style="font-size:10px;color:var(--muted);font-weight:600;text-transform:uppercase;letter-spacing:.05em">Available for Goals / Month</div>'+
-        '<div style="font-size:18px;font-weight:700;color:var(--green);margin:2px 0">'+f(_netMo)+'</div>'+
-        '<div style="font-size:10px;color:var(--muted)">Baseline — reduces with active budget rules</div>'+
+        '<div style="font-size:10px;color:var(--muted);font-weight:600;text-transform:uppercase;letter-spacing:.05em">Planned Monthly Margin (Base Pay)</div>'+
+        '<div style="font-size:18px;font-weight:700;color:var(--green);margin:2px 0">'+(_netMo===null?'—':f(_netMo))+'</div>'+
+        '<div style="font-size:10px;color:var(--muted)">Planning estimate — not cash available to move.</div>'+_blrReason+
       '</div>'+
     '</div>'+
     '<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:12px">'+
@@ -7594,6 +7600,8 @@ var _txFilterStatus='all';           // 'all'|'cleared'|'uncleared'
 // Phase 5F-1.5 A9b: inclusive date range (YYYY-MM-DD or blank=open-ended). Lexical compare only.
 var _txFilterDateFrom='';
 var _txFilterDateTo='';
+// P3b-1 A1a (§19.2): selected-account "uncategorized only" view. Applied after _filterTxRows.
+var _txFilterUncategorized=false;
 
 // ── Phase 5E-2: Write state ────────────────────────────────────────────────
 var _txFormMode=null;          // null | 'add' | 'edit'
@@ -7710,7 +7718,7 @@ function _sortTxRows(rowsWithBalance, col, dir){
 // Phase 5F-1.5 A9a: Register filter state accessors/mutators. Setters only update
 // in-memory state and re-render; they never fetch, reload, or mutate transactions.
 function _getTxFilterState(){return {search:_txFilterSearch,type:_txFilterType,status:_txFilterStatus,dateFrom:_txFilterDateFrom,dateTo:_txFilterDateTo};}
-function _txFiltersActive(){return !!String(_txFilterSearch||'').trim()||_txFilterType!=='all'||_txFilterStatus!=='all'||!!String(_txFilterDateFrom||'')||!!String(_txFilterDateTo||'');}
+function _txFiltersActive(){return _txFilterUncategorized||!!String(_txFilterSearch||'').trim()||_txFilterType!=='all'||_txFilterStatus!=='all'||!!String(_txFilterDateFrom||'')||!!String(_txFilterDateTo||'');}
 function setTxFilter(field,value){
   if(field==='search')_txFilterSearch=value;
   else if(field==='type')_txFilterType=value;
@@ -7719,7 +7727,8 @@ function setTxFilter(field,value){
   else if(field==='dateTo')_txFilterDateTo=value;
   renderApp();
 }
-function clearTxFilters(){_txFilterSearch='';_txFilterType='all';_txFilterStatus='all';_txFilterDateFrom='';_txFilterDateTo='';renderApp();}
+function clearTxFilters(){_txFilterSearch='';_txFilterType='all';_txFilterStatus='all';_txFilterDateFrom='';_txFilterDateTo='';_txFilterUncategorized=false;renderApp();}
+function setTxFilterUncategorized(on){_txFilterUncategorized=!!on;renderApp();}
 
 // Phase 5F-1.5 A9a: pure filter over the chronological rowsWithBalance array. Returns a
 // matching subset with each entry's bal untouched (Balance stays full-ledger/as-of-date).
@@ -8413,7 +8422,35 @@ function _cancelTxDelete(){
 }
 
 // Validate and save the add/edit form. POST for add, PATCH for edit.
+// P3b-1 A1a (§6): render/save-time availability of category authority. True only when the
+// categories registry is loaded and offers at least one ASSIGNABLE category.
+function _registerCategoryAuthorityAvailable(){
+  return _registriesLoadStatus==='loaded'&&Array.isArray(_categoriesCache)&&_categoriesCache.some(_isAssignableCategory);
+}
+// P3b-1 A1a (§6): fresh single-key authority read. Returns null when the key is authorized, or
+// the user-facing refusal message. Fails closed on any request, status, shape or content problem.
+async function _txCategoryAuthorityError(h,catKey){
+  var VERIFY="Couldn't verify the category — try again.";
+  var res,rows;
+  try{
+    res=await fetch(SUPA_URL+'/rest/v1/categories?key=eq.'+encodeURIComponent(catKey)
+      +'&select=key,is_leaf,lifecycle_status,behavior_class,budget_treatment',{headers:h});
+  }catch(e){console.error('[A1a] category authority read failed:',e);return VERIFY;}
+  if(res.status===401||res.status===403)return 'Save failed — please refresh and sign in again if this continues.';
+  if(!res.ok){console.error('[A1a] category authority read HTTP '+res.status);return VERIFY;}
+  try{rows=await res.json();}catch(e){return VERIFY;}
+  if(!Array.isArray(rows))return VERIFY;
+  if(rows.length===0)return 'That category no longer exists — choose another.';
+  if(rows.length!==1||!rows[0]||rows[0].key!==catKey)return VERIFY;
+  var row=rows[0];
+  if(_isAssignableCategory(row))return null;
+  if(row.lifecycle_status!=='active')return 'That category is no longer active — choose another.';
+  return "That category can't be used for transactions — choose another.";
+}
+
 async function _saveTxForm(){
+  // P3b-1 A1a: the function itself is re-entrancy guarded (not only the disabled button).
+  if(_txFormSaving)return;
   if(!canWriteFinancials()){_txFormError='Permission denied.';renderApp();return;}
   // ── Validation ──
   var d=_txFormData;
@@ -8434,18 +8471,21 @@ async function _saveTxForm(){
   var acctObj=(_accountsCache||[]).find(function(a){return a.key===_txLedgerAccountKey;});
   if(!_txLedgerAccountKey||!acctObj){_txFormError='No valid account selected.';renderApp();return;}
 
-  // Category: blank -> null; non-blank must be active in cache
-  var catKey=(d.category_key||'').trim()||null;
-  if(catKey){
-    var catObj=(_categoriesCache||[]).find(function(c){return c.key===catKey;});
-    if(!catObj||catObj.lifecycle_status!=='active'){_txFormError='Selected category is no longer active.';renderApp();return;}
-  }
 
   // Phase 5E-10: Payee is now required (Wendy feedback #3) — Register is the actual-spend
   // source of truth, so every row needs an identifiable payee. Memo stays optional.
   var payee=(d.payee||'').trim()||null;
   if(!payee){_txFormError='Payee is required.';renderApp();return;}
   var memo=(d.memo||'').trim()||null;
+
+  // P3b-1 A1a (§6): category is required, and category authority must be available. The
+  // sign-in-time cache only gates whether saving is possible at all; it never authorizes a key —
+  // the fresh single-key read below does.
+  var catKey=(d.category_key||'').trim();
+  if(!catKey){_txFormError='Choose a category.';renderApp();return;}
+  if(!_registerCategoryAuthorityAvailable()){_txFormError='Categories unavailable — transactions can\'t be saved right now.';renderApp();return;}
+  var catObj=(_categoriesCache||[]).find(function(c){return c.key===catKey;});
+  if(!catObj||catObj.lifecycle_status!=='active'){_txFormError='Selected category is no longer active.';renderApp();return;}
 
   // ── Supabase call ──
   _txFormSaving=true;
@@ -8454,6 +8494,10 @@ async function _saveTxForm(){
   var isEdit=_txFormMode==='edit';
   try{
     var h=await getAuthHeaders();
+    // P3b-1 A1a (§6): fresh single-key category authority, read-only; the cache is not touched.
+    // The write below happens only after this read proves exactly one ASSIGNABLE row for the key.
+    var authErr=await _txCategoryAuthorityError(h,catKey);
+    if(authErr){_txFormError=authErr;return;} // finally re-enables Save and re-renders; form kept
     var url=SUPA_URL+'/rest/v1/transactions'+(isEdit?'?id=eq.'+encodeURIComponent(_txEditId):'');
     var method=isEdit?'PATCH':'POST';
     var hdrs=Object.assign({},h,{'Content-Type':'application/json','Prefer':'return=minimal'});
@@ -8662,12 +8706,12 @@ function _renderTxRegister(){
     // excluded, since Register logs both Outflow and Inflow and needs income/deposit categories
     // (Net Salary, Deep South Commissions, Jabian Deposits 2026, etc.) selectable for inflow rows.
     var activeCategories=(_categoriesCache||[])
-      .filter(function(c){return c.lifecycle_status==='active';})
-      .map(_normalizeCatRow)
-      .filter(function(c){return c.leaf&&c.assignable;});
+      .filter(_isAssignableCategory)
+      .map(_normalizeCatRow);
     // Month for label resolution: transaction's own date (falls back to today if blank).
     var _regMonthIso=_txDateToMonthIso(fd.transaction_date)||_txDateToMonthIso(_today);
-    var catOpts='<option value="">— No category —</option>';
+    // P3b-1 A1a (§6): a category is required; the blank choice is a non-selectable prompt.
+    var catOpts='<option value="" disabled'+(fd.category_key?'':' selected')+'>Select a category…</option>';
     activeCategories.forEach(function(c){
       var _optLabel=_getRegisterCategoryLabel(c.key,_regMonthIso);
       catOpts+='<option data-mlabel="1" value="'+_esc(c.key)+'"'+(fd.category_key===c.key?' selected':'')+'>'+_esc(_optLabel)+'</option>';
@@ -8696,6 +8740,7 @@ function _renderTxRegister(){
         +'style="font-family:inherit;font-size:13px;padding:5px 8px;border:1px solid var(--line);'
         +'border-radius:6px;background:var(--surface);color:var(--text);width:100%">';
     };
+    var _catAuthOk=_registerCategoryAuthorityAvailable();
     var savingLabel=_txFormMode==='edit'?'Saving…':'Adding…';
     var saveLabel=_txFormMode==='edit'?'Save Changes':'Add Transaction';
     form='<div style="padding:14px 16px;background:var(--blueSoft);border-bottom:2px solid var(--blue)">'
@@ -8740,7 +8785,7 @@ function _renderTxRegister(){
       // Buttons
       +'<div style="display:flex;gap:6px;align-items:flex-end">'
       +'<button onclick="_saveTxForm()" '
-      +((_txFormSaving)?'disabled ':'')
+      +((_txFormSaving||!_catAuthOk)?'disabled ':'')
       +'style="font-family:inherit;font-size:12px;font-weight:600;padding:5px 12px;cursor:'
       +(_txFormSaving?'default':'pointer')+';border:1px solid var(--blue);border-radius:6px;'
       +'background:'+(_txFormSaving?'var(--muted2)':'var(--blue)')+';color:#fff;white-space:nowrap">'
@@ -8750,6 +8795,7 @@ function _renderTxRegister(){
       +'background:var(--surface);color:var(--muted)">Cancel</button>'
       +'</div>'
       +'</div>'
+      +(_catAuthOk?'':'<div id="tx-cat-unavailable" style="margin-top:8px;font-size:12px;color:var(--red)">Categories unavailable — transactions can\'t be saved right now. Refresh to retry.</div>')
       +(_txFormError?'<div style="margin-top:8px;font-size:12px;color:var(--red)">'+_esc(_txFormError)+'</div>':'')
       +'</div>';
   }
@@ -8805,6 +8851,10 @@ function _renderTxRegister(){
     _applyDisplayOrderBalances(_reconOrder,_startBal,true);
     var fullOrder=_sortTxRows(rowsWithBalance,_txLedgerSortCol,_txLedgerSortDir);
     var filteredRows=_filterTxRows(fullOrder,_getTxFilterState());
+    // P3b-1 A1a (§19.2): uncategorized count/filter over the complete P0 ledger of the selected
+    // account only. Balances stay the full-ledger values computed above (entries are not rebuilt).
+    var _uncatCount=rows.filter(function(t){return !t.category_key;}).length;
+    if(_txFilterUncategorized)filteredRows=filteredRows.filter(function(e){return !e.tx.category_key;});
     var displayRows=filteredRows;
 
     // A9a: filter row (search + type + status + Clear), with a Showing X of Y count.
@@ -8832,6 +8882,8 @@ function _renderTxRegister(){
       +'<input id="tx-filter-date-to" type="date" value="'+_esc(_txFilterDateTo)+'" onchange="setTxFilter(\'dateTo\',this.value)" '
       +'style="font-family:inherit;font-size:13px;padding:4px 6px;border:1px solid var(--line);border-radius:6px;background:var(--surface);color:var(--text)">'
       +(_filtersOn?'<button id="tx-clear-filters" onclick="clearTxFilters()" style="font-family:inherit;font-size:12px;font-weight:600;padding:5px 10px;cursor:pointer;border:1px solid var(--line);border-radius:6px;background:var(--surface);color:var(--muted)">Clear filters</button>':'')
+      +'<span id="tx-uncat-count" style="font-size:11px;color:'+(_uncatCount?'var(--amber)':'var(--muted)')+'">'+_uncatCount+' uncategorized in this account</span>'
+      +'<button id="tx-filter-uncat" onclick="setTxFilterUncategorized('+(!_txFilterUncategorized)+')" style="font-family:inherit;font-size:12px;font-weight:600;padding:5px 10px;cursor:pointer;border:1px solid var(--line);border-radius:6px;background:'+(_txFilterUncategorized?'var(--blueSoft)':'var(--surface)')+';color:var(--ink)">'+(_txFilterUncategorized?'Show all':'Uncategorized only')+'</button>'
       +'<span style="flex:1"></span>'
       +'<span style="font-size:11px;color:var(--muted)">Showing '+filteredRows.length+' of '+rows.length+' transactions</span>'
       +'</div>';
@@ -9018,9 +9070,12 @@ function renderTransactions(){
 
 // Load budget transactions for selected month and re-render
 async function _budgetLoadTransactions(monthIso){
+  var gen=++_budgetTransLoadGen;
+  var current=function(){return gen===_budgetTransLoadGen&&monthIso===_budgetGetMonthIso();};
   _budgetTransLoadStatus='loading';
   try{
     var h=await getAuthHeaders();
+    if(!current())return;
     // Parse monthIso ('2026-06-01') as local date parts to avoid UTC→local timezone shift.
     // new Date('2026-06-01') is UTC midnight; in UTC-4 getMonth() returns May, breaking the range.
     var parts=monthIso.split('-');
@@ -9033,14 +9088,20 @@ async function _budgetLoadTransactions(monthIso){
       SUPA_URL+'/rest/v1/budget_transactions?transaction_date=gte.'+startIso+'&transaction_date=lte.'+endIso+'&select=*&order=transaction_date.asc,created_at.asc',
       {headers:h}
     );
+    if(!current())return;
     if(r.ok){
-      _budgetTransactions=await r.json();
+      var body=await r.json();
+      if(!current())return;
+      _budgetTransactions=body;
       _budgetTransLoadStatus='loaded';
     } else {
+      _budgetTransactions=[]; // P3b-1 A1a: a failed current load leaves no prior rows behind
       _budgetTransLoadStatus='failed';
       console.error('[Budget] Failed to load transactions: HTTP '+r.status);
     }
   }catch(e){
+    if(!current())return;
+    _budgetTransactions=[];
     _budgetTransLoadStatus='failed';
     console.error('[Budget] Exception loading transactions:',e);
   }
@@ -9052,9 +9113,12 @@ async function _budgetLoadTransactions(monthIso){
 // Mirrors _budgetLoadTransactions's local-date month-boundary math exactly (same
 // UTC-shift-avoidance reasoning applies here).
 async function _budgetLoadRegisterSpend(monthIso){
+  var gen=++_budgetRegisterSpendLoadGen;
+  var current=function(){return gen===_budgetRegisterSpendLoadGen&&monthIso===_budgetGetMonthIso();};
   _budgetRegisterSpendLoadStatus='loading';
   try{
     var h=await getAuthHeaders();
+    if(!current())return;
     var parts=monthIso.split('-');
     var y=parseInt(parts[0],10);
     var m=parseInt(parts[1],10)-1; // 0-indexed local month
@@ -9065,14 +9129,20 @@ async function _budgetLoadRegisterSpend(monthIso){
       SUPA_URL+'/rest/v1/transactions?transaction_date=gte.'+startIso+'&transaction_date=lte.'+endIso+'&select=category_key,amount,transaction_date',
       {headers:h}
     );
+    if(!current())return;
     if(r.ok){
-      _budgetRegisterSpendCache=await r.json();
+      var body=await r.json();
+      if(!current())return;
+      _budgetRegisterSpendCache=body;
       _budgetRegisterSpendLoadStatus='loaded';
     } else {
+      _budgetRegisterSpendCache=[]; // P3b-1 A1a: a failed current load leaves no prior rows behind
       _budgetRegisterSpendLoadStatus='failed';
       console.error('[Budget] Failed to load Register spend: HTTP '+r.status);
     }
   }catch(e){
+    if(!current())return;
+    _budgetRegisterSpendCache=[];
     _budgetRegisterSpendLoadStatus='failed';
     console.error('[Budget] Exception loading Register spend:',e);
   }
@@ -9185,6 +9255,34 @@ function _budgetRowState(spent,budget){
   return 'neutral';
 }
 
+// P3b-1 A1a (K1/K3): Budget load gate. Returns the loading or whole-grid load-error HTML, or null
+// when both required month sources and the budget lines are loaded for the current request.
+function _budgetLoadGateHtml(monthIso){
+  // P3b-1 A1a (K3): never compute or show figures while either required month source is in flight.
+  if(_budgetTransLoadStatus==='loading'||_budgetRegisterSpendLoadStatus==='loading'){
+    return '<div style="padding:24px;color:var(--muted);font-size:13px">Loading budget data...</div>';
+  }
+  // P3b-1 A1a (K1): if a required current input failed, show a whole-grid load-error state naming the
+  // failed source(s), with Retry, and no Spent/Remaining/planned figures at all.
+  var _loadFailures=[];
+  if(_budgetRegisterSpendLoadStatus==='failed')_loadFailures.push("Register transactions for this month couldn't be loaded.");
+  if(_budgetTransLoadStatus==='failed')_loadFailures.push("Budget-entered (legacy) transactions for this month couldn't be loaded.");
+  if(_budgetLineRulesLoadStatus!=='loaded')_loadFailures.push("Budget lines couldn't be loaded.");
+  if(_loadFailures.length){
+    return '<div style="display:flex;align-items:center;gap:12px;margin-bottom:16px;flex-wrap:wrap">'
+      +'<h2 style="margin:0;font-size:17px;font-weight:700;color:var(--ink)">Budget</h2>'
+      +'<select style="padding:5px 10px;border:1px solid var(--border);border-radius:6px;font-size:13px;background:var(--surface2);color:var(--ink)" onchange="window._budgetChangeMonth(this.value)">'
+      +_budgetAvailableMonths().map(function(mo){return '<option value="'+mo.iso+'"'+(mo.iso===monthIso?' selected':'')+'>'+mo.label+'</option>';}).join('')
+      +'</select></div>'
+      +'<div id="budget-load-error" style="padding:16px 18px;border:1px solid var(--amber);border-radius:8px;background:var(--surface2);color:var(--ink);font-size:13px;line-height:1.6">'
+      +_loadFailures.map(function(t,i){return '<div'+(i===0?' style="font-weight:700"':'')+'>'+t+'</div>';}).join('')
+      +'<div style="margin-top:6px;color:var(--muted)">Budget figures for '+_budgetMonthLabel(monthIso)+' aren\'t shown, so a partial or out-of-date figure isn\'t mistaken for the real one.</div>'
+      +'<button id="budget-load-retry" onclick="_budgetRetryLoad()" style="margin-top:10px;padding:6px 14px;background:var(--blue);color:#fff;border:none;border-radius:6px;font-size:12px;font-weight:600;cursor:pointer">Retry</button>'
+      +'</div>';
+  }
+  return null;
+}
+
 function renderBudget(){
   var el=document.getElementById('budget-content');
   if(!el)return;
@@ -9200,7 +9298,8 @@ function renderBudget(){
     el.innerHTML='<div style="padding:24px;color:var(--muted);font-size:13px">Loading budget data...</div>';
     return;
   }
-
+  var gate=_budgetLoadGateHtml(monthIso); // P3b-1 A1a
+  if(gate!==null){el.innerHTML=gate;return;}
   var activeBudgetCats=_getActiveBudgetCategories(monthIso);
   var html='';
 
@@ -9274,7 +9373,7 @@ function renderBudget(){
     html+='<li><strong>Spent</strong> — what has been logged so far this month in that category.</li>';
     html+='<li><strong>Budget</strong> — the planned amount for the month (set by Adam in the financial model).</li>';
     html+='<li><strong>Remaining</strong> — Budget minus Spent. Rows read <span style="font-weight:600">neutral</span> when within budget, <span style="color:var(--amber);font-weight:600">amber</span> when near the limit, and <span style="color:#ef4444;font-weight:600">red with an "Over by" badge</span> when over. Income rows show their remaining amount as <span style="color:var(--muted);font-weight:600">expected</span> — income that has not arrived yet is normal, never a problem.</li>';
-    html+='<li><em>Available for Goals</em> (under Misc) is the usual flexible sweep line — it is included in the Total Planned Budget. When expenses increase, reduce this line to keep the budget balanced. You can also offset changes by adjusting Misc → Extra or another discretionary category.</li>';
+    html+='<li><em>Planned for Goals</em> (under Misc) is the usual flexible sweep line — it is included in the Total Planned Budget. When expenses increase, reduce this line to keep the budget balanced. You can also offset changes by adjusting Misc → Extra or another discretionary category.</li>';
     html+='<li>The <strong>Budget Balance</strong> row shows income minus Total Planned Budget. It should always be $0.00. If it is not, adjust a discretionary line until it zeros out.</li>';
     html+='</ul>';
 
@@ -9496,7 +9595,7 @@ function renderBudget(){
   if(!balanced){
     html+='<tr style="background:#fef3c7">';
     html+='<td colspan="4" style="padding:4px 8px;font-size:10px;color:#92400e">'
-      +'Budget does not balance to income. To fix, adjust Misc → Available for Goals (most common), '
+      +'Budget does not balance to income. To fix, adjust Misc → Planned for Goals (most common), '
       +'Misc → Extra, or another discretionary category until the difference reaches $0.00.</td>';
     html+='</tr>';
   }
@@ -9772,6 +9871,16 @@ function _renderBudgetRecon(monthIso){
   }
   html+='</div></div>';
   return html;
+}
+
+// P3b-1 A1a (K1): Retry requests a fresh current pair of month sources (and budget lines if needed).
+function _budgetRetryLoad(){
+  _budgetTransLoadStatus='not_loaded';
+  _budgetTransactions=[];
+  _budgetRegisterSpendLoadStatus='not_loaded';
+  _budgetRegisterSpendCache=[];
+  if(_budgetLineRulesLoadStatus!=='loaded'){_blrReloadAndRender();return;}
+  renderApp();
 }
 
 // ── Budget event handlers (window-scoped for inline onclick) ───────────────
@@ -10336,10 +10445,18 @@ async function _loadSupabaseRegistries(){
   }
 }
 
+// P3b-1 A1a (spec §5.1): the ONE shared ASSIGNABLE definition for a raw categories row.
+// Used by normalization (picker eligibility) and by the fresh save-time authority check in
+// _saveTxForm. Register entry only; it is not a Budget-countability predicate.
+function _isAssignableCategory(row){
+  return !!row&&row.is_leaf===true&&row.lifecycle_status==='active'
+    &&row.behavior_class!=='savings_allocation'&&row.budget_treatment!=='planned_allocation';
+}
+
 // Normalizes a Supabase categories row to the JS registry shape.
 // Derives assignable and isIncome; passes through extended fields for Phase 5E use.
 function _normalizeCatRow(c){
-  var assignable=c.is_leaf&&c.lifecycle_status==='active'&&c.behavior_class!=='savings_allocation'&&c.budget_treatment!=='planned_allocation';
+  var assignable=_isAssignableCategory(c);
   var isIncome=['income','commission_income','reimbursable_income'].indexOf(c.behavior_class)!==-1;
   return {
     key:c.key, label:c.label,
@@ -10523,7 +10640,7 @@ var BUDGET_CATEGORY_REGISTRY=[
   // Misc
   {key:'misc',                          label:'Misc.',                   parent:null,                 leaf:false, assignable:false, isIncome:false},
   {key:'misc.extra',                    label:'Extra',                   parent:'misc',               leaf:true,  assignable:true,  isIncome:false},
-  {key:'misc.goal_sweep',               label:'Available for Goals', parent:'misc',        leaf:true,  assignable:false, isIncome:false},
+  {key:'misc.goal_sweep',               label:'Planned for Goals',   parent:'misc',        leaf:true,  assignable:false, isIncome:false},
   // Personal Care
   {key:'personal_care',                 label:'Personal Care',           parent:null,                 leaf:false, assignable:false, isIncome:false},
   {key:'personal_care.hair',            label:'Hair',                    parent:'personal_care',      leaf:true,  assignable:true,  isIncome:false}
@@ -10545,10 +10662,24 @@ var BUDGET_PAYMENT_ACCOUNTS=['AMEX Gold','Disney Visa','Costco Visa','AMEX Plati
 // Returns monthly living expenses for the month containing weekNum.
 // Reads from _budgetLineRulesCache; falls back to JS constants on miss.
 // Excludes income.* and misc.goal_sweep from total.
+// P3b-1 A1a (§8.1 UNAVAILABLE only): availability of budget-line/category authority.
+// Returns null when available, else {code,message} with code in loading|failed|empty|categories.
+// A1b extends this into BLR_STATE (adding VALID/INVALID); A1a does not decide validity.
+function _blrUnavailable(){
+  if(_budgetLineRulesLoadStatus==='failed')return {code:'failed',message:"Budget lines couldn't be loaded. Refresh to retry."};
+  if(_budgetLineRulesLoadStatus!=='loaded')return {code:'loading',message:'Loading budget lines…'};
+  if(!Array.isArray(_budgetLineRulesCache))return {code:'failed',message:"Budget lines couldn't be loaded. Refresh to retry."};
+  if(_budgetLineRulesCache.length===0)return {code:'empty',message:'Budget lines: none found.'};
+  if(_registriesLoadStatus==='failed'||(_registriesLoadStatus==='loaded'&&!Array.isArray(_categoriesCache)))return {code:'categories',message:"Categories couldn't be loaded. Refresh to retry."};
+  if(_registriesLoadStatus!=='loaded')return {code:'loading',message:'Loading categories…'};
+  return null;
+}
+
+// P3b-1 A1a: returns null when budget-line/category authority is unavailable (no fallback values).
 function _getBudgetLivingExpenses(weekNum){
   var wsd=getWeekStartDate(weekNum);
   var monthIso=wsd.getFullYear()+'-'+String(wsd.getMonth()+1).padStart(2,'0')+'-01';
-  if(_budgetLineRulesLoadStatus==='loaded'&&_budgetLineRulesCache&&_budgetLineRulesCache.length>0){
+  if(!_blrUnavailable()){
     var total=0;
     _budgetLineRulesCache.forEach(function(r){
       if(!r.is_active)return;
@@ -10560,18 +10691,7 @@ function _getBudgetLivingExpenses(weekNum){
     });
     return Math.round(total);
   }
-  // Fallback — JS constants; log warning only if a load was attempted
-  if(_budgetLineRulesLoadStatus!=='not_loaded'){
-    console.warn('[BudgetLineRules] budget_line_rules unavailable (status:'+_budgetLineRulesLoadStatus+'); using stats fallback constants.');
-  }
-  // Fallback uses monthIso (already computed above) to match live cache behavior.
-  // weekNum thresholds would disagree with live: Wk4 starts June 28 (still June),
-  // so rent+100 / Diablos must gate on calendar month, not week number.
-  var base=13638;
-  var rentD=(monthIso>='2026-07-01')?100:0;
-  var diablosD=(monthIso>='2026-07-01'&&monthIso<='2026-12-01')?750:0;
-  var glpD=(monthIso>='2026-08-01'&&monthIso<='2026-12-01')?404:0;
-  return base+rentD+diablosD+glpD;
+  return null;
 }
 
 // _getBudgetAmount(categoryKey, monthIso)
@@ -10713,11 +10833,29 @@ function _blrCloseModal(){
   if(slot)slot.innerHTML='';
 }
 
+// P3b-1 A1a (K2): Manage Lines writes require demonstrably loaded budget lines, so the existing
+// overlap and duplicate-label guards always run against current state (never stale / never absent).
+function _blrMutationUnavailable(){
+  return _budgetLineRulesLoadStatus!=='loaded'||!Array.isArray(_budgetLineRulesCache);
+}
+var _BLR_UNAVAILABLE_MSG="Budget lines aren't loaded right now, so they can't be changed. Refresh the page and try again.";
+function _blrRefuseIfUnavailable(m){
+  if(!_blrMutationUnavailable())return false;
+  m.error=_BLR_UNAVAILABLE_MSG;_blrRenderModal();return true;
+}
+
 function _blrRenderModal(){
   var slot=document.getElementById('blr-modal-slot');
   if(!slot)return;
   if(!_blrModal){slot.innerHTML='';return;}
   var m=_blrModal;
+  if(_blrMutationUnavailable()){
+    slot.innerHTML='<div class="sc-modal-overlay" onclick="if(event.target===this)window._blrCloseModal()"><div class="sc-modal" style="width:460px;max-width:96vw">'
+      +'<div class="sc-modal-title">Manage Lines unavailable</div>'
+      +'<div id="blr-unavailable" class="sc-modal-body" style="font-size:13px;color:var(--ink);margin-bottom:12px">'+esc(_BLR_UNAVAILABLE_MSG)+'</div>'
+      +'<div class="sc-modal-btns"><button class="sc-modal-cancel" onclick="window._blrCloseModal()">Close</button></div></div></div>';
+    return;
+  }
   var html='<div class="sc-modal-overlay" onclick="if(event.target===this&&!window._blrModal.saving)window._blrCloseModal()">';
   html+='<div class="sc-modal" style="width:460px;max-width:96vw;max-height:90vh;overflow-y:auto">';
 
@@ -10890,8 +11028,10 @@ async function _blrReloadAndRender(){
   try{
     var h=await getAuthHeaders();
     var r=await fetch(SUPA_URL+'/rest/v1/budget_line_rules?is_active=eq.true&select=*&order=category_key.asc',{headers:h});
+    // P3b-1 A1a (§18.3): a failed reload is failed; the prior cache is never presented as loaded.
     if(r.ok){_budgetLineRulesCache=await r.json();_budgetLineRulesLoadStatus='loaded';}
-  }catch(e){console.error('[BLR] reload error:',e);}
+    else{_budgetLineRulesLoadStatus='failed';console.error('[BLR] reload failed: HTTP '+r.status);}
+  }catch(e){_budgetLineRulesLoadStatus='failed';console.error('[BLR] reload error:',e);}
   _blrModal=null;
   var slot=document.getElementById('blr-modal-slot');
   if(slot)slot.innerHTML='';
@@ -10926,6 +11066,7 @@ function _blrCheckEntertainmentDupLabel(key,proposedLabel,proposedStart,proposed
 async function _blrSaveEdit(){
   if(!_blrModal||_blrModal.mode!=='edit'||_blrModal.saving)return;
   var m=_blrModal;
+  if(_blrRefuseIfUnavailable(m))return; // P3b-1 A1a (K2)
   // Defense-in-depth permission guard (RLS is the real gate; this prevents accidental UI writes)
   if(!canWriteFinancials()){m.error='Permission denied.';_blrRenderModal();return;}
   if(!m.label||!m.label.trim()){m.error='Line label is required.';_blrRenderModal();return;}
@@ -10992,6 +11133,7 @@ async function _blrSaveEdit(){
 async function _blrSaveAdd(){
   if(!_blrModal||_blrModal.mode!=='add'||_blrModal.saving)return;
   var m=_blrModal;
+  if(_blrRefuseIfUnavailable(m))return; // P3b-1 A1a (K2)
   // Defense-in-depth permission guard
   if(!canWriteFinancials()){m.error='Permission denied.';_blrRenderModal();return;}
   if(!m.key){m.error='Please select a category.';_blrRenderModal();return;}
@@ -11024,6 +11166,7 @@ async function _blrSaveAdd(){
 async function _blrSaveArchive(){
   if(!_blrModal||_blrModal.mode!=='archive'||_blrModal.saving||!_blrModal.currentRow)return;
   var m=_blrModal;
+  if(_blrRefuseIfUnavailable(m))return; // P3b-1 A1a (K2)
   // Defense-in-depth permission guard
   if(!canWriteFinancials()){m.error='Permission denied.';_blrRenderModal();return;}
   m.saving=true;_blrRenderModal();
