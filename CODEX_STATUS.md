@@ -1,6 +1,47 @@
 # Codex Status: Herndon Financial OS
 
+## CURRENCY NOTE (2026-09-18): P3b-1 C1/R1 PRODUCTION SITTING CLOSED COMPLETE under frozen rev 2.7.4 — C1 applied (20/20), R1 applied (50 targets, 14/14), final app check MATCHES; P3b-1 production data-integrity execution DONE; A1/V1 NOT started
+
+**Canonical state.** The P3b-1 C1/R1 production sitting ran on 2026-09-18 (UTC; evening of 2026-09-17 ET) and **closed COMPLETE** (rev 2.5 §11, 7.4). This completes P3b-1 production data-integrity execution. This note is balance-free by design (rev 2.5 §7.5; public repository). Household amounts, transaction identifiers and the sitting's durable detail stay in the sealed private evidence.
+
+- **Execution authority:** rev 2.7.4, FROZEN 2026-09-17. Runbook `892b480a083ce78c0714c433fdf10c82ff50227145d6cec1f7de7923760ac122`, freeze record `44c4f859217485ec71ab290d8a7f8ba75edf7c725422058e5d416b57023938f6`, non-authoritative launch card `cfa745a9…`.
+  - Lineage: rev 2.7.2 (`30aafc7d…`, note below) → rev 2.7.3 (`88f8bd92…`, CHG-15 production-state re-base) → rev 2.7.4 (CHG-16 NETVIEW acceptance fix). Every earlier revision is preserved unchanged.
+  - Execution set: `p3b-1-rev273-execution-set-2026-09-17`. Helper `session-functions.sh` `38a51045…`, `expected-hashes.sha256` `e0e07048…` (18 files), package manifest `68dba024…`. C1 is byte-identical to the Sep-13 package.
+- **Sitting:** RUN `~/Herndon-Financial-OS-Evidence/p3b-1-production-20260918T011833Z`.
+  - Step 2: fresh PF compare 23/23 with 0 diffs; C1-1 25/25; R1-1 6/8 as expected before C1 (G06/G07); D8 12/12.
+  - Step 3: restore point plus G14 schema cross-read PASS. Encrypted round-trip PASS. Off-device copy verified (`9415eb58…`). Plaintext removed.
+  - Step 4 (4.1–4.4) passed within the timing rule. The 4.5 attestation was contemporaneous and included E8.
+  - **C1:** AUTH-C1 given; `C1-2-apply.sql` `338ace94…` **APPLY CLEAN**; C1-3 **PASS 20/20**.
+  - **5.4 app-view:** classifier PASS, requests=55 A=0/0 B=0/0; owner app-check MATCHES.
+  - **6.1:** fresh R1-1 **8/8**.
+  - **R1:** AUTH-R1 given; `R1-2-apply.sql` `8ef06918…` **APPLY CLEAN** on exactly **50** reviewed transaction targets; R1-3 **PASS 14/14**.
+  - **7.1 final app-view:** classifier PASS, requests=55 A=0/0 B=0/0; final owner app-check **MATCHES** (see the S3c item below).
+  - **7.2:** hashes **18/18**; disconnect; closeout.
+- **No application writes** during any controlled app-view checkpoint (3.5, 5.4, 7.1): A=0/0 and B=0/0 sitting-wide. Served Document `7be1538a…`, BUILD_TS `2026-09-15T18:21:53`, and repository/build identity were unchanged at every bookend.
+- **Sealed evidence:** `CLOSEOUT MANIFEST sha256 f74856e95e14dd3489b9adc5f060a4e08f7b351762616c0f356a95cda02e0d32`, covering **95** files. The RUN is read-only.
+- **Rollback:** none. **AUTH-RB-R1 was never exercised.** The disaster-recovery restore point was not used.
+- **Window:** closed **COMPLETE**. Wendy was released from the no-edit/no-view hold after COMPLETE (owner all-clear).
+- **Execution deviations (recorded; none affected the result):**
+  1. The first 4.5 attestation line was incomplete. A complete line (no edit; no uncontrolled dashboard; Wendy's confirmations standing; E8) superseded it two minutes later. Both lines remain in the log.
+  2. The launch card ends at 4.5, so the 5.4 and 7.1 batches were derived from the frozen §2.2 form. They are the frozen 3.5 batches with only the step, output file names and preceding-postcheck guard substituted; a diff proved nothing else changed.
+  3. APPCHECK-POST-C1 was logged before the 5.4 classifier batch ran (both passed). Its text carries a stray terminal escape (down-arrow) before "MATCHES". Cosmetic; no helper parses that line.
+  4. **S3c at 7.1, WITHDRAWN.** The August Budget comparison was first reported as moving the wrong way. An offline investigation (frozen code, package, expectations and captured screenshots only; no production contact) showed a comparison error. The Budget formatter `f()` renders the absolute value and signals a negative total only by red text. Decoded, August Planned Remaining moved by exactly the frozen expected amount, in the expected direction. Classification: D, capture/comparison error. The owner withdrew the S3c. A superseding APPCHECK-FINAL MATCHES line follows the original DIFFERENCE line, which remains in the log.
+  5. The `R1-2-apply.sql` header comment still says "exactly 49 row updates", a stale generator comment. The executable guard requires and changed exactly **50** rows, matching the CHG-15 reviewed population.
+- **Earlier 2026-09-17 sittings (closed, no package mutation):**
+  - `p3b-1-production-20260917T220256Z`: household Register entries made during the controlled period stopped it at 2.2. Owner-classified S4-INSITTING; closeout `ed8f6fdf…`. This led to the rev 2.7.3 re-base.
+  - `p3b-1-production-20260918T004210Z`: a false S0-PRE at the NETVIEW smoke acceptance check (exact equality against a prefix of the real classifier line); closeout `c5f0ccee…`. This led to rev 2.7.4.
+- **Out-of-scope follow-ups (recorded only; not fixed):**
+  - **A.** Negative-money UI ambiguity: `f()` (`index.html`) drops the minus sign, and colour alone shows a value is negative.
+  - **B.** Stale informational label: the PF-01C informational row shows one reviewed target with an outdated disposition label and no target key. The authoritative frozen disposition, the package and R1-3 bind it correctly to `misc.extra`.
+- **Next:** A1 and V1 remain separate, later owner authorizations. **Neither is started.** The frozen P3b-1 packages have now been applied, so their pre-state guards no longer match and they cannot be re-applied.
+
+**Documentation only.** No code, SQL, schema, data, production, tooling, package, `index.html` or evidence change.
+
+---
+
 ## CURRENCY NOTE (2026-09-17): P3b-1 C1/R1 execution runbook rev 2.7.2 FROZEN (current execution authority); 2026-09-17 sitting closed FAILED S0-RESTORE with no production mutation; production sitting NOT authorized; C1/R1 NOT AUTHORIZED
+
+> **[SUPERSEDED for currency by the 2026-09-18 note above — preserved as historical truth.]** Rev 2.7.2 was later superseded for execution by rev 2.7.3 and then rev 2.7.4. The production sitting was subsequently authorized, and C1 and R1 were applied and closed COMPLETE on 2026-09-18. The "NOT AUTHORIZED / PENDING" statements below describe the 2026-09-17 state only.
 
 **Current C1/R1 production execution authority: rev 2.7.2, FROZEN 2026-09-17.** Path `~/Herndon-Financial-OS-Evidence/p3b-1-rev272-execution-runbook-2026-09-17/RUNBOOK-rev2.7.2.md`, SHA-256 `30aafc7d001600a22204e94f60550150fa8637643778833b00743d99a8d9a6c0`. Freeze record `FREEZE-RECORD.md` in the same folder. It supersedes rev 2.7.1 (`ffa2cf4a…`), which stays preserved unchanged. Rev 2.5 (`4b3a3aaa…`), rev 2.6 (`0321afdd…`) and rev 2.7 (`a4a496e2…`) are also unchanged.
 
