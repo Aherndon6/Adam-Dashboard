@@ -1,9 +1,10 @@
-# P3b-1 — Register & Budget Data Integrity: Specification (FROZEN — revision 3.2, 2026-09-13)
+# P3b-1 — Register & Budget Data Integrity: Specification (FROZEN — revision 3.3, 2026-09-18)
 
-**Status:** **FROZEN.** Frozen revision: **3.2** (controlled amendment of revision 3.1). Frozen date: **2026-09-13**.
+**Status:** **FROZEN.** Frozen revision: **3.3** (controlled amendment of revision 3.2). Frozen date: **2026-09-18** (revisions 3–3.2: 2026-09-13).
 - Revision 3 was approved for freeze by the owner (Adam) after independent review and committed at `dfbdbb4`.
 - Revision 3.1 applies owner rulings arising from the read-only production preflight through the owner-controlled change process (§30); committed at `9824779`.
 - Revision 3.2 resolves the §30(a) Week 1 finding by owner decision under the existing Week/Event rule, which adds one budget-line correction to C1 (§30.1).
+- Revision 3.3 records the re-based cleanup population and the completed C1/R1 production execution, and splits the application release into A1a → A1b by owner decision (§30.2).
 **Authority:** this is the controlling design specification for roadmap phase P3b-1 (including P3b-1.MX). It is subordinate to `AGENTS.md` (Law) and `CODEX_STATUS.md` (State); plan position is `docs/roadmap/canonical-roadmap.md` §3.
 **Change control:**
 - Any change requires the normal owner-controlled change process: an explicit owner decision, recorded as a new dated revision with a change note.
@@ -289,7 +290,7 @@ The household plans entertainment in two intentionally different ways:
    - preflight confirms zero references for the four legacy leaves.
 5. `_isCountableBudgetSpend` remains byte-identical; classification is implemented around it (§5.1).
 
-## 11. Historical cleanup matrix (51 rows)
+## 11. Historical cleanup matrix (52 rows; rev 3.3)
 
 Counts only; the row-level mapping is held in the owner evidence folder and becomes the per-row guard list of the correction package.
 
@@ -302,21 +303,21 @@ Counts only; the row-level mapping is held in the owner evidence folder and beco
 | Existing category | `transfers.goal_funding` (both legs of one savings movement) | 2 |
 | Existing category | `income.net_salary` | 2 |
 | **Subtotal — existing categories** | | **12** |
-| New category | `income.interest` | 11 |
+| New category | `income.interest` (rev 3.3: +1 row, §30.2) | 12 |
 | New category | `transfers.credit_card_payment` (6 opposite-direction pairs) | 12 |
 | New category | `transfers.between_accounts` (4 opposite-direction pairs) | 8 |
 | New category | `income.bkcpa_extra_pay` (rows dated 2026-07-03, 07-17, 08-14, 08-27, 09-11) | 5 |
-| **Subtotal — new-category assignments** | | **36** |
+| **Subtotal — new-category assignments** | | **37** |
 | Owner-approved historical exception | Mixed regular + supplemental payroll deposit (July) — no split, remains NULL | 1 |
 | Owner-approved historical exception | Shared auto-parts purchase whose repayment is embedded in aggregated deposits (July) — remains NULL | 1 |
 | **Subtotal — approved historical exceptions** | | **2** |
 | **Family repayment (rev 3.1)** | August family repayment of an incidental one-time purchase → `misc.extra`, the same existing category as the original purchase (§14). The original purchase is already `misc.extra` and is **not** touched. | **1** |
 | **Awaiting architectural disposition** | | **0** |
-| **Total** | | **51** |
+| **Total** | | **52** |
 
 **Checks and expected effects:**
-- **Direction:** 13 outflows / 38 inflows (matches E0-3).
-- **Rows written by the correction package:** 49 (12 existing + 36 new + 1 family repayment → `misc.extra`). The 2 exceptions and the original purchase are untouched. There is no supplemental transaction write.
+- **Direction:** 13 outflows / 39 inflows (rev 3.3 re-based population; E0-3 recorded 13 / 38 for the original 51 rows).
+- **Rows written by the correction package:** 50 (12 existing + 37 new + 1 family repayment → `misc.extra`). The 2 exceptions and the original purchase are untouched. There is no supplemental transaction write.
 - **Expected Budget-visible deltas:**
   - July `misc.extra` actual increases by one row;
   - Net Salary received increases in July and September by one row each;
@@ -424,7 +425,7 @@ The ten-slot structure is intentional (§9). The four missing backings are creat
 - The family repayment → **`misc.extra`**, the same category as the original, so it offsets exactly (net zero in Misc / Extra).
 - It is not income, not a household transfer, and not an Event.
 - No person-specific, activity-specific, reimbursement, or recurring category is created. No Event slot is assigned. No cross-month machinery is added.
-- R1 stays at 49 transaction writes; the repayment is one of the original 49.
+- The repayment is one of R1's reviewed transaction writes (49 at this ruling; 50 after the rev 3.3 re-base, §30.2). There is no supplemental write.
 
 ## 15. P3b-1.MX (Misc/Extra Envelope v1) and Goals metric wording — CLOSED
 
@@ -641,33 +642,54 @@ P3b-1 makes such violations harder through normal workflows, fail-visible when t
   - archive the four unused legacy leaves (metadata preserved);
   - change the live `misc.goal_sweep` display label and its two active budget-line labels to "Planned for Goals" (§12.4);
   - correct the Week 1 / Week 4 / Week 5 allowance lines from Event keys to Week keys (§13).
-- **R1** Historical correction package: exactly 49 transaction writes (12 existing + 36 new + 1 family repayment → `misc.extra`).
-- **A1** Application release: §6, §7–§10, §16–§19 (incl. §16.7, §8.1, §18.3), uncategorized visibility, and §15 wording. MX workflow pieces may ship as their own slice; Wendy's walkthrough is a post-build operating acceptance gate (§26).
+- **R1** Historical correction package: exactly 50 transaction writes (12 existing + 37 new + 1 family repayment → `misc.extra`; rev 3.3, §30.2).
+- **A1** Application release: §6, §7–§10, §16–§19 (incl. §16.7, §8.1, §18.3), uncategorized visibility, and §15 wording. MX workflow pieces may ship as their own slice; Wendy's walkthrough is a post-build operating acceptance gate (§26). **Rev 3.3:** A1 is delivered as two sequential releases, A1a then A1b. This is a sequencing split, not a reduction of the A1 contract. Elsewhere in this spec, "A1" means the whole application release, which is complete only when A1b is complete.
+  - **A1a** (entry integrity and honest planning display):
+    - §6 in full: category required on every normal Register save; fresh single-key read at save time; one shared ASSIGNABLE definition; picker prompt; categories-unavailable cannot-save state.
+    - §19.2 uncategorized count and filter, for the selected account only, derived from the complete P0 ledger, without changing `_filterTxRows`. Not presented as household-wide Budget completeness.
+    - The §8.1 UNAVAILABLE condition for the Goals consumer: hardcoded fallback values are removed and Goals shows "—" with a reason. The condition is implemented once, as the primitive that becomes the UNAVAILABLE branch of `BLR_STATE` in A1b.
+    - §18.3: a failed post-write reload cannot leave the prior cache represented as valid, and the failure is visible.
+    - The §17 generation guard on both Budget month reads (no Budget arithmetic change).
+    - A visible notice when the current month's actual load fails. Budget values are not replaced, and the wording implies neither completeness nor verification.
+    - §15 wording.
+    - A1a introduces none of the states VERIFIED, COMPLETE WITH UNCATEGORIZED or UNVERIFIED, and does not imply that Budget totals are complete.
+  - **A1b** (integrity certification): every remaining A1 requirement, including:
+    - §16 exact-count completeness and unique-id validation;
+    - §10 classification and §16.7 legacy L1–L8;
+    - §7 exclusion declaration and INV-A/B/C runtime enforcement;
+    - the complete `BLR_STATE`, including INVALID, for every financial consumer;
+    - §18.1–18.2 Manage Lines backed-key enforcement;
+    - §19.1 three-state presentation with the signed uncategorized notice;
+    - the §5.2 static guard;
+    - fail-closed rendering of actual and planned values.
+    - A1b extends A1a; it does not replace or undo it.
 - **V1** Post-execution audit (§27).
 
 **Hard dependencies**
 - R1 requires C1: the four new non-Entertainment target categories must exist (transaction FK).
 - The Week 5 line key correction runs after `entertainment.week_5` is created, in the same C1 transaction. `budget_line_rules` has no FK, but INV-A semantics require the backing.
-- A1 requires C1: without slot backing, INV-A renders every month UNVERIFIED, and required-category entry needs honest categories available.
-- A1 requires INV-F1, INV-F2 and the generation token in the same release to claim VERIFIED.
+- A1 (A1a and A1b) requires C1: without slot backing, INV-A renders every month UNVERIFIED, and required-category entry needs honest categories available.
+- A1 requires INV-F1, INV-F2 and the generation token in the same release to claim VERIFIED. Under rev 3.3 that release is A1b. The generation guard may ship earlier in A1a, but A1a makes no VERIFIED claim.
+- A1b requires A1a.
+- V1 requires A1b and the post-build walkthrough (§26 gate 7). **A1a completion does not satisfy any dependency on A1 being complete.**
 - C1 and R1 require P1 with no drift, and a passing rehearsal (§26).
 - Everything requires P0.
 
-**Not a hard dependency:** R1 ↔ A1. Historical NULL rows render COMPLETE WITH UNCATEGORIZED, not UNVERIFIED.
+**Not a hard dependency:** R1 ↔ A1 (A1a or A1b). Historical NULL rows render COMPLETE WITH UNCATEGORIZED, not UNVERIFIED.
 
-**Recommended order:** C1 → R1 → A1 → V1. The release is then audited against corrected data, and data and code roll back independently.
+**Controlling order (rev 3.3):** C1 → R1 → A1a → A1b → full Wendy walkthrough (§26 gate 7) → V1. The release is then audited against corrected data, and data and code roll back independently. A1b completion closes the application-release obligation formerly represented by the single A1 node.
 
 ## 22. Rollback boundaries
 
 | Unit | Rollback | Precondition / note |
 |---|---|---|
 | C1 new categories (`is_system=false`) | Delete the rows | Only while zero references (before R1 or after R1 rollback) |
-| C1 slot backings (`is_system=true`) | Owner-approved SQL removal (the delete policy excludes `is_system=true`) | Zero transaction references required. Removing backing re-breaks INV-A, so A1 must be rolled back first or concurrently. |
+| C1 slot backings (`is_system=true`) | Owner-approved SQL removal (the delete policy excludes `is_system=true`) | Zero transaction references required. Removing backing re-breaks INV-A, so A1 (A1b, then A1a) must be rolled back first or concurrently. |
 | C1 archive | Restore `lifecycle_status='active'` | Before-image; metadata preserved by package rule |
 | C1 `misc.goal_sweep` label and two active `line_label` changes | Restore prior labels from before-image | Display-only; no other field changes |
 | C1 Week/Event line key corrections | Restore prior `category_key` and label from before-image, guarded by post-image | Must run before any removal of the `week_5` backing |
 | R1 | Restore each row's prior `category_key` (NULL) by id from before-image, guarded by current value = post-image | Package-level all-or-nothing |
-| A1 | Revert the release commit; redeploy; verify served asset hash | No data coupling; C1/R1 data remains valid under the prior app |
+| A1a, A1b | Revert each release commit (A1b before A1a); redeploy; verify served asset hash | No data coupling; C1/R1 data remains valid under the prior app |
 
 ## 23. Acceptance-test matrix
 
@@ -743,7 +765,7 @@ P3b-1 makes such violations harder through normal workflows, fail-visible when t
 ### Historical cleanup (post-execution audit reads)
 - NULL rows = exactly the 2 approved exception ids (evidence list); actionable NULL = 0.
 - `income.bkcpa_extra_pay` = exactly 5 rows on the five dates.
-- `income.interest` = 11.
+- `income.interest` = 12 (rev 3.3, §30.2).
 - `transfers.credit_card_payment` = 12 (6 opposite pairs).
 - `transfers.between_accounts` = 8 (4 opposite pairs).
 - The 12 existing-category corrections exact.
@@ -818,9 +840,9 @@ Raw outputs are preserved outside the repository with exact SQL, timestamps and 
 
    Candidate mechanisms: a local/disposable database, a Supabase preview branch, or another safe environment. Each needs separate owner approval. No environment creation or paid service is authorized by this spec.
 4. Owner authorization per production package execution (C1, R1), each with in-transaction assertions and preserved evidence.
-5. Implementation review plus static/e2e acceptance evidence for A1; owner commit authorization; owner push/deploy authorization; served-asset hash verification; read-only production smoke.
+5. Implementation review plus static/e2e acceptance evidence for A1, separately for each of A1a and A1b (rev 3.3); owner commit authorization; owner push/deploy authorization; served-asset hash verification; read-only production smoke.
 6. Deployment timing avoids the Saturday cash-certification sitting.
-7. **Post-build operating acceptance (Wendy walkthrough).** After implementation and staging/isolated validation, Wendy walks through Register entry, Budget states, Manage Lines, and the Planned for Goals / Planned Monthly Margin wording. Acceptance is required before MX workflow pieces are treated as operational. A material workflow defect reopens the relevant behavior through the normal owner process. This gate does not block specification freeze.
+7. **Post-build operating acceptance (Wendy walkthrough).** After implementation of A1b (the full walkthrough follows A1b, rev 3.3) and staging/isolated validation, Wendy walks through Register entry, Budget states, Manage Lines, and the Planned for Goals / Planned Monthly Margin wording. Acceptance is required before MX workflow pieces are treated as operational. A material workflow defect reopens the relevant behavior through the normal owner process. This gate does not block specification freeze.
 
 ## 27. Post-execution and recurring audit
 
@@ -931,4 +953,44 @@ C1 grows from 17 to 18 row mutations. No other contract change.
 
 ---
 
-*FROZEN — revision 3.2, 2026-09-13. Balance-free and identifier-free. Changes only through the owner-controlled change process.*
+## 30.2 Revision 3.3 amendment record (owner-controlled change, 2026-09-18)
+
+**Triggers:**
+- the 2026-09-17 production-state re-base of the C1/R1 execution runbook (rev 2.7.3, CHG-15);
+- the completed C1/R1 production execution under runbook rev 2.7.4 (closed COMPLETE 2026-09-18; balance-free record in `CODEX_STATUS.md`);
+- the owner decision of 2026-09-18 to deliver A1 as A1a → A1b.
+
+**Amendment 1: re-based cleanup population (counts only).**
+- Ordinary household activity on 2026-09-17 added one legitimate uncategorized Register row. Its correct category, `income.interest`, did not exist until C1 created it. CHG-15 reviewed and added it as the 50th R1 target.
+- The authoritative successor population is **52** rows: **50** R1 targets and **2** approved exceptions. It breaks down as 12 existing-category corrections, **37** new-category assignments (`income.interest` 11 → **12**) and 1 family repayment. Direction: **13** outflows and **39** inflows.
+- R1 was executed with exactly 50 writes, and its postcheck passed.
+- §11, §14, §21 and §23 are corrected to these counts. No contract, category, target category or Budget expectation changes: the added row is a declared exclusion (§7) with no Budget-visible effect.
+- Row-level detail stays in the owner evidence folder (`p3b-1-rev273-rebase-2026-09-17/` and the sealed sitting RUN). No household amount, payee or transaction identifier enters this repository.
+- **Preserved as historical truth** (dated or provenance statements, not current assertions):
+  - §1 and F-1 (51 rows at E0/C6);
+  - F-24 and §25 item 1 (the 2026-09-13 preflight population);
+  - the header's "51-row cleanup mapping";
+  - §21 P1 ("executed once, 2026-09-13"; later sittings re-ran a re-based preflight under the execution runbook);
+  - §29 "Remaining" execution gates (since satisfied: packages approved, rehearsed, authorized and executed);
+  - the §30 and §30.1 amendment records.
+
+**Amendment 2: A1 delivered as A1a → A1b (§21).**
+- A sequencing split, not a reduction of the P3b-1 contract. A1b remains an explicit P3b-1 obligation.
+- A1a addresses demonstrated operating risks without claiming that Budget totals are verified:
+  - new uncategorized saves;
+  - stale or invalid category saves;
+  - saves while category authority is unavailable;
+  - fabricated Goals values from fallback constants;
+  - stale Goals values after a failed budget-line reload;
+  - Budget month-switch response races;
+  - silent actual-load failures;
+  - inconsistent wording.
+- A1b is the integrity-certification layer and earns the stronger claim.
+- The split is accepted because A1a is an independently honest intermediate state that A1b extends rather than undoes. It does not rest on any claim that A1b's failure conditions cannot occur.
+- **V1 remains blocked until A1b is complete.** Controlling order: C1 → R1 → A1a → A1b → full Wendy walkthrough → V1.
+
+**Unchanged:** every other section, including the §23 acceptance matrix and the §24 test repairs (both still apply, allocated between A1a and A1b per §21), and all protected surfaces (§28).
+
+---
+
+*FROZEN — revision 3.3, 2026-09-18 (revisions 3–3.2: 2026-09-13). Balance-free and identifier-free. Changes only through the owner-controlled change process.*
