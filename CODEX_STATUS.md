@@ -1,5 +1,31 @@
 # Codex Status: Herndon Financial OS
 
+## CURRENCY NOTE (2026-09-18b): P3b-1 A1a implemented and committed LOCALLY (not pushed, not deployed); independent review PASS WITH NON-BLOCKING FINDINGS; A1b remains mandatory; Wendy walkthrough and V1 blocked on A1b
+
+**Canonical state.** A1a (spec rev 3.3 §21) is implemented, tested and committed on local branch `p3b1-a1a-local` as **`aa004921f16f613cf6211c33fb17caad94b8611a`** (parent `5c0410e`). It is **not pushed and not deployed**; production still serves the rev 2.6 build (`BUILD_TS 2026-09-15T18:21:53`). **Production deployment and production acceptance have NOT been performed.** A1a is a sequencing slice, not A1 completion and not P3b-1 completion.
+
+- **What A1a does (no Budget-integrity certification semantics):**
+  - Register (§6): one shared ASSIGNABLE predicate (`_isAssignableCategory`) for normalization, picker and save; a category is required; a fresh single-key category read authorizes every normal save before any write and fails closed on any request, status, shape, cardinality, key, lifecycle or assignability problem; the category cache is never modified; the save function is re-entrancy guarded; a non-selectable "Select a category…" prompt; a cannot-save state when category authority is unavailable. Clearing is unchanged (`{cleared}` only).
+  - Register (§19.2): a selected-account uncategorized count and "Uncategorized only" filter from the complete P0 ledger, composed outside the frozen `_filterTxRows`.
+  - Goals (§8.1 UNAVAILABLE only): fallback constants removed; `_blrUnavailable()` availability primitive; "—" plus a reason when budget-line or category authority is unavailable.
+  - Manage Lines (§18.3, owner ruling K2): a failed reload is recorded as failed; Add, Edit and Archive refuse while budget lines are not loaded. No backed-key (INV-E) enforcement.
+  - Budget (§17, K1, K3): per-source load generations bound to the month and re-checked after every await; no grid from a partial pair; a whole-grid load-error state naming the failed source, with Retry of both sources; Budget-tab entry requests both sources.
+  - Wording (§15): "Planned for Goals"; "Planned Monthly Margin (Base Pay)"; "Planning estimate — not cash available to move." "(flexible sweep line)" kept (K4).
+- **Build identity (committed candidate):** `index.html` sha256 `44893b6bf9c9a554a208d99b0e3d67457e4acb098c7c6398f4812c6ae0e2bdbf`, git blob `6b6583026f33009313897b9953ac39d0514090f0`, `BUILD_TS 2026-09-18T19:47:02`. The only difference from the independently reviewed `index.html` (sha256 `b59a152e…`) is the pre-commit hook's `BUILD_TS` stamp (proven mechanically: byte-identical after normalizing that one value).
+- **Tests (measured on the committed candidate, 2026-09-18):** static `node test_regression.js` **1961 passed / 0 failed** (including 119 A1a tests); hermetic `node e2e.js` **177 passed / 0 failed / 2 skipped** (production-only AUTH-ANON-1, AUTH-E2E-3 not run); isolation ledger: REAL non-CDN contact 0, unowned writes 0, unfixtured reads 0, escapes 0, readiness fallbacks 0. This supersedes the 1842/0 and 168/0 baselines recorded earlier.
+- **Tests-first and falsification:** the A1a tests were authored and accepted before implementation (90 expected-red on the pre-A1a app). 17 of 17 builder mutation controls were rejected by their intended tests. An independent reviewer (Fable) reproduced the suite results and ran its own mutants and hostile cases: verdict **PASS WITH NON-BLOCKING FINDINGS**. Its one coverage gap (an uncategorized count taken from a filtered view) was closed before commit by test U7, which rejects the reviewer's mutant and two variants. Superseded existing tests were rewritten by intent (spec §24), none weakened.
+- **Protected surfaces unchanged:** runModel, `computeGoalTransferNetting`, `resolveWeekTransfers`, WD/effectiveWD, goal waterfall, reconciliation, 5F-1, `_filterTxRows`, `_isCountableBudgetSpend`, the Register ordering and balance functions, and the golden master (`fixtures/runmodel-golden-pre-1c-2.json`). No schema, SQL, RPC, RLS or grant change.
+- **Deferred to A1b (recorded; none changes A1a):**
+  - E1: if `loadAll` throws, Budget shows the budget-line load failure while Goals stays on "Loading budget lines…" (pre-existing load-state behavior; wording only).
+  - E2: a calendar-month change while a current-month request is in flight can leave Budget on "loading" until a month change or tab re-entry.
+  - E3: a successful Budget read with a non-array body fails closed by throwing rather than by design.
+  - Consolidate the three A1a budget-line availability checks into the single INV-D state model; add the §17 pair-level generation; define Budget behavior for loaded-but-empty budget lines.
+- **Next:** owner publication authorization (push and deploy), then served-asset hash verification and a read-only production smoke. **A1b remains a mandatory P3b-1 obligation** (target: before rollover implementation enters the Budget module). The full Wendy walkthrough and V1 remain **blocked until A1b** is complete. The September Event 1 / Week 1 row review remains a separate operating follow-up.
+
+**Documentation only.** This note changes no code, test, SQL, schema, data, production or evidence.
+
+---
+
 ## CURRENCY NOTE (2026-09-18): P3b-1 C1/R1 PRODUCTION SITTING CLOSED COMPLETE under frozen rev 2.7.4 — C1 applied (20/20), R1 applied (50 targets, 14/14), final app check MATCHES; P3b-1 production data-integrity execution DONE; A1/V1 NOT started
 
 **Canonical state.** The P3b-1 C1/R1 production sitting ran on 2026-09-18 (UTC; evening of 2026-09-17 ET) and **closed COMPLETE** (rev 2.5 §11, 7.4). This completes P3b-1 production data-integrity execution. This note is balance-free by design (rev 2.5 §7.5; public repository). Household amounts, transaction identifiers and the sitting's durable detail stay in the sealed private evidence.
