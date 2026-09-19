@@ -207,8 +207,9 @@ test('[RA] TR-7 "Transfers this week": an unexecuted model allocation is never s
   assert(/goalSummaryLine\(/.test(fnSrc('renderWeekDetail')), 'renderWeekDetail must use goalSummaryLine');
 });
 test('[RA] TR-6 model-only figures carry an explicit caveat (Overview AMEX forecast; Model Avg Sweep)', () => {
-  assert(/Model Avg Sweep \/ Month[\s\S]{0,400}modeled, not authorized/.test(html), 'Avg Sweep caveat missing');
-  assert(/AMEX Savings — IRA \+ 529s[\s\S]{0,600}assumes this week\\'s recommended transfers/.test(html), 'AMEX forecast caveat missing');
+  // Updated by intent (Fable Pass 2 D3/D4): the caveats are derived (authority-aware / week-aware), not literals.
+  assert(/Model Avg Sweep \/ Month[\s\S]{0,400}modelSweepCaveat\(\)/.test(html), 'Avg Sweep caveat missing');
+  assert(/AMEX Savings — IRA \+ 529s[\s\S]{0,600}amexForecastCaveat\(_grw\)/.test(html), 'AMEX forecast caveat missing');
 });
 
 // ═══ Reconciliation prefill integrity ═══════════════════════════════════════════════════════════
@@ -372,7 +373,9 @@ test('[RA] FX-N4 the authority object is frozen and declared const in source', (
   assert(Object.isFrozen(GOAL_FUNDING_OWNER_AUTHORITY) && /const GOAL_FUNDING_OWNER_AUTHORITY=Object\.freeze\(/.test(html));
 });
 test('[RA] FX-N6 "Transfers this week" treats a bound completion as marked done even with a NULL amount', () => {
-  assert(/_trDone\[/.test(fnSrc('renderWeekDetail')), 'summary must key marked-done on completion, not on a non-null amount');
+  const src = fnSrc('renderWeekDetail');
+  assert(/if\(td&&td\.completed\)_trDone\[ak\]=true;/.test(src), 'completion map must not require an amount');
+  assert(/goalSummaryLine\(x,!!_trDone\[x\._key\]/.test(src), 'summary must key marked-done on completion, not on a non-null amount');
 });
 test('[RA] FX-P2N1 NO MODEL OBJECTION wording is precise about income', () => {
   const t = g1VerdictText({ verdict: 'NO_MODEL_OBJECTION' }); assert(!/variable income not counted/.test(t) && /not yet entered/.test(t), t);
