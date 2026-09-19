@@ -38,6 +38,23 @@ function asOwner() { USER_ROLE = 'owner'; getAuthHeaders = async function () { r
 const AUTH_OK = { state: 'AUTHORIZED', since: '2026-09-19', basis: 'test-only' };
 const NMO = { actionKey: 'goal_wendy_ira', verdict: 'NO_MODEL_OBJECTION', reason: 'no_model_objection', amount: 1000 };
 const WH = { actionKey: 'goal_wendy_ira', verdict: 'WITHHOLD', reason: 'candidate_breach', amount: 1000 };
+// Minimal copies of the G1 synthetic fixture helpers (test_g1.js) for the FX tests.
+const GOLD = { id: 'gold-1', expected_item_id: null, model_year: 2026, commitment_source: 'manual_reconciliation', origin_model_week: 15, source_account: 'truist_checking', amount_cents: 1132586, status: 'initiated', affects_deployable_cash: true, reflected_model_week: null, resolved_model_week: null, resolution_type: null };
+function weekObj(num, chk, extra) { return Object.assign({ num, chk, mChk: chk, reconciled: false, ac: [], acKeys: [], cashAvailability: { reservedProtectedCents: 0, reviewRequired: false, balanceBasisUnknown: false } }, extra || {}); }
+function acLine(amt, dest, name) { return 'Transfer $' + amt.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + ' from Truist Checking to ' + dest + ' (' + name + ')'; }
+function synthetic(recs, dips, opts) {
+  opts = opts || {}; const num = 10, last = opts.last || 20; const base = opts.base || 20000;
+  const weeks = [weekObj(num - 1, 30000, { reconciled: true })];
+  for (let n = num; n <= last; n++) weeks.push(weekObj(n, dips && dips[n] != null ? dips[n] : base));
+  const w = weeks.find(x => x.num === num); w.ac = recs.map(r => acLine(r.amt, r.dest || 'AMEX Savings', r.name)); w.acKeys = recs.map(r => r.key);
+  if (opts.reservedCents) for (const x of weeks) if (x.num >= num) x.cashAvailability.reservedProtectedCents = opts.reservedCents;
+  if (opts.mutate) opts.mutate(weeks);
+  const eff = []; for (let n = num; n <= last; n++) eff.push([n, '', [], [], (opts.evs && opts.evs[n]) || [], 0, 0, '']);
+  return { num, weeks, effectiveWD: eff, commitments: opts.commitments || [], floor: 6500, minHorizonWeeks: 5 };
+}
+function G1(ctx) { return g1ValidateRecommendations(ctx); }
+const item = (res, key) => (res.items || []).find(i => i.actionKey === key);
+
 
 // ═══ Authority gate ═════════════════════════════════════════════════════════════════════════════
 test('[RA] AU-1 authority missing / malformed / unknown → NOT_AUTHORIZED (fail closed); the shipped state is NOT_AUTHORIZED', () => {
@@ -283,6 +300,93 @@ test('[RA] DW-3 a lookahead defer after a higher-priority allocation says the ro
   assert(/higher-priority/.test(used) && !/floor risk/.test(used), used);
   const genuine = f('Bailey 529 deferred — 5-wk lookahead: floor risk', false); assert(/below \$6,500/.test(genuine), genuine);
   assert(/g2DeferText\(/.test(fnSrc('renderWeekDetail')), 'renderWeekDetail must use g2DeferText');
+});
+
+// ═══ Fable Pass 1 / Pass 2 fixes (RED first) ═════════════════════════════════════════════════════
+test('[RA] FX-B1 an active What-If scenario makes G1 UNAVAILABLE (estimates never validate a recommendation)', () => {
+  const save = scenarioState; try {
+    scenarioState = { active: true, type: 'inflow', weekNum: 16, params: { amount: '50000', taxable: false }, previewOverride: null, previewGoal: null, commitModal: false };
+    const r = g1ResultForWeek(16); assert(r.status === 'UNAVAILABLE' && r.reasons.indexOf('scenario_active') >= 0, JSON.stringify({ s: r.status, r: r.reasons }));
+    assert(goalActionDecision(16, 'goal_wendy_ira', 1).actionable === false);
+  } finally { scenarioState = save; }
+});
+test('[RA] FX-B2 no display surface pairs the snapshot "funded" with the model "remaining" (Priorities ✅/Funded badge)', () => {
+  for (const fn of ['renderOverview', '_renderGoalsSavings', '_renderGoalsPriorities', '_renderGoalsFunding']) {
+    const src = fnSrc(fn); assert(!(/goalFundedForDisplay\(/.test(src) && /getGoalRemaining\(/.test(src)), fn + ' mixes display funded with model remaining');
+  }
+});
+test('[RA] FX-D2 reconciled-week goal rows say reconciled — never "awaiting reconciliation" or "Recommended"', () => {
+  for (const done of [true, false]) {
+    const p = goalRowPresentation({ scope: 'goal', actionable: false, model: WH, owner: { state: 'NOT_AUTHORIZED' }, reasons: [] }, done, true);
+    const t = p.badgeText + ' ' + p.lines.join(' ');
+    assert(/Reconciled/.test(t) && !/awaiting reconciliation|Recommended|Not authorized/.test(t) && p.checkboxDisabled === true, JSON.stringify(p));
+  }
+  assert(/goalRowPresentation\([^;]*w\.reconciled/.test(fnSrc('renderWeekDetail')), 'render must pass w.reconciled');
+});
+test('[RA] FX-D3 "not authorized" wording follows the authority constant (never hard-coded)', () => {
+  const lines = need('goalOpenWeekLines'), cav = need('modelSweepCaveat'), save = GOAL_FUNDING_OWNER_AUTHORITY;
+  try {
+    assert(/not authorized/.test(lines({ markedDone: 0, recommended: 100 }).join(' ')) && /not authorized/.test(cav()), 'NOT_AUTHORIZED wording');
+    GOAL_FUNDING_OWNER_AUTHORITY = AUTH_OK;
+    assert(!/not authorized/.test(lines({ markedDone: 0, recommended: 100 }).join(' ')) && !/not authorized/.test(cav()), 'AUTHORIZED must not say not authorized');
+  } finally { GOAL_FUNDING_OWNER_AUTHORITY = save; }
+  assert(!/not executed; not authorized/.test(html) && !/modeled, not authorized</.test(html), 'no hard-coded authority literals remain');
+});
+test('[RA] FX-D4 AMEX forecast caveat matches the browsed week (reconciled / current open / future)', () => {
+  const f = need('amexForecastCaveat'); const saveW = currentW; try {
+    currentW = 16;
+    assert(/reconciled/i.test(f({ num: 15, reconciled: true })) && !/not a bank balance/.test(f({ num: 15, reconciled: true })), 'reconciled');
+    assert(/this week's recommended transfers/.test(f({ num: 16, reconciled: false })), 'current open');
+    assert(/every modeled transfer/.test(f({ num: 20, reconciled: false })), 'future');
+  } finally { currentW = saveW; }
+});
+test('[RA] FX-D5 commitment wording in a reconciled week refers to the reconciled (posted) balance, not "projected checking below"', () => {
+  const saveC = commitmentData; commitmentData = [CM()];
+  try {
+    const r = commitmentVisibilityRows(15, [{ num: 15, reconciled: true, cashAvailability: { reservedProtectedCents: 1132586, reservedCommitmentCount: 1 } }]);
+    const t = r.rows[0].wording; assert(!/Projected checking below/.test(t) && /reconciled \(posted\) balance still includes it/.test(t), t);
+  } finally { commitmentData = saveC; }
+});
+test('[RA] FX-D6 partial goal rows: "Partially marked done"; note says "already marked done", never "already transferred"', () => {
+  const p = goalRowPresentation({ scope: 'goal', actionable: false, model: NMO, owner: { state: 'NOT_AUTHORIZED' }, reasons: [] }, false, false, true);
+  assert(/Partially marked done/.test(p.badgeText), JSON.stringify(p));
+  const src = fnSrc('renderWeekDetail'); assert(/already marked done this cycle/.test(src) && !/already transferred this cycle/.test(src), 'partial note wording');
+});
+test('[RA] FX-N1 the zero-checking-impact adam_ira seed line does not make the week UNAVAILABLE', () => {
+  const c = synthetic([{ key: 'goal_wendy_ira', amt: 1000, name: 'Wendy IRA' }], null);
+  const w = c.weeks.find(x => x.num === 10); w.ac.push('Transfer $3,772.74 from Truist Savings to AMEX Savings (IRA Holding) — Adam IRA seed'); w.acKeys.push('goal_adam_ira_seed');
+  const r = G1(c); assert(r.status === 'OK' && item(r, 'goal_wendy_ira').verdict === 'NO_MODEL_OBJECTION', JSON.stringify(r.reasons));
+});
+test('[RA] FX-N2 follow-up task ids with any goal-id charset are still recognised', () => {
+  assert(goalKeyForCustomTask('gd_goal_Bryce-Vehicle_1726790000000_ab12') === 'goal_Bryce-Vehicle');
+});
+test('[RA] FX-N3 a linked stop only removes ITS commitment while it is still reserved (no erasing other reservations)', () => {
+  const c1 = Object.assign({}, GOLD, { id: 'L1', origin_model_week: 9, amount_cents: 300000, expected_item_id: 'eidX', resolved_model_week: 15 });
+  const c2 = Object.assign({}, GOLD, { id: 'M1', origin_model_week: 9, amount_cents: 100000, expected_item_id: 'manual_x' });
+  const dips = {}; for (let n = 10; n <= 14; n++) dips[n] = 20000; for (let n = 15; n <= 20; n++) dips[n] = 7200;
+  const ctx = synthetic([{ key: 'goal_wendy_ira', amt: 100, name: 'Wendy IRA' }], dips, { commitments: [c1, c2], evs: { 13: [{ t: 'ob', a: -3000, eid: 'eidX' }] },
+    mutate: ws => ws.forEach(w => { if (w.num >= 10) w.cashAvailability.reservedProtectedCents = w.num <= 14 ? 400000 : 100000; }) });
+  const it = item(G1(ctx), 'goal_wendy_ira'); assert(it.verdict === 'WITHHOLD' && it.minChk === 6200, JSON.stringify(it));
+});
+test('[RA] FX-N4 the authority object is frozen and declared const in source', () => {
+  assert(Object.isFrozen(GOAL_FUNDING_OWNER_AUTHORITY) && /const GOAL_FUNDING_OWNER_AUTHORITY=Object\.freeze\(/.test(html));
+});
+test('[RA] FX-N6 "Transfers this week" treats a bound completion as marked done even with a NULL amount', () => {
+  assert(/_trDone\[/.test(fnSrc('renderWeekDetail')), 'summary must key marked-done on completion, not on a non-null amount');
+});
+test('[RA] FX-P2N1 NO MODEL OBJECTION wording is precise about income', () => {
+  const t = g1VerdictText({ verdict: 'NO_MODEL_OBJECTION' }); assert(!/variable income not counted/.test(t) && /not yet entered/.test(t), t);
+});
+test('[RA] FX-P2N8 reservation parity checks the COUNT as well as the sum (G1 and T4)', () => {
+  const c = synthetic([{ key: 'goal_wendy_ira', amt: 100, name: 'Wendy IRA' }], null, { base: 20000, reservedCents: 300000, commitments: [Object.assign({}, GOLD, { origin_model_week: 9, amount_cents: 300000 })],
+    mutate: ws => ws.forEach(w => { w.cashAvailability.reservedCommitmentCount = 2; }) });
+  assert(G1(c).status === 'UNAVAILABLE', 'G1 must fail closed on count mismatch');
+  const saveC = commitmentData; commitmentData = [CM()];
+  try { const r = commitmentVisibilityRows(16, [{ num: 15, reconciled: true, cashAvailability: { reservedProtectedCents: 0 } }, { num: 16, reconciled: false, cashAvailability: { reservedProtectedCents: 1132586, reservedCommitmentCount: 2 } }]);
+    assert(r.status === 'UNAVAILABLE', 'T4 must fail closed on count mismatch'); } finally { commitmentData = saveC; }
+});
+test('[RA] FX-P2N10 the marked-done line states its scope (unreconciled weeks)', () => {
+  assert(/unreconciled weeks/.test(need('goalOpenWeekLines')({ markedDone: 50, recommended: 0 }).join(' ')));
 });
 
 // ═══ Boundaries ════════════════════════════════════════════════════════════════════════════════
