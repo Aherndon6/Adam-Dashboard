@@ -1,6 +1,41 @@
 # Codex Status: Herndon Financial OS
 
+## CURRENCY NOTE (2026-09-18e): P3b-1 A1b ENGINEERING LOCALLY COMPLETE (Round 2 committed locally, not pushed, not deployed); A1b production NOT deployed / NOT accepted
+
+**Canonical state.** Spec **rev 3.3** remains controlling, governed for A1b by the two owner rulings in the 2026-09-18d note below (still authoritative). **A1b engineering is locally complete. A1b production: NOT deployed and NOT accepted. A1 is NOT complete** until A1b is deployed and accepted. **P3b-1 is NOT complete.** Production is unchanged: `main` and the served build are the accepted A1a build (`c59bae6`, 2026-09-18c note).
+
+- **Local A1b chain** (branch `p3b1-a1b`, worktree `../Adam-Dashboard-wt-a1b`; not pushed): `c59bae6` → `66558ba` Round-1 state substrate → `d1bab9c` owner rulings → **`f5fa1c02fa7d1fccda46fe777237d224b888e3a1`** Round-2 consumers/guards (`index.html` sha256 `867047fb…`, `BUILD_TS 2026-09-18T23:16:49`; the pre-commit hook changed only BUILD_TS).
+- **Round 2 scope:** INV-D (every financial budget-line consumer derives from BLR_STATE); §19.1 per-cell Budget presentation (UNVERIFIED / COMPLETE WITH UNCATEGORIZED / VERIFIED / LOADING), replacing the A1a K1 whole-grid screen; §8.1 planned values; Goals figures only when VALID; Manage Lines INV-E with the ruling-A first-line bootstrap; Statement Check only from a COMPLETE legacy source; §17 post-write pair invalidation/re-read.
+- **Review:** implemented locally, then independently reviewed by Fable. The review initially returned **one BLOCKING finding**: after a successful legacy Budget write (save, cleared-toggle, delete) the authoritative pair re-read started without an immediate re-render, so pre-write figures stayed visible while the new generation was LOADING. It was reproduced test-first through the real write functions, corrected with a shared render-on-reload path that shows LOADING immediately for all three legacy writes, and is pinned by D14c-1/2/3. Post-fix review and adversarial testing found **no unresolved blocker**; **no OWNER RECONSIDERATION remains open**.
+- **Validation of the committed bytes:** focused A1b 199/0; static 1961/0; hermetic e2e 177/0 with 2 production-only skips, isolation clean (zero real network contact, zero unowned writes, zero escapes, zero unfixtured reads); local mutation battery 78 run / 76 killed / 2 equivalent survivors (M38: a superseded cycle issues no request; R2-10b: the guard's own category check is unobservable while category-before-empty precedence is pinned); the independent reviewer's runner defines 32 distinct mutants and all 32 were killed against the final implementation. Protected financial and reconciliation surfaces (runModel, WD/effectiveWD, goal waterfall, reconciliation and closeout paths, 5F-1, Register ledger and category authority, frozen predicates, arithmetic helpers) and the golden master are unchanged. No schema, SQL, RPC, RLS or grant change.
+- **Accepted non-blocking items (not A1b blockers):**
+  - **F-2 category Retry:** terminal category failures are explicit and fail closed and the UI tells the user to refresh; A1b Retry does not reload the shared category registry; no A1b application change authorized.
+  - **INVALID repair:** A1b intentionally fails closed on INVALID budget-line state; rev 3.3 does not require in-app repair; no repair UI is authorized.
+  - **Test debt (failed legacy cleared-toggle):** no test pins the pre-existing behavior that a failed legacy cleared-toggle re-reads both governed sources. If that re-read were omitted, governed Budget and Statement Check figures would still come from the committed pair; the observable residual is the legacy edit-form prefill copy possibly staying optimistic. Does not reopen `f5fa1c0`; carry for future maintenance.
+- **D3 pre-deployment gate (frozen; READ-ONLY; not yet executed).** A1b MUST NOT be deployed until the D3 production preflight is complete. It must include at least:
+  - **A. Register / category lifecycle:** Register rows whose category is archived or merged, classified by their §10 effect, including archived/merged non-leaf rows, archived income-countable rows and the other §10 lifecycle cases.
+  - **B. Budget-line / category lifecycle:** active `budget_line_rules` whose category key is archived or merged.
+  - **C. INV-A / INV-B / INV-C:** production backing, month-integrity and income-coverage checks.
+  - **D. Legacy L-cases:** the required legacy-row / L1–L8 counts.
+- **Future category-package control (runbook debt, not A1b application code):** before archiving or merging a category, check both the transactions using it and the active `budget_line_rules` using it.
+- **Remaining sequence (do not reorder the financial operating process around the software deployment):**
+  1. Saturday reconciliation / weekly close / authoritative cash-safety PASS;
+  2. bounded September Event 1 / Week 1 row investigation and any owner-approved normal-Register corrections;
+  3. A1b D3 read-only production preflight;
+  4. review of the D3 evidence and resolution of any findings;
+  5. explicit owner authorization to publish/deploy A1b;
+  6. A1b production acceptance;
+  7. full Wendy walkthrough;
+  8. V1;
+  9. P3b-1 completion if all gates pass.
+
+**Documentation only.** This note changes no code, test, SQL, schema, data, production or evidence.
+
+---
+
 ## CURRENCY NOTE (2026-09-18d): P3b-1 A1b Round 1 committed LOCALLY (not pushed, not deployed) + two A1b owner rulings
+
+> **[SUPERSEDED for currency by the 2026-09-18e note above — the two owner rulings below remain authoritative.]** Round 2 has since been implemented, reviewed and committed locally (`f5fa1c0`).
 
 **Canonical state.** Spec **rev 3.3** (`docs/specs/p3b-1-register-budget-data-integrity-spec-2026-09-13.md`, sha256 `1a6c695f…`) remains the controlling specification. The two owner rulings below govern its A1b implementation; the spec text itself is unchanged. Production is unchanged: `main` and the served build are still the accepted A1a build recorded in the 2026-09-18c note below (`c59bae6`).
 
