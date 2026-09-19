@@ -1,6 +1,64 @@
 # Codex Status: Herndon Financial OS
 
+## CURRENCY NOTE (2026-09-19): P3b-1 A1b D3 PASS (pre-deployment baseline); deployment package PREPARED and FROZEN, NOT EXECUTED; A1b NOT DEPLOYED / NOT PRODUCTION-ACCEPTED; cash-safety remains HOLD
+
+**Canonical state.**
+- Spec **rev 3.3** remains controlling, with the owner rulings in the 2026-09-18d note.
+- **A1b production is NOT DEPLOYED and NOT PRODUCTION-ACCEPTED.** `main` and the served build are still the accepted A1a build (`c59bae6`).
+- **Cash-safety remains HOLD.** Sep 26 (Cal 38) is the cash-safety certification gate. D3 PASS is a data-readiness result for A1b. **It is not a cash-safety PASS.**
+- A1 and P3b-1 are NOT complete.
+
+- **D3 read-only production preflight: PASS**, accepted by the owner as the A1b pre-deployment baseline.
+  - Evidence: `~/Herndon-Financial-OS-Evidence/p3b-1-a1b-d3-2026-09-19/` (outside the repository). It holds the adjudication packet, the Event 1/Week 1 evidence, the before/after correction records, the executed SQL (combined pack sha256 `4c3fa17496c7ae5eb7b283d19f46275518af16cc73946d79307ee87453120ab4`) and the independent Fable review.
+  - D3 covered every frozen item: Register rows on archived/merged categories (by §10 effect), active budget lines on archived/merged keys, INV-A/B/C, and the legacy L1–L8 counts.
+- **Post-correction accepted state (projected A1b display):**
+  - budget-line state VALID for every displayable month (Jun 2026–Jan 2027);
+  - June, August and September VERIFIED; October–January VERIFIED (no rows);
+  - July COMPLETE WITH UNCATEGORIZED, for exactly one approved exception (below);
+  - INV-A all registry leaves backed; INV-B and INV-C clean;
+  - no Register rows on archived/merged categories; no active lines on archived/merged keys; no legacy budget rows.
+- **Owner dispositions (applied through the normal Register UI, category field only; each verified row-by-row; every other row unchanged by fingerprint):**
+  - **Event 1 → Week 1:** 13 September allowance rows that were still on `entertainment.event_1` were moved to `entertainment.week_1`. C1 had moved the Week 1 line but not these rows.
+  - **Card payment:** one AMEX Gold payment row was moved from `transfers.between_accounts` to `transfers.credit_card_payment`.
+  - Total rows changed: 14. No other production data was changed.
+- **Extra-pay ruling (final):** one late-July employer deposit stays `income.bkcpa_extra_pay`. It is extra pay (an additional pay period plus extra hours) under Budget semantics.
+  - As a consequence, the §27 "approved historical NULL exceptions" expectation becomes 1, not 2. The spec text is unchanged.
+- **Unchanged by owner decision:**
+  - the two September Week 3 rows;
+  - one July uncategorized Register row, which stays the single approved uncategorized exception. It is the sole reason July shows COMPLETE WITH UNCATEGORIZED.
+- **Browser-automation lesson (tooling only, not an application defect):** a pane script declared a top-level `var f`, which overwrote the application's global money formatter in that tab. The tab was reloaded, and production data was not affected.
+  - Rule: page scripts must be scoped so they cannot overwrite application globals. Wrap every script in an IIFE and declare no page globals.
+  - All deployment-package scripts follow this rule.
+- **Deployment package: PREPARED and FROZEN, NOT EXECUTED.**
+  - Location: `~/Herndon-Financial-OS-Evidence/p3b-1-a1b-deploy-package-2026-09-19/` (outside the repository). `MANIFEST.md` sha256 `dcd4979624b1c62489885cbe6bb6ae25a0d939776a19a5456cc81c11f724b7a5` lists the sha256 of every package file.
+  - It pins:
+    - the exact push range: `66558ba`, `d1bab9c`, `f5fa1c0`, `2f03951`, plus this docs-only freeze commit;
+    - the `index.html` identity (sha256 `867047fb…`, BUILD_TS `2026-09-18T23:16:49`, frozen; nothing restamps it and `push_to_github.sh` is not used);
+    - the golden master, 25 protected functions, registry parity with the drift SQL, the D3 identity, the remote-main and served starting points, and rollback (revert to the A1a bytes, proven in a throwaway clone).
+  - Read-only, non-balance scripts:
+    - `preflight.sh` (pre/post);
+    - `drift-check.sql` (PASS/HOLD/STOP; normal activity and row-count growth do not STOP below the 400-row margin);
+    - `sitting-fingerprint.sql` (16 tables; no-write proof within the sitting);
+    - `baseline.js` (rehearsed on the live A1a build);
+    - `acceptance.js`;
+    - `audit-27.sql`.
+  - Independently falsified by Fable. Findings were adjudicated and fixed. Owner decisions are listed in the package's §7.
+  - **Standing push rule:** before any future push, inspect the exact local-vs-remote range and every commit in it. Any unexpected commit or file means STOP.
+- **Remaining sequence:**
+  1. Sep 26 (Cal 38) cash-safety certification sitting, which must close with PASS;
+  2. a separate deployment sitting, after the certification sitting has closed (spec §26.6), running the frozen package: owner attestation, preflight, fingerprint, drift check, A1a baseline, explicit owner deploy authorization, plain fast-forward push, postflight, production acceptance, fingerprint;
+  3. acceptance recorded;
+  4. full Wendy walkthrough;
+  5. V1;
+  6. P3b-1 completion if all gates pass.
+
+**Documentation only.** This note changes no code, test, SQL, schema or production state. No push.
+
+---
+
 ## CURRENCY NOTE (2026-09-18e): P3b-1 A1b ENGINEERING LOCALLY COMPLETE (Round 2 committed locally, not pushed, not deployed); A1b production NOT deployed / NOT accepted
+
+> **[SUPERSEDED for currency by the 2026-09-19 note above.]** D3 has since passed and the deployment package is frozen; A1b is still NOT deployed.
 
 **Canonical state.** Spec **rev 3.3** remains controlling, governed for A1b by the two owner rulings in the 2026-09-18d note below (still authoritative). **A1b engineering is locally complete. A1b production: NOT deployed and NOT accepted. A1 is NOT complete** until A1b is deployed and accepted. **P3b-1 is NOT complete.** Production is unchanged: `main` and the served build are the accepted A1a build (`c59bae6`, 2026-09-18c note).
 
