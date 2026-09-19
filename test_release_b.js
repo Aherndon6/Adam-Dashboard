@@ -90,6 +90,12 @@ test('[RB] TX-1 no remaining instruction to route 40% of Wendy B&K / Deep South 
   // The current policy must be stated where the owner decides (Edit Week hint + Rules page).
   const pol = (html.match(/no automatic 40% reserve/gi) || []).length; assert(pol >= 2, 'current policy statement missing (found ' + pol + ')');
   assert(/Jabian[^<]{0,80}\$20,000/.test(html), 'Jabian hold-below-$20,000 policy must be stated');
+  // Both decision points must carry the FULL policy (B&K, Deep South, Jabian hold): Edit Week hint and Rules card.
+  const hint = (html.match(/<div class="comm-hint">[\s\S]*?<\/div>/) || [''])[0];
+  const card = (html.match(/<h3>Commission Tax Split<\/h3>[\s\S]*?<\/p>/) || [''])[0];
+  for (const [where, t] of [['Edit Week hint', hint], ['Rules card', card]]) {
+    assert(/no automatic 40% reserve/.test(t) && /B&amp;K extra pay/.test(t) && /Deep South/.test(t) && /Jabian[^<]{0,80}\$20,000/.test(t), where + ' must state the full current policy');
+  }
 });
 test('[RB] TX-2 the Tax? mechanism itself is kept (checkbox rendered; ticked inflow still reserves 40%)', () => {
   assert((html.match(/<span class="ev-tax-lbl">Tax\?<\/span>/g) || []).length >= 2, 'Tax? checkbox must still render in Edit Week');
