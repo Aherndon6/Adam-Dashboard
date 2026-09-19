@@ -64,6 +64,11 @@ test('[RA] AU-3 toggleTransfer refuses a goal key with ZERO requests when not ac
     assert(box.n === 0, 'goal write must be refused, saw ' + box.n + ' request(s)');
   } finally { quiet(false); }
 });
+test('[RA] AU-3b the dormant toggleTask path also refuses goal keys (no optimistic write, no request)', async () => {
+  need('goalActionDecision'); asOwner(); quiet(true);
+  try { const box = countingFetch(); delete taskData['16_44']; await toggleTask(16, 44, true, 'goal_wendy_ira', 1000);
+    assert(box.n === 0 && !taskData['16_44'], 'goal toggleTask must be refused before any write'); } finally { quiet(false); }
+});
 test('[RA] AU-4 unticking a goal row is always allowed (one write)', async () => {
   asOwner(); quiet(true);
   try {
@@ -81,6 +86,7 @@ test('[RA] AU-5 display, toggleTransfer and toggleCustomTask all consult the ONE
   assert(/goalActionDecision\(/.test(fnSrc('renderWeekDetail')), 'renderWeekDetail must call goalActionDecision');
   assert(/goalActionDecision\(/.test(fnSrc('g1WriteGuard')), 'g1WriteGuard must delegate to goalActionDecision');
   assert(/composeGoalActionability\(/.test(fnSrc('goalActionDecision')), 'goalActionDecision must use composeGoalActionability');
+  assert(/canWriteFinancials\(\)&&!\(_gp&&_gp\.checkboxDisabled\)/.test(fnSrc('renderWeekDetail')), 'goal row checkbox must be disabled from the canonical decision');
 });
 test('[RA] AU-6 non-goal actions are outside the gate (a neutral key still writes once)', async () => {
   asOwner(); quiet(true);
@@ -100,6 +106,19 @@ test('[RA] AU-7 autoBackfillGoal follow-up goal tasks (gd_goal_…) cannot be ti
     assert(goalKeyForCustomTask(gid) === 'goal_wendy_ira' && goalKeyForCustomTask(oid) === null);
   } finally { quiet(false); }
 });
+function withG1Stub(items, fn) {
+  const saveR = g1ResultForWeek, saveA = GOAL_FUNDING_OWNER_AUTHORITY;
+  g1ResultForWeek = function () { return { status: 'OK', reasons: [], items: items }; }; GOAL_FUNDING_OWNER_AUTHORITY = AUTH_OK;
+  try { return fn(); } finally { g1ResultForWeek = saveR; GOAL_FUNDING_OWNER_AUTHORITY = saveA; }
+}
+test('[RA] AU-7b a follow-up allocation stays WITHHOLD even when authorized and the base recommendation has no model objection', () => withG1Stub([NMO], () => {
+  const d = goalActionDecision(16, 'goal_wendy_ira', null, null, { followup: true }); assert(d.actionable === false && /followup/.test(d.reasons.join(' ')), JSON.stringify(d));
+  assert(goalActionDecision(16, 'goal_wendy_ira', 1000).actionable === true, 'control: the validated recommendation itself is actionable when authorized');
+}));
+test('[RA] AU-11 a write amount above the validated (net) amount is not actionable, even when authorized', () => withG1Stub([NMO], () => {
+  for (const amt of [1000.01, 5000, -1, 0, 'abc']) { const d = goalActionDecision(16, 'goal_wendy_ira', amt); assert(d.actionable === false, 'amount ' + amt + ' must not be actionable'); }
+  assert(goalActionDecision(16, 'goal_wendy_ira', 999.99).actionable === true, 'an amount within the validated amount is actionable');
+}));
 test('[RA] AU-8 the authority value is period-independent (calendar date + state only; no model-week fields)', () => {
   const a = need('GOAL_FUNDING_OWNER_AUTHORITY'); const keys = Object.keys(a).sort().join(',');
   assert(/^basis,since,state$/.test(keys), 'unexpected authority fields: ' + keys);
@@ -129,13 +148,18 @@ function openWeekVm() {
   return { weeks: [{ num: 15, reconciled: true, goalSaved: { wendy_ira: 0 }, ac: [], acKeys: [] },
     { num: 16, reconciled: false, goalSaved: { wendy_ira: 7500, bailey_529: 3500 }, ac: ['Transfer $7,500.00 from Truist Checking to AMEX Savings (Wendy IRA)'], acKeys: ['goal_wendy_ira'], realActs: ['Transfer $7,500.00 from Truist Checking to AMEX Savings (Wendy IRA)'], realActKeys: ['goal_wendy_ira'] }] };
 }
-test('[RA] TR-1 in an open week, "funded" is the last reconciled snapshot, never the model recommendation', () => withGoalState(() => {
-  const vm = openWeekVm(); assert(getGoalFunded('wendy_ira', vm) === 0, 'funded must be 0 (snapshot), got ' + getGoalFunded('wendy_ira', vm));
-  assert(getGoalFunded('bailey_529', vm) === 0, 'bailey funded must be 0');
+test('[RA] TR-1 in an open week, displayed "funded" is the last reconciled snapshot, never the model recommendation', () => withGoalState(() => {
+  const vm = openWeekVm(); const f = need('goalFundedForDisplay');
+  assert(f('wendy_ira', vm) === 0, 'funded must be 0 (snapshot), got ' + f('wendy_ira', vm)); assert(f('bailey_529', vm) === 0, 'bailey funded must be 0');
+  for (const fn of ['renderOverview', '_renderGoalsSavings', '_renderGoalsPriorities', '_renderGoalsFunding'])
+    assert(!/getGoalFunded\(/.test(fnSrc(fn)) && /goalFundedForDisplay\(/.test(fnSrc(fn)), fn + ' must display goalFundedForDisplay');
+}));
+test('[RA-BASE] TR-1b getGoalFunded itself is unchanged (golden-master pinned; model-side calculators keep it)', () => withGoalState(() => {
+  const vm = openWeekVm(); assert(getGoalFunded('wendy_ira', vm) === 7500, 'getGoalFunded must still return the model goalSaved');
 }));
 test('[RA] TR-2 a ticked goal line in an unreconciled week is "Marked done — awaiting reconciliation", not funded', () => withGoalState(() => {
   const vm = openWeekVm(); taskData['16_0'] = { completed: true, completedAmount: 7500, actionKey: 'goal_wendy_ira', completedLabel: 'x' };
-  const s = need('goalOpenWeekStatus')('wendy_ira', vm); assert(s.markedDone === 7500 && getGoalFunded('wendy_ira', vm) === 0, JSON.stringify(s));
+  const s = need('goalOpenWeekStatus')('wendy_ira', vm); assert(s.markedDone === 7500 && goalFundedForDisplay('wendy_ira', vm) === 0, JSON.stringify(s));
   const p = goalRowPresentation({ scope: 'goal', actionable: false, model: WH, owner: { state: 'NOT_AUTHORIZED' }, reasons: [] }, true);
   assert(/Marked done — awaiting reconciliation/.test(p.lines.join(' ') + p.badgeText), 'done wording: ' + JSON.stringify(p));
   assert(p.checkboxDisabled === false, 'unticking must remain possible');
@@ -147,13 +171,23 @@ test('[RA] TR-3 an unticked recommendation reads "Recommended — not executed"'
 }));
 test('[RA] TR-4 a reconciled current week keeps today\'s behaviour (snapshot overlay)', () => withGoalState(() => {
   currentW = 15; reconData[15] = { chk: 1 }; goalSnapData[15] = { wendy_ira: 1234.5 };
-  const vm = { weeks: [{ num: 15, reconciled: true, goalSaved: { wendy_ira: 1234.5 } }] }; assert(getGoalFunded('wendy_ira', vm) === 1234.5);
+  const vm = { weeks: [{ num: 15, reconciled: true, goalSaved: { wendy_ira: 1234.5 } }] }; assert(need('goalFundedForDisplay')('wendy_ira', vm) === 1234.5);
 }));
 test('[RA] TR-5 no unreconciled goal state is described as funded / transferred / executed', () => {
   const p1 = need('goalRowPresentation')({ scope: 'goal', actionable: false, model: NMO, owner: { state: 'NOT_AUTHORIZED' }, reasons: [] }, false);
   const p2 = goalRowPresentation({ scope: 'goal', actionable: false, model: WH, owner: { state: 'NOT_AUTHORIZED' }, reasons: [] }, true);
-  for (const p of [p1, p2]) { const t = (p.badgeText + ' ' + p.lines.join(' ')).toLowerCase(); assert(!/\bfunded\b|transferred|\bexecuted\b/.test(t), 'overclaim: ' + t); }
+  // Affirmative claims only: the approved negative labels ("not executed", "not to be executed") are allowed.
+  for (const p of [p1, p2]) { const t = (p.badgeText + ' ' + p.lines.join(' ')).toLowerCase().replace(/not (to be )?executed/g, '').replace(/not bank-verified/g, '');
+    assert(!/\bfunded\b|transferred|\bexecuted\b|bank-verified/.test(t), 'overclaim: ' + t); }
   const hist = fnSrc('renderWeekDetail'); assert(/Marked done earlier/.test(hist), 'goal executed-history rows must say "Marked done earlier"');
+});
+test('[RA] TR-7 "Transfers this week": an unexecuted model allocation is never shown as funded/done', () => {
+  const f = need('goalSummaryLine'); const x = { l: 'Wendy IRA $7,500.00 → AMEX Savings — Wendy IRA funded!', r: 'done', _key: 'goal_wendy_ira' };
+  const a = f(x, false, false); assert(a.icon !== '✅' && /Recommended — not executed/.test(a.rsn) && !/funded/i.test(a.l), JSON.stringify(a));
+  const b = f(x, true, false); assert(/Marked done — awaiting reconciliation/.test(b.rsn) && !/funded/i.test(b.l), JSON.stringify(b));
+  const c = f({ l: 'Bailey 529 $164.01 → AMEX Savings: $3,335.99 remaining', r: 'done', _key: 'goal_bailey_529' }, false, true);
+  assert(/reconciled goal snapshot is the funding record/.test(c.rsn) && !/remaining/.test(c.l), JSON.stringify(c));
+  assert(/goalSummaryLine\(/.test(fnSrc('renderWeekDetail')), 'renderWeekDetail must use goalSummaryLine');
 });
 test('[RA] TR-6 model-only figures carry an explicit caveat (Overview AMEX forecast; Model Avg Sweep)', () => {
   assert(/Model Avg Sweep \/ Month[\s\S]{0,400}modeled, not authorized/.test(html), 'Avg Sweep caveat missing');
