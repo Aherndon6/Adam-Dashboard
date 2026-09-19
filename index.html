@@ -885,7 +885,7 @@ button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-vis
 // ── Constants (unchanged) ──────────────────────────────────────────────────
 // Simplified architecture — $8,250 total from LC · $6,500 operating floor · no legacy mechanics
 // Real-world moves: keep $2,250 in chk, move $2,750 sav→chk, move $1,000 LC→chk, move $2,250 LC→chk (Option 1 correction)
-const BUILD_TS='2026-09-19T16:58:07'; // updated each push — local time string
+const BUILD_TS='2026-09-19T17:07:32'; // updated each push — local time string
 const START_CHK=18037.73,START_SAV=3772.77,START_AMX=103.64,START_TAX=0,START_LC=13488.88;
 const EF_AMT=13488.88; // LC/EF balance — static this model year (no transfers in or out)
 const BASE_TAX=521.36,RET_SAV_XFR=3772.74;
@@ -4800,6 +4800,7 @@ function goalActionDecision(weekNum,actionKey,amount,weeksOpt,opts){
   try{
     var r=g1ResultForWeek(weekNum,weeksOpt);
     item=(r.items||[]).find(function(i){return i.actionKey===actionKey;})||null;
+    if(!item&&/_seed$/.test(actionKey))item={actionKey:actionKey,verdict:'WITHHOLD',reason:'seed_outside_model_check'};
     if(!item)item={actionKey:actionKey,verdict:'WITHHOLD',reason:(r.status!=='OK'?'unavailable: '+r.reasons.join(', '):'not_a_current_recommendation')};
     else if(opts&&opts.followup)item=Object.assign({},item,{verdict:'WITHHOLD',reason:'followup_allocation_not_validated'});
     else if(item.verdict==='NO_MODEL_OBJECTION'&&amount!=null){
@@ -4830,11 +4831,12 @@ function g1VerdictText(item){
   if(r==='amount_not_validated')return 'Withhold: the amount differs from the validated recommendation.';
   if(r==='followup_allocation_not_validated')return 'Withhold: an additional allocation is not a validated recommendation.';
   if(r==='not_a_current_recommendation')return 'Withhold: not a current model recommendation for this week.';
+  if(r==='seed_outside_model_check')return 'Withhold: savings-to-AMEX seed transfers are outside the model check.';
   return 'Withhold: model check unavailable ('+r+').';
 }
 function goalRowPresentation(decision,done,weekReconciled,partial){
   var d=decision||{},lines=[];
-  if(weekReconciled)return{badgeText:'Reconciled — the goal snapshot is the funding record',checkboxDisabled:true,lines:[]};
+  if(weekReconciled)return{badgeText:'Reconciled week — this row is not a funding record',checkboxDisabled:true,lines:[]};
   if(done){
     return{badgeText:'Marked done — awaiting reconciliation',checkboxDisabled:false,
       lines:['Operator assertion, not bank-verified. Funding is confirmed only by the week\'s reconciliation.']};
@@ -4854,7 +4856,7 @@ function goalOpenWeekLines(os){
 function modelSweepCaveat(){return goalOwnerAuthority().state!=='AUTHORIZED'?'modeled, not authorized':'modeled — not an instruction';}
 function amexForecastCaveat(w){
   if(!w)return '';
-  if(w.reconciled)return 'Reconciled actual for this week (as entered at closeout).';
+  if(w.reconciled)return 'Reconciled actual for this week (as entered at reconciliation).';
   if(w.num===currentW)return 'Model figure — assumes this week\'s recommended transfers are executed; not a bank balance.';
   if(w.num>currentW)return 'Model projection — assumes every modeled transfer through this week is executed; not a bank balance.';
   return 'Model figure for an unreconciled past week — not a bank balance.';
@@ -4927,7 +4929,7 @@ function commitmentVisibilityRows(num,weeks){
         :(c.origin_model_week<num&&(recon[c.origin_model_week]||c.commitment_source==='historical_repair')&&isReservedAsOf(c,num));
       if(!counted){rows.push({id:c.id,counted:false,wording:'Recorded, not yet counted against deployable cash: '+label+'.'});return;}
       countedC+=amt;
-      var t=w.reconciled?('In flight at close: '+label+'. Deducted from deployable cash for goal recommendations. The reconciled (posted) balance still includes it until it posts.')
+      var t=w.reconciled?('In flight at close: '+label+'. Deducted from deployable cash for goal recommendations. The reconciled balance still includes it until it posts.')
                        :('In flight: '+label+'. Deducted from deployable cash for goal recommendations. Projected checking below still includes it until it posts.');
       if(c.status==='bank_pending')t+=' Review required: bank status uncertain.';
       rows.push({id:c.id,counted:true,wording:t});
