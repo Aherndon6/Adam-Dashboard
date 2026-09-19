@@ -885,7 +885,7 @@ button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-vis
 // ── Constants (unchanged) ──────────────────────────────────────────────────
 // Simplified architecture — $8,250 total from LC · $6,500 operating floor · no legacy mechanics
 // Real-world moves: keep $2,250 in chk, move $2,750 sav→chk, move $1,000 LC→chk, move $2,250 LC→chk (Option 1 correction)
-const BUILD_TS='2026-09-19T16:35:26'; // updated each push — local time string
+const BUILD_TS='2026-09-19T16:58:07'; // updated each push — local time string
 const START_CHK=18037.73,START_SAV=3772.77,START_AMX=103.64,START_TAX=0,START_LC=13488.88;
 const EF_AMT=13488.88; // LC/EF balance — static this model year (no transfers in or out)
 const BASE_TAX=521.36,RET_SAV_XFR=3772.74;
@@ -4615,7 +4615,7 @@ var _xfrWriteCtx={};  // render-time transport: ctxKey -> {actionKey, completedL
 // · AUTHORIZED / NOT AUTHORIZED = owner authority · ACTIONABLE = NO MODEL OBJECTION + AUTHORIZED.
 // Owner authority is a deploy-controlled constant: lifting NOT_AUTHORIZED needs an owner-approved code change.
 // It is keyed by calendar date only (never model weeks / period identity).
-var GOAL_FUNDING_OWNER_AUTHORITY={state:'NOT_AUTHORIZED',since:'2026-09-19',basis:'Owner standing control: do not execute goal-funding recommendations.'};
+const GOAL_FUNDING_OWNER_AUTHORITY=Object.freeze({state:'NOT_AUTHORIZED',since:'2026-09-19',basis:'Owner standing control: do not execute goal-funding recommendations.'});
 var G1_MIN_HORIZON_WEEKS=5;
 function goalOwnerAuthority(){
   var a=(typeof GOAL_FUNDING_OWNER_AUTHORITY!=='undefined')?GOAL_FUNDING_OWNER_AUTHORITY:undefined;
@@ -4656,7 +4656,7 @@ function g1ValidateRecommendations(ctx){
       if(!wn)unavailable('current_week_missing');
       else{
         (wn.acKeys||[]).forEach(function(k,i){
-          if(typeof k==='string'&&k.indexOf('goal_')===0){
+          if(typeof k==='string'&&k.indexOf('goal_')===0&&!/_seed$/.test(k)){  // seed: Savings→AMEX, zero checking impact
             var c=g1ParseTransferCents((wn.ac||[])[i]);
             items.push({actionKey:k,goalId:k.slice(5),grossC:c});
             if(c==null)unavailable('unparseable_recommendation');
@@ -4699,7 +4699,7 @@ function g1ValidateRecommendations(ctx){
       future.forEach(function(k){
         var w=byNum[k],s=0;
         (w.acKeys||[]).forEach(function(key,i){
-          if(typeof key==='string'&&key.indexOf('goal_')===0){var c=g1ParseTransferCents((w.ac||[])[i]);if(c==null)unavailable('unparseable_future_sweep');else s+=c;}
+          if(typeof key==='string'&&key.indexOf('goal_')===0&&!/_seed$/.test(key)){var c=g1ParseTransferCents((w.ac||[])[i]);if(c==null)unavailable('unparseable_future_sweep');else s+=c;}
         });
         FS[k]=s;
       });
@@ -4725,11 +4725,12 @@ function g1ValidateRecommendations(ctx){
         });
         var sum=set.reduce(function(s,c){return s+(Number(c.amount_cents)||0);},0);
         if(sum!==wn.cashAvailability.reservedProtectedCents)unavailable('reservation_parity');
+        if(typeof wn.cashAvailability.reservedCommitmentCount==='number'&&set.length!==wn.cashAvailability.reservedCommitmentCount)unavailable('reservation_parity');
         set.forEach(function(c){
           var id=c.expected_item_id;if(typeof id!=='string'||!id)return;
           for(var j=0;j<future.length;j++){
             var evs=(effByNum[future[j]]&&effByNum[future[j]][4])||[];
-            if(evs.some(function(e){return e&&e.eid===id;})){stops.push({week:future[j],cents:Number(c.amount_cents)||0});break;}
+            if(evs.some(function(e){return e&&e.eid===id;})){stops.push({week:future[j],cents:Number(c.amount_cents)||0,c:c});break;}
           }
         });
       }
@@ -4738,7 +4739,7 @@ function g1ValidateRecommendations(ctx){
         H.forEach(function(k){
           if(k>num)fsCum+=FS[k];
           var R=byNum[k].cashAvailability.reservedProtectedCents;
-          stops.forEach(function(s){if(k>=s.week)R-=s.cents;});
+          stops.forEach(function(s){if(k>=s.week&&isReservedAsOf(s.c,k))R-=s.cents;});  // only while THAT commitment is still reserved
           base[k]=Math.round(byNum[k].chk*100)+fsCum-Math.max(0,R);
         });
         var totalPending=items.reduce(function(s,it){return s+(it.netC||0);},0);
@@ -4782,6 +4783,8 @@ function g1ContextForWeek(weekNum,weeks){
 }
 var _g1RenderCache=(typeof WeakMap!=='undefined')?new WeakMap():null;
 function g1ResultForWeek(weekNum,weeks){
+  // A What-If scenario is non-authoritative by definition (estimates live there): never validate against it.
+  if(typeof scenarioState!=='undefined'&&scenarioState&&scenarioState.active)return{status:'UNAVAILABLE',reasons:['scenario_active'],horizon:null,items:[]};
   if(weeks&&_g1RenderCache){var c=_g1RenderCache.get(weeks);if(c&&c[weekNum])return c[weekNum];}
   var ws=weeks||applyCompletionSnapshots(getActiveModel());
   var r=g1ValidateRecommendations(g1ContextForWeek(weekNum,ws));
@@ -4811,13 +4814,13 @@ function g1WriteGuard(weekNum,actionKey,amount){
   return{allow:!!d.actionable,reason:d.reasons.join('; ')||'ok',decision:d};
 }
 // autoBackfillGoal follow-up tasks: id = 'gd_'+goalActionKey+'_'+Date.now()+'_'+rand.
-function goalKeyForCustomTask(id){var m=/^gd_(goal_[a-z0-9_]+?)_\d{10,}_[a-z0-9]+$/.exec(id||'');return m?m[1]:null;}
+function goalKeyForCustomTask(id){var m=/^gd_(goal_[A-Za-z0-9_-]+?)_\d{10,}_[a-z0-9]+$/.exec(id||'');return m?m[1]:null;}
 // ── P3c Release A — display helpers (pure). Evidence-bounded wording: a tick is only an operator assertion;
 // FUNDED means a reconciled goal snapshot; a model allocation is a proposal. ──────────────────────────────
 function _g1FloorTxt(){return '$'+Number(OP_FL).toLocaleString('en-US');}
 function g1VerdictText(item){
   if(!item||typeof item!=='object')return 'Withhold: model check unavailable.';
-  if(item.verdict==='NO_MODEL_OBJECTION')return 'No model objection: modeled Checking stays at or above '+_g1FloorTxt()+' across the known horizon (not a certification; variable income not counted).';
+  if(item.verdict==='NO_MODEL_OBJECTION')return 'No model objection: modeled Checking stays at or above '+_g1FloorTxt()+' across the known horizon (not a certification; income not yet entered in the week schedule is not counted).';
   var r=String(item.reason||'');
   if(r==='candidate_breach')return 'Withhold: this transfer would take modeled Checking below '+_g1FloorTxt()+' in Cal '+getCalWeek(item.breachWeek)+(item.minChk!=null?' (low '+f(item.minChk)+')':'')+'.';
   if(r==='pre_existing_breach')return 'Withhold: the model is already below '+_g1FloorTxt()+' in Cal '+getCalWeek(item.preExistingWeek!=null?item.preExistingWeek:item.breachWeek)+' without this week\'s goal transfers.';
@@ -4829,8 +4832,9 @@ function g1VerdictText(item){
   if(r==='not_a_current_recommendation')return 'Withhold: not a current model recommendation for this week.';
   return 'Withhold: model check unavailable ('+r+').';
 }
-function goalRowPresentation(decision,done){
+function goalRowPresentation(decision,done,weekReconciled,partial){
   var d=decision||{},lines=[];
+  if(weekReconciled)return{badgeText:'Reconciled — the goal snapshot is the funding record',checkboxDisabled:true,lines:[]};
   if(done){
     return{badgeText:'Marked done — awaiting reconciliation',checkboxDisabled:false,
       lines:['Operator assertion, not bank-verified. Funding is confirmed only by the week\'s reconciliation.']};
@@ -4838,13 +4842,28 @@ function goalRowPresentation(decision,done){
   lines.push(g1VerdictText(d.model));
   if(!d.owner||d.owner.state!=='AUTHORIZED')lines.push('Not authorized: owner standing control — goal-funding recommendations are not to be executed.');
   else if(d.actionable)lines.push('Authorized by the owner.');
-  return{badgeText:'Recommended — not executed',checkboxDisabled:!d.actionable,lines:lines};
+  return{badgeText:partial?'Partially marked done — remainder recommended, not executed':'Recommended — not executed',checkboxDisabled:!d.actionable,lines:lines};
+}
+// Goals-page open-week lines and model caveats: authority wording always follows the constant.
+function goalOpenWeekLines(os){
+  var out=[],na=goalOwnerAuthority().state!=='AUTHORIZED';
+  if(os&&os.markedDone>0)out.push('Marked done '+f(os.markedDone)+' in unreconciled weeks — awaiting reconciliation (not bank-verified)');
+  if(os&&os.recommended>0)out.push('Recommended '+f(os.recommended)+' this week — not executed'+(na?'; not authorized':''));
+  return out;
+}
+function modelSweepCaveat(){return goalOwnerAuthority().state!=='AUTHORIZED'?'modeled, not authorized':'modeled — not an instruction';}
+function amexForecastCaveat(w){
+  if(!w)return '';
+  if(w.reconciled)return 'Reconciled actual for this week (as entered at closeout).';
+  if(w.num===currentW)return 'Model figure — assumes this week\'s recommended transfers are executed; not a bank balance.';
+  if(w.num>currentW)return 'Model projection — assumes every modeled transfer through this week is executed; not a bank balance.';
+  return 'Model figure for an unreconciled past week — not a bank balance.';
 }
 // G2 — a lookahead defer that follows a higher-priority allocation is about USED room, not this goal's risk.
 function g2DeferText(label,priorDone){
   var m=/^(.*?) deferred — \d+-wk lookahead: floor risk$/.exec(label||'');
   if(!m)return label;
-  return priorDone?(m[1]+' deferred — higher-priority goals this week used the modeled room within the 5-week check.')
+  return priorDone?(m[1]+' deferred — after higher-priority allocations this week, the 5-week check projects Checking below '+_g1FloorTxt()+'.')
                   :(m[1]+' deferred — the model\'s 5-week check projects Checking below '+_g1FloorTxt()+'.');
 }
 // "Transfers this week" summary: never present an unexecuted model allocation as funded/done.
@@ -4908,12 +4927,15 @@ function commitmentVisibilityRows(num,weeks){
         :(c.origin_model_week<num&&(recon[c.origin_model_week]||c.commitment_source==='historical_repair')&&isReservedAsOf(c,num));
       if(!counted){rows.push({id:c.id,counted:false,wording:'Recorded, not yet counted against deployable cash: '+label+'.'});return;}
       countedC+=amt;
-      var t='In flight: '+label+'. Deducted from deployable cash for goal recommendations. Projected checking below still includes it until it posts.';
+      var t=w.reconciled?('In flight at close: '+label+'. Deducted from deployable cash for goal recommendations. The reconciled (posted) balance still includes it until it posts.')
+                       :('In flight: '+label+'. Deducted from deployable cash for goal recommendations. Projected checking below still includes it until it posts.');
       if(c.status==='bank_pending')t+=' Review required: bank status uncertain.';
       rows.push({id:c.id,counted:true,wording:t});
     });
   }catch(e){return UNAV;}
-  if(countedC!==w.cashAvailability.reservedProtectedCents)return{status:'UNAVAILABLE',wording:UNAV.wording,rows:rows.filter(function(r){return !r.counted;})};
+  var countedN=rows.filter(function(r){return r.counted;}).length;
+  if(countedC!==w.cashAvailability.reservedProtectedCents||(typeof w.cashAvailability.reservedCommitmentCount==='number'&&countedN!==w.cashAvailability.reservedCommitmentCount))
+    return{status:'UNAVAILABLE',wording:UNAV.wording,rows:rows.filter(function(r){return !r.counted;})};
   return{status:'OK',rows:rows};
 }
 function renderCommitmentVisibility(num,weeks){
@@ -5399,7 +5421,7 @@ function renderGoalRail(vm){
     '</div>'+
     '<div class="progress-goal">'+
       '<div class="goal-top"><span class="name">AMEX Savings — IRA + 529s</span><span class="value">'+f(_grw.amx)+' / '+f(vm.goals.rt)+'</span></div>'+
-      '<div style="font-size:10px;color:var(--muted)">Model figure — assumes this week\'s recommended transfers are executed; not a bank balance.</div>'+
+      '<div style="font-size:10px;color:var(--muted)">'+esc(amexForecastCaveat(_grw))+'</div>'+
       '<div class="prog-bar"><div class="prog-fill" style="background:var(--violet);width:'+rtPct+'%"></div></div>'+
       '<div class="goal-meta"><span>'+rtForecast+'</span><span>'+rtPct.toFixed(0)+'%</span></div>'+
     '</div>'+
@@ -6202,13 +6224,14 @@ function renderWeekDetail(w,weeks){
         // for a different action (e.g. Adam IRA $61.06 at a colliding index) cannot inject its amount
         // into another action's narrative line (e.g. the commission_tax line).
         var _trRes=resolveWeekTransfers({realActs:w.realActs,realActKeys:w.realActKeys,taskRows:_taskRowsForWeek(w.num)});
-        var _trAmts={};
+        var _trAmts={},_trDone={};
         (w.realActKeys||[]).forEach(function(ak,ai){
           if(!ak)return;
           var _tcr=_trRes.currentRows[ai];
           if(!_tcr||!_tcr.completed||_tcr.matchTaskIdx==null)return;
           var td=taskData[w.num+'_'+_tcr.matchTaskIdx];
           if(td&&td.completed&&td.completedAmount!=null)_trAmts[ak]=td.completedAmount;
+          if(td&&td.completed)_trDone[ak]=true;
         });
         // Normalize done entries: replace model amount with actual completedAmount where available
         var done=w.tr.filter(function(x){return x.r==='done'||x.r==='info';}).map(function(x){
@@ -6228,7 +6251,7 @@ function renderWeekDetail(w,weeks){
             if(_sa.status==='blocked')return Object.assign({},x,{l:'Commission-tax execution disabled — review required ('+_sa.reason+')'});
           }
           if(typeof x._key==='string'&&x._key.indexOf('goal_')===0){
-            var _gs=goalSummaryLine(x,_trAmts[x._key]!=null,!!w.reconciled);
+            var _gs=goalSummaryLine(x,!!_trDone[x._key],!!w.reconciled);
             return Object.assign({},x,{l:_gs.l,rsn:_gs.rsn,_icon:_gs.icon});
           }
           return x;
@@ -6533,11 +6556,11 @@ function renderWeekDetail(w,weeks){
         // For a PARTIAL, the executable/write amount is the NET remaining (completed_label stays the
         // model recommendation so the resolver still matches it as this obligation on the next render).
         var _amtVal=_isPartial?_net.netAmount:((actionKey===ACTION_KEYS.COMMISSION_TAX)?_ctAmt:(_isGoalKey&&_goalAmt!=null?_goalAmt:null));
-        var _partialNote=_isPartial?'<div class="act-override-note" style="color:var(--amber)">⚠ Partial — only '+f(_net.netAmount)+' remains to execute'+((_goalAmt!=null)?' ('+f(Math.max(0,Math.round((_goalAmt-_net.netAmount)*100)/100))+' already transferred this cycle)':'')+'. Confirm before executing.</div>':'';
+        var _partialNote=_isPartial?'<div class="act-override-note" style="color:var(--amber)">⚠ Partial — only '+f(_net.netAmount)+' remains to execute'+((_goalAmt!=null)?' ('+f(Math.max(0,Math.round((_goalAmt-_net.netAmount)*100)/100))+' already marked done this cycle)':'')+'. Confirm before executing.</div>':'';
         // Resolver-aware write context: identity + matched persisted task_idx (NOT the display index)
         _xfrWriteCtx[_ctxKey]={actionKey:actionKey||null,completedLabel:a,amount:_amtVal,matchTaskIdx:_cr.matchTaskIdx,candidate_context:_b1CtCtx};
         // P3c Release A: goal rows take their actionability from the canonical decision (same as the write path).
-        var _gp=_isGoalKey?goalRowPresentation(goalActionDecision(w.num,actionKey,_amtVal,weeks),done):null;
+        var _gp=_isGoalKey?goalRowPresentation(goalActionDecision(w.num,actionKey,_amtVal,weeks),done,!!w.reconciled,_isPartial):null;
         if(_gp)badge='<span class="act-type-badge model">'+esc(_gp.badgeText)+'</span>';
         var _gpHtml=_gp?_gp.lines.map(function(t){return'<div class="deferred-why">'+esc(t)+'</div>';}).join(''):'';
         return'<div class="task-row'+(hasOv?' edited':'')+(_isPartial?' net-partial':'')+'">'+
@@ -6637,7 +6660,7 @@ function renderWeekDetail(w,weeks){
     // this week's recommended goal transfers were executed, so they are shown only as labelled estimates.
     var _pf=_reconPrefillValues(w);
     var pre=_pf.values;
-    var _pfRef=_pf.referenceIsModel?('<div class="recon-guidance-note"><strong>Model estimates — reference only, not bank truth:</strong> Truist Checking '+f(_pf.reference.chk)+' · Truist Savings '+f(_pf.reference.sav)+' · AMEX Savings '+f(_pf.reference.amx)+' · Vio Tax '+f(_pf.reference.tax)+' · Lending Club '+f(_pf.reference.lc)+'. These estimates assume this week\'s recommended goal transfers were executed. Enter the actual bank balance for every account.</div>'):'';
+    var _pfRef=_pf.referenceIsModel?('<div class="recon-guidance-note"><strong>Model estimates — reference only, not bank truth:</strong> Truist Checking '+f(_pf.reference.chk)+' · Truist Savings '+f(_pf.reference.sav)+' · AMEX Savings '+f(_pf.reference.amx)+' · Vio Tax '+f(_pf.reference.tax)+' · Lending Club '+f(_pf.reference.lc)+'. These estimates assume this week\'s recommended goal transfers were executed (and every other modeled inflow, bill and rule). Enter the actual bank balance for every account.</div>'):'';
     var _canSave=canSaveRecon(w.num);
     html+='<div class="recon-form"><div class="recon-form-title">Reconcile — Wk '+getCalWeek(w.num)+' \xb7 '+w.dates+'</div>'+
       renderReconPhase01(w)+
@@ -6871,10 +6894,7 @@ function _renderGoalsSavings(vm){
           (g.notes?'<div class="goal-tbl-sub">'+g.notes+'</div>':'')+
           routeHtml+
           startsAfterHtml+
-          (function(){var _os=(!g.auto&&!g.complete)?goalOpenWeekStatus(g.id,vm):null;if(!_os)return'';var _o='';
-            if(_os.markedDone>0)_o+='<div class="goal-tbl-sub">Marked done '+f(_os.markedDone)+' — awaiting reconciliation (not bank-verified)</div>';
-            if(_os.recommended>0)_o+='<div class="goal-tbl-sub">Recommended '+f(_os.recommended)+' this week — not executed; not authorized</div>';
-            return _o;})()+
+          ((!g.auto&&!g.complete)?goalOpenWeekLines(goalOpenWeekStatus(g.id,vm)).map(function(t){return'<div class="goal-tbl-sub">'+esc(t)+'</div>';}).join(''):'')+
         '</div>'+
         '<div class="goal-tbl-amt">'+f(g.target)+'</div>'+
         '<div class="goal-tbl-funded" style="'+fundedColor+'">'+f(funded)+'</div>'+
@@ -6988,7 +7008,7 @@ function _renderGoalsSavings(vm){
       '<div style="background:var(--greenSoft);border:1px solid var(--border);border-radius:6px;padding:8px 10px">'+
         '<div style="font-size:10px;color:var(--muted);font-weight:600;text-transform:uppercase;letter-spacing:.05em">Model Avg Sweep / Month</div>'+
         '<div style="font-size:18px;font-weight:700;color:#166534;margin:2px 0">'+f(_avgMoSweep)+'</div>'+
-        '<div style="font-size:10px;color:var(--muted)">Across Cal Wk 23-53 · avg $'+fc(_avgWkSweep)+'/wk across all wks · modeled, not authorized</div>'+
+        '<div style="font-size:10px;color:var(--muted)">Across Cal Wk 23-53 · avg $'+fc(_avgWkSweep)+'/wk across all wks · '+modelSweepCaveat()+'</div>'+
       '</div>'+
       '<div style="background:var(--bg);border:1px solid var(--border);border-radius:6px;padding:8px 10px">'+
         '<div style="font-size:10px;color:var(--muted);font-weight:600;text-transform:uppercase;letter-spacing:.05em">Active Sweep Weeks</div>'+
@@ -7032,7 +7052,7 @@ function _renderGoalsPriorities(vm){
     var g=GOALS_REGISTRY.find(function(x){return x.id===tier.goals[0];});
     if(!g)return;
     var funded=goalFundedForDisplay(g.id,vm);
-    var rem=getGoalRemaining(g.id,vm);
+    var rem=Math.max(0,Math.round((g.target-funded)*100)/100);   // P3c Release A: remaining from the DISPLAYED (reconciled) funded
     var pct=g.complete?100:Math.min(100,funded>0?Math.round(funded/g.target*100):0);
     var gLocked=!!(g.needsFlag&&!goalFlags[g.needsFlag]);
     var c=tier.color;
