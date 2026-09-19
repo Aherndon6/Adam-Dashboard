@@ -1,6 +1,31 @@
 # Codex Status: Herndon Financial OS
 
+## CURRENCY NOTE (2026-09-18c): P3b-1 A1a DEPLOYED and PRODUCTION-ACCEPTED (narrow read-only smoke PASS; zero financial writes); A1b remains mandatory; Wendy walkthrough and V1 blocked on A1b
+
+**Canonical state.** A1a (spec rev 3.3 §21) is **live in production and accepted**. This supersedes the 2026-09-18b note below, which recorded the pre-publication state. A1a is a sequencing slice: **A1 is not complete, and P3b-1 is not complete.**
+
+- **Published:** `origin/main` was fast-forwarded `5c0410e` → `aa004921f16f613cf6211c33fb17caad94b8611a` (A1a application and tests) → `7df70b2` (status note). Plain push; no force; BUILD_TS not re-stamped by publication.
+- **Served identity (verified before and after the smoke):** Document sha256 `44893b6bf9c9a554a208d99b0e3d67457e4acb098c7c6398f4812c6ae0e2bdbf` (byte-identical to the committed `index.html`, blob `6b6583026f33009313897b9953ac39d0514090f0`); `BUILD_TS 2026-09-18T19:47:02`; supabase-js `2.116.0` body `84ee9bf4…` (floating `@2` absent); Chart.js `4.4.1` body `74401d73…`.
+- **Production acceptance (2026-09-19 UTC; owner-authorized narrow smoke; owner signed in; Wendy confirmed not using the OS; no other owner sessions):**
+  - Register loaded completely for the selected account; the category picker shows the disabled "Select a category…" prompt with no selectable blank; category authority available.
+  - Blank-category Save refused with the field-specific message, **zero network requests**, form kept open.
+  - The deployed fresh category-authority check ran against production (read-only, no Save): an ordinary category returned exactly one matching ASSIGNABLE row and was authorized; archived, nonexistent and allocation keys were refused with their distinct messages.
+  - Uncategorized count and filter correct on real data: counts only the selected account's complete ledger; the filter shows exactly the uncategorized row with unchanged ledger balance; a search that hides every row leaves the count unchanged; the count follows account switches (including an account with zero). The two approved historical exceptions were observed, not altered.
+  - Budget: current month, adjacent month and back again rendered cleanly; the loading screen preceded each grid and no grid rendered while a source was loading; the return to the current month was identical to the first render; no error state; no certification vocabulary.
+  - Goals: Monthly Living Expenses rendered from live budget-line authority (not a fallback value); "Planned Monthly Margin (Base Pay)" and "Planning estimate — not cash available to move." present; the old label absent.
+  - Manage Lines: loaded state healthy, no unavailable state, normal Add/Edit/Archive controls present; the Add modal was opened and closed without saving.
+  - **Write census:** every Supabase request of the session was accounted for (48 resource entries = 16 at sign-in + 32 observed): one authentication token request and reads only. **Zero financial-data writes**; no transaction, budget-line, category, goal, reconciliation or clearing change. No failure was induced in production.
+- **Validation of the released build (recorded 2026-09-18):** static 1961/0 (119 A1a tests); hermetic e2e 177/0/2 production-only skipped with zero real network contact; 17/17 builder mutants and the independent reviewer's surviving mutant rejected; independent review PASS WITH NON-BLOCKING FINDINGS. Protected surfaces and the golden master unchanged; no schema, SQL, RPC, RLS or grant change.
+- **Deferred to A1b (unchanged):** E1 load-state wording after a `loadAll` failure; E2 calendar-month rollover while a request is in flight; E3 non-array successful Budget bodies; consolidation of the three budget-line availability checks (INV-D); §17 pair-level generation; Budget behavior for loaded-but-empty budget lines.
+- **Next:** **A1b remains a mandatory P3b-1 obligation** (target: before rollover implementation enters the Budget module). The full Wendy walkthrough and V1 remain **blocked until A1b** is complete. The September Event 1 / Week 1 row review remains a separate operating follow-up.
+
+**Documentation only.** This note changes no code, test, SQL, schema, data, production or evidence.
+
+---
+
 ## CURRENCY NOTE (2026-09-18b): P3b-1 A1a implemented and committed LOCALLY (not pushed, not deployed); independent review PASS WITH NON-BLOCKING FINDINGS; A1b remains mandatory; Wendy walkthrough and V1 blocked on A1b
+
+> **[SUPERSEDED for currency by the 2026-09-18c note above — preserved as historical truth.]** A1a was subsequently published and production-accepted; the "not pushed, not deployed" statements below describe the state at the time of writing.
 
 **Canonical state.** A1a (spec rev 3.3 §21) is implemented, tested and committed on local branch `p3b1-a1a-local` as **`aa004921f16f613cf6211c33fb17caad94b8611a`** (parent `5c0410e`). It is **not pushed and not deployed**; production still serves the rev 2.6 build (`BUILD_TS 2026-09-15T18:21:53`). **Production deployment and production acceptance have NOT been performed.** A1a is a sequencing slice, not A1 completion and not P3b-1 completion.
 
