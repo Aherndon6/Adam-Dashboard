@@ -320,7 +320,7 @@ test('[RA] FX-D2 reconciled-week goal rows say reconciled — never "awaiting re
   for (const done of [true, false]) {
     const p = goalRowPresentation({ scope: 'goal', actionable: false, model: WH, owner: { state: 'NOT_AUTHORIZED' }, reasons: [] }, done, true);
     const t = p.badgeText + ' ' + p.lines.join(' ');
-    assert(/Reconciled/.test(t) && !/awaiting reconciliation|Recommended|Not authorized/.test(t) && p.checkboxDisabled === true, JSON.stringify(p));
+    assert(/Reconciled/.test(t) && !/awaiting reconciliation|Recommended|Not authorized|snapshot is the funding record/.test(t) && p.checkboxDisabled === true, JSON.stringify(p));  // Fable P2 N11
   }
   assert(/goalRowPresentation\([^;]*w\.reconciled/.test(fnSrc('renderWeekDetail')), 'render must pass w.reconciled');
 });
@@ -345,7 +345,7 @@ test('[RA] FX-D5 commitment wording in a reconciled week refers to the reconcile
   const saveC = commitmentData; commitmentData = [CM()];
   try {
     const r = commitmentVisibilityRows(15, [{ num: 15, reconciled: true, cashAvailability: { reservedProtectedCents: 1132586, reservedCommitmentCount: 1 } }]);
-    const t = r.rows[0].wording; assert(!/Projected checking below/.test(t) && /reconciled \(posted\) balance still includes it/.test(t), t);
+    const t = r.rows[0].wording; assert(!/Projected checking below/.test(t) && !/\(posted\)/.test(t) && /reconciled balance still includes it/.test(t), t);  // Fable P2 N13: basis may not be posted
   } finally { commitmentData = saveC; }
 });
 test('[RA] FX-D6 partial goal rows: "Partially marked done"; note says "already marked done", never "already transferred"', () => {
@@ -390,6 +390,14 @@ test('[RA] FX-P2N8 reservation parity checks the COUNT as well as the sum (G1 an
 });
 test('[RA] FX-P2N10 the marked-done line states its scope (unreconciled weeks)', () => {
   assert(/unreconciled weeks/.test(need('goalOpenWeekLines')({ markedDone: 50, recommended: 0 }).join(' ')));
+});
+
+test('[RA] FX-N14 a seed row reads as outside the model check (not "not a current recommendation") and is never actionable', () => {
+  const d = goalActionDecision(16, 'goal_adam_ira_seed', null); assert(d.actionable === false && /seed/.test(d.reasons.join(' ')), JSON.stringify(d));
+  assert(/outside the model check/.test(g1VerdictText(d.model)));
+});
+test('[RA] FX-N12 the reconciled AMEX caveat says "at reconciliation", not "at closeout"', () => {
+  assert(/at reconciliation/.test(amexForecastCaveat({ num: 1, reconciled: true })) && !/closeout/.test(amexForecastCaveat({ num: 1, reconciled: true })));
 });
 
 // ═══ Boundaries ════════════════════════════════════════════════════════════════════════════════
