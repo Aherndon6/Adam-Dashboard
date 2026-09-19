@@ -1,5 +1,35 @@
 # Codex Status: Herndon Financial OS
 
+## CURRENCY NOTE (2026-09-18d): P3b-1 A1b Round 1 committed LOCALLY (not pushed, not deployed) + two A1b owner rulings
+
+**Canonical state.** Spec **rev 3.3** (`docs/specs/p3b-1-register-budget-data-integrity-spec-2026-09-13.md`, sha256 `1a6c695f…`) remains the controlling specification. The two owner rulings below govern its A1b implementation; the spec text itself is unchanged. Production is unchanged: `main` and the served build are still the accepted A1a build recorded in the 2026-09-18c note below (`c59bae6`).
+
+- **A1b Round 1 (state substrate only)** is committed on local branch `p3b1-a1b` as **`66558bab657191029e0e575ee6396e63336e5ffb`** (parent `c59bae6`), in the separate worktree `../Adam-Dashboard-wt-a1b`. It is **local and unpublished**: not pushed, not deployed. Scope: §16 exact-count month reads; §17 single pair cycle for both Budget month sources; §10 Register and §16.7 legacy L1–L8 classification; §7 exclusion declaration; INV-A/B/C substrate; BLR_STATE (§8.1); internal month state; the D1 `loadAll` failure-status correction. No consumer, rendering, Goals, Manage Lines or Statement check behavior changed. Validation: focused A1b suite Round-1 134/0 and base 9/0 (11 Round-2 tests intentionally red); static 1961/0; hermetic e2e 177/0/2 production-only skipped, zero real network contact; 43 mutants, 42 rejected (the survivor is an equivalent mutant); independent review PASS WITH NON-BLOCKING FINDINGS. Protected surfaces and the golden master unchanged; no schema, SQL, RPC, RLS or grant change.
+- **Round 2** (consumers and rendering: INV-D, Budget three-state/per-cell, planned-value rendering, Goals, Manage Lines INV-E, Statement check, uncategorized notice and Register link, §17 post-write reloads) **has not started**.
+- **Deployment gates (unchanged):** A1b is not deployed until (1) Saturday reconciliation / cash-safety PASS, (2) the D3 read-only production preflight, (3) the completed A1b review, and (4) explicit owner deployment authorization.
+
+### A1b owner ruling A — loaded-empty budget lines and the Manage Lines first line (owner clarification of ambiguous §18.2 wording)
+
+- When `budget_line_rules` loads successfully with zero rows, **BLR_STATE remains UNAVAILABLE** (§8.1). That UNAVAILABLE state governs financial presentation (Budget planned values, Goals).
+- A successfully loaded empty population is nevertheless **authoritative evidence that the population contains zero rows**.
+- For §18.2 / INV-E, "budget-line state unavailable" means budget-line or category **authority** unavailable (not loaded, loading, failed or malformed). Loaded-empty alone does **not** prohibit controlled creation of the first budget line.
+- **Add may proceed only when** category authority and budget-line authority are both successfully loaded and current, the population is demonstrably empty (not failed, not loaded, loading or malformed), the selected key passes the fresh BACKED check, and every other existing mutation guard passes. Edit does not arise for an empty population.
+- **Category unavailability or failure takes precedence**: "empty" can never mask it.
+- BLR_STATE is **not redefined**, loaded-empty is **not** VALID, and **no second BLR_STATE** is introduced.
+- Implementation belongs to Round 2 (pinned by Round-2 test D3b in `test_a1b.js`).
+
+### A1b owner ruling B — §10 archived/merged non-leaf categories (OWNER RECONSIDERATION raised and resolved)
+
+- A Register row whose category is **archived or merged AND non-leaf** is **UNVERIFIED**.
+- It must not become "no Budget effect" merely because the frozen metadata predicates classify a non-leaf as non-countable.
+- Classification evaluates the historical row's own category; it **never follows `merged_into_key`**.
+- The frozen predicates (`_isCountableBudgetSpend`, `_isCountableBudgetIncome`) are unchanged, and Budget arithmetic is unchanged.
+- This is the narrow owner-approved correction to the §10 classification outcome (active non-leaf was already UNVERIFIED). **Implemented in local A1b Round 1** (`66558ba`), with tests and a mutant that restores the old outcome and is rejected.
+
+**Documentation only.** This note changes no code, test, SQL, schema, data, production or evidence.
+
+---
+
 ## CURRENCY NOTE (2026-09-18c): P3b-1 A1a DEPLOYED and PRODUCTION-ACCEPTED (narrow read-only smoke PASS; zero financial writes); A1b remains mandatory; Wendy walkthrough and V1 blocked on A1b
 
 **Canonical state.** A1a (spec rev 3.3 §21) is **live in production and accepted**. This supersedes the 2026-09-18b note below, which recorded the pre-publication state. A1a is a sequencing slice: **A1 is not complete, and P3b-1 is not complete.**
