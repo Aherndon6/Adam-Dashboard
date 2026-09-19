@@ -1,0 +1,264 @@
+// ═══════════════════════════════════════════════════════════════════════════════════════════════
+// Herndon Financial OS — Post-A1b Release A: owner-authority gate, goal truth, reconciliation
+// prefill integrity, commitment visibility, deferral wording. FAILING-FIRST contract suite.
+// ───────────────────────────────────────────────────────────────────────────────────────────────
+// Companion to test_g1.js (the G1 validator contract). Loads HFOS_INDEX (default ./index.html).
+// Tags: [RA-BASE] boundaries that hold before and after; [RA] contract (RED before implementation).
+//
+// Approved vocabulary (owner, 2026-09-19): RECOMMENDED (model proposal) · NO MODEL OBJECTION / WITHHOLD
+// (G1 verdict) · AUTHORIZED / NOT AUTHORIZED (owner authority) · ACTIONABLE = NO MODEL OBJECTION + AUTHORIZED
+// · MARKED DONE (operator assertion, not bank-verified) · RESERVED/INITIATED (commitment evidence)
+// · FUNDED (reconciled snapshot only).
+// ═══════════════════════════════════════════════════════════════════════════════════════════════
+const fs = require('fs');
+let pass = 0, fail = 0; const tests = [];
+function test(name, fn) { tests.push({ name, fn }); }
+function assert(c, m) { if (!c) throw new Error(m || 'Assertion failed'); }
+const htmlPath = process.env.HFOS_INDEX || './index.html';
+const html = fs.readFileSync(htmlPath, 'utf8');
+let sc = html.match(/<script>([\s\S]*?)<\/script>/)[1];
+sc = sc.replace(/\bconst\b/g, 'var').replace(/^try\s*\{[\s\S]*?\}\s*catch[\s\S]*?\}/m, '').replace(/^loadAll\(\);/m, '');
+const stub = `
+var __els={};var __slot={innerHTML:'',addEventListener:function(){},value:'',textContent:'',style:{},classList:{remove:function(){},add:function(){}},scrollIntoView:function(){}};
+var __errEl={textContent:'',style:{display:'none'}};
+var window={fetch:function(){return Promise.resolve({ok:true,json:function(){return Promise.resolve([])}});}};
+var document={getElementById:function(id){return __els[id]||__slot;},querySelector:function(s){return s==='.recon-error'?__errEl:null},querySelectorAll:function(){return[]},addEventListener:function(){},createElement:function(){return{style:{},appendChild:function(){},setAttribute:function(){}}},body:{appendChild:function(){}}};
+var localStorage={getItem:function(){return null;},setItem:function(){},removeItem:function(){}};
+var requestAnimationFrame=function(){};var fetch=window.fetch;var alert=function(){};
+var supabase={createClient:function(){return{auth:{getSession:function(){return Promise.resolve({data:{session:null},error:null});},signInWithPassword:function(){return Promise.resolve({data:null,error:{message:'mock'}});},signOut:function(){return Promise.resolve({error:null});},onAuthStateChange:function(){}}};}};
+`;
+try { eval(stub + sc); } catch (e) { console.error('FATAL eval:', e.message); process.exit(1); }
+renderApp = function () {};
+const _origWarn = console.warn, _origErr = console.error;
+function quiet(on) { console.warn = on ? function () {} : _origWarn; console.error = on ? function () {} : _origErr; }
+function fnSrc(name) { const i = html.search(new RegExp('(async )?function ' + name + '\\(')); assert(i >= 0, name + ' not found'); let d = 0, k = html.indexOf('{', i); for (; k < html.length; k++) { if (html[k] === '{') d++; else if (html[k] === '}') { d--; if (d === 0) break; } } return html.slice(i, k + 1); }
+function need(name) { assert(typeof eval(name) !== 'undefined', name + ' is not implemented'); return eval(name); }
+function countingFetch() { const box = { n: 0, calls: [] }; fetch = function (u, o) { box.n++; box.calls.push({ u: String(u), m: (o && o.method) || 'GET' }); return Promise.resolve({ ok: true, status: 200, json: function () { return Promise.resolve([]); } }); }; return box; }
+function asOwner() { USER_ROLE = 'owner'; getAuthHeaders = async function () { return {}; }; }
+const AUTH_OK = { state: 'AUTHORIZED', since: '2026-09-19', basis: 'test-only' };
+const NMO = { actionKey: 'goal_wendy_ira', verdict: 'NO_MODEL_OBJECTION', reason: 'no_model_objection', amount: 1000 };
+const WH = { actionKey: 'goal_wendy_ira', verdict: 'WITHHOLD', reason: 'candidate_breach', amount: 1000 };
+
+// ═══ Authority gate ═════════════════════════════════════════════════════════════════════════════
+test('[RA] AU-1 authority missing / malformed / unknown → NOT_AUTHORIZED (fail closed); the shipped state is NOT_AUTHORIZED', () => {
+  const f = need('goalOwnerAuthority'); const save = GOAL_FUNDING_OWNER_AUTHORITY;
+  try {
+    assert(f().state === 'NOT_AUTHORIZED', 'shipped authority must be NOT_AUTHORIZED');
+    for (const bad of [undefined, null, 'AUTHORIZED', {}, { state: 'AUTHORIZED' }, { state: 'AUTHORIZED', since: 'soon' }, { state: 'authorized', since: '2026-09-19' }, { state: 'MAYBE', since: '2026-09-19' }, 42]) {
+      GOAL_FUNDING_OWNER_AUTHORITY = bad; assert(f().state === 'NOT_AUTHORIZED', 'must fail closed for ' + JSON.stringify(bad));
+    }
+    GOAL_FUNDING_OWNER_AUTHORITY = AUTH_OK; assert(f().state === 'AUTHORIZED', 'well-formed AUTHORIZED must be recognised');
+  } finally { GOAL_FUNDING_OWNER_AUTHORITY = save; }
+});
+test('[RA] AU-2 NO MODEL OBJECTION + NOT AUTHORIZED → not actionable, with the owner reason', () => {
+  const c = need('composeGoalActionability'); const d = c(NMO, { state: 'NOT_AUTHORIZED', reason: 'owner_not_authorized' });
+  assert(d.actionable === false && d.reasons.some(r => /owner/.test(r)), JSON.stringify(d));
+  const p = need('goalRowPresentation')(d, false); assert(p.checkboxDisabled === true, 'checkbox must be disabled');
+  assert(p.lines.join(' ').match(/Not authorized/i), 'row must say not authorized: ' + JSON.stringify(p));
+});
+test('[RA] AU-3 toggleTransfer refuses a goal key with ZERO requests when not actionable (not authorized / G1 withhold / G1 unavailable)', async () => {
+  need('goalActionDecision'); asOwner(); quiet(true);
+  try {
+    _xfrWriteCtx['16_90'] = { actionKey: 'goal_wendy_ira', completedLabel: 'Transfer $1,000.00 from Truist Checking to AMEX Savings (Wendy IRA)', amount: 1000, matchTaskIdx: null };
+    const box = countingFetch(); await toggleTransfer(16, '16_90', true);
+    assert(box.n === 0, 'goal write must be refused, saw ' + box.n + ' request(s)');
+  } finally { quiet(false); }
+});
+test('[RA] AU-4 unticking a goal row is always allowed (one write)', async () => {
+  asOwner(); quiet(true);
+  try {
+    const lbl = 'Transfer $1,000.00 from Truist Checking to AMEX Savings (Wendy IRA)';
+    taskData['16_7'] = { completed: true, completedAt: '2026-09-20T00:00:00Z', completedAmount: 1000, actionKey: 'goal_wendy_ira', completedLabel: lbl };
+    _xfrWriteCtx['16_91'] = { actionKey: 'goal_wendy_ira', completedLabel: lbl, amount: 1000, matchTaskIdx: 7 };
+    const box = countingFetch(); await toggleTransfer(16, '16_91', false); delete taskData['16_7'];
+    assert(box.n === 1, 'untick of an existing completion must write once, saw ' + box.n);
+  } finally { quiet(false); }
+});
+test('[RA] AU-5 display, toggleTransfer and toggleCustomTask all consult the ONE canonical goalActionDecision', () => {
+  need('goalActionDecision');
+  assert(/goalActionDecision\(/.test(fnSrc('toggleTransfer')), 'toggleTransfer must call goalActionDecision');
+  assert(/goalActionDecision\(/.test(fnSrc('toggleCustomTask')), 'toggleCustomTask must call goalActionDecision');
+  assert(/goalActionDecision\(/.test(fnSrc('renderWeekDetail')), 'renderWeekDetail must call goalActionDecision');
+  assert(/goalActionDecision\(/.test(fnSrc('g1WriteGuard')), 'g1WriteGuard must delegate to goalActionDecision');
+  assert(/composeGoalActionability\(/.test(fnSrc('goalActionDecision')), 'goalActionDecision must use composeGoalActionability');
+});
+test('[RA] AU-6 non-goal actions are outside the gate (a neutral key still writes once)', async () => {
+  asOwner(); quiet(true);
+  try {
+    _xfrWriteCtx['16_92'] = { actionKey: 'lc_boost', completedLabel: 'Move $500 Checking → LC', amount: 500, matchTaskIdx: null };
+    const box = countingFetch(); await toggleTransfer(16, '16_92', true); assert(box.n === 1, 'non-goal write must proceed, saw ' + box.n);
+    assert(need('goalActionDecision')(16, 'lc_boost', 500).scope === 'not_goal');
+  } finally { quiet(false); }
+});
+test('[RA] AU-7 autoBackfillGoal follow-up goal tasks (gd_goal_…) cannot be ticked; ordinary custom tasks can', async () => {
+  need('goalKeyForCustomTask'); asOwner(); quiet(true);
+  try {
+    const gid = 'gd_goal_wendy_ira_1726790000000_ab12', oid = 'ct_manual_1';
+    customTaskData[16] = [{ id: gid, label: 'Transfer $500.00 from Truist Checking to AMEX Savings (Wendy IRA — additional allocation)', completed: false }, { id: oid, label: 'Call the bank', completed: false }];
+    let box = countingFetch(); await toggleCustomTask(16, gid, true); assert(box.n === 0, 'follow-up goal task must be refused, saw ' + box.n);
+    box = countingFetch(); await toggleCustomTask(16, oid, true); assert(box.n >= 1, 'ordinary custom task must still write');
+    assert(goalKeyForCustomTask(gid) === 'goal_wendy_ira' && goalKeyForCustomTask(oid) === null);
+  } finally { quiet(false); }
+});
+test('[RA] AU-8 the authority value is period-independent (calendar date + state only; no model-week fields)', () => {
+  const a = need('GOAL_FUNDING_OWNER_AUTHORITY'); const keys = Object.keys(a).sort().join(',');
+  assert(/^basis,since,state$/.test(keys), 'unexpected authority fields: ' + keys);
+  assert(/^\d{4}-\d{2}-\d{2}$/.test(a.since), 'since must be a calendar date'); assert(a.state === 'NOT_AUTHORIZED');
+});
+test('[RA] AU-9 recording reconciled truth is outside the gate (closeout path does not consult it)', () => {
+  need('goalActionDecision');
+  for (const fn of ['submitCloseout', 'renderCloseoutConfirm']) assert(!/goalActionDecision|goalOwnerAuthority/.test(fnSrc(fn)), fn + ' must not be gated');
+});
+test('[RA] AU-10 composition: only NO MODEL OBJECTION + AUTHORIZED is actionable; disagreement / missing inputs fail closed', () => {
+  const c = need('composeGoalActionability'); const OK = { state: 'AUTHORIZED', reason: 'owner_authorized' };
+  assert(c(NMO, OK).actionable === true, 'NMO + AUTHORIZED must be actionable');
+  assert(c(WH, OK).actionable === false, 'WITHHOLD + AUTHORIZED must not be actionable');
+  assert(c(null, OK).actionable === false, 'missing model verdict must not be actionable');
+  assert(c(NMO, null).actionable === false, 'missing authority must not be actionable');
+  assert(c({ verdict: 'SAFE' }, OK).actionable === false, 'unknown verdict must not be actionable');
+});
+
+// ═══ Goal truth ═════════════════════════════════════════════════════════════════════════════════
+function withGoalState(fn) {
+  const save = { currentW, reconData: Object.assign({}, reconData), snap: JSON.parse(JSON.stringify(goalSnapData || {})), task: Object.assign({}, taskData) };
+  try { return fn(); } finally { currentW = save.currentW; reconData = save.reconData; goalSnapData = save.snap; taskData = save.task; }
+}
+function openWeekVm() {
+  currentW = 16; delete reconData[16]; reconData[15] = reconData[15] || { chk: 26699.77, balance_basis: 'posted_current_balance' };
+  goalSnapData[15] = Object.assign({}, goalSnapData[15] || {}, { wendy_ira: 0, bailey_529: 0 });
+  return { weeks: [{ num: 15, reconciled: true, goalSaved: { wendy_ira: 0 }, ac: [], acKeys: [] },
+    { num: 16, reconciled: false, goalSaved: { wendy_ira: 7500, bailey_529: 3500 }, ac: ['Transfer $7,500.00 from Truist Checking to AMEX Savings (Wendy IRA)'], acKeys: ['goal_wendy_ira'], realActs: ['Transfer $7,500.00 from Truist Checking to AMEX Savings (Wendy IRA)'], realActKeys: ['goal_wendy_ira'] }] };
+}
+test('[RA] TR-1 in an open week, "funded" is the last reconciled snapshot, never the model recommendation', () => withGoalState(() => {
+  const vm = openWeekVm(); assert(getGoalFunded('wendy_ira', vm) === 0, 'funded must be 0 (snapshot), got ' + getGoalFunded('wendy_ira', vm));
+  assert(getGoalFunded('bailey_529', vm) === 0, 'bailey funded must be 0');
+}));
+test('[RA] TR-2 a ticked goal line in an unreconciled week is "Marked done — awaiting reconciliation", not funded', () => withGoalState(() => {
+  const vm = openWeekVm(); taskData['16_0'] = { completed: true, completedAmount: 7500, actionKey: 'goal_wendy_ira', completedLabel: 'x' };
+  const s = need('goalOpenWeekStatus')('wendy_ira', vm); assert(s.markedDone === 7500 && getGoalFunded('wendy_ira', vm) === 0, JSON.stringify(s));
+  const p = goalRowPresentation({ scope: 'goal', actionable: false, model: WH, owner: { state: 'NOT_AUTHORIZED' }, reasons: [] }, true);
+  assert(/Marked done — awaiting reconciliation/.test(p.lines.join(' ') + p.badgeText), 'done wording: ' + JSON.stringify(p));
+  assert(p.checkboxDisabled === false, 'unticking must remain possible');
+}));
+test('[RA] TR-3 an unticked recommendation reads "Recommended — not executed"', () => withGoalState(() => {
+  const vm = openWeekVm(); const s = goalOpenWeekStatus('wendy_ira', vm); assert(s.recommended === 7500, JSON.stringify(s));
+  const p = goalRowPresentation({ scope: 'goal', actionable: false, model: NMO, owner: { state: 'NOT_AUTHORIZED' }, reasons: [] }, false);
+  assert(/Recommended — not executed/.test(p.badgeText + ' ' + p.lines.join(' ')), JSON.stringify(p));
+}));
+test('[RA] TR-4 a reconciled current week keeps today\'s behaviour (snapshot overlay)', () => withGoalState(() => {
+  currentW = 15; reconData[15] = { chk: 1 }; goalSnapData[15] = { wendy_ira: 1234.5 };
+  const vm = { weeks: [{ num: 15, reconciled: true, goalSaved: { wendy_ira: 1234.5 } }] }; assert(getGoalFunded('wendy_ira', vm) === 1234.5);
+}));
+test('[RA] TR-5 no unreconciled goal state is described as funded / transferred / executed', () => {
+  const p1 = need('goalRowPresentation')({ scope: 'goal', actionable: false, model: NMO, owner: { state: 'NOT_AUTHORIZED' }, reasons: [] }, false);
+  const p2 = goalRowPresentation({ scope: 'goal', actionable: false, model: WH, owner: { state: 'NOT_AUTHORIZED' }, reasons: [] }, true);
+  for (const p of [p1, p2]) { const t = (p.badgeText + ' ' + p.lines.join(' ')).toLowerCase(); assert(!/\bfunded\b|transferred|\bexecuted\b/.test(t), 'overclaim: ' + t); }
+  const hist = fnSrc('renderWeekDetail'); assert(/Marked done earlier/.test(hist), 'goal executed-history rows must say "Marked done earlier"');
+});
+test('[RA] TR-6 model-only figures carry an explicit caveat (Overview AMEX forecast; Model Avg Sweep)', () => {
+  assert(/Model Avg Sweep \/ Month[\s\S]{0,400}modeled, not authorized/.test(html), 'Avg Sweep caveat missing');
+  assert(/AMEX Savings — IRA \+ 529s[\s\S]{0,600}assumes this week\\'s recommended transfers/.test(html), 'AMEX forecast caveat missing');
+});
+
+// ═══ Reconciliation prefill integrity ═══════════════════════════════════════════════════════════
+test('[RA] PF-1 unreconciled week: inputs start EMPTY; model values are separate, labelled estimates', () => {
+  const f = need('_reconPrefillValues'); const w = { num: 16, reconciled: false, mChk: 17825.86, mSav: 1, mAmx: 21745.17, mTax: 2, mLc: 3 };
+  _reconBalances = null; _reconDraft = null; const r = f(w);
+  for (const k of ['chk', 'sav', 'amx', 'tax', 'lc']) assert(r.values[k] === '', k + ' must start empty, got ' + r.values[k]);
+  assert(r.reference && r.reference.amx === 21745.17 && r.referenceIsModel === true, 'model reference missing: ' + JSON.stringify(r));
+  assert(/estimate/i.test(fnSrc('renderWeekDetail')) && /_reconPrefillValues\(/.test(fnSrc('renderWeekDetail')), 'render must use the helper and label estimates');
+});
+function runBegin(vals) {
+  asOwner(); canSaveRecon = function () { return true; }; closeoutState = function () { return 'open'; };
+  __els = {}; for (const k of Object.keys(vals)) __els[k] = { value: vals[k] }; __errEl.textContent = ''; __errEl.style.display = 'none';
+  _reconBalances = null; quiet(true); const box = countingFetch();
+  try { beginCloseout(16); } catch (e) { /* downstream harness limits after capture are irrelevant */ } finally { quiet(false); }
+  return { bal: _reconBalances, err: __errEl.textContent, fetches: box.n };
+}
+const ALL = v => ({ ri_chk: v, ri_sav: v, ri_amx: v, ri_tax: v, ri_lc: v });
+test('[RA] PF-2 beginCloseout refuses blank / whitespace / non-numeric / malformed balances before the confirmation (no capture, no write)', () => {
+  for (const bad of ['', '   ', 'abc', '12,345.00', '1e3', '12.345', '--1', '.']) {
+    const vals = ALL('100.00'); vals.ri_amx = bad; const r = runBegin(vals);
+    assert(r.bal === null, 'must not capture balances for ' + JSON.stringify(bad) + ' (got ' + JSON.stringify(r.bal) + ')');
+    assert(r.fetches === 0 && /bank balance/i.test(r.err), 'must show the entry error and write nothing for ' + JSON.stringify(bad));
+  }
+});
+test('[RA] PF-3 an explicitly entered 0 is valid and distinguishable from blank', () => {
+  const r = runBegin(ALL('0')); assert(r.bal && r.bal.chk === 0 && r.bal.amx === 0, 'literal 0 must be accepted: ' + JSON.stringify(r));
+  const r2 = runBegin(Object.assign(ALL('0'), { ri_lc: '' })); assert(r2.bal === null, 'blank beside zeros must still be refused');
+});
+test('[RA] PF-4 saved draft and back-from-confirmation values keep precedence over the empty default', () => {
+  const f = need('_reconPrefillValues'); const w = { num: 16, reconciled: false, mChk: 1, mSav: 1, mAmx: 1, mTax: 1, mLc: 1 };
+  _reconBalances = null; _reconDraft = { week: 16, chk: '555.55' }; let r = f(w); assert(r.values.chk === '555.55' && r.values.amx === '', JSON.stringify(r.values));
+  _reconDraft = { week: 16, amx: '' }; r = f(w); assert(r.values.amx === '', 'a deliberately cleared draft field stays cleared');
+  _reconDraft = null; _reconBalances = { chk: 10, sav: 20, amx: 30, tax: 40, lc: 50 }; r = f(w); assert(r.values.amx === 30, 'back-from-confirmation values win');
+  _reconBalances = null; _reconDraft = null;
+});
+test('[RA] PF-5 editing an already reconciled week still prefills its saved actuals', () => {
+  const f = need('_reconPrefillValues'); _reconBalances = null; _reconDraft = null;
+  const r = f({ num: 15, reconciled: true, actualBals: { chk: 26699.77, sav: 1, amx: 2, tax: 3, lc: 4 }, mChk: 999 });
+  assert(r.values.chk === 26699.77 && r.referenceIsModel === false, JSON.stringify(r));
+});
+
+// ═══ Commitment visibility (T4) ═════════════════════════════════════════════════════════════════
+const CM = (o) => Object.assign({ id: 'c1', model_year: PLAN_YEAR, source_account: 'truist_checking', affects_deployable_cash: true, status: 'initiated', origin_model_week: 15, reflected_model_week: null, resolved_model_week: null, resolution_type: null, amount_cents: 1132586, payee: 'AMEX Gold payment in transit', commitment_source: 'manual_reconciliation' }, o || {});
+function cvRun(commitments, reservedCents, originReconciled) {
+  const f = need('commitmentVisibilityRows'); const saveC = commitmentData; commitmentData = commitments;
+  const weeks = [{ num: 15, reconciled: originReconciled !== false, cashAvailability: { reservedProtectedCents: 0 } }, { num: 16, reconciled: false, cashAvailability: { reservedProtectedCents: reservedCents } }];
+  try { return f(16, weeks); } finally { commitmentData = saveC; }
+}
+test('[RA] CV-1a counted reservation → deducted for goal recommendations; projected checking still includes it', () => {
+  const r = cvRun([CM()], 1132586); const row = r.rows[0]; assert(r.status === 'OK' && row.counted === true, JSON.stringify(r));
+  assert(/Deducted from deployable cash for goal recommendations/.test(row.wording) && /Projected checking[^.]*still includes it until it posts/.test(row.wording), row.wording);
+});
+test('[RA] CV-1b bank_pending → counted, plus review required', () => {
+  const r = cvRun([CM({ status: 'bank_pending' })], 1132586); assert(/Review required/.test(r.rows[0].wording), r.rows[0].wording);
+});
+test('[RA] CV-1c origin week not reconciled → recorded, not yet counted', () => {
+  const r = cvRun([CM()], 0, false); assert(r.rows[0].counted === false && /Recorded, not yet counted against deployable cash/.test(r.rows[0].wording), JSON.stringify(r));
+});
+test('[RA] CV-1d reflected / resolved → not shown as in flight', () => {
+  const r = cvRun([CM({ reflected_model_week: 15 }), CM({ id: 'c2', resolved_model_week: 16, status: 'cleared' })], 0); assert(r.rows.length === 0, JSON.stringify(r));
+});
+test('[RA] CV-1e other account / not affecting deployable cash / voided / paid elsewhere → "Not deducted from Truist Checking capacity"', () => {
+  for (const o of [{ source_account: 'truist_savings' }, { affects_deployable_cash: false }, { status: 'voided' }, { resolution_type: 'paid_from_other_account' }]) {
+    const r = cvRun([CM(o)], 0); const rows = r.rows.filter(x => !x.hidden);
+    assert(rows.length === 0 || (rows[0].counted === false && /Not deducted from Truist Checking capacity/.test(rows[0].wording)), JSON.stringify(o) + ' → ' + JSON.stringify(r));
+  }
+});
+test('[RA] CV-2 UI-derived reserved set ≠ model reserved total → RESERVATION STATUS UNAVAILABLE (no stronger claim)', () => {
+  const r = cvRun([CM()], 999); assert(r.status === 'UNAVAILABLE' && /Reservation status unavailable/i.test(r.wording || ''), JSON.stringify(r));
+  assert(!(r.rows || []).some(x => /Deducted/.test(x.wording)), 'no deducted claim when unavailable');
+});
+test('[RA] CV-3 wording never keys on commitment classification', () => {
+  const a = cvRun([CM({ commitment_class: 'other_transfer' })], 1132586).rows[0].wording, b = cvRun([CM({ commitment_class: 'credit_card_payment' })], 1132586).rows[0].wording;
+  assert(a === b, 'classification must not change wording');
+});
+
+// ═══ Deferral / verdict wording (G2) ════════════════════════════════════════════════════════════
+test('[RA] DW-1 candidate-caused WITHHOLD names the breach week and attributes it to this transfer', () => {
+  const t = need('g1VerdictText')({ verdict: 'WITHHOLD', reason: 'candidate_breach', breachWeek: 21, preExistingBreach: false, minChk: 4083.36 });
+  assert(/Withhold/.test(t) && /this transfer/i.test(t) && /Cal 43/.test(t) && /\$6,500/.test(t), t);
+});
+test('[RA] DW-2 pre-existing breach WITHHOLD says the model is already below the floor without this week\'s goal transfers', () => {
+  const t = need('g1VerdictText')({ verdict: 'WITHHOLD', reason: 'pre_existing_breach', breachWeek: 21, preExistingBreach: true, preExistingWeek: 28, minChk: 4083.36 });
+  assert(/already below \$6,500/.test(t) && /without this week/.test(t) && /Cal 50/.test(t), t);
+});
+test('[RA] DW-3 a lookahead defer after a higher-priority allocation says the room was used, not that this goal is a floor risk', () => {
+  const f = need('g2DeferText'); const used = f('Bryce 529 deferred — 5-wk lookahead: floor risk', true);
+  assert(/higher-priority/.test(used) && !/floor risk/.test(used), used);
+  const genuine = f('Bailey 529 deferred — 5-wk lookahead: floor risk', false); assert(/below \$6,500/.test(genuine), genuine);
+  assert(/g2DeferText\(/.test(fnSrc('renderWeekDetail')), 'renderWeekDetail must use g2DeferText');
+});
+
+// ═══ Boundaries ════════════════════════════════════════════════════════════════════════════════
+test('[RA-BASE] runModel, submitCloseout, computeGoalTransferNetting, resolveWeekTransfers, isReservedAsOf, getCashAvailabilityEngine unchanged in role (present)', () => {
+  for (const n of ['runModel', 'submitCloseout', 'computeGoalTransferNetting', 'resolveWeekTransfers', 'isReservedAsOf', 'getCashAvailabilityEngine']) assert(typeof eval(n) === 'function', n);
+});
+
+(async () => {
+  for (const t of tests) { try { await t.fn(); pass++; console.log('  ✓ ' + t.name); } catch (e) { fail++; console.log('  ✗ ' + t.name + '\n      ' + e.message); } }
+  const tag = p => tests.filter(t => t.name.startsWith(p)).length;
+  console.log('\nRESULTS  total ' + tests.length + ' · passed ' + pass + ' · failed ' + fail + '   ([RA] ' + tag('[RA] ') + ', [RA-BASE] ' + tag('[RA-BASE]') + ')');
+  process.exit(0);
+})();

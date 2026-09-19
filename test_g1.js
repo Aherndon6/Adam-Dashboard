@@ -122,8 +122,9 @@ test('[G1-PIN] current engine: vehicle/cruise are not lookahead-gated (only the 
   const src = runModel.toString(); const m = /var _amxHold=\[([^\]]*)\]/.exec(src); assert(m, 'AMEX-hold list not found');
   assert(!/bryce_vehicle|christmas_cruise/.test(m[1]), 'vehicle/cruise unexpectedly lookahead-gated');
 });
-test('[G1-PIN] current write path: toggleTransfer has no recommendation-safety refusal for goal keys', () => {
-  const src = toggleTransfer.toString(); assert(!/g1WriteGuard/.test(src), 'G1 guard already wired?');
+test('[G1] write path: toggleTransfer consults the canonical goal-action decision before any goal write', () => {
+  // Was a [G1-PIN] characterising the pre-G1 state (no refusal). Flipped by intent when G1 is implemented.
+  const src = toggleTransfer.toString(); assert(/goalActionDecision\(/.test(src), 'toggleTransfer must consult goalActionDecision');
 });
 
 // ═══ [G1] contract — RED until implemented ═════════════════════════════════════════════════════
@@ -134,7 +135,12 @@ test('[G1] 1 EV7: passes the 5-week check but fails the known horizon → WITHHO
 test('[G1] 2 W38: current cap reserves the Gold but the projection retains it → every recommendation WITHHOLD', () => {
   const r = G1(fixtureW38()); assert(r.status === 'OK');
   for (const k of ['goal_wendy_ira', 'goal_bailey_529', 'goal_bryce_529', 'goal_preston_529', 'goal_bryce_vehicle']) assert(item(r, k) && item(r, k).verdict === 'WITHHOLD', k + ' must be WITHHOLD');
-  assert(item(r, 'goal_wendy_ira').breachWeek === 17, 'first breach must be Cal 39 (model wk17) once the reserve is applied, got ' + item(r, 'goal_wendy_ira').breachWeek);
+  // Corrected by intent (2026-09-19): under the approved SEQUENTIAL rule goal 1 is validated with the later
+  // items added back, so Wendy IRA's first breach is Cal 43 (model wk21). Cal 39 (wk17) is the breach only
+  // when ALL five recommendations are executed — pinned separately below.
+  assert(item(r, 'goal_wendy_ira').breachWeek === 21, 'Wendy IRA first breach must be Cal 43 (model wk21), got ' + item(r, 'goal_wendy_ira').breachWeek);
+  const allExec = Math.min(...fixtureW38().weeks.filter(w => w.num >= 16).map(w => Math.round((w.chk - needFX().gold) * 100) / 100));
+  assert(allExec < 0 && fixtureW38().weeks.find(w => w.num === 17).chk - needFX().gold < FLOOR, 'with every recommendation executed the reserve-adjusted Cal 39 breaches');
 });
 test('[G1] 3 W38 after the Gold posts: identical trajectory and verdicts (representation invariance: reserve ≡ posted debit)', () => {
   const a = G1(fixtureW38()), b = G1(fixtureW38({ posted: true }));
