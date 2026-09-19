@@ -8375,14 +8375,17 @@ test('5E9-12: undefined/missing category (category_key with no matching live row
 });
 
 test('5E9-13: _budgetLoadRegisterSpend exists and queries public.transactions with a month-range filter, mirroring _budgetLoadTransactions boundary math',()=>{
-  var fnIdx=html.indexOf('function _budgetLoadRegisterSpend');
-  assert(fnIdx>-1,'_budgetLoadRegisterSpend must be defined');
-  var fnBlock=html.slice(fnIdx,fnIdx+1200);
-  assertIncludes(fnBlock,"/rest/v1/transactions?transaction_date=gte.",'_budgetLoadRegisterSpend must query public.transactions filtered by transaction_date');
-  // P3b-1 A1a (§17): the parsed body commits to the cache only after the generation/month re-check.
-  assertIncludes(fnBlock,'var body=await r.json();','_budgetLoadRegisterSpend must parse the response');
-  assertIncludes(fnBlock,'_budgetRegisterSpendCache=body;','_budgetLoadRegisterSpend must populate _budgetRegisterSpendCache');
-  assertIncludes(fnBlock,"new Date(y,m+1,0)",'_budgetLoadRegisterSpend must use the same local-date last-day-of-month math as _budgetLoadTransactions (avoids UTC-shift bug)');
+  // P3b-1 A1b (§16.6/§17), repaired by intent: both month reads are owned by ONE pair loader and one
+  // month-read helper, so the Register read is pinned there (same table, filter, boundary math, cache).
+  assert(html.indexOf('function _budgetLoadRegisterSpend')>-1,'_budgetLoadRegisterSpend must be defined');
+  var sl=function(tok,n){var i=html.indexOf(tok);assert(i>-1,tok+' must be defined');return html.slice(i,i+n);};
+  var pair=sl('async function _budgetLoadPair(',1400);
+  assertIncludes(pair,"'?transaction_date=gte.'",'the month reads must filter by transaction_date');
+  assertIncludes(pair,"'/rest/v1/transactions'+q",'the pair must query public.transactions with that month filter');
+  assertIncludes(pair,'_budgetMonthRange(cycle.monthIso)','both reads must use the shared month bounds');
+  assertIncludes(sl('function _budgetMonthRange(',700),"new Date(y,m+1,0)",'month bounds must use the local-date last-day-of-month math (avoids UTC-shift bug)');
+  assertIncludes(sl('async function _budgetMonthRead(',1400),'var body=await r.json();','the month read must parse the response');
+  assertIncludes(sl('function _budgetPairCommit(',900),'_budgetRegisterSpendCache=','the committed pair must populate _budgetRegisterSpendCache');
 });
 
 test('5E9-14: renderBudget spentByKey folds in Register spend via _computeRegisterSpend, category-filtered signed net (A1 supersedes outflow-only/Math.abs)',()=>{
@@ -8412,7 +8415,8 @@ test('5E9-17: renderBudget loading gate awaits both budget_transactions and Regi
   var fnIdx=html.indexOf('function renderBudget()');
   var fnBlock=html.slice(fnIdx,fnIdx+1000);
   assertIncludes(fnBlock,"_budgetTransLoadStatus==='not_loaded'||_budgetRegisterSpendLoadStatus==='not_loaded'",'renderBudget must gate its loading screen on both load statuses, not just budget_transactions');
-  assertIncludes(fnBlock,'_budgetLoadRegisterSpend(monthIso)','renderBudget must trigger _budgetLoadRegisterSpend alongside _budgetLoadTransactions');
+  // P3b-1 A1b (§17), repaired by intent: one pair load requests Register spend together with budget_transactions.
+  assertIncludes(fnBlock,'_budgetLoadPair(monthIso)','renderBudget must load Register spend alongside budget_transactions (one pair)');
 });
 
 test('5E9-18: _budgetChangeMonth resets Register spend cache/status, so switching months refetches Register spend too',()=>{
@@ -15518,7 +15522,7 @@ const STATE = ['fetch','getAuthHeaders','renderApp','_loadTxLedger','USER_ROLE',
   '_txFilterDateFrom','_txFilterDateTo','_budgetSelectedMonth','_budgetTransactions','_budgetTransLoadStatus',
   '_budgetRegisterSpendCache','_budgetRegisterSpendLoadStatus','_budgetLineRulesCache','_budgetLineRulesLoadStatus',
   '_blrModal','_computeRegisterSpend','_txLedgerSortCol','_txLedgerSortDir','activeSection'];
-const OPTIONAL_STATE = ['_txFilterUncategorized']; // introduced by A1a; may not exist pre-A1a
+const OPTIONAL_STATE = ['_txFilterUncategorized','_budgetPairCycle','_budgetPairGen']; // introduced by A1a / A1b; may not exist earlier
 const _docGet = document.getElementById;
 function snap(){ var s={}; STATE.concat(OPTIONAL_STATE).forEach(function(n){ try{ s[n]=eval(n); }catch(e){ s[n]='__absent__'; } }); s.__doc=document.getElementById; return s; }
 function restore(s){ STATE.concat(OPTIONAL_STATE).forEach(function(n){ var __v=s[n]; if(__v==='__absent__')return; try{ eval(n+'=__v'); }catch(e){} }); document.getElementById=s.__doc; }
@@ -16000,7 +16004,10 @@ T('[A1a] M5b: A1b INV-E NOT introduced — the Add list still offers every regis
 });
 
 console.log('\n── A1a: Budget month-read generation guard (§17) and render gate (K3) ──');
-function budRows(tag){ return [{category_key:GROC,amount:-1,transaction_date:'2026-08-01',tag:tag}]; }
+// P3b-1 A1b fixture repair (spec §24 class A): month reads now require an exact Content-Range and row ids,
+// so these responses answer like PostgREST with "Prefer: count=exact". Assertions and intent unchanged.
+function budRows(tag){ return [{id:'bud-'+tag,category_key:GROC,amount:-1,transaction_date:'2026-08-01',tag:tag}]; }
+function budOk(rows){ return resp(200,rows,{headers:{'content-range':rows.length?'0-'+(rows.length-1)+'/'+rows.length:'*/0'}}); }
 function budSetup(){ renderApp=function(){}; getAuthHeaders=async function(){return {};}; captureDom(); window._budgetChangeMonth('2026-08-01'); }
 [['Register spend','_budgetLoadRegisterSpend','_budgetRegisterSpendCache','_budgetRegisterSpendLoadStatus','/transactions?'],
  ['budget_transactions','_budgetLoadTransactions','_budgetTransactions','_budgetTransLoadStatus','/budget_transactions?']].forEach(function(src,sx){
@@ -16008,18 +16015,18 @@ function budSetup(){ renderApp=function(){}; getAuthHeaders=async function(){ret
   var isSrc=function(e){return e.url.indexOf(src[4])>=0;};
   TA('[A1a] B'+(sx+1)+': '+src[0]+' — late month-A response cannot overwrite month B',async function(){
     budSetup(); var dA=deferred();
-    fetch=router([[function(e){return isSrc(e)&&/gte\.2026-08-01/.test(e.url);},function(){return dA.p;}],[function(e){return isSrc(e)&&/gte\.2026-09-01/.test(e.url);},function(){return resp(200,budRows('SEP'));}]]);
+    fetch=router([[function(e){return isSrc(e)&&/gte\.2026-08-01/.test(e.url);},function(){return dA.p;}],[function(e){return isSrc(e)&&/gte\.2026-09-01/.test(e.url);},function(){return budOk(budRows('SEP'));}]]);
     var pA=L('2026-08-01'); await flush();
     window._budgetChangeMonth('2026-09-01'); await L('2026-09-01');
-    dA.resolve(resp(200,budRows('AUG'))); await pA; await flush();
+    dA.resolve(budOk(budRows('AUG'))); await pA; await flush();
     assert(C()&&C().length===1&&C()[0].tag==='SEP','stale month A overwrote month B: '+JSON.stringify(C()));
     assert(S()==='loaded','status must stay loaded for month B, got '+S());
   });
-  [['success',function(){return resp(200,budRows('AUG-OLD'));}],['HTTP 500',function(){return resp(500,{});}],['network error',function(){return Promise.reject(new Error('net'));}]].forEach(function(v){
+  [['success',function(){return budOk(budRows('AUG-OLD'));}],['HTTP 500',function(){return resp(500,{});}],['network error',function(){return Promise.reject(new Error('net'));}]].forEach(function(v){
     TA('[A1a] B3-'+(sx+1)+': '+src[0]+' — Aug → Sep → Aug: the late FIRST Aug request ('+v[0]+') is discarded (month string alone cannot tell)',async function(){
       budSetup(); var d1=deferred(), n=0;
-      fetch=router([[function(e){return isSrc(e)&&/gte\.2026-08-01/.test(e.url);},function(){ n++; return n===1?d1.p:resp(200,budRows('AUG-NEW')); }],
-        [function(e){return isSrc(e)&&/gte\.2026-09-01/.test(e.url);},function(){return resp(200,budRows('SEP'));}]]);
+      fetch=router([[function(e){return isSrc(e)&&/gte\.2026-08-01/.test(e.url);},function(){ n++; return n===1?d1.p:budOk(budRows('AUG-NEW')); }],
+        [function(e){return isSrc(e)&&/gte\.2026-09-01/.test(e.url);},function(){return budOk(budRows('SEP'));}]]);
       var p1=L('2026-08-01'); await flush();
       window._budgetChangeMonth('2026-09-01'); await L('2026-09-01');
       window._budgetChangeMonth('2026-08-01'); await L('2026-08-01');
@@ -16030,9 +16037,9 @@ function budSetup(){ renderApp=function(){}; getAuthHeaders=async function(){ret
   });
   TA('[A1a] B4-'+(sx+1)+': '+src[0]+' — overlapping same-month loads: the older request cannot beat the newer one',async function(){
     budSetup(); var d1=deferred(), n=0;
-    fetch=router([[isSrc,function(){ n++; return n===1?d1.p:resp(200,budRows('NEW')); }]]);
+    fetch=router([[isSrc,function(){ n++; return n===1?d1.p:budOk(budRows('NEW')); }]]);
     var p1=L('2026-08-01'); await flush(); await L('2026-08-01');
-    d1.resolve(resp(200,budRows('OLD'))); await p1; await flush();
+    d1.resolve(budOk(budRows('OLD'))); await p1; await flush();
     assert(C()&&C()[0].tag==='NEW','older same-month response overwrote the newer one: '+JSON.stringify(C()));
   });
 });
@@ -16044,7 +16051,7 @@ function budSetup(){ renderApp=function(){}; getAuthHeaders=async function(){ret
   // parsing can reject it (a check after the fetch alone passes this sequence).
   TA('[A1a] B7-'+(sx+1)+': '+src[0]+' — ownership lost between fetch and body parsing: the late body is discarded',async function(){
     budSetup(); var dj=deferred(), n=0;
-    fetch=router([[isSrc,function(){ n++; if(n===1){ var r0=resp(200,null); r0.json=function(){return dj.p;}; return r0; } return resp(200,budRows('NEW')); }]]);
+    fetch=router([[isSrc,function(){ n++; if(n===1){ var r0=budOk(budRows('OLD')); r0.json=function(){return dj.p;}; return r0; } return budOk(budRows('NEW')); }]]);
     var p1=L('2026-08-01'); await flush();                 // fetch resolved; body parse pending
     await L('2026-08-01');                                  // a newer same-month request completes
     dj.resolve(budRows('OLD')); await p1; await flush();    // the older body arrives last

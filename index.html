@@ -885,7 +885,7 @@ button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-vis
 // ── Constants (unchanged) ──────────────────────────────────────────────────
 // Simplified architecture — $8,250 total from LC · $6,500 operating floor · no legacy mechanics
 // Real-world moves: keep $2,250 in chk, move $2,750 sav→chk, move $1,000 LC→chk, move $2,250 LC→chk (Option 1 correction)
-const BUILD_TS='2026-09-18T19:47:02'; // updated each push — local time string
+const BUILD_TS='2026-09-18T21:40:25'; // updated each push — local time string
 const START_CHK=18037.73,START_SAV=3772.77,START_AMX=103.64,START_TAX=0,START_LC=13488.88;
 const EF_AMT=13488.88; // LC/EF balance — static this model year (no transfers in or out)
 const BASE_TAX=521.36,RET_SAV_XFR=3772.74;
@@ -1362,10 +1362,11 @@ var _budgetTransLoadStatus='not_loaded';  // 'not_loaded'|'loaded'|'failed'
 var _budgetRegisterSpendCache=[];
 var _budgetRegisterSpendLoadStatus='not_loaded'; // 'not_loaded'|'loading'|'loaded'|'failed'
 var _budgetSelectedMonth='';             // ISO first-of-month e.g. '2026-06-01'; '' = current month
-// P3b-1 A1a (§17): per-source request generations. A response commits only while its generation is
-// still the latest for that source AND its month is still the selected month (checked after every await).
-var _budgetTransLoadGen=0;
-var _budgetRegisterSpendLoadGen=0;
+// P3b-1 A1b (§17): ONE pair cycle owns both month sources. {gen, monthIso (pinned once), sources:
+// {register, legacy}} where each source is a verified month read (§16.3). A read commits only while
+// its cycle is still the current one; the two consumer mirrors below are written only from one cycle.
+var _budgetPairGen=0;
+var _budgetPairCycle=null;
 var _budgetShowAddForm=false;
 var _budgetEditId=null;                   // uuid of transaction being edited
 var _budgetDeleteConfirmId=null;          // uuid of transaction pending delete confirm
@@ -4912,6 +4913,7 @@ function setSection(s){
   // edit made from a different tab isn't shown stale. budget_transactions itself doesn't
   // need this — Budget's own CRUD already reloads it directly after every mutation.
   if(s==='budget'){_budgetRegisterSpendLoadStatus='not_loaded';_budgetTransLoadStatus='not_loaded';} // A1a: fresh pair
+  if(s==='budget')_budgetInvalidatePair(); // A1b (§17)
   activeSection=s;
   document.querySelectorAll('.section').forEach(function(el){el.classList.remove('active');});
   var sec=document.getElementById('s-'+s);if(sec)sec.classList.add('active');
@@ -9068,86 +9070,89 @@ function renderTransactions(){
 
 // ── Budget Module — renderBudget and sub-functions (Phase 5B) ────────────
 
-// Load budget transactions for selected month and re-render
-async function _budgetLoadTransactions(monthIso){
-  var gen=++_budgetTransLoadGen;
-  var current=function(){return gen===_budgetTransLoadGen&&monthIso===_budgetGetMonthIso();};
+// P3b-1 A1b (§16.2): local-date month bounds. monthIso ('2026-06-01') is parsed as local date parts:
+// new Date('2026-06-01') is UTC midnight and in UTC-4 getMonth() returns May, breaking the range.
+function _budgetMonthRange(monthIso){
+  var parts=monthIso.split('-');
+  var y=parseInt(parts[0],10);
+  var m=parseInt(parts[1],10)-1; // 0-indexed local month
+  var endD=new Date(y,m+1,0); // last day of month (local)
+  return {startIso:monthIso,endIso:endD.getFullYear()+'-'+String(endD.getMonth()+1).padStart(2,'0')+'-'+String(endD.getDate()).padStart(2,'0')};
+}
+// P3b-1 A1b (§16.3, INV-F1): verify one month read. 'complete' only for an array body whose row
+// count equals the exact Content-Range total and whose ids are present and unique; a count problem
+// is 'incomplete'; a non-array body or non-object row is 'failed'. Never assumes completeness.
+function _budgetVerifyMonthRows(body,contentRange){
+  if(!Array.isArray(body))return {status:'failed',reason:'unexpected response',rows:[]};
+  var total=_txParseContentRangeTotal(contentRange);
+  if(total===null)return {status:'incomplete',reason:'the exact row count was not available',rows:[]};
+  if(body.length!==total)return {status:'incomplete',reason:body.length+' of '+total+' rows returned',rows:[]};
+  var seen=Object.create(null);
+  for(var i=0;i<body.length;i++){
+    var row=body[i];
+    if(!row||typeof row!=='object')return {status:'failed',reason:'unexpected row',rows:[]};
+    if(row.id===null||row.id===undefined||row.id==='')return {status:'incomplete',reason:'a row has no id',rows:[]};
+    var id=String(row.id);
+    if(seen[id])return {status:'incomplete',reason:'duplicate row id',rows:[]};
+    seen[id]=true;
+  }
+  return {status:'complete',rows:body,total:total};
+}
+function _budgetInvalidatePair(){_budgetPairGen++;_budgetPairCycle=null;}
+function _budgetStartPairCycle(monthIso){
+  _budgetPairCycle={gen:++_budgetPairGen,monthIso:monthIso,sources:{register:null,legacy:null}};
+  return _budgetPairCycle;
+}
+function _budgetPairCurrent(cycle){return !!cycle&&cycle===_budgetPairCycle&&cycle.gen===_budgetPairGen;}
+// P3b-1 A1b (§16.6): the one helper for complete month reads of the two Budget actual sources:
+// request (exact count, no limit, no pagination), count parse, verification, generation check
+// after every await. Never throws; a superseded cycle yields {status:'stale'} and commits nothing.
+async function _budgetMonthRead(cycle,path){
+  try{
+    var h=await getAuthHeaders();
+    if(!_budgetPairCurrent(cycle))return {status:'stale'};
+    var r=await fetch(SUPA_URL+path,{headers:Object.assign({},h,{'Prefer':'count=exact'})});
+    if(!_budgetPairCurrent(cycle))return {status:'stale'};
+    if(!r.ok)return {status:'failed',reason:'HTTP '+r.status,rows:[]};
+    var body=await r.json();
+    if(!_budgetPairCurrent(cycle))return {status:'stale'};
+    return _budgetVerifyMonthRows(body,(r.headers&&typeof r.headers.get==='function')?r.headers.get('content-range'):null);
+  }catch(e){
+    return _budgetPairCurrent(cycle)?{status:'failed',reason:(e&&e.message)||'request error',rows:[]}:{status:'stale'};
+  }
+}
+// P3b-1 A1b (§17): one Budget actual-load cycle. The month is pinned once; both sources are read
+// under the same generation and committed together, so Budget never combines two generations.
+// Phase 5E-9: Register (public.transactions, all accounts) is read alongside budget_transactions.
+async function _budgetLoadPair(monthIso){
+  var cycle=_budgetStartPairCycle(monthIso);
   _budgetTransLoadStatus='loading';
-  try{
-    var h=await getAuthHeaders();
-    if(!current())return;
-    // Parse monthIso ('2026-06-01') as local date parts to avoid UTC→local timezone shift.
-    // new Date('2026-06-01') is UTC midnight; in UTC-4 getMonth() returns May, breaking the range.
-    var parts=monthIso.split('-');
-    var y=parseInt(parts[0],10);
-    var m=parseInt(parts[1],10)-1; // 0-indexed local month
-    var startIso=monthIso; // already first of month
-    var endD=new Date(y,m+1,0); // last day of month (local)
-    var endIso=endD.getFullYear()+'-'+String(endD.getMonth()+1).padStart(2,'0')+'-'+String(endD.getDate()).padStart(2,'0');
-    var r=await fetch(
-      SUPA_URL+'/rest/v1/budget_transactions?transaction_date=gte.'+startIso+'&transaction_date=lte.'+endIso+'&select=*&order=transaction_date.asc,created_at.asc',
-      {headers:h}
-    );
-    if(!current())return;
-    if(r.ok){
-      var body=await r.json();
-      if(!current())return;
-      _budgetTransactions=body;
-      _budgetTransLoadStatus='loaded';
-    } else {
-      _budgetTransactions=[]; // P3b-1 A1a: a failed current load leaves no prior rows behind
-      _budgetTransLoadStatus='failed';
-      console.error('[Budget] Failed to load transactions: HTTP '+r.status);
-    }
-  }catch(e){
-    if(!current())return;
-    _budgetTransactions=[];
-    _budgetTransLoadStatus='failed';
-    console.error('[Budget] Exception loading transactions:',e);
-  }
-  renderApp();
-}
-
-// Phase 5E-9: load Register-entered transactions (public.transactions) for the selected
-// month, so Budget's spentByKey can include Register spend alongside budget_transactions.
-// Mirrors _budgetLoadTransactions's local-date month-boundary math exactly (same
-// UTC-shift-avoidance reasoning applies here).
-async function _budgetLoadRegisterSpend(monthIso){
-  var gen=++_budgetRegisterSpendLoadGen;
-  var current=function(){return gen===_budgetRegisterSpendLoadGen&&monthIso===_budgetGetMonthIso();};
   _budgetRegisterSpendLoadStatus='loading';
-  try{
-    var h=await getAuthHeaders();
-    if(!current())return;
-    var parts=monthIso.split('-');
-    var y=parseInt(parts[0],10);
-    var m=parseInt(parts[1],10)-1; // 0-indexed local month
-    var startIso=monthIso; // already first of month
-    var endD=new Date(y,m+1,0); // last day of month (local)
-    var endIso=endD.getFullYear()+'-'+String(endD.getMonth()+1).padStart(2,'0')+'-'+String(endD.getDate()).padStart(2,'0');
-    var r=await fetch(
-      SUPA_URL+'/rest/v1/transactions?transaction_date=gte.'+startIso+'&transaction_date=lte.'+endIso+'&select=category_key,amount,transaction_date',
-      {headers:h}
-    );
-    if(!current())return;
-    if(r.ok){
-      var body=await r.json();
-      if(!current())return;
-      _budgetRegisterSpendCache=body;
-      _budgetRegisterSpendLoadStatus='loaded';
-    } else {
-      _budgetRegisterSpendCache=[]; // P3b-1 A1a: a failed current load leaves no prior rows behind
-      _budgetRegisterSpendLoadStatus='failed';
-      console.error('[Budget] Failed to load Register spend: HTTP '+r.status);
-    }
-  }catch(e){
-    if(!current())return;
-    _budgetRegisterSpendCache=[];
-    _budgetRegisterSpendLoadStatus='failed';
-    console.error('[Budget] Exception loading Register spend:',e);
-  }
+  var rg=_budgetMonthRange(cycle.monthIso);
+  var q='?transaction_date=gte.'+rg.startIso+'&transaction_date=lte.'+rg.endIso;
+  var res=await Promise.all([
+    _budgetMonthRead(cycle,'/rest/v1/transactions'+q+'&select=id,category_key,amount,transaction_date'),
+    _budgetMonthRead(cycle,'/rest/v1/budget_transactions'+q+'&select=*&order=transaction_date.asc,created_at.asc')
+  ]);
+  if(!_budgetPairCurrent(cycle)||res[0].status==='stale'||res[1].status==='stale')return;
+  cycle.sources={register:res[0],legacy:res[1]};
+  _budgetPairCommit(cycle);
   renderApp();
 }
+// Writes the existing consumer mirrors from ONE verified cycle. A source that is not complete leaves
+// no rows behind and reads as failed (fail closed until the Round-2 consumers read the cycle itself).
+function _budgetPairCommit(cycle){
+  var R=cycle.sources.register, L=cycle.sources.legacy;
+  _budgetRegisterSpendCache=R.status==='complete'?R.rows.slice():[];
+  _budgetRegisterSpendLoadStatus=R.status==='complete'?'loaded':'failed';
+  _budgetTransactions=L.status==='complete'?L.rows.slice():[];
+  _budgetTransLoadStatus=L.status==='complete'?'loaded':'failed';
+  if(R.status!=='complete')console.error('[Budget] Register month read '+R.status+': '+(R.reason||''));
+  if(L.status!=='complete')console.error('[Budget] Legacy month read '+L.status+': '+(L.reason||''));
+}
+// A reload of EITHER source (e.g. after a legacy write) reloads the pair under a new generation (§17).
+function _budgetLoadTransactions(monthIso){return _budgetLoadPair(monthIso);}
+function _budgetLoadRegisterSpend(monthIso){return _budgetLoadPair(monthIso);}
 
 // Save (insert or update) a budget transaction
 async function _budgetSaveTransaction(formData, editId){
@@ -9289,12 +9294,10 @@ function renderBudget(){
 
   var monthIso=_budgetGetMonthIso();
 
-  // Load transactions on first access or month change.
-  // Phase 5E-9: also load Register spend (public.transactions) in parallel — both gate
-  // the same loading screen so spentByKey is never computed from a partial fetch.
-  if(_budgetTransLoadStatus==='not_loaded'||_budgetRegisterSpendLoadStatus==='not_loaded'){
-    if(_budgetTransLoadStatus==='not_loaded'){_budgetTransLoadStatus='loading';_budgetLoadTransactions(monthIso);}
-    if(_budgetRegisterSpendLoadStatus==='not_loaded'){_budgetRegisterSpendLoadStatus='loading';_budgetLoadRegisterSpend(monthIso);}
+  // Load both month sources as ONE pair on first access or month change (P3b-1 A1b §17); a pair for
+  // another month (calendar rollover on the default month, E2) is replaced, never shown or stranded.
+  if(_budgetTransLoadStatus==='not_loaded'||_budgetRegisterSpendLoadStatus==='not_loaded'||(_budgetPairCycle&&_budgetPairCycle.monthIso!==monthIso)){
+    _budgetLoadPair(monthIso);
     el.innerHTML='<div style="padding:24px;color:var(--muted);font-size:13px">Loading budget data...</div>';
     return;
   }
@@ -9875,6 +9878,7 @@ function _renderBudgetRecon(monthIso){
 
 // P3b-1 A1a (K1): Retry requests a fresh current pair of month sources (and budget lines if needed).
 function _budgetRetryLoad(){
+  _budgetInvalidatePair(); // A1b (§17): responses of the pre-Retry cycle can no longer commit
   _budgetTransLoadStatus='not_loaded';
   _budgetTransactions=[];
   _budgetRegisterSpendLoadStatus='not_loaded';
@@ -9885,6 +9889,7 @@ function _budgetRetryLoad(){
 
 // ── Budget event handlers (window-scoped for inline onclick) ───────────────
 window._budgetChangeMonth=function(iso){
+  _budgetInvalidatePair(); // A1b (§17)
   _budgetSelectedMonth=iso;
   _budgetTransLoadStatus='not_loaded';
   _budgetTransactions=[];
@@ -10358,7 +10363,7 @@ async function loadAll(){
       applyGoalsFallback();
     }
     _supaConnected=true;
-  }catch(e){console.error('loadAll:',e);_supaConnected=false;budgetRulesLoadStatus='failed';goalsLoadStatus='loaded_fallback';applyGoalsFallback();}
+  }catch(e){console.error('loadAll:',e);_supaConnected=false;budgetRulesLoadStatus='failed';goalsLoadStatus='loaded_fallback';applyGoalsFallback();if(_budgetLineRulesLoadStatus!=='loaded')_budgetLineRulesLoadStatus='failed';}
   // Rebuild category lookup from JS registry (immediate, synchronous).
   _rebuildBudgetCatByKey();
   // Phase 5D-1/5D-2/5E-1: load Supabase registries if any flag needs the data.
@@ -10645,6 +10650,15 @@ var BUDGET_CATEGORY_REGISTRY=[
   {key:'personal_care',                 label:'Personal Care',           parent:null,                 leaf:false, assignable:false, isIncome:false},
   {key:'personal_care.hair',            label:'Hair',                    parent:'personal_care',      leaf:true,  assignable:true,  isIncome:false}
 ];
+// P3b-1 A1b (spec §7): the ONLY active income-countable categories intentionally not represented in
+// the registry, each with its reason. Consumed only by integrity checks and tests. Adding a key
+// requires spec/owner approval; a key may never be both represented and excluded.
+var BUDGET_INCOME_EXCLUSIONS=Object.freeze({
+  'income.deep_south_commissions':'Variable commission income handled by the weekly model; not a salary Budget line',
+  'business.jabian_deposits_2026':'Employer reimbursement; must not appear as Budget income',
+  'income.interest':'Bank interest; not household salary/spending Budget income',
+  'income.bkcpa_extra_pay':'Supplemental pay handled by the weekly model; not a recurring salary Budget line'
+});
 
 // Lookup helpers
 var _budgetCatByKey={};
@@ -10673,6 +10687,154 @@ function _blrUnavailable(){
   if(_registriesLoadStatus==='failed'||(_registriesLoadStatus==='loaded'&&!Array.isArray(_categoriesCache)))return {code:'categories',message:"Categories couldn't be loaded. Refresh to retry."};
   if(_registriesLoadStatus!=='loaded')return {code:'loading',message:'Loading categories…'};
   return null;
+}
+
+// ── P3b-1 A1b state substrate (spec §5.1, §7, §8, §10, §16.7, §19.1) ──────────────────────
+// Decides WHETHER Budget actuals and budget lines may be trusted; never recomputes an amount.
+// Round 1: no consumer reads these yet.
+function _budgetRegistryEntry(key){
+  for(var i=0;i<BUDGET_CATEGORY_REGISTRY.length;i++){if(BUDGET_CATEGORY_REGISTRY[i].key===key)return BUDGET_CATEGORY_REGISTRY[i];}
+  return null;
+}
+// §7 expense row: a registry leaf that is neither income nor the misc.goal_sweep allocation line.
+function _budgetIsExpenseRowKey(key){var e=_budgetRegistryEntry(key);return !!e&&e.leaf&&!e.isIncome&&key!=='misc.goal_sweep';}
+// Live categories by key (all lifecycles); prototype-free so a key can never resolve to a builtin.
+function _budgetLiveCategoryIndex(){
+  var m=Object.create(null);
+  (Array.isArray(_categoriesCache)?_categoriesCache:[]).forEach(function(c){if(c&&typeof c.key==='string')m[c.key]=c;});
+  return m;
+}
+// §5.1 metadata wrappers: the FROZEN predicate evaluated on a copy with lifecycle treated as active.
+function _isSpendCountableMetadata(cat){return !!cat&&_isCountableBudgetSpend(Object.assign({},cat,{lifecycle_status:'active'}));}
+function _isIncomeCountableMetadata(cat){return !!cat&&_isCountableBudgetIncome(Object.assign({},cat,{lifecycle_status:'active'}));}
+// §8 BACKED(k): live, active, leaf, treatment matching the registry row type.
+function _budgetIsBacked(key,live){
+  var e=_budgetRegistryEntry(key), c=live[key];
+  if(!e||!e.leaf||!c||c.lifecycle_status!=='active'||c.is_leaf!==true)return false;
+  if(e.isIncome)return _isCountableBudgetIncome(c);
+  if(key==='misc.goal_sweep')return c.budget_treatment==='planned_allocation';
+  return _isCountableBudgetSpend(c);
+}
+// §8 BACKED_PARENT(p): registry expense parent key, live, active, not a leaf. Planned inputs only.
+function _budgetIsBackedParent(key,live){
+  var e=_budgetRegistryEntry(key), c=live[key];
+  return !!e&&!e.leaf&&!e.isIncome&&!!c&&c.lifecycle_status==='active'&&c.is_leaf===false;
+}
+// Same month-coverage test the budget-line consumers apply.
+function _budgetLineCovers(r,monthIso){
+  if(!r||!r.is_active)return false;
+  if(r.start_month>monthIso)return false;
+  if(r.end_month!==null&&r.end_month!==undefined&&r.end_month<monthIso)return false;
+  return true;
+}
+// §8.1 BLR_STATE(monthIso): UNAVAILABLE is exactly _blrUnavailable() (one availability source);
+// else INVALID naming each active covering line key that is neither a BACKED registry leaf nor a
+// BACKED_PARENT; else VALID. Loaded state only; no request.
+function _blrState(monthIso){
+  var u=_blrUnavailable();
+  if(u)return {state:'UNAVAILABLE',code:u.code,message:u.message,keys:[]};
+  var live=_budgetLiveCategoryIndex(), bad=[];
+  _budgetLineRulesCache.forEach(function(r){
+    if(!_budgetLineCovers(r,monthIso))return;
+    var k=r.category_key;
+    if(_budgetIsBacked(k,live)||_budgetIsBackedParent(k,live))return;
+    if(bad.indexOf(k)<0)bad.push(k);
+  });
+  return bad.length?{state:'INVALID',keys:bad}:{state:'VALID',keys:[]};
+}
+// INV-A: registry leaf keys that are not BACKED.
+function _budgetRegistryBackingViolations(live){
+  return BUDGET_CATEGORY_REGISTRY.filter(function(e){return e.leaf&&!_budgetIsBacked(e.key,live);}).map(function(e){return e.key;});
+}
+// INV-C: live income-countable categories must be represented income rows or excluded (not both).
+// findings: excluded keys whose live category is not income-countable (audit only).
+function _budgetIncomeCoverage(cats,exclusions){
+  var ex=exclusions||BUDGET_INCOME_EXCLUSIONS, has=function(k){return Object.prototype.hasOwnProperty.call(ex,k);};
+  var out={violations:[],overlap:[],findings:[]};
+  Object.keys(ex).forEach(function(k){if(_budgetRegistryEntry(k))out.overlap.push(k);});
+  (cats||[]).forEach(function(c){
+    if(!c)return;
+    if(_isCountableBudgetIncome(c)){
+      var e=_budgetRegistryEntry(c.key);
+      if(!(e&&e.leaf&&e.isIncome)&&!has(c.key))out.violations.push(c.key);
+    }else if(has(c.key))out.findings.push(c.key);
+  });
+  return out;
+}
+// §10: one Register row for the displayed month. The row's OWN category metadata decides
+// (never merged_into_key). {kind: uncategorized|counted|none|unverified, as, reason, key}.
+function _classifyRegisterRow(row,catByKey){
+  var k=row?row.category_key:undefined, amtOk=!!row&&isFinite(parseFloat(row.amount));
+  if(k===null||k===undefined)return amtOk?{kind:'uncategorized'}:{kind:'unverified',reason:'malformed_amount'};
+  var c=(catByKey&&Object.prototype.hasOwnProperty.call(catByKey,k))?catByKey[k]:null;
+  if(!c)return {kind:'unverified',reason:'unknown_category',key:k};
+  if(c.lifecycle_status==='active'){
+    if(c.is_leaf!==true)return {kind:'unverified',reason:'active_non_leaf',key:k};
+    var as=_isCountableBudgetSpend(c)?'spend':(_isCountableBudgetIncome(c)?'income':null);
+    if(!as)return {kind:'none',key:k};
+    return amtOk?{kind:'counted',as:as,key:k}:{kind:'unverified',reason:'malformed_amount',key:k};
+  }
+  if(c.lifecycle_status==='archived'||c.lifecycle_status==='merged'){
+    if(c.is_leaf!==true)return {kind:'unverified',reason:'inactive_non_leaf',key:k}; // owner ruling (F-1): lifecycle never hides a non-leaf reference
+    if(_isSpendCountableMetadata(c)||_isIncomeCountableMetadata(c))return {kind:'unverified',reason:'inactive_countable',key:k};
+    if(c.behavior_class==null||c.budget_treatment==null)return {kind:'unverified',reason:'indeterminate',key:k};
+    return {kind:'none',key:k};
+  }
+  return {kind:'unverified',reason:'unknown_lifecycle',key:k};
+}
+// §16.7.3: one legacy budget_transactions row (L1–L8). L8 is checked first.
+var BUDGET_LEGACY_TX_TYPES=['household_expense','reimbursable_expense','reimbursement_income'];
+function _classifyLegacyRow(row){
+  if(!row||BUDGET_LEGACY_TX_TYPES.indexOf(row.transaction_type)<0||!isFinite(parseFloat(row.amount)))return {case:'L8',kind:'unverified'};
+  if(row.transaction_type!=='household_expense')return {case:'L1',kind:'none'};
+  if(row.excluded_from_budget)return {case:'L2',kind:'none'};
+  var k=row.category_key;
+  if(k===null||k===undefined||String(k).trim()==='')return {case:'L4',kind:'uncategorized'};
+  if(_budgetIsExpenseRowKey(k))return {case:'L3',kind:'counted',key:k};
+  var e=_budgetRegistryEntry(k);
+  if(e&&!e.leaf&&!e.isIncome)return {case:'L5',kind:'unverified',key:k};
+  if(k==='misc.goal_sweep')return {case:'L6',kind:'unverified',key:k};
+  return {case:'L7',kind:'unverified',key:k};
+}
+var _BUDGET_LEGACY_REASON={L5:'legacy_group_key',L6:'legacy_allocation_key',L7:'legacy_unknown_key',L8:'legacy_malformed'};
+// §19.1 month state from the committed pair only: LOADING | VERIFIED | COMPLETE_WITH_UNCATEGORIZED |
+// UNVERIFIED (reasons name keys). Uncategorized net is signed in the Register convention (Register
+// +amount, legacy L4 −amount), in integer cents. Pure: no request, no mutation.
+function _budgetMonthState(monthIso){
+  var c=_budgetPairCycle, reasons=[], findings=[], n=0, cents=0;
+  if(!c||c.monthIso!==monthIso||!c.sources.register||!c.sources.legacy)return {state:'LOADING',monthIso:monthIso,reasons:[],uncategorized:{count:0,net:0},auditFindings:[]};
+  var add=function(code,key){if(!reasons.some(function(r){return r.code===code&&r.key===key;}))reasons.push(key===undefined?{code:code}:{code:code,key:key});};
+  var R=c.sources.register, L=c.sources.legacy;
+  [['register',R],['legacy',L]].forEach(function(p){if(p[1].status==='incomplete')add('source_incomplete',p[0]);else if(p[1].status!=='complete')add('source_failed',p[0]);});
+  var catsOk=_registriesLoadStatus==='loaded'&&Array.isArray(_categoriesCache);
+  if(!catsOk)add('categories_unavailable');
+  var blr=_blrState(monthIso);
+  if(blr.state==='UNAVAILABLE')add('budget_lines_unavailable');
+  else if(blr.state==='INVALID')blr.keys.forEach(function(k){add('budget_lines_invalid',k);});
+  if(catsOk){
+    var live=_budgetLiveCategoryIndex();
+    _budgetRegistryBackingViolations(live).forEach(function(k){add('registry_unbacked',k);});
+    var ic=_budgetIncomeCoverage(_categoriesCache);
+    ic.violations.forEach(function(k){add('income_unrepresented',k);});
+    ic.overlap.forEach(function(k){add('exclusion_overlap',k);});
+    ic.findings.forEach(function(k){findings.push({code:'exclusion_not_income',key:k});});
+    if(R.status==='complete')R.rows.forEach(function(row){
+      var x=_classifyRegisterRow(row,live);
+      if(x.kind==='uncategorized'){n++;cents+=Math.round(parseFloat(row.amount)*100);}
+      else if(x.kind==='unverified')add(x.reason,x.key);
+      else if(x.kind==='counted'&&x.as==='spend'&&!_budgetIsExpenseRowKey(x.key))add('unrepresented_spend',x.key); // INV-B
+    });
+    _categoriesCache.forEach(function(cat){ // INV-B without displayed-month rows: audit finding only
+      if(cat&&_isCountableBudgetSpend(cat)&&!_budgetIsExpenseRowKey(cat.key)&&!reasons.some(function(r){return r.code==='unrepresented_spend'&&r.key===cat.key;}))findings.push({code:'unrepresented_spend_category',key:cat.key});
+    });
+  }
+  if(L.status==='complete')L.rows.forEach(function(row){
+    var x=_classifyLegacyRow(row);
+    if(x.kind==='uncategorized'){n++;cents-=Math.round(parseFloat(row.amount)*100);}
+    else if(x.kind==='unverified')add(_BUDGET_LEGACY_REASON[x.case],x.key);
+  });
+  var state=reasons.length?'UNVERIFIED':(n?'COMPLETE_WITH_UNCATEGORIZED':'VERIFIED');
+  return {state:state,monthIso:monthIso,gen:c.gen,reasons:reasons,uncategorized:{count:n,net:cents/100},auditFindings:findings};
 }
 
 // P3b-1 A1a: returns null when budget-line/category authority is unavailable (no fallback values).

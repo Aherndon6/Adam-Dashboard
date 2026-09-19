@@ -3905,7 +3905,8 @@ async function clickNav(page, id) {
         if (String(url).indexOf('/budget_transactions') !== -1) {
           return Promise.resolve({ ok:true, headers:{ get:function(k){ return k === 'content-range' ? '0-0/0' : null; } }, json:function(){ return Promise.resolve([]); } });
         }
-        return Promise.resolve({ ok:true, headers:{ get:function(){ return null; } }, json:function(){ return Promise.resolve([
+        // P3b-1 A1b fixture repair: answer like PostgREST with an exact count (the Budget month read requires it).
+        return Promise.resolve({ ok:true, headers:{ get:function(k){ return k === 'content-range' ? '0-0/1' : null; } }, json:function(){ return Promise.resolve([
           { id:'e1', transaction_date:'2026-07-01', account_key:'amex_gold', payee:'Mend Coffee', memo:'', category_key:'entertainment.week_1', amount:-12.98, cleared:true }
         ]); } });
       };
@@ -5213,7 +5214,8 @@ async function clickNav(page, id) {
     let failSpend = true;
     await page.route('**/rest/v1/transactions?**', route => {
       if (failSpend) return route.fulfill({ status: 500, contentType: 'application/json', body: '{"message":"fixture failure"}' });
-      return route.fulfill({ status: 200, contentType: 'application/json', body: '[]' });
+      // P3b-1 A1b fixture repair: a recovered read answers like PostgREST with an exact count.
+      return route.fulfill({ status: 200, contentType: 'application/json', headers: Object.assign({ 'content-range': '*/0' }, FIXTURE_CORS), body: '[]' });
     });
     await page.evaluate(() => {
       _categoriesCache = [{ key: 'food_dining.groceries', label: 'Groceries', is_leaf: true, lifecycle_status: 'active', behavior_class: 'expense', budget_treatment: 'tracked' }];
