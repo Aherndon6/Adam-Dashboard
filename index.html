@@ -885,7 +885,7 @@ button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-vis
 // ── Constants (unchanged) ──────────────────────────────────────────────────
 // Simplified architecture — $8,250 total from LC · $6,500 operating floor · no legacy mechanics
 // Real-world moves: keep $2,250 in chk, move $2,750 sav→chk, move $1,000 LC→chk, move $2,250 LC→chk (Option 1 correction)
-const BUILD_TS='2026-09-18T21:40:25'; // updated each push — local time string
+const BUILD_TS='2026-09-18T23:16:49'; // updated each push — local time string
 const START_CHK=18037.73,START_SAV=3772.77,START_AMX=103.64,START_TAX=0,START_LC=13488.88;
 const EF_AMT=13488.88; // LC/EF balance — static this model year (no transfers in or out)
 const BASE_TAX=521.36,RET_SAV_XFR=3772.74;
@@ -6556,9 +6556,9 @@ function _renderGoalsSavings(vm){
   var _incomeMo=_adamMo+_wendyMo;
   // Monthly living expenses — read from budget_line_rules cache; fallback to JS constants
   var _billsMo=_getBudgetLivingExpenses(currentW);
-  var _blrU=_blrUnavailable(); // P3b-1 A1a: null → figures; otherwise "—" plus the reason
+  var _blrS=_blrState(_budgetWeekMonthIso(currentW)); // P3b-1 A1b (§8.1): figures only when VALID; otherwise "—" plus the reason
   var _netMo=_billsMo===null?null:_incomeMo-_billsMo; // Planned Monthly Margin (Base Pay)
-  var _blrReason=_blrU?'<div style="font-size:10px;color:var(--amber)">'+esc(_blrU.message)+'</div>':'';
+  var _blrReason=_blrS.state!=='VALID'?'<div style="font-size:10px;color:var(--amber)">'+esc(_blrReasonText(_blrS))+'</div>':'';
   // Current week data for live numbers
   var _cw=_weeks.find(function(w){return w.num===currentW;})||_weeks[_weeks.length-1]||_weeks[0];
   var _curChk=_cw?_cw.chk:0;
@@ -7731,6 +7731,8 @@ function setTxFilter(field,value){
 }
 function clearTxFilters(){_txFilterSearch='';_txFilterType='all';_txFilterStatus='all';_txFilterDateFrom='';_txFilterDateTo='';_txFilterUncategorized=false;renderApp();}
 function setTxFilterUncategorized(on){_txFilterUncategorized=!!on;renderApp();}
+// P3b-1 A1b (§19.1, D2): the Budget uncategorized notice opens Register with Uncategorized-only on.
+function _budgetOpenRegisterUncategorized(){_txSubNav='register';_txFilterUncategorized=true;setSection('transactions');}
 
 // Phase 5F-1.5 A9a: pure filter over the chronological rowsWithBalance array. Returns a
 // matching subset with each entry's bal untouched (Balance stays full-ledger/as-of-date).
@@ -8527,6 +8529,7 @@ async function _saveTxForm(){
       return;
     }
     // Success: reset form state, reload ledger
+    _budgetInvalidatePair(); // P3b-1 A1b (§17): a Register write retires the certified Budget pair
     _txFormMode=null;
     _txFormData={};
     _txEditId=null;
@@ -8567,6 +8570,7 @@ async function _confirmTxDelete(){
       return;
     }
     // Success: reset delete state, reload ledger
+    _budgetInvalidatePair(); // P3b-1 A1b (§17)
     _txDeleteConfirmId=null;
     _txDeleteError='';
     _txLedgerCache=null;
@@ -8605,6 +8609,7 @@ async function _toggleTxCleared(id,currentCleared){
       return;
     }
     // Success: reload ledger to reflect updated cleared state
+    _budgetInvalidatePair(); // P3b-1 A1b (§17)
     _txLedgerCache=null;
     _txLedgerLoadStatus='not_loaded';
     await _loadTxLedger(_txLedgerAccountKey);
@@ -9150,6 +9155,9 @@ function _budgetPairCommit(cycle){
   if(R.status!=='complete')console.error('[Budget] Register month read '+R.status+': '+(R.reason||''));
   if(L.status!=='complete')console.error('[Budget] Legacy month read '+L.status+': '+(L.reason||''));
 }
+// P3b-1 A1b (§17 + §19.1): after a legacy write, re-read the pair AND render at once, so the screen shows
+// LOADING (the pair loader sets it synchronously) instead of the pre-write figures while the re-read runs.
+function _budgetReloadPairShowing(){var p=_budgetLoadPair(_budgetGetMonthIso());renderApp();return p;}
 // A reload of EITHER source (e.g. after a legacy write) reloads the pair under a new generation (§17).
 function _budgetLoadTransactions(monthIso){return _budgetLoadPair(monthIso);}
 function _budgetLoadRegisterSpend(monthIso){return _budgetLoadPair(monthIso);}
@@ -9190,7 +9198,7 @@ async function _budgetSaveTransaction(formData, editId){
       }
     }
     _budgetShowAddForm=false;_budgetEditId=null;_budgetFormData={};
-    await _budgetLoadTransactions(_budgetGetMonthIso());
+    await _budgetReloadPairShowing();
   }catch(e){
     console.error('[Budget] Save transaction error:',e);
     alert('Save failed: '+e.message);
@@ -9212,13 +9220,12 @@ async function _budgetToggleCleared(txId,currentCleared){
   try{
     var h=await getAuthHeaders();
     var r=await fetch(SUPA_URL+'/rest/v1/budget_transactions?id=eq.'+txId,{method:'PATCH',headers:Object.assign({},h,{'Content-Type':'application/json','Prefer':'return=minimal'}),body:JSON.stringify(patch)});
-    if(!r.ok){
-      console.error('[Budget] Toggle cleared PATCH failed: HTTP '+r.status+' — reloading from server');
-      await _budgetLoadTransactions(_budgetGetMonthIso());
-    }
+    if(!r.ok)console.error('[Budget] Toggle cleared PATCH failed: HTTP '+r.status+' — reloading from server');
+    // P3b-1 A1b (§17): success or failure, re-read the pair; the optimistic copy is never authoritative.
+    await _budgetReloadPairShowing();
   }catch(e){
     console.error('[Budget] Toggle cleared error:',e,' — reloading from server');
-    await _budgetLoadTransactions(_budgetGetMonthIso());
+    await _budgetReloadPairShowing();
   }
 }
 
@@ -9232,6 +9239,7 @@ async function _budgetDeleteTransaction(txId){
     else console.error('[Budget] Delete transaction failed: HTTP '+r.status);
     _budgetDeleteConfirmId=null;
     renderApp();
+    if(r.ok)await _budgetReloadPairShowing(); // P3b-1 A1b (§17): the deleted row must leave the certified pair
   }catch(e){console.error('[Budget] Delete transaction error:',e);}
 }
 
@@ -9260,32 +9268,57 @@ function _budgetRowState(spent,budget){
   return 'neutral';
 }
 
-// P3b-1 A1a (K1/K3): Budget load gate. Returns the loading or whole-grid load-error HTML, or null
-// when both required month sources and the budget lines are loaded for the current request.
-function _budgetLoadGateHtml(monthIso){
-  // P3b-1 A1a (K3): never compute or show figures while either required month source is in flight.
-  if(_budgetTransLoadStatus==='loading'||_budgetRegisterSpendLoadStatus==='loading'){
-    return '<div style="padding:24px;color:var(--muted);font-size:13px">Loading budget data...</div>';
-  }
-  // P3b-1 A1a (K1): if a required current input failed, show a whole-grid load-error state naming the
-  // failed source(s), with Retry, and no Spent/Remaining/planned figures at all.
-  var _loadFailures=[];
-  if(_budgetRegisterSpendLoadStatus==='failed')_loadFailures.push("Register transactions for this month couldn't be loaded.");
-  if(_budgetTransLoadStatus==='failed')_loadFailures.push("Budget-entered (legacy) transactions for this month couldn't be loaded.");
-  if(_budgetLineRulesLoadStatus!=='loaded')_loadFailures.push("Budget lines couldn't be loaded.");
-  if(_loadFailures.length){
-    return '<div style="display:flex;align-items:center;gap:12px;margin-bottom:16px;flex-wrap:wrap">'
-      +'<h2 style="margin:0;font-size:17px;font-weight:700;color:var(--ink)">Budget</h2>'
-      +'<select style="padding:5px 10px;border:1px solid var(--border);border-radius:6px;font-size:13px;background:var(--surface2);color:var(--ink)" onchange="window._budgetChangeMonth(this.value)">'
-      +_budgetAvailableMonths().map(function(mo){return '<option value="'+mo.iso+'"'+(mo.iso===monthIso?' selected':'')+'>'+mo.label+'</option>';}).join('')
-      +'</select></div>'
-      +'<div id="budget-load-error" style="padding:16px 18px;border:1px solid var(--amber);border-radius:8px;background:var(--surface2);color:var(--ink);font-size:13px;line-height:1.6">'
-      +_loadFailures.map(function(t,i){return '<div'+(i===0?' style="font-weight:700"':'')+'>'+t+'</div>';}).join('')
-      +'<div style="margin-top:6px;color:var(--muted)">Budget figures for '+_budgetMonthLabel(monthIso)+' aren\'t shown, so a partial or out-of-date figure isn\'t mistaken for the real one.</div>'
-      +'<button id="budget-load-retry" onclick="_budgetRetryLoad()" style="margin-top:10px;padding:6px 14px;background:var(--blue);color:#fff;border:none;border-radius:6px;font-size:12px;font-weight:600;cursor:pointer">Retry</button>'
-      +'</div>';
-  }
-  return null;
+// P3b-1 A1b (§19.1): Budget presentation helpers. Presentation only — the governed state comes from
+// _budgetMonthState / _blrState; nothing here classifies rows or computes amounts.
+var _BUDGET_CV='<span title="Can\'t verify" style="color:var(--muted)">—</span>'; // an actual that can't be verified
+function _budgetLoadingHtml(){return '<div id="budget-loading" style="padding:24px;color:var(--muted);font-size:13px">Loading budget data...</div>';}
+var _BUDGET_REASON_TEXT={
+  categories_unavailable:"Categories couldn't be loaded.",
+  budget_lines_invalid:'Budget lines need attention (not set up as a budget category):',
+  registry_unbacked:'Budget categories not set up:',
+  income_unrepresented:'Income categories not shown in the Budget:',
+  exclusion_overlap:'Categories both shown and excluded:',
+  unknown_category:'Transactions use an unknown category:',
+  active_non_leaf:'Transactions use a group category:',
+  inactive_non_leaf:'Transactions use a group category:',
+  inactive_countable:'Transactions use a retired category:',
+  indeterminate:'Transactions use a category with incomplete setup:',
+  unknown_lifecycle:'Transactions use a category with incomplete setup:',
+  malformed_amount:'A transaction has an unreadable amount.',
+  unrepresented_spend:"Spending in categories the Budget doesn't show:",
+  legacy_group_key:'Legacy transaction on a group key:',
+  legacy_allocation_key:'Legacy transaction on the Planned for Goals allocation.',
+  legacy_unknown_key:'Legacy transaction with an unknown category:',
+  legacy_malformed:'A legacy transaction is malformed.'
+};
+// The one UNVERIFIED message: every named reason, grouped, with the source's own completeness reason.
+function _budgetIntegrityHtml(ms,blr,monthIso){
+  var src={register:'Register transactions',legacy:'Budget-entered (legacy) transactions'};
+  var sources=(_budgetPairCycle&&_budgetPairCycle.sources)||{};
+  var lines=[], byCode={}, order=[];
+  ms.reasons.forEach(function(r){
+    if(r.code==='source_failed'){lines.push(src[r.key]+" for this month couldn't be loaded.");return;}
+    if(r.code==='source_incomplete'){var rs=sources[r.key]&&sources[r.key].reason;lines.push(src[r.key]+" for this month couldn't be fully verified"+(rs?' ('+rs+')':'')+'.');return;}
+    if(r.code==='budget_lines_unavailable'){lines.push(_blrReasonText(blr)+'');return;}
+    if(!byCode[r.code]){byCode[r.code]=[];order.push(r.code);}
+    if(r.key!==undefined)byCode[r.code].push(String(r.key));
+  });
+  order.forEach(function(c){var t=_BUDGET_REASON_TEXT[c]||'Integrity check failed:';lines.push(t+(byCode[c].length?' '+byCode[c].join(', '):''));});
+  return '<div id="budget-integrity" style="padding:12px 16px;margin-bottom:14px;border:1px solid var(--amber);border-radius:8px;background:var(--surface2);color:var(--ink);font-size:13px;line-height:1.6">'
+    +'<div style="font-weight:700">Can\'t verify '+esc(_budgetMonthLabel(monthIso))+' actuals.</div>'
+    +lines.map(function(t){return '<div>'+esc(t)+'</div>';}).join('')
+    +'<div style="margin-top:6px;color:var(--muted)">Actual amounts show — until this is resolved, so a partial or out-of-date figure isn\'t mistaken for the real one. Refresh to retry.</div>'
+    +'<button id="budget-integrity-retry" onclick="_budgetRetryLoad()" style="margin-top:8px;padding:6px 14px;background:var(--blue);color:#fff;border:none;border-radius:6px;font-size:12px;font-weight:600;cursor:pointer">Retry</button>'
+    +'</div>';
+}
+// COMPLETE WITH UNCATEGORIZED notice (§19.1): N and the signed net (Register convention), with a link
+// that opens Register filtered to uncategorized rows. It names no account (D2).
+function _budgetUncatNoticeHtml(ms){
+  var n=ms.uncategorized.count;
+  return '<div id="budget-uncat-notice" style="padding:10px 14px;margin-bottom:14px;border:1px solid var(--line);border-radius:8px;background:var(--surface2);color:var(--ink);font-size:12px;line-height:1.6">'
+    +n+' uncategorized transaction'+(n===1?'':'s')+' (net '+fsigned(ms.uncategorized.net)+') '+(n===1?'is':'are')+' not included in any category\'s actuals. '
+    +'<a href="#" id="budget-uncat-link" onclick="_budgetOpenRegisterUncategorized();return false" style="color:var(--blue);text-decoration:underline;font-weight:600">Show uncategorized in Register</a>'
+    +'</div>';
 }
 
 function renderBudget(){
@@ -9296,13 +9329,19 @@ function renderBudget(){
 
   // Load both month sources as ONE pair on first access or month change (P3b-1 A1b §17); a pair for
   // another month (calendar rollover on the default month, E2) is replaced, never shown or stranded.
-  if(_budgetTransLoadStatus==='not_loaded'||_budgetRegisterSpendLoadStatus==='not_loaded'||(_budgetPairCycle&&_budgetPairCycle.monthIso!==monthIso)){
+  if(!_budgetPairCycle||_budgetTransLoadStatus==='not_loaded'||_budgetRegisterSpendLoadStatus==='not_loaded'||_budgetPairCycle.monthIso!==monthIso){
     _budgetLoadPair(monthIso);
-    el.innerHTML='<div style="padding:24px;color:var(--muted);font-size:13px">Loading budget data...</div>';
+    el.innerHTML=_budgetLoadingHtml();
     return;
   }
-  var gate=_budgetLoadGateHtml(monthIso); // P3b-1 A1a
-  if(gate!==null){el.innerHTML=gate;return;}
+  // P3b-1 A1b (§19.1 / §8.1): one governed state. Actuals come only from the committed pair; planned
+  // values follow BLR_STATE. LOADING (pair in flight or budget-line authority still loading) shows no figures.
+  var _ms=_budgetMonthState(monthIso), _blr=_blrState(monthIso);
+  if(_ms.state==='LOADING'||(_blr.state==='UNAVAILABLE'&&_blr.code==='loading')){el.innerHTML=_budgetLoadingHtml();return;}
+  var _legSrc=_budgetPairCycle.sources.legacy, _regSrc=_budgetPairCycle.sources.register;
+  var _legRows=_legSrc.status==='complete'?_legSrc.rows:[], _regRows=_regSrc.status==='complete'?_regSrc.rows:[];
+  var _actOk=_ms.state!=='UNVERIFIED';   // actuals shown only when VERIFIED / COMPLETE WITH UNCATEGORIZED
+  var _planTotOk=_blr.state==='VALID';  // budget-line totals shown only when VALID
   var activeBudgetCats=_getActiveBudgetCategories(monthIso);
   var html='';
 
@@ -9315,11 +9354,6 @@ function renderBudget(){
     html+='<option value="'+mo.iso+'"'+(mo.iso===monthIso?' selected':'')+'>'+mo.label+'</option>';
   });
   html+='</select>';
-  if(_budgetLineRulesLoadStatus!=='loaded'){
-    html+='<span style="font-size:11px;color:#f59e0b;font-weight:600">⚠ Budget rules not loaded — amounts may be estimates</span>';
-  } else if(_budgetLineRulesCache&&_budgetLineRulesCache.length===0){
-    html+='<span style="font-size:11px;color:#ef4444;font-weight:600">⚠ No budget rules found — run phase-5b-seed.sql in Supabase</span>';
-  }
   html+='<div style="margin-left:auto;display:flex;gap:8px;align-items:center">';
   // A7a: read-only Category Report entry point. NOT gated on canWriteFinancials (Wendy-facing).
   html+='<button onclick="window.openCategoryReportPicker()" style="padding:6px 12px;background:var(--surface2);color:var(--ink);border:1px solid var(--border);border-radius:6px;font-size:12px;font-weight:600;cursor:pointer">Category Report</button>';
@@ -9339,6 +9373,9 @@ function renderBudget(){
   }
   html+='</div>';
   html+='</div>';
+  // P3b-1 A1b (§19.1): UNVERIFIED > COMPLETE WITH UNCATEGORIZED > VERIFIED (VERIFIED adds no label).
+  if(_ms.state==='UNVERIFIED')html+=_budgetIntegrityHtml(_ms,_blr,monthIso);
+  else if(_ms.state==='COMPLETE_WITH_UNCATEGORIZED')html+=_budgetUncatNoticeHtml(_ms);
 
   // ── Help Panel (collapsible) ───────────────────────────────────────────────
   html+='<div style="margin-bottom:12px">';
@@ -9398,7 +9435,7 @@ function renderBudget(){
   // markup is injected here after the expense-leaf loop tallies _overCount/_nearCount, so the
   // strip always matches the grid (single source of truth, no parallel computation). Slot below.
   html+='<!--BUDGET_ATTN_SLOT-->';
-  html+='<table style="width:100%;border-collapse:collapse;font-size:12px">';
+  html+='<table id="budget-grid" style="width:100%;border-collapse:collapse;font-size:12px">';
   html+='<thead><tr style="border-bottom:2px solid var(--border)">';
   html+='<th style="text-align:left;padding:5px 8px;color:var(--muted);font-weight:600">Category</th>';
   html+='<th style="text-align:right;padding:5px 8px;color:var(--muted);font-weight:600">Spent</th>';
@@ -9408,7 +9445,7 @@ function renderBudget(){
 
   // Compute spent by category_key from transactions
   var spentByKey={};
-  _budgetTransactions.forEach(function(t){
+  _legRows.forEach(function(t){
     if(t.transaction_type!=='household_expense')return;
     if(t.excluded_from_budget)return;
     if(!t.category_key)return;
@@ -9425,7 +9462,7 @@ function renderBudget(){
   // Phase 5F-1.5 A1: fold in the true signed net (outflows add, credits/refunds
   // subtract) so credits net against actuals. Net can be negative; the renderer
   // shows a negative actual as a credit/offset and Remaining = Budget - Net Actual.
-  var _regNet=_computeRegisterSpend(_budgetRegisterSpendCache,_catByKeyForSpend);
+  var _regNet=_computeRegisterSpend(_regRows,_catByKeyForSpend);
   Object.keys(_regNet).forEach(function(k){spentByKey[k]=(spentByKey[k]||0)+_regNet[k];});
 
   // Render INCOME section
@@ -9434,11 +9471,11 @@ function renderBudget(){
   // Phase 5F-1.5 A2: received income by category from the same Register month cache.
   // incomeActualTotal accumulates inside this displayed-active-income-leaf loop only,
   // so hidden/archived income transactions can never leak into the Total Income actual.
-  var _regIncome=_computeRegisterIncome(_budgetRegisterSpendCache,_catByKeyForSpend);
+  var _regIncome=_computeRegisterIncome(_regRows,_catByKeyForSpend);
   var incomeActualTotal=0;
   _getActiveCategoryRegistry().filter(function(c){return c.isIncome&&c.leaf;}).forEach(function(c){
-    var bud=_getBudgetAmount(c.key,monthIso);
-    incomeTotal+=bud;
+    var bud=_getBudgetAmount(c.key,monthIso); // null → "—" (§8.1)
+    incomeTotal+=bud||0;
     var rec=_regIncome[c.key]||0;
     incomeActualTotal+=rec;
     html+='<tr style="border-bottom:1px solid var(--border)">';
@@ -9448,22 +9485,22 @@ function renderBudget(){
         +'</span>'
       :'';
     html+='<td style="padding:5px 8px 5px 20px;color:var(--muted)">'+_blrIncomeActions+c.label+'</td>';
-    html+='<td style="text-align:right;padding:5px 8px;color:var(--muted)" title="Received this month">'+fsigned(rec)+'</td>';
-    html+='<td style="text-align:right;padding:5px 8px;color:var(--blue)">'+f(bud)+'</td>';
+    html+='<td style="text-align:right;padding:5px 8px;color:var(--muted)" title="Received this month">'+(_actOk?fsigned(rec):_BUDGET_CV)+'</td>';
+    html+='<td style="text-align:right;padding:5px 8px;color:var(--blue)">'+(bud===null?'—':f(bud))+'</td>';
     // UX-0 (BUD-1, decision 2): income Remaining is muted "expected" — never red/amber/green.
     // Income not yet received is a normal state, not a late-income signal. Amount preserved.
-    var _iRem=bud-rec;
-    var _iRemTxt=_iRem>0.005?fsigned(_iRem)+' <span style="font-size:10px">expected</span>':fsigned(_iRem);
+    var _iRem=(bud||0)-rec;
+    var _iRemTxt=(_actOk&&bud!==null)?(_iRem>0.005?fsigned(_iRem)+' <span style="font-size:10px">expected</span>':fsigned(_iRem)):_BUDGET_CV;
     html+='<td style="text-align:right;padding:5px 8px;color:var(--muted)" title="Income not yet received is expected, not a problem">'+_iRemTxt+'</td>';
     html+='</tr>';
   });
   html+='<tr style="border-bottom:2px solid var(--border);background:var(--bg)">';
   html+='<td style="padding:5px 8px;font-weight:700">Total Income</td>';
-  html+='<td style="text-align:right;padding:5px 8px;font-weight:700" title="Received this month">'+fsigned(incomeActualTotal)+'</td>';
-  html+='<td style="text-align:right;padding:5px 8px;font-weight:700;color:var(--blue)">'+f(incomeTotal)+'</td>';
+  html+='<td style="text-align:right;padding:5px 8px;font-weight:700" title="Received this month">'+(_actOk?fsigned(incomeActualTotal):_BUDGET_CV)+'</td>';
+  html+='<td style="text-align:right;padding:5px 8px;font-weight:700;color:var(--blue)">'+(_planTotOk?f(incomeTotal):'—')+'</td>';
   var _iTotRem=incomeTotal-incomeActualTotal;
   // UX-0 (BUD-1, decision 2): muted "expected", never red/amber/green. Amount preserved.
-  var _iTotRemTxt=_iTotRem>0.005?fsigned(_iTotRem)+' <span style="font-size:10px;font-weight:400">expected</span>':fsigned(_iTotRem);
+  var _iTotRemTxt=(_actOk&&_planTotOk)?(_iTotRem>0.005?fsigned(_iTotRem)+' <span style="font-size:10px;font-weight:400">expected</span>':fsigned(_iTotRem)):_BUDGET_CV;
   html+='<td style="text-align:right;padding:5px 8px;font-weight:700;color:var(--muted)">'+_iTotRemTxt+'</td>';
   html+='</tr>';
 
@@ -9489,7 +9526,7 @@ function renderBudget(){
     var pSpent=0,pBudget=0;
     rows.forEach(function(c){
       var s=spentByKey[c.key]||0;
-      var b=_getBudgetAmount(c.key,monthIso);
+      var b=_getBudgetAmount(c.key,monthIso)||0;
       pSpent+=s;pBudget+=b;
     });
     // Legacy rollup (Phase 5E-6): when a parent key has its own BLR rows or transactions
@@ -9498,7 +9535,7 @@ function renderBudget(){
     // Safe for all other groups: no other parent key has direct BLR rows or transactions.
     if(!isStandalone){
       var _legSpent=spentByKey[parent.key]||0;
-      var _legBudget=_getBudgetAmount(parent.key,monthIso);
+      var _legBudget=_getBudgetAmount(parent.key,monthIso)||0;
       pSpent+=_legSpent;
       pBudget+=_legBudget;
       // Also roll legacy amounts into grand totals so Total Planned Budget stays correct.
@@ -9519,19 +9556,20 @@ function renderBudget(){
       // group label, a touch more top padding — so major groups are easier to scan. Display-only.
       html+='<tr style="background:var(--bg);border-top:2px solid var(--line)">';
       html+='<td style="padding:9px 8px 3px;font-weight:700;font-size:11px;text-transform:uppercase;letter-spacing:.05em;color:var(--ink)">'+parent.label+'</td>';
-      html+='<td style="text-align:right;padding:9px 8px 3px;font-weight:700">'+fSpent(pSpent)+'</td>';
-      html+='<td style="text-align:right;padding:9px 8px 3px;font-weight:700;color:var(--blue)">'+f(pBudget)+'</td>';
+      html+='<td style="text-align:right;padding:9px 8px 3px;font-weight:700">'+(_actOk?fSpent(pSpent):_BUDGET_CV)+'</td>';
+      html+='<td style="text-align:right;padding:9px 8px 3px;font-weight:700;color:var(--blue)">'+(_planTotOk?f(pBudget):'—')+'</td>';
       var pRem=pBudget-pSpent;
       // UX-0 (BUD-1): parents apply the same red/amber/neutral rule to their own totals; no badge.
       var _pState=_budgetRowState(pSpent,pBudget);
       var _pColor=_pState==='over'?'#ef4444':(_pState==='near'?'var(--amber)':((pRem===pBudget&&pSpent===0)?'var(--muted)':'var(--ink)'));
-      html+='<td style="text-align:right;padding:9px 8px 3px;font-weight:700;color:'+_pColor+'">'+f(pRem)+'</td>';
+      html+='<td style="text-align:right;padding:9px 8px 3px;font-weight:700;color:'+_pColor+'">'+((_actOk&&_planTotOk)?f(pRem):_BUDGET_CV)+'</td>';
       html+='</tr>';
     }
 
     rows.forEach(function(c){
       var s=spentByKey[c.key]||0;
-      var b=_getBudgetAmount(c.key,monthIso);
+      var _bRaw=_getBudgetAmount(c.key,monthIso); // null → "—" (§8.1)
+      var b=_bRaw||0;
       if(b===0&&s===0)return; // skip zero rows
       var rem=b-s;
       var indent=isStandalone?'8px':'20px';
@@ -9557,10 +9595,16 @@ function renderBudget(){
       html+='<td style="padding:5px 8px 5px '+indent+(isGoalSweep?';font-style:italic':'')+'">'
         +_blrExpActions+_drillLabel+(isGoalSweep?' <span style="font-size:10px;color:var(--muted)">(flexible sweep line)</span>':'')+'</td>';
       var _spentInner=(s>0?f(s):(s<0?fSpent(s):'—'));
+      if(!_actOk)_spentInner=_BUDGET_CV;
       html+=isGoalSweep
         ?'<td style="text-align:right;padding:5px 8px">'+_spentInner+'</td>'
         :'<td data-cat-report-target="spent"'+_drillAttrs+' style="text-align:right;padding:5px 8px;cursor:pointer">'+_spentInner+'</td>';
       html+='<td style="text-align:right;padding:5px 8px;color:var(--blue)">'+(b>0?f(b):'—')+'</td>';
+      if(!_actOk||_bRaw===null){ // Remaining is actual-derived: "—" when the actual (or the planned) can't be trusted
+        html+='<td style="text-align:right;padding:5px 8px">'+_BUDGET_CV+'</td></tr>';
+        totalExpSpent+=s;totalExpBudget+=b;
+        return;
+      }
       // UX-0 (BUD-1): over=red value + "Over by $X" badge; near=amber value; under-with-spend=ink;
       // idle=muted. No row tint. Badge (red) is the only over-budget signal beyond the value.
       var _rowState=_budgetRowState(s,b);
@@ -9581,10 +9625,13 @@ function renderBudget(){
   var _totColor=_totState==='over'?'#ef4444':(_totState==='near'?'var(--amber)':((totalRem===totalExpBudget&&totalExpSpent===0)?'var(--muted)':'var(--ink)'));
   html+='<tr style="border-top:2px solid var(--border);background:var(--bg)">';
   html+='<td style="padding:6px 8px;font-weight:700">Total Planned Budget</td>';
-  html+='<td style="text-align:right;padding:6px 8px;font-weight:700">'+fSpent(totalExpSpent)+'</td>';
-  html+='<td style="text-align:right;padding:6px 8px;font-weight:700;color:var(--blue)">'+f(totalExpBudget)+'</td>';
-  html+='<td style="text-align:right;padding:6px 8px;font-weight:700;color:'+_totColor+'">'+f(totalRem)+'</td>';
+  html+='<td style="text-align:right;padding:6px 8px;font-weight:700">'+(_actOk?fSpent(totalExpSpent):_BUDGET_CV)+'</td>';
+  html+='<td style="text-align:right;padding:6px 8px;font-weight:700;color:var(--blue)">'+(_planTotOk?f(totalExpBudget):'—')+'</td>';
+  html+='<td style="text-align:right;padding:6px 8px;font-weight:700;color:'+_totColor+'">'+((_actOk&&_planTotOk)?f(totalRem):_BUDGET_CV)+'</td>';
   html+='</tr>';
+  if(!_planTotOk){ // §8.1: no balance verdict from budget-line totals that can't be trusted
+    html+='<tr><td colspan="4" style="padding:5px 8px;font-size:11px;color:var(--muted)">Budget balance isn\'t shown until budget lines can be verified.</td></tr>';
+  } else {
   // Budget balance row — income vs total planned; warns when not zero
   var budgetDiff=incomeTotal-totalExpBudget;
   var balanced=Math.abs(budgetDiff)<0.01;
@@ -9602,6 +9649,7 @@ function renderBudget(){
       +'Misc → Extra, or another discretionary category until the difference reaches $0.00.</td>';
     html+='</tr>';
   }
+  }
   html+='</tbody></table></div>';
 
 
@@ -9610,10 +9658,10 @@ function renderBudget(){
   // Budget tab reconciliation uses budget_transactions (current Wendy workflow).
   // This panel will move fully to the Transactions tab in Phase 5F-2 when the
   // new reconciliation workflow has parity.
-  html+=_renderBudgetRecon(monthIso);
+  html+=_renderBudgetRecon(monthIso,_legSrc);
 
   // ── Transaction List ───────────────────────────────────────────────────────
-  html+='<div class="panel" style="margin-bottom:16px">';
+  html+='<div id="budget-legacy-list" class="panel" style="margin-bottom:16px">';
   html+='<div style="display:flex;align-items:center;gap:10px;margin-bottom:10px;flex-wrap:wrap">';
   html+='<h3 style="margin:0;font-size:13px;font-weight:700;color:var(--ink)">Transactions</h3>';
   // Filter by account
@@ -9627,14 +9675,17 @@ function renderBudget(){
   html+='</select>';
   html+='</div>';
 
-  var txns=_budgetTransactions.filter(function(t){
+  var txns=_legRows.filter(function(t){
     if(_budgetFilterAccount!=='all'&&t.payment_account!==_budgetFilterAccount)return false;
     if(_budgetFilterCleared==='cleared'&&!t.is_cleared)return false;
     if(_budgetFilterCleared==='uncleared'&&t.is_cleared)return false;
     return true;
   });
 
-  if(!txns.length){
+  if(_legSrc.status!=='complete'){ // P3b-1 A1b: never present an unverified legacy source as an empty list
+    html+='<div style="padding:14px 12px;color:var(--muted);font-size:12px;text-align:center;line-height:1.5">'
+      +'Can\'t verify Budget-entered transactions for '+esc(_budgetMonthLabel(monthIso))+'. Refresh to retry.</div>';
+  } else if(!txns.length){
     // UX-0 (BUD-2): say why the panel is empty and the next step, with a live Register link
     // (FLOW-1 pattern). Actuals live in Register and are already counted in Spent above.
     html+='<div style="padding:14px 12px;color:var(--muted);font-size:12px;text-align:center;line-height:1.5">'
@@ -9703,11 +9754,12 @@ function renderBudget(){
     +'<span style="font-size:14px;font-weight:700;color:'+color+'">'+val+'</span></div>';};
   // Income expected never shows a positive figure once income is fully/over-received (_iTotRem<=0).
   var _incomeExpected=Math.max(0,_iTotRem);
+  var _stripOk=_actOk&&_planTotOk; // every strip value is actual- and budget-line-derived
   var _budgetStrip='<div style="display:flex;flex-wrap:wrap;gap:18px;align-items:center;padding:9px 12px;margin:0 0 12px;background:var(--surface2);border:1px solid var(--line);border-radius:8px">'
-    +_attnItem('Over budget',_overCount+' '+(_overCount===1?'line':'lines'),_overCount>0?'#ef4444':'var(--ink)')
-    +_attnItem('Near limit',_nearCount+' '+(_nearCount===1?'line':'lines'),_nearCount>0?'var(--amber)':'var(--ink)')
-    +_attnItem('Planned remaining',f(totalRem),totalRem<0?'#ef4444':'var(--ink)')
-    +_attnItem('Income expected',f(_incomeExpected),'var(--muted)')
+    +_attnItem('Over budget',_stripOk?_overCount+' '+(_overCount===1?'line':'lines'):_BUDGET_CV,_stripOk&&_overCount>0?'#ef4444':'var(--ink)')
+    +_attnItem('Near limit',_stripOk?_nearCount+' '+(_nearCount===1?'line':'lines'):_BUDGET_CV,_stripOk&&_nearCount>0?'var(--amber)':'var(--ink)')
+    +_attnItem('Planned remaining',_stripOk?f(totalRem):_BUDGET_CV,_stripOk&&totalRem<0?'#ef4444':'var(--ink)')
+    +_attnItem('Income expected',_stripOk?f(_incomeExpected):_BUDGET_CV,'var(--muted)')
     +'</div>';
   // split/join (not String.replace) so '$' in the injected money strings is inserted literally.
   html=html.split('<!--BUDGET_ATTN_SLOT-->').join(_budgetLegend+_budgetStrip);
@@ -9822,9 +9874,14 @@ function _renderBudgetForm(monthIso){
 }
 
 // ── Reconciliation Panel ───────────────────────────────────────────────────
-function _renderBudgetRecon(monthIso){
-  var html='<div class="panel" style="margin-bottom:16px">';
+function _renderBudgetRecon(monthIso,legSrc){
+  var html='<div id="budget-recon" class="panel" style="margin-bottom:16px">';
   html+='<h3 style="margin:0 0 10px;font-size:13px;font-weight:700;color:var(--ink)">Statement check</h3>';
+  // P3b-1 A1b (§19.1, D5): results only from a COMPLETE legacy source of the current pair.
+  if(!legSrc||legSrc.status!=='complete'){
+    return html+'<div id="budget-recon-unavailable" style="font-size:12px;color:var(--muted);line-height:1.5">Can\'t verify the statement check for '+esc(_budgetMonthLabel(monthIso))
+      +': Budget-entered transactions for this month couldn\'t be fully loaded. Refresh to retry.</div></div>';
+  }
 
   // Account picker
   html+='<div style="display:flex;align-items:center;gap:10px;margin-bottom:10px;flex-wrap:wrap">';
@@ -9839,7 +9896,7 @@ function _renderBudgetRecon(monthIso){
   // Compute totals for selected account
   var acct=_budgetReconAccount;
   var entered=0,clearedAmt=0,unclearedAmt=0,householdAmt=0,reimbAmt=0;
-  _budgetTransactions.forEach(function(t){
+  legSrc.rows.forEach(function(t){
     if(t.payment_account!==acct)return;
     var a=parseFloat(t.amount)||0;
     entered+=a;
@@ -10683,9 +10740,10 @@ function _blrUnavailable(){
   if(_budgetLineRulesLoadStatus==='failed')return {code:'failed',message:"Budget lines couldn't be loaded. Refresh to retry."};
   if(_budgetLineRulesLoadStatus!=='loaded')return {code:'loading',message:'Loading budget lines…'};
   if(!Array.isArray(_budgetLineRulesCache))return {code:'failed',message:"Budget lines couldn't be loaded. Refresh to retry."};
-  if(_budgetLineRulesCache.length===0)return {code:'empty',message:'Budget lines: none found.'};
+  // A1b (owner ruling A): category authority is checked before "empty", so "empty" never masks it.
   if(_registriesLoadStatus==='failed'||(_registriesLoadStatus==='loaded'&&!Array.isArray(_categoriesCache)))return {code:'categories',message:"Categories couldn't be loaded. Refresh to retry."};
   if(_registriesLoadStatus!=='loaded')return {code:'loading',message:'Loading categories…'};
+  if(_budgetLineRulesCache.length===0)return {code:'empty',message:'Budget lines: none found.'};
   return null;
 }
 
@@ -10741,6 +10799,12 @@ function _blrState(monthIso){
     if(bad.indexOf(k)<0)bad.push(k);
   });
   return bad.length?{state:'INVALID',keys:bad}:{state:'VALID',keys:[]};
+}
+// §8.1 / §19.3 concise reason for a non-VALID BLR_STATE (shared by Goals and Budget).
+function _blrReasonText(s){
+  if(s.state==='UNAVAILABLE')return 'Budget lines unavailable: '+s.message;
+  if(s.state==='INVALID')return 'Budget lines need attention: '+s.keys.map(String).join(', ');
+  return '';
 }
 // INV-A: registry leaf keys that are not BACKED.
 function _budgetRegistryBackingViolations(live){
@@ -10837,11 +10901,16 @@ function _budgetMonthState(monthIso){
   return {state:state,monthIso:monthIso,gen:c.gen,reasons:reasons,uncategorized:{count:n,net:cents/100},auditFindings:findings};
 }
 
-// P3b-1 A1a: returns null when budget-line/category authority is unavailable (no fallback values).
-function _getBudgetLivingExpenses(weekNum){
+// Calendar month (ISO first-of-month) containing a model week's start date.
+function _budgetWeekMonthIso(weekNum){
   var wsd=getWeekStartDate(weekNum);
-  var monthIso=wsd.getFullYear()+'-'+String(wsd.getMonth()+1).padStart(2,'0')+'-01';
-  if(!_blrUnavailable()){
+  return wsd.getFullYear()+'-'+String(wsd.getMonth()+1).padStart(2,'0')+'-01';
+}
+// P3b-1 A1b (§8.1, INV-D): the current calculation only when BLR_STATE is VALID; otherwise null
+// (never a partial sum, never fallback values).
+function _getBudgetLivingExpenses(weekNum){
+  var monthIso=_budgetWeekMonthIso(weekNum);
+  if(_blrState(monthIso).state==='VALID'){
     var total=0;
     _budgetLineRulesCache.forEach(function(r){
       if(!r.is_active)return;
@@ -10859,8 +10928,11 @@ function _getBudgetLivingExpenses(weekNum){
 // _getBudgetAmount(categoryKey, monthIso)
 // Returns the budgeted amount for a single category key in a given ISO month.
 // Used by the Budget printout UI to populate the Budget column.
+// P3b-1 A1b (§8.1, INV-D): null (shown as "—") when BLR_STATE is UNAVAILABLE or the key itself is an
+// INVALID line key; backed rows keep their planned amount under INVALID.
 function _getBudgetAmount(categoryKey, monthIso){
-  if(!_budgetLineRulesCache||_budgetLineRulesLoadStatus!=='loaded')return 0;
+  var _s=_blrState(monthIso);
+  if(_s.state==='UNAVAILABLE'||(_s.state==='INVALID'&&_s.keys.indexOf(categoryKey)>=0))return null;
   var total=0;
   _budgetLineRulesCache.forEach(function(r){
     if(!r.is_active||r.category_key!==categoryKey)return;
@@ -10903,11 +10975,14 @@ function _txDateToMonthIso(dateStr){
 // _getActiveBudgetCategories(monthIso)
 // Returns the set of category keys that have an active line rule for the given month.
 // Used to avoid showing zero-budget rows in the Budget UI.
+// P3b-1 A1b (§8.1, INV-D): UNAVAILABLE → no rule-driven rows (zero-row suppression only); INVALID → backed rows only.
 function _getActiveBudgetCategories(monthIso){
   var active={};
-  if(!_budgetLineRulesCache||_budgetLineRulesLoadStatus!=='loaded')return active;
+  var _s=_blrState(monthIso);
+  if(_s.state==='UNAVAILABLE')return active;
   _budgetLineRulesCache.forEach(function(r){
     if(!r.is_active)return;
+    if(_s.state==='INVALID'&&_s.keys.indexOf(r.category_key)>=0)return;
     if(r.start_month>monthIso)return;
     if(r.end_month!==null&&r.end_month!==undefined&&r.end_month<monthIso)return;
     active[r.category_key]=(active[r.category_key]||0)+(parseFloat(r.amount)||0);
@@ -10995,15 +11070,43 @@ function _blrCloseModal(){
   if(slot)slot.innerHTML='';
 }
 
-// P3b-1 A1a (K2): Manage Lines writes require demonstrably loaded budget lines, so the existing
-// overlap and duplicate-label guards always run against current state (never stale / never absent).
+// P3b-1 A1b (§18.2 as clarified by owner ruling A, CODEX_STATUS 2026-09-18d): Manage Lines needs loaded,
+// current budget-line AND category authority. Derived from BLR_STATE: VALID/INVALID mean both are loaded;
+// UNAVAILABLE refuses, except an authoritative loaded-empty population (first-line bootstrap), which
+// BLR_STATE reports as 'empty' only after category authority is loaded. The existing overlap and
+// duplicate-label guards therefore always run against current state.
 function _blrMutationUnavailable(){
-  return _budgetLineRulesLoadStatus!=='loaded'||!Array.isArray(_budgetLineRulesCache);
+  var s=_blrState(_budgetGetMonthIso());
+  return s.state==='UNAVAILABLE'&&!(s.code==='empty'&&_registriesLoadStatus==='loaded'&&Array.isArray(_categoriesCache));
 }
 var _BLR_UNAVAILABLE_MSG="Budget lines aren't loaded right now, so they can't be changed. Refresh the page and try again.";
+function _blrMutationUnavailableMsg(){
+  var u=_blrUnavailable();
+  return (u&&(u.code==='categories'||u.message==='Loading categories…'))?"Categories aren't loaded right now, so budget lines can't be changed. Refresh the page and try again.":_BLR_UNAVAILABLE_MSG;
+}
 function _blrRefuseIfUnavailable(m){
   if(!_blrMutationUnavailable())return false;
-  m.error=_BLR_UNAVAILABLE_MSG;_blrRenderModal();return true;
+  m.error=_blrMutationUnavailableMsg();_blrRenderModal();return true;
+}
+// P3b-1 A1b (INV-E §18.2): fresh single-key read at save time; the key must be a BACKED registry leaf.
+// Returns null when authorized, else the refusal message. Fails closed on any request, status, shape or
+// content problem. A cached category list is never mutation authority.
+async function _blrFreshBackedError(h,key){
+  var VERIFY="Couldn't verify the category — try again.";
+  var e=_budgetRegistryEntry(key);
+  if(!e||!e.leaf)return "Budget lines can only use a budget category — choose another.";
+  var res,rows;
+  try{
+    res=await fetch(SUPA_URL+'/rest/v1/categories?key=eq.'+encodeURIComponent(key)
+      +'&select=key,is_leaf,lifecycle_status,behavior_class,budget_treatment',{headers:h});
+  }catch(err){console.error('[A1b] category read failed:',err);return VERIFY;}
+  if(!res.ok){console.error('[A1b] category read HTTP '+res.status);return VERIFY;}
+  try{rows=await res.json();}catch(err){return VERIFY;}
+  if(!Array.isArray(rows))return VERIFY;
+  if(rows.length===0)return 'That category no longer exists — choose another.';
+  if(rows.length!==1||!rows[0]||rows[0].key!==key)return VERIFY;
+  var live=Object.create(null);live[key]=rows[0];
+  return _budgetIsBacked(key,live)?null:"That category can't be used for a budget line right now — choose another.";
 }
 
 function _blrRenderModal(){
@@ -11014,7 +11117,7 @@ function _blrRenderModal(){
   if(_blrMutationUnavailable()){
     slot.innerHTML='<div class="sc-modal-overlay" onclick="if(event.target===this)window._blrCloseModal()"><div class="sc-modal" style="width:460px;max-width:96vw">'
       +'<div class="sc-modal-title">Manage Lines unavailable</div>'
-      +'<div id="blr-unavailable" class="sc-modal-body" style="font-size:13px;color:var(--ink);margin-bottom:12px">'+esc(_BLR_UNAVAILABLE_MSG)+'</div>'
+      +'<div id="blr-unavailable" class="sc-modal-body" style="font-size:13px;color:var(--ink);margin-bottom:12px">'+esc(_blrMutationUnavailableMsg())+'</div>'
       +'<div class="sc-modal-btns"><button class="sc-modal-cancel" onclick="window._blrCloseModal()">Close</button></div></div></div>';
     return;
   }
@@ -11057,7 +11160,8 @@ function _blrRenderModal(){
 
   } else if(m.mode==='add'){
     var monthLabel=_budgetMonthLabel(m.monthIso);
-    var leafKeys=BUDGET_CATEGORY_REGISTRY.filter(function(c){return c.leaf;});
+    var _live=_budgetLiveCategoryIndex(); // P3b-1 A1b (INV-E §18.1): only registry leaves BACKED at render time
+    var leafKeys=BUDGET_CATEGORY_REGISTRY.filter(function(c){return c.leaf&&_budgetIsBacked(c.key,_live);});
     html+='<div class="sc-modal-title">Add Budget Line</div>';
     html+='<div class="sc-modal-body" style="margin-bottom:4px">';
     html+='<div class="modal-field"><label class="modal-label">Category (existing categories only)</label>';
@@ -11248,6 +11352,8 @@ async function _blrSaveEdit(){
   m.saving=true;_blrRenderModal();
   try{
     var h=await getAuthHeaders();
+    var _be=await _blrFreshBackedError(h,m.key); // P3b-1 A1b (INV-E §18.2)
+    if(_be){m.saving=false;m.error=_be;_blrRenderModal();return;}
     // Step 1: close/deactivate current row.
     // Track original state for best-effort rollback if Step 2 fails.
     // Note: REST writes are not transaction-wrapped — rollback is best-effort only.
@@ -11314,6 +11420,8 @@ async function _blrSaveAdd(){
   m.saving=true;_blrRenderModal();
   try{
     var h=await getAuthHeaders();
+    var _be=await _blrFreshBackedError(h,m.key); // P3b-1 A1b (INV-E §18.2)
+    if(_be){m.saving=false;m.error=_be;_blrRenderModal();return;}
     var r=await fetch(SUPA_URL+'/rest/v1/budget_line_rules',
       {method:'POST',headers:Object.assign({},h,{'Prefer':'return=minimal'}),
        body:JSON.stringify({category_key:m.key,line_label:m.label.trim(),amount:amt,start_month:m.monthIso,end_month:endMonth})});

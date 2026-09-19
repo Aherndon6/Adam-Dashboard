@@ -263,6 +263,27 @@ async function routeCategoryAuthority(page, rows) {
       body: JSON.stringify((rows || []).filter(c => c.key === key)) });
   });
 }
+// P3b-1 A1b (spec §24 class A): Budget actuals come only from a committed month pair, and BLR_STATE needs a
+// category table that backs every budget-line key. Tests that inject Budget state do it through the app's
+// own pair functions (never by writing the consumer mirrors). Evaluate once in the page before use.
+const A1B_PAGE_HELPERS = `(function(){
+  window.__a1bBackedCats=function(extra){
+    return BUDGET_CATEGORY_REGISTRY.map(function(c){
+      var r={key:c.key,label:c.label,parent_key:c.parent||null,is_leaf:!!c.leaf,lifecycle_status:'active',merged_into_key:null,behavior_class:'expense',budget_treatment:'tracked'};
+      if(!c.leaf){r.behavior_class=null;r.budget_treatment=null;}
+      else if(c.isIncome){r.behavior_class='income';r.budget_treatment='display_only';}
+      else if(c.key==='misc.goal_sweep'){r.behavior_class='savings_allocation';r.budget_treatment='planned_allocation';}
+      return r;
+    }).concat(extra||[]);
+  };
+  window.__a1bCommitPair=function(monthIso,reg,leg){
+    var ids=function(a,p){return (a||[]).map(function(r,i){return r.id!=null?r:Object.assign({id:p+'-'+i},r);});};
+    var cr=function(a){return a.length?'0-'+(a.length-1)+'/'+a.length:'*/0';};
+    var R=ids(reg,'e2e-r'),L=ids(leg,'e2e-l'),c=_budgetStartPairCycle(monthIso);
+    c.sources={register:_budgetVerifyMonthRows(R,cr(R)),legacy:_budgetVerifyMonthRows(L,cr(L))};
+    _budgetPairCommit(c);
+  };
+})()`;
 const A1A_E2E_GROCERIES = { key: 'groceries', label: 'Groceries', parent_key: null, is_leaf: true,
   lifecycle_status: 'active', behavior_class: 'discretionary', budget_treatment: 'expense' };
 
@@ -2468,68 +2489,42 @@ async function clickNav(page, id) {
     await context.close();
   }, { tags: ['smoke'] });
 
-  await test('BUD-4: Optimistic cleared toggle updates reconciliation immediately (no network)', async () => {
-    // Simulates the optimistic update without a Supabase call to verify the state machine works.
-    // This is the core logic that was broken by the infinite recursion bug.
+  await test('BUD-4: cleared toggle reaches the Statement check through the re-read pair (A1b §17: the optimistic copy is not authoritative)', async () => {
+    // Intent kept: toggling cleared updates the reconciliation panel. A1b (§17, owner Round-2 ruling): the panel
+    // reads only the committed pair, so an optimistic consumer-copy edit alone must NOT change it; the toggle's
+    // pair re-read does. The re-read is simulated by committing the post-write pair (no network).
     const { page, context } = await openApp(browser);
+    await page.evaluate(A1B_PAGE_HELPERS);
     const result = await page.evaluate(() => {
-      // Inject one test transaction for AMEX Gold, not cleared
       var testId = 'bud4-test-uuid-1234';
-      _budgetTransactions = [{
-        id: testId,
-        transaction_date: '2026-06-01',
-        amount: '50.00',
-        transaction_type: 'household_expense',
-        category_key: 'entertainment',
-        description: 'BUD-4 test',
-        payment_account: 'AMEX Gold',
-        is_cleared: false,
-        cleared_date: null,
-        excluded_from_budget: false,
-        reimbursement_source: null,
-        reimbursement_status: null,
-        created_at: new Date().toISOString()
-      }];
-      _budgetTransLoadStatus = 'loaded';
-      // Phase 5E-9: renderBudget's loading gate now also awaits Register spend before
-      // rendering the grid. Mark it loaded (empty cache) so this test's direct state
-      // injection isn't blocked behind a real, unmocked fetch.
-      _budgetRegisterSpendCache = [];
-      _budgetRegisterSpendLoadStatus = 'loaded';
-      _budgetReconAccount = 'AMEX Gold';
-      _budgetReconBalance = '';
+      var row = { id: testId, transaction_date: '2026-06-01', amount: '50.00', transaction_type: 'household_expense',
+        category_key: 'entertainment', description: 'BUD-4 test', payment_account: 'AMEX Gold', is_cleared: false, cleared_date: null,
+        excluded_from_budget: false, reimbursement_source: null, reimbursement_status: null, created_at: new Date().toISOString() };
+      _budgetReconAccount = 'AMEX Gold'; _budgetReconBalance = ''; _budgetSelectedMonth = '2026-06-01';
       activeSection = 'budget';
+      __a1bCommitPair('2026-06-01', [], [row]); renderApp();
+      var cl = function(){ var t = document.getElementById('budget-content') ? document.getElementById('budget-content').innerText : ''; var m = t.match(/Cleared\s*\$([0-9.,]+)/); return m ? m[1] : 'not found'; };
+      var before = cl();
+      _budgetTransactions = _budgetTransactions.map(function(t){ return t.id === testId ? Object.assign({}, t, { is_cleared: true, cleared_date: '2026-06-24' }) : t; });
       renderApp();
-      // Read cleared total before toggle
-      var beforeText = document.getElementById('budget-content') ? document.getElementById('budget-content').innerText : '';
-      var clearedBefore = beforeText.match(/Cleared\s*\$([0-9.,]+)/);
-      var clearedBeforeAmt = clearedBefore ? clearedBefore[1] : 'not found';
-      // Apply optimistic update (the same pattern _budgetToggleCleared uses)
-      _budgetTransactions = _budgetTransactions.map(function(t){
-        return t.id === testId ? Object.assign({}, t, { is_cleared: true, cleared_date: '2026-06-24' }) : t;
-      });
-      renderApp();
-      // Read cleared total after toggle
-      var afterText = document.getElementById('budget-content') ? document.getElementById('budget-content').innerText : '';
-      var clearedAfter = afterText.match(/Cleared\s*\$([0-9.,]+)/);
-      var clearedAfterAmt = clearedAfter ? clearedAfter[1] : 'not found';
-      // Restore state
-      _budgetTransactions = [];
-      _budgetTransLoadStatus = 'not_loaded';
-      _budgetRegisterSpendCache = [];
-      _budgetRegisterSpendLoadStatus = 'not_loaded';
-      return { clearedBeforeAmt, clearedAfterAmt };
+      var optimisticOnly = cl();
+      __a1bCommitPair('2026-06-01', [], [Object.assign({}, row, { is_cleared: true, cleared_date: '2026-06-24' })]); renderApp();
+      var after = cl();
+      _budgetPairCycle = null; _budgetTransactions = []; _budgetTransLoadStatus = 'not_loaded'; _budgetRegisterSpendCache = []; _budgetRegisterSpendLoadStatus = 'not_loaded'; _budgetSelectedMonth = '';
+      return { before, optimisticOnly, after };
     });
-    assert(result.clearedBeforeAmt === '0.00', 'Cleared should be $0.00 before toggle, got: ' + result.clearedBeforeAmt);
-    assert(result.clearedAfterAmt === '50.00', 'Cleared should be $50.00 after toggle, got: ' + result.clearedAfterAmt);
+    assert(result.before === '0.00', 'Cleared should be $0.00 before toggle, got: ' + result.before);
+    assert(result.optimisticOnly === '0.00', 'an optimistic consumer-copy edit alone must not change the Statement check, got: ' + result.optimisticOnly);
+    assert(result.after === '50.00', 'Cleared should be $50.00 once the pair is re-read, got: ' + result.after);
     await context.close();
   });
 
   await test('BUD-5: Delete confirm flow renders Yes/No buttons when _budgetDeleteConfirmId is set', async () => {
     const { page, context } = await openApp(browser);
+    await page.evaluate(A1B_PAGE_HELPERS);
     const result = await page.evaluate(() => {
       var testId = 'bud5-delete-test-uuid';
-      _budgetTransactions = [{
+      var _rows = [{
         id: testId,
         transaction_date: '2026-06-01',
         amount: '25.00',
@@ -2544,12 +2539,9 @@ async function clickNav(page, id) {
         reimbursement_status: null,
         created_at: new Date().toISOString()
       }];
-      _budgetTransLoadStatus = 'loaded';
-      // Phase 5E-9: renderBudget's loading gate now also awaits Register spend before
-      // rendering the grid. Mark it loaded (empty cache) so this test's direct state
-      // injection isn't blocked behind a real, unmocked fetch.
-      _budgetRegisterSpendCache = [];
-      _budgetRegisterSpendLoadStatus = 'loaded';
+      // P3b-1 A1b (§24 class A): the legacy row arrives through a committed month pair.
+      _budgetSelectedMonth = '2026-06-01';
+      __a1bCommitPair('2026-06-01', [], _rows);
       activeSection = 'budget';
       // Trigger delete confirm state
       _budgetDeleteConfirmId = testId;
@@ -2559,6 +2551,7 @@ async function clickNav(page, id) {
       var hasNo  = content.includes('>No<');
       // Restore
       _budgetDeleteConfirmId = null;
+      _budgetPairCycle = null; _budgetSelectedMonth = '';
       _budgetTransactions = [];
       _budgetTransLoadStatus = 'not_loaded';
       _budgetRegisterSpendCache = [];
@@ -2578,26 +2571,27 @@ async function clickNav(page, id) {
     // rather than mocking the network fetch — 5E9-13 in test_regression.js separately
     // verifies the fetch itself queries the correct month range.
     const { page, context } = await openApp(browser);
+    await page.evaluate(A1B_PAGE_HELPERS);
     const result = await page.evaluate(() => {
-      _categoriesCache = [
-        {key:'entertainment',label:'Entertainment',parent_key:null,is_leaf:false,lifecycle_status:'active',behavior_class:null,budget_treatment:null},
-        {key:'entertainment.week_1',label:'Entertainment Week 1',parent_key:'entertainment',is_leaf:true,lifecycle_status:'active',behavior_class:'expense',budget_treatment:'tracked'},
+      // P3b-1 A1b (§24 class A): a category table that backs every registry key, plus the two live
+      // non-countable categories this test exercises; one valid budget line so BLR_STATE is VALID.
+      _categoriesCache = __a1bBackedCats([
         // Real confirmed live category — reimbursable_expense but budget_treatment=excluded,
         // must not count even though it's outflow-shaped and has a spend-like behavior_class.
         {key:'business.jabian_expenses_2026',label:'Jabian Expenses 2026',parent_key:'business',is_leaf:true,lifecycle_status:'active',behavior_class:'reimbursable_expense',budget_treatment:'excluded'},
         // Real confirmed live category — transfer, must not count.
         {key:'transfers.greenlight',label:'Greenlight',parent_key:'transfers',is_leaf:true,lifecycle_status:'active',behavior_class:'transfer',budget_treatment:'excluded'}
-      ];
+      ]);
       _registriesLoadStatus = 'loaded';
+      _budgetLineRulesCache = [{id:'b6',category_key:'entertainment.week_1',line_label:'Entertainment Week 1',amount:100,start_month:'2026-07-01',end_month:null,is_active:true}];
+      _budgetLineRulesLoadStatus = 'loaded';
       // budget_transactions has 0 July rows (confirmed via live preflight) — additive merge
       // is being exercised in isolation here, same as the confirmed-safe production state.
-      _budgetTransactions = [];
-      _budgetTransLoadStatus = 'loaded';
       // Adam's real July 2 example: Fandango $40.00 + Barn $32.68 + mend coffee $12.98 = $85.66,
       // all tagged entertainment.week_1. Plus a same-category $15.00 credit/refund that (A1)
       // NETS DOWN the actual to $70.66, and a Jabian Expenses / Greenlight outflow (must not
       // count despite being real outflow spend).
-      _budgetRegisterSpendCache = [
+      var _reg = [
         {category_key:'entertainment.week_1', amount:-40.00, transaction_date:'2026-07-01'},
         {category_key:'entertainment.week_1', amount:-32.68, transaction_date:'2026-07-01'},
         {category_key:'entertainment.week_1', amount:-12.98, transaction_date:'2026-07-01'},
@@ -2605,10 +2599,9 @@ async function clickNav(page, id) {
         {category_key:'business.jabian_expenses_2026', amount:-7.17, transaction_date:'2026-07-01'}, // excluded treatment
         {category_key:'transfers.greenlight', amount:-25.00, transaction_date:'2026-07-01'} // transfer, must not count
       ];
-      _budgetRegisterSpendLoadStatus = 'loaded';
       _budgetSelectedMonth = '2026-07-01';
       setSection('budget');
-      _budgetTransLoadStatus = 'loaded'; _budgetRegisterSpendLoadStatus = 'loaded'; // P3b-1 A1a (K3): entering Budget re-requests both sources; re-assert the loaded fixture pair so the grid renders from a complete pair, not a partial in-flight one
+      __a1bCommitPair('2026-07-01', _reg, []); // P3b-1 A1b: the fixture rows arrive as one committed pair (supersedes the in-flight entry load)
       renderApp();
       var el = document.getElementById('budget-content');
       var innerHtml = el ? el.innerHTML : '';
@@ -2631,14 +2624,11 @@ async function clickNav(page, id) {
 
   await test('BUD-7 (Phase 5E-10): Budget "+ Add Transaction" is disabled with explanatory copy; Manage Lines stays active; help panel redirects to Register', async () => {
     const { page, context } = await openApp(browser);
+    await page.evaluate(A1B_PAGE_HELPERS);
     const result = await page.evaluate(() => {
-      _budgetTransactions = [];
-      _budgetTransLoadStatus = 'loaded';
-      _budgetRegisterSpendCache = [];
-      _budgetRegisterSpendLoadStatus = 'loaded';
       _budgetShowHelp = true; // expand the help panel so its text is present in the DOM
       setSection('budget');
-      _budgetTransLoadStatus = 'loaded'; _budgetRegisterSpendLoadStatus = 'loaded'; // P3b-1 A1a (K3): entering Budget re-requests both sources; re-assert the loaded fixture pair so the grid renders from a complete pair, not a partial in-flight one
+      __a1bCommitPair(_budgetGetMonthIso(), [], []); // P3b-1 A1b: an empty committed pair (supersedes the in-flight entry load)
       renderApp();
       var el = document.getElementById('budget-content');
       var innerHtml = el ? el.innerHTML : '';
@@ -2671,62 +2661,41 @@ async function clickNav(page, id) {
   }, { tags: ['smoke'] });
 
   await test('BUD-8 (Phase 5F-1.5 A2): Budget income rows show received actuals and Remaining = budget - received; hidden income never leaks into Total Income', async () => {
+    // P3b-1 A1b rewrite by intent: the archived Old Bonus inflow is an archived income-countable reference, which
+    // §10 makes UNVERIFIED (stronger than the old silent exclusion). So: (A) with it present, nothing leaks and
+    // income actuals are "can't verify"; (B) without it, the received / Remaining figures are exactly as before.
     const { page, context } = await openApp(browser);
+    await page.evaluate(A1B_PAGE_HELPERS);
     const result = await page.evaluate(() => {
-      _categoriesCache = [
-        {key:'income',label:'Income',parent_key:null,is_leaf:false,lifecycle_status:'active',behavior_class:null,budget_treatment:null},
-        {key:'income.net_salary',label:'Net Salary',parent_key:'income',is_leaf:true,lifecycle_status:'active',behavior_class:'income',budget_treatment:'display_only'},
-        // Archived income leaf: must render nowhere and must not leak into Total Income actual.
-        {key:'income.old_bonus',label:'Old Bonus',parent_key:'income',is_leaf:true,lifecycle_status:'archived',behavior_class:'income',budget_treatment:'display_only'}
-      ];
+      _categoriesCache = __a1bBackedCats([
+        {key:'income.old_bonus',label:'Old Bonus',parent_key:'income',is_leaf:true,lifecycle_status:'archived',behavior_class:'income',budget_treatment:'display_only'}]);
       _registriesLoadStatus = 'loaded';
-      _budgetTransactions = [];
-      _budgetTransLoadStatus = 'loaded';
-      // Net Salary budgeted (via BLR) at $5,000; received $4,000 with a -$100 correction = $3,900 net,
-      // so Remaining = $1,100. Old Bonus (archived) has a $2,000 inflow that must be excluded from the
-      // Total Income actual (a leak would show $5,900 instead of $3,900). BLR match fields are
-      // is_active/start_month/end_month, and _getBudgetAmount requires _budgetLineRulesLoadStatus=loaded.
-      _budgetLineRulesCache = [
-        {category_key:'income.net_salary', line_label:'Net Salary', amount:5000, is_active:true, start_month:'2026-07-01', end_month:null}
-      ];
+      _budgetLineRulesCache = [{id:'b8',category_key:'income.net_salary', line_label:'Net Salary', amount:5000, is_active:true, start_month:'2026-07-01', end_month:null}];
       _budgetLineRulesLoadStatus = 'loaded';
-      _budgetRegisterSpendCache = [
-        {category_key:'income.net_salary', amount:4000.00, transaction_date:'2026-07-01'},
-        {category_key:'income.net_salary', amount:-100.00, transaction_date:'2026-07-03'}, // correction, nets down
-        {category_key:'income.old_bonus',  amount:2000.00, transaction_date:'2026-07-02'}  // archived, must not leak
-      ];
-      _budgetRegisterSpendLoadStatus = 'loaded';
+      var salary = [{category_key:'income.net_salary', amount:4000.00, transaction_date:'2026-07-01'},
+        {category_key:'income.net_salary', amount:-100.00, transaction_date:'2026-07-03'}]; // correction, nets down
+      var bonus = {category_key:'income.old_bonus', amount:2000.00, transaction_date:'2026-07-02'}; // archived
       _budgetSelectedMonth = '2026-07-01';
       setSection('budget');
-      _budgetTransLoadStatus = 'loaded'; _budgetRegisterSpendLoadStatus = 'loaded'; // P3b-1 A1a (K3): entering Budget re-requests both sources; re-assert the loaded fixture pair so the grid renders from a complete pair, not a partial in-flight one
-      renderApp();
-      var el = document.getElementById('budget-content');
-      var innerText = el ? el.innerText : '';
-      // Restore
-      _budgetTransactions = [];
-      _budgetTransLoadStatus = 'not_loaded';
-      _budgetRegisterSpendCache = [];
-      _budgetRegisterSpendLoadStatus = 'not_loaded';
-      _budgetLineRulesCache = null;
-      _budgetLineRulesLoadStatus = 'not_loaded';
-      _budgetSelectedMonth = '';
-      return { innerText };
+      var text = function(){ var el = document.getElementById('budget-content'); return el ? el.innerText : ''; };
+      __a1bCommitPair('2026-07-01', salary.concat([bonus]), []); renderApp(); var withArchived = text();
+      __a1bCommitPair('2026-07-01', salary, []); renderApp(); var clean = text();
+      _budgetPairCycle = null; _budgetTransactions = []; _budgetTransLoadStatus = 'not_loaded'; _budgetRegisterSpendCache = []; _budgetRegisterSpendLoadStatus = 'not_loaded';
+      _budgetLineRulesCache = null; _budgetLineRulesLoadStatus = 'not_loaded'; _budgetSelectedMonth = '';
+      return { withArchived, clean };
     });
-    var nsRow = (result.innerText.match(/Net Salary[^\n]*/) || [''])[0];
-    var tiRow = (result.innerText.match(/Total Income[^\n]*/) || [''])[0];
-    // 1. Net Salary row shows received actual $3,900.
+    var row = function(t, label){ return (t.match(new RegExp(label + '[^\\n]*')) || [''])[0]; };
+    // (A) archived income present → no leak anywhere; income actuals can't be verified; the reason names the key.
+    var A = result.withArchived;
+    assert(!A.includes('Old Bonus') && !A.includes('2,000') && !A.includes('2000.00'), 'Archived Old Bonus must not render or leak');
+    assert(!row(A,'Total Income').includes('5,900') && !row(A,'Total Income').includes('3,900'), 'Total Income actual must not be shown as a figure while unverifiable, got row: ' + row(A,'Total Income'));
+    assert(/income\.old_bonus/.test(A), 'the integrity reason must name the archived income category');
+    // (B) clean month → the original A2 figures.
+    var nsRow = row(result.clean,'Net Salary'), tiRow = row(result.clean,'Total Income');
     assert(nsRow.includes('Net Salary'), 'Budget grid must show the Net Salary income row');
     assert(nsRow.includes('3,900'), 'Net Salary received actual must be $3,900 ($4,000 minus the $100 correction), got row: ' + nsRow);
-    // 2. Net Salary row shows Remaining $1,100 (budget $5,000 - received $3,900).
     assert(nsRow.includes('1,100'), 'Net Salary Remaining must be $1,100 (budget 5,000 - received 3,900), got row: ' + nsRow);
-    // 3. Total Income row exists.
-    assert(tiRow.includes('Total Income'), 'Total Income row must exist');
-    // 4. Total Income Actual reflects $3,900, not $5,900 (archived $2,000 must not leak).
-    assert(tiRow.includes('3,900'), 'Total Income actual must be $3,900 (displayed rows only), got row: ' + tiRow);
-    assert(!tiRow.includes('5,900'), 'Total Income actual must NOT be $5,900 (archived Old Bonus $2,000 leaked in), got row: ' + tiRow);
-    // 5. Archived Old Bonus does not render and its $2,000 does not leak anywhere in the grid.
-    assert(!result.innerText.includes('Old Bonus'), 'Archived income row must not render');
-    assert(!result.innerText.includes('2,000') && !result.innerText.includes('2000.00'), 'Archived Old Bonus $2,000 inflow must not leak into the Budget grid');
+    assert(tiRow.includes('Total Income') && tiRow.includes('3,900') && !tiRow.includes('5,900'), 'Total Income actual must be $3,900, got row: ' + tiRow);
     await context.close();
   }, { tags: ['smoke'] });
 
@@ -3887,6 +3856,7 @@ async function clickNav(page, id) {
 
   await test('A7b-1 (Phase 5F-1.5): clicking a Budget expense Spent cell opens the Category Report for that category/month (fetch stubbed)', async () => {
     const { page, context } = await openApp(browser);
+    await page.evaluate(A1B_PAGE_HELPERS);
     const setup = await page.evaluate(() => {
       _categoriesCache = [
         { key:'entertainment', label:'Entertainment', parent_key:null, is_leaf:false, lifecycle_status:'active', behavior_class:null, budget_treatment:null },
@@ -3910,7 +3880,7 @@ async function clickNav(page, id) {
           { id:'e1', transaction_date:'2026-07-01', account_key:'amex_gold', payee:'Mend Coffee', memo:'', category_key:'entertainment.week_1', amount:-12.98, cleared:true }
         ]); } });
       };
-      setSection('budget'); _budgetTransLoadStatus = 'loaded'; _budgetRegisterSpendLoadStatus = 'loaded'; renderApp(); // P3b-1 A1a (K3): re-assert the loaded fixture pair after entering Budget
+      setSection('budget'); __a1bCommitPair('2026-07-01', _budgetRegisterSpendCache, []); renderApp(); // P3b-1 A1b: the fixture rows arrive as one committed pair (supersedes the in-flight entry load)
       var bc = document.getElementById('budget-content');
       var h = bc ? bc.innerHTML : '';
       return {
@@ -5209,29 +5179,34 @@ async function clickNav(page, id) {
     await context.close();
   });
 
-  await test('A1A-E5: a failed Register-spend load shows the whole-grid load error (no figures); Retry reloads both sources and restores the grid', async () => {
+  await test('A1A-E5: a failed Register-spend load shows the integrity message naming it (no actual figures); Retry reloads both sources and restores normal actuals', async () => {
+    // P3b-1 A1b rewrite by intent (owner ruling D4: K1 → §19.1 per-cell): failed source named, no actual figure,
+    // Retry re-requests the pair and a recovered month renders normally.
     const { page, context } = await openApp(browser);
+    await page.evaluate(A1B_PAGE_HELPERS);
     let failSpend = true;
     await page.route('**/rest/v1/transactions?**', route => {
       if (failSpend) return route.fulfill({ status: 500, contentType: 'application/json', body: '{"message":"fixture failure"}' });
-      // P3b-1 A1b fixture repair: a recovered read answers like PostgREST with an exact count.
       return route.fulfill({ status: 200, contentType: 'application/json', headers: Object.assign({ 'content-range': '*/0' }, FIXTURE_CORS), body: '[]' });
     });
     await page.evaluate(() => {
-      _categoriesCache = [{ key: 'food_dining.groceries', label: 'Groceries', is_leaf: true, lifecycle_status: 'active', behavior_class: 'expense', budget_treatment: 'tracked' }];
+      _categoriesCache = __a1bBackedCats();
       _registriesLoadStatus = 'loaded';
       _budgetLineRulesCache = [{ id: 'l1', category_key: 'food_dining.groceries', line_label: 'Groceries', amount: 500, start_month: '2026-06-01', end_month: null, is_active: true }];
       _budgetLineRulesLoadStatus = 'loaded';
       _budgetSelectedMonth = '2026-08-01';
       setSection('budget');
     });
-    await page.waitForSelector('#budget-load-error', { timeout: 10000 });
-    const failed = await page.evaluate(() => { const h = document.getElementById('budget-content').innerHTML; return { table: /<table/.test(h), strip: /Planned remaining/.test(h), text: document.getElementById('budget-load-error').textContent, retry: !!document.getElementById('budget-load-retry') }; });
-    assert(!failed.table && !failed.strip, 'no grid or figure strip may render after a failed current load');
+    await page.waitForSelector('#budget-integrity', { timeout: 10000 });
+    const failed = await page.evaluate(() => { const h = document.getElementById('budget-content').innerHTML; const t = h.indexOf('Total Planned Budget');
+      return { k1: !!document.getElementById('budget-load-error'), text: document.getElementById('budget-integrity').textContent, retry: !!document.getElementById('budget-integrity-retry'),
+        totalSpent: t < 0 ? '' : h.slice(t, h.indexOf('</tr>', t)) }; });
+    assert(!failed.k1, 'the retired K1 whole-grid screen rendered');
     assert(/Register transactions for this month couldn't be loaded/.test(failed.text) && failed.retry, 'failed source + Retry expected, got ' + failed.text);
+    assert(/Can.t verify/.test(failed.totalSpent), 'Total Planned spent must be "can\'t verify" after a failed current load');
     failSpend = false;
-    await page.click('#budget-load-retry');
-    await page.waitForFunction(() => { const h = document.getElementById('budget-content').innerHTML; return /<table/.test(h) && !document.getElementById('budget-load-error'); }, null, { timeout: 10000 });
+    await page.click('#budget-integrity-retry');
+    await page.waitForFunction(() => { const h = document.getElementById('budget-content').innerHTML; return /id="budget-grid"/.test(h) && !document.getElementById('budget-integrity'); }, null, { timeout: 10000 });
     await context.close();
   });
 

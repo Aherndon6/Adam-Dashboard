@@ -50,6 +50,38 @@ try { eval(stub+sc); } catch(e) { console.error('FATAL eval:',e.message); proces
 // Shared model output
 const WEEKS = runModel(7000, 7694.87);
 
+// ── P3b-1 A1b fixture helpers (spec §24 class A: fixtures lacked state now required) ───────────────
+// BLR_STATE needs the live category table that backs every budget-line key, and Budget actuals come only
+// from a committed month pair. These supply that state exactly as the app would; assertions are unchanged.
+function a1bBackedCategories(){
+  return BUDGET_CATEGORY_REGISTRY.map(function(c){
+    var row={key:c.key,label:c.label,parent_key:c.parent||null,is_leaf:!!c.leaf,lifecycle_status:'active',merged_into_key:null,
+      behavior_class:'expense',budget_treatment:'tracked',cashflow_treatment:'operating',display_order:1};
+    if(!c.leaf){row.behavior_class=null;row.budget_treatment=null;row.cashflow_treatment=null;}
+    else if(c.isIncome){row.behavior_class='income';row.budget_treatment='display_only';row.cashflow_treatment='inflow';}
+    else if(c.key==='misc.goal_sweep'){row.behavior_class='savings_allocation';row.budget_treatment='planned_allocation';}
+    return row;
+  });
+}
+function a1bCommitSources(monthIso,R,L){ var c=_budgetStartPairCycle(monthIso); c.sources={register:R,legacy:L}; _budgetPairCommit(c); return c; }
+function a1bCommitPair(monthIso,regRows,legRows){
+  var ids=function(rows,p){ return (rows||[]).map(function(r,i){ return (r&&r.id!=null)?r:Object.assign({id:p+'-'+i},r); }); };
+  var cr=function(a){ return a.length?'0-'+(a.length-1)+'/'+a.length:'*/0'; };
+  var R=ids(regRows,'fx-r'), L=ids(legRows,'fx-l');
+  return a1bCommitSources(monthIso,_budgetVerifyMonthRows(R,cr(R)),_budgetVerifyMonthRows(L,cr(L)));
+}
+// Brace-matched source of a top-level function in the candidate (HFOS_INDEX-aware; no fixed windows).
+function a1bSrc(name){
+  var tok='function '+name+'('; var i=html.indexOf(tok); if(i<0) return '';
+  var j=html.indexOf('{',i), d=0, k=j, q=null;
+  for(;k<html.length;k++){ var ch=html[k];
+    if(q){ if(ch==='\\'){k++;continue;} if(ch===q)q=null; continue; }
+    if(ch==='/'&&html[k+1]==='/'){ k=html.indexOf('\n',k); continue; }
+    if(ch==="'"||ch==='"'||ch==='`'){ q=ch; continue; }
+    if(ch==='{')d++; else if(ch==='}'){ d--; if(d===0) break; } }
+  return html.slice(i,k+1);
+}
+
 // ── P3c-1 controlled liquidity fixture (TEST-ONLY; added 2026-09-12, owner-directed) ──
 // Since P3c-1 the canonical WD carries full-statement card bills, so the June-start scenario no longer
 // has surplus for the discretionary goal waterfall after Cal 37. The canonical outcome is pinned by the
@@ -570,7 +602,7 @@ test('_renderGoalsSavings: monthly living expenses correct for current week',()=
   // when budget-line/category authority is loaded, and "—" (never a constant) when it is not.
   const oS=_budgetLineRulesLoadStatus,oC=_budgetLineRulesCache,oR=_registriesLoadStatus,oK=_categoriesCache;
   try{
-    _registriesLoadStatus='loaded'; _categoriesCache=[{key:'food_dining.groceries',is_leaf:true,lifecycle_status:'active',behavior_class:'expense',budget_treatment:'tracked'}];
+    _registriesLoadStatus='loaded'; _categoriesCache=a1bBackedCategories() /* A1b §24 fixture repair: backed category table */;
     _budgetLineRulesLoadStatus='loaded';
     _budgetLineRulesCache=[{is_active:true,category_key:'home.mortgage_rent',amount:5300,start_month:'2026-06-01',end_month:null},
       {is_active:true,category_key:'food_dining.groceries',amount:2000,start_month:'2026-06-01',end_month:null},
@@ -5224,7 +5256,7 @@ test('5B-4: _getBudgetLivingExpenses returns no value (null) when budget lines a
   // P3b-1 A1a supersedes the old fallback-constant expectation (spec §8.1: no fallback constants).
   var oS=_budgetLineRulesLoadStatus,oC=_budgetLineRulesCache,oR=_registriesLoadStatus,oK=_categoriesCache;
   try{
-    _registriesLoadStatus='loaded'; _categoriesCache=[{key:'food_dining.groceries',is_leaf:true,lifecycle_status:'active',behavior_class:'expense',budget_treatment:'tracked'}];
+    _registriesLoadStatus='loaded'; _categoriesCache=a1bBackedCategories() /* A1b §24 fixture repair: backed category table */;
     [['not_loaded',null],['failed',[{is_active:true,category_key:'x.y',amount:1,start_month:'2026-06-01',end_month:null}]]].forEach(function(st){
       _budgetLineRulesLoadStatus=st[0]; _budgetLineRulesCache=st[1];
       [1,4,5,8,9,30,31].forEach(function(wk){ assert(_getBudgetLivingExpenses(wk)===null,'Wk'+wk+' must be null when budget lines are '+st[0]+', got '+_getBudgetLivingExpenses(wk)); });
@@ -5244,7 +5276,7 @@ test('5B-5: _getBudgetLivingExpenses reads from cache when loaded',()=>{
   var origCache=_budgetLineRulesCache;
   // P3b-1 A1a: category authority is now required too (spec §24 fixture repair; sums unchanged).
   var oR=_registriesLoadStatus,oK=_categoriesCache;
-  _registriesLoadStatus='loaded'; _categoriesCache=[{key:'food_dining.groceries',is_leaf:true,lifecycle_status:'active',behavior_class:'expense',budget_treatment:'tracked'}];
+  _registriesLoadStatus='loaded'; _categoriesCache=a1bBackedCategories() /* A1b §24 fixture repair: backed category table */;
   try{
     // Simulate a loaded cache with two rules (June only)
     _budgetLineRulesLoadStatus='loaded';
@@ -5269,6 +5301,8 @@ test('5B-5: _getBudgetLivingExpenses reads from cache when loaded',()=>{
 test('5B-6: _getBudgetAmount returns 0 for inactive or future rules',()=>{
   var origStatus=_budgetLineRulesLoadStatus;
   var origCache=_budgetLineRulesCache;
+  var oR=_registriesLoadStatus,oK=_categoriesCache; // A1b §24 fixture repair: backed category table
+  _registriesLoadStatus='loaded'; _categoriesCache=a1bBackedCategories();
   try{
     _budgetLineRulesLoadStatus='loaded';
     _budgetLineRulesCache=[
@@ -5282,12 +5316,15 @@ test('5B-6: _getBudgetAmount returns 0 for inactive or future rules',()=>{
   }finally{
     _budgetLineRulesLoadStatus=origStatus;
     _budgetLineRulesCache=origCache;
+    _registriesLoadStatus=oR; _categoriesCache=oK;
   }
 });
 
 test('5B-7: _getBudgetAmount correctly handles end_month boundary',()=>{
   var origStatus=_budgetLineRulesLoadStatus;
   var origCache=_budgetLineRulesCache;
+  var oR=_registriesLoadStatus,oK=_categoriesCache; // A1b §24 fixture repair: backed category table
+  _registriesLoadStatus='loaded'; _categoriesCache=a1bBackedCategories();
   try{
     _budgetLineRulesLoadStatus='loaded';
     _budgetLineRulesCache=[
@@ -5300,6 +5337,7 @@ test('5B-7: _getBudgetAmount correctly handles end_month boundary',()=>{
   }finally{
     _budgetLineRulesLoadStatus=origStatus;
     _budgetLineRulesCache=origCache;
+    _registriesLoadStatus=oR; _categoriesCache=oK;
   }
 });
 
@@ -5406,11 +5444,9 @@ test('5B-14: renderBudget function exists in index.html',()=>{
 });
 
 test('5B-15: Budget UI shows Spent | Budget | Remaining columns in correct order',()=>{
-  var htmlSrc='';
-  try{htmlSrc=require('fs').readFileSync(require('path').join(__dirname,'index.html'),'utf8');}catch(e){}
-  assert(htmlSrc.length>0,'Could not read index.html');
-  var budgetFnIdx=htmlSrc.indexOf('function renderBudget()');
-  var budgetFnSrc=htmlSrc.slice(budgetFnIdx,budgetFnIdx+10000);
+  // P3b-1 A1b: reads the HFOS_INDEX candidate and the whole brace-matched renderBudget (no fixed window).
+  var budgetFnSrc=a1bSrc('renderBudget');
+  assert(budgetFnSrc.length>0,'renderBudget must exist');
   // Use </th> to distinguish column headers from section headings like <h2>Budget</h2>
   var spentIdx=budgetFnSrc.indexOf('>Spent</th>');
   var budgetIdx=budgetFnSrc.indexOf('>Budget</th>');
@@ -5427,7 +5463,7 @@ test('5B-16: misc.goal_sweep is excluded from living expense total in _getBudget
   var origCache=_budgetLineRulesCache;
   // P3b-1 A1a: category authority is now required too (spec §24 fixture repair; sum unchanged).
   var oR=_registriesLoadStatus,oK=_categoriesCache;
-  _registriesLoadStatus='loaded'; _categoriesCache=[{key:'misc.extra',is_leaf:true,lifecycle_status:'active',behavior_class:'expense',budget_treatment:'tracked'}];
+  _registriesLoadStatus='loaded'; _categoriesCache=a1bBackedCategories(); // A1b §24 fixture repair: backed category table
   _budgetLineRulesLoadStatus='loaded';
   _budgetLineRulesCache=[
     {is_active:true,category_key:'misc.goal_sweep',amount:2300,start_month:'2026-06-01',end_month:null},
@@ -5464,10 +5500,8 @@ test('5B-19: _budgetAvailableMonths returns 8 months Jun 2026 through Jan 2027',
 });
 
 test('5B-20: _renderGoalsSavings uses _getBudgetLivingExpenses (not hardcoded constants)',()=>{
-  // Verify the stats panel no longer contains the old hardcoded constant pattern
-  var htmlSrc='';
-  try{htmlSrc=require('fs').readFileSync(require('path').join(__dirname,'index.html'),'utf8');}catch(e){}
-  assert(htmlSrc.length>0,'Could not read index.html');
+  // Verify the stats panel no longer contains the old hardcoded constant pattern (P3b-1 A1b: HFOS_INDEX candidate)
+  var htmlSrc=html;
   assert(!htmlSrc.includes('_baseExpenses=1792+674'),'stats panel must not use old hardcoded _baseExpenses pattern');
   assert(htmlSrc.includes('_getBudgetLivingExpenses(currentW)'),'stats panel must call _getBudgetLivingExpenses(currentW)');
 });
@@ -5477,7 +5511,7 @@ test('5B-21: _getBudgetLivingExpenses: current-week value is the budget-line sum
   const w=getCurrentWeek();
   const oS=_budgetLineRulesLoadStatus,oC=_budgetLineRulesCache,oR=_registriesLoadStatus,oK=_categoriesCache;
   try{
-    _registriesLoadStatus='loaded'; _categoriesCache=[{key:'food_dining.groceries',is_leaf:true,lifecycle_status:'active',behavior_class:'expense',budget_treatment:'tracked'}];
+    _registriesLoadStatus='loaded'; _categoriesCache=a1bBackedCategories() /* A1b §24 fixture repair: backed category table */;
     _budgetLineRulesLoadStatus='loaded';
     _budgetLineRulesCache=[{is_active:true,category_key:'home.mortgage_rent',amount:1234,start_month:'2026-06-01',end_month:null},
       {is_active:true,category_key:'income.net_salary',amount:9999,start_month:'2026-06-01',end_month:null}];
@@ -5502,14 +5536,18 @@ test('5B-22: seed SQL uses DO block with adam_id lookup and supplies created_by 
   assert(sqlSrc.includes('adam_id, adam_id'),'seed must supply adam_id as created_by/updated_by on all inserts');
 });
 
-test('5B-23: renderBudget shows empty-rules warning when cache is loaded but has zero rows',()=>{
-  var htmlSrc='';
-  try{htmlSrc=require('fs').readFileSync(require('path').join(__dirname,'index.html'),'utf8');}catch(e){}
-  assert(htmlSrc.length>0,'Could not read index.html');
-  // Must show a distinct warning when rules load successfully but return 0 rows
-  assert(htmlSrc.includes('No budget rules found'),'renderBudget must warn when cache is loaded but empty');
-  assert(htmlSrc.includes('phase-5b-seed.sql'),'empty-rules warning must reference the seed file to run');
-  assert(htmlSrc.includes('_budgetLineRulesCache.length===0'),'must check cache length explicitly');
+test('5B-23: loaded-but-empty budget lines are UNAVAILABLE and say so (no $0 plan) — A1b rewrite by intent of the empty-rules warning',()=>{
+  // Intent kept: a successful load with zero rows is surfaced distinctly. Rev 3.3 §8.1 makes it BLR_STATE
+  // UNAVAILABLE ("Budget lines: none found."), shown as the reason, with planned values "—" instead of $0.
+  var o=[_budgetLineRulesLoadStatus,_budgetLineRulesCache,_registriesLoadStatus,_categoriesCache];
+  try{
+    _registriesLoadStatus='loaded'; _categoriesCache=a1bBackedCategories(); _budgetLineRulesLoadStatus='loaded'; _budgetLineRulesCache=[];
+    var st=_blrState('2026-08-01');
+    assert(st.state==='UNAVAILABLE'&&st.code==='empty','loaded-empty must be UNAVAILABLE(empty), got '+JSON.stringify(st));
+    assert(/^Budget lines unavailable: Budget lines: none found\./.test(_blrReasonText(st)),'the distinct empty reason must be shown: '+_blrReasonText(st));
+    assert(_getBudgetAmount('food_dining.groceries','2026-08-01')===null,'loaded-empty must not yield a $0 plan');
+    assert(a1bSrc('renderBudget').indexOf('_budgetLineRulesCache')<0,'renderBudget must not read the raw cache for this warning');
+  }finally{_budgetLineRulesLoadStatus=o[0];_budgetLineRulesCache=o[1];_registriesLoadStatus=o[2];_categoriesCache=o[3];}
 });
 
 test('5B-24: Budget printout total row uses "Total Planned Budget" label (updated 5E-4)',()=>{
@@ -5635,7 +5673,8 @@ test('5B-34: _getBudgetLivingExpenses carries no fallback constants and no weekN
   assert(fi>-1&&fb.length>0,'_getBudgetLivingExpenses must exist');
   assert(fb.indexOf('13638')===-1&&fb.indexOf('?750:0')===-1&&fb.indexOf('?404:0')===-1,'fallback constants must be gone');
   assert(!/weekNum>=/.test(fb),'no weekNum threshold logic');
-  assert(/return null;/.test(fb)&&/_blrUnavailable\(\)/.test(fb),'must return null through the _blrUnavailable() availability primitive');
+  // P3b-1 A1b (INV-D): the only non-null path is BLR_STATE VALID (UNAVAILABLE and INVALID both return null).
+  assert(/return null;/.test(fb)&&/_blrState\(monthIso\)\.state==='VALID'/.test(fb),'must return null unless the shared BLR_STATE is VALID');
 });
 
 test('5B-35: reconciliation statement balance input uses onchange (not oninput) — prevents focus loss on every keystroke',()=>{
@@ -5678,9 +5717,7 @@ test('5B-37: _budgetOpenAddForm pre-populates transaction_date using local date 
 });
 
 test('5B-38: _budgetLoadTransactions parses monthIso with string split (not new Date) to avoid UTC timezone shift',()=>{
-  var htmlSrc='';
-  try{htmlSrc=require('fs').readFileSync(require('path').join(__dirname,'index.html'),'utf8');}catch(e){}
-  assert(htmlSrc.length>0,'Could not read index.html');
+  var htmlSrc=html; // P3b-1 A1b: HFOS_INDEX candidate (the split now lives in _budgetMonthRange, used by the pair loader)
   // new Date('2026-06-01') is UTC midnight; getMonth() in UTC-4 returns May → endIso = May 31 → impossible range → 0 results
   assert(htmlSrc.includes("var parts=monthIso.split('-')"),
     '_budgetLoadTransactions must parse monthIso via string split to avoid UTC→local timezone shift');
@@ -8388,14 +8425,30 @@ test('5E9-13: _budgetLoadRegisterSpend exists and queries public.transactions wi
   assertIncludes(sl('function _budgetPairCommit(',900),'_budgetRegisterSpendCache=','the committed pair must populate _budgetRegisterSpendCache');
 });
 
-test('5E9-14: renderBudget spentByKey folds in Register spend via _computeRegisterSpend, category-filtered signed net (A1 supersedes outflow-only/Math.abs)',()=>{
-  var fnIdx=html.indexOf('function renderBudget()');
-  assert(fnIdx>-1,'renderBudget must be defined');
-  var fnBlock=html.slice(fnIdx,fnIdx+11000);
-  assertIncludes(fnBlock,'_budgetRegisterSpendCache','renderBudget must reference _budgetRegisterSpendCache in its spentByKey computation');
-  assertIncludes(fnBlock,'_computeRegisterSpend(_budgetRegisterSpendCache','Register merge must fold spend through the _computeRegisterSpend helper');
-  assert(fnBlock.indexOf('if(!(amt<0))return;')===-1,'A1: the outflow-only guard must be gone so credits net in');
-  assert(fnBlock.indexOf('Math.abs(amt)')===-1,'A1: the Math.abs outflow-to-positive conversion must be gone in favor of the true signed net');
+test('5E9-14: renderBudget folds Register spend via _computeRegisterSpend as a category-filtered signed net (behavioural; A1b replacement of the source slice)',()=>{
+  // Same intent as the retired source-slice test: Register spend reaches Spent through _computeRegisterSpend,
+  // credits net against outflows (no outflow-only / Math.abs), and non-countable categories are excluded.
+  var o=[_budgetLineRulesLoadStatus,_budgetLineRulesCache,_registriesLoadStatus,_categoriesCache,_budgetSelectedMonth,_budgetPairCycle,_budgetPairGen,
+    _budgetTransactions,_budgetTransLoadStatus,_budgetRegisterSpendCache,_budgetRegisterSpendLoadStatus,document.getElementById,_computeRegisterSpend,renderApp];
+  try{
+    var store={}; document.getElementById=function(id){ if(!store[id]) store[id]={innerHTML:'',style:{},classList:{add:function(){},remove:function(){}}}; return store[id]; };
+    renderApp=function(){};
+    _registriesLoadStatus='loaded'; _categoriesCache=a1bBackedCategories().concat([{key:'transfers.x',is_leaf:true,lifecycle_status:'active',behavior_class:'transfer',budget_treatment:'excluded'}]);
+    _budgetLineRulesLoadStatus='loaded';
+    _budgetLineRulesCache=[{id:'l1',category_key:'food_dining.groceries',line_label:null,amount:500,start_month:'2026-06-01',end_month:null,is_active:true},
+      {id:'l2',category_key:'income.net_salary',line_label:null,amount:6000,start_month:'2026-06-01',end_month:null,is_active:true}];
+    _budgetSelectedMonth='2026-08-01';
+    var calls=[], orig=o[12]; _computeRegisterSpend=function(rows,cats){ calls.push(rows); return orig(rows,cats); };
+    a1bCommitPair('2026-08-01',[{category_key:'food_dining.groceries',amount:-100,transaction_date:'2026-08-02'},
+      {category_key:'food_dining.groceries',amount:30,transaction_date:'2026-08-03'},{category_key:'transfers.x',amount:-999,transaction_date:'2026-08-04'}],[]);
+    renderBudget(); var h=store['budget-content'].innerHTML;
+    assert(calls.length>=1&&calls[0].length===3,'Register rows must be folded through _computeRegisterSpend');
+    var i=h.indexOf('data-cat-key="food_dining.groceries"'), row=i<0?'':h.slice(i,h.indexOf('</tr>',i));
+    assert(row.indexOf('$70.00')>=0,'groceries Spent must be the signed net 100-30=70: '+row.replace(/<[^>]+>/g,' ').replace(/\s+/g,' '));
+    assert(row.indexOf('$430.00')>=0,'Remaining must be Budget minus the signed net (500-70=430)');
+    assert(h.indexOf('$999.00')<0&&h.indexOf('$1,069.00')<0,'the excluded transfer category must not count toward Spent');
+  }finally{_budgetLineRulesLoadStatus=o[0];_budgetLineRulesCache=o[1];_registriesLoadStatus=o[2];_categoriesCache=o[3];_budgetSelectedMonth=o[4];_budgetPairCycle=o[5];_budgetPairGen=o[6];
+    _budgetTransactions=o[7];_budgetTransLoadStatus=o[8];_budgetRegisterSpendCache=o[9];_budgetRegisterSpendLoadStatus=o[10];document.getElementById=o[11];_computeRegisterSpend=o[12];renderApp=o[13];}
 });
 
 test('5E9-15: Register merge does not require cleared=true (matches existing budget_transactions behavior, which has no cleared check either)',()=>{
@@ -11428,12 +11481,13 @@ test('5F15-A2-08: null/missing category and non-finite amount are skipped, fail-
 test('5F15-A2-09: renderBudget income section wires received/remaining through signed formatters and accumulates displayed rows only', ()=>{
   assertIncludes(html, 'function _computeRegisterIncome(', '_computeRegisterIncome helper must exist');
   assertIncludes(html, 'function _isCountableBudgetIncome(', '_isCountableBudgetIncome predicate must exist');
-  var fnIdx = html.indexOf('function renderBudget()');
-  var fnBlock = html.slice(fnIdx, fnIdx + 20000);
-  assertIncludes(fnBlock, '_computeRegisterIncome(_budgetRegisterSpendCache', 'income section must read received from the Register cache');
+  var fnBlock = a1bSrc('renderBudget'); // P3b-1 A1b: whole function (no fixed window)
+  // P3b-1 A1b (§17/§19.1), by intent: received comes from the committed pair's Register rows (the Register cache
+  // is now only a mirror of that pair); planned may be null ("—") so Remaining is (budget or 0) minus received.
+  assertIncludes(fnBlock, '_computeRegisterIncome(_regRows', 'income section must read received from the committed Register source');
   assertIncludes(fnBlock, 'incomeActualTotal+=rec', 'Total Income actual must accumulate inside the displayed active income leaf loop');
   assertIncludes(fnBlock, 'fsigned(rec)', 'income row Actual/Received must render signed (never sign-stripped)');
-  assertIncludes(fnBlock, 'bud-rec', 'income row Remaining must be budget minus received');
+  assertIncludes(fnBlock, '(bud||0)-rec', 'income row Remaining must be budget minus received');
   assertIncludes(fnBlock, 'fsigned(incomeActualTotal)', 'Total Income actual must render signed');
   // UX-0 (BUD-1, decision 2): income Remaining is muted "expected" — never red/amber/green.
   // The numeric remaining amount is preserved; the legacy amber/green income ternary is gone.
@@ -11466,8 +11520,7 @@ test('UX0-02: BUD-1 over-state = red value + "Over by" badge on leaf rows only; 
   assert((b.match(/_overBadge/g)||[]).length===2,'_overBadge must be defined and used exactly once (leaf only)');
 });
 test('UX0-03: SYS-3 — red retired from Budget/Register Archive/Delete/Confirm controls (amber-dark confirms)',()=>{
-  var ri=html.indexOf('function renderBudget()');
-  var rb=html.slice(ri,ri+30000); // reaches the transaction-list Del control near the end of renderBudget
+  var rb=a1bSrc('renderBudget'); // P3b-1 A1b: whole function (the fixed 30000-char window no longer reached the Del control)
   // Archive row button neutral (no red styling)
   var ai=rb.indexOf('window._blrOpenArchive');
   var archBtn=rb.slice(ai-80,ai+240);
@@ -11514,20 +11567,21 @@ test('UX0.5-B1: Budget color/status legend present under the title with the four
   assertIncludes(b,'Income shown as "expected"','legend must label the income expected treatment');
 });
 test('UX0.5-B2: attention strip is tallied inside the expense-leaf loop (matches grid) and injected above the table',()=>{
-  var i=html.indexOf('function renderBudget()');
-  var b=html.slice(i,i+34000);
+  var b=a1bSrc('renderBudget'); // P3b-1 A1b: whole function (no fixed window)
   // Slot emitted right after the title, before the table (top placement).
   var slotPos=b.indexOf('<!--BUDGET_ATTN_SLOT-->');
-  var tablePos=b.indexOf('<table style="width:100%;border-collapse:collapse;font-size:12px">');
+  var tablePos=b.indexOf('<table id="budget-grid" style="width:100%;border-collapse:collapse;font-size:12px">');
   assert(slotPos>-1&&tablePos>-1&&slotPos<tablePos,'attention slot must be emitted above the grid table');
   // Counts tallied from the SAME _rowState the grid renders from (no parallel computation).
   assertIncludes(b,"if(_rowState==='over')_overCount++;else if(_rowState==='near')_nearCount++;",'over/near counts must be tallied from the grid render state');
   // Strip reads only values the grid already computed.
-  assertIncludes(b,"_attnItem('Over budget',_overCount","over-budget tile must read _overCount");
-  assertIncludes(b,"_attnItem('Near limit',_nearCount","near-limit tile must read _nearCount");
-  assertIncludes(b,"_attnItem('Planned remaining',f(totalRem)",'planned-remaining tile must read totalRem');
+  // P3b-1 A1b (§19.1): each tile shows its grid value only when actuals and budget-line totals are trusted.
+  assertIncludes(b,"_attnItem('Over budget',_stripOk?_overCount","over-budget tile must read _overCount");
+  assertIncludes(b,"_attnItem('Near limit',_stripOk?_nearCount","near-limit tile must read _nearCount");
+  assertIncludes(b,"_attnItem('Planned remaining',_stripOk?f(totalRem)",'planned-remaining tile must read totalRem');
   assertIncludes(b,'var _incomeExpected=Math.max(0,_iTotRem);','income expected must be clamped to >= 0 (never positive once fully/over-received)');
-  assertIncludes(b,"_attnItem('Income expected',f(_incomeExpected)",'income-expected tile must read the clamped _incomeExpected');
+  assertIncludes(b,"_attnItem('Income expected',_stripOk?f(_incomeExpected)",'income-expected tile must read the clamped _incomeExpected');
+  assertIncludes(b,'var _stripOk=_actOk&&_planTotOk;','strip values must be gated on the governed state');
   // Injected via split/join (literal '$' safe), not String.replace.
   assertIncludes(b,"html.split('<!--BUDGET_ATTN_SLOT-->').join(_budgetLegend+_budgetStrip)",'legend+strip injected into the slot via split/join');
   // New UX-0.5 strip border uses the defined --line token, not the undefined --border.
@@ -12176,7 +12230,7 @@ test('5F15-A7a-26: View Report button has a stable id for real-UI interaction',(
 console.log('\n── Section 5F15-A7b: Budget expense-row drill-through to Category Report ──');
 (function(){
 var bIdx=html.indexOf('function renderBudget()');
-var budgetSrc=html.slice(bIdx,bIdx+22000);
+var budgetSrc=a1bSrc('renderBudget'); // P3b-1 A1b: whole function (no fixed window)
 test('5F15-A7b-01: expense leaf label span and Spent cell are drill-through targets using data attributes',()=>{
   assertIncludes(budgetSrc,'data-cat-report-target="label"','label drill hook present');
   assertIncludes(budgetSrc,'data-cat-report-target="spent"','Spent-cell drill hook present');
@@ -12224,7 +12278,9 @@ test('5F15-A7b-07: A7a engine functions are unchanged (drill-through is wiring-o
 });
 test('5F15-A7b-08: Budget calculation lines remain intact',()=>{
   assertIncludes(budgetSrc,'var s=spentByKey[c.key]||0;','spentByKey lookup intact');
-  assertIncludes(budgetSrc,'var b=_getBudgetAmount(c.key,monthIso);','budget lookup intact');
+  // P3b-1 A1b (§8.1): planned may be null ("—"); arithmetic uses the same value as before (null counts as 0).
+  assertIncludes(budgetSrc,'var _bRaw=_getBudgetAmount(c.key,monthIso);','budget lookup intact');
+  assertIncludes(budgetSrc,'var b=_bRaw||0;','budget lookup feeds the unchanged arithmetic');
   assertIncludes(budgetSrc,'var rem=b-s;','remaining calc intact');
   assertIncludes(budgetSrc,'totalExpSpent+=s;totalExpBudget+=b;','expense totals accumulation intact');
 });
@@ -15522,7 +15578,7 @@ const STATE = ['fetch','getAuthHeaders','renderApp','_loadTxLedger','USER_ROLE',
   '_txFilterDateFrom','_txFilterDateTo','_budgetSelectedMonth','_budgetTransactions','_budgetTransLoadStatus',
   '_budgetRegisterSpendCache','_budgetRegisterSpendLoadStatus','_budgetLineRulesCache','_budgetLineRulesLoadStatus',
   '_blrModal','_computeRegisterSpend','_txLedgerSortCol','_txLedgerSortDir','activeSection'];
-const OPTIONAL_STATE = ['_txFilterUncategorized','_budgetPairCycle','_budgetPairGen']; // introduced by A1a / A1b; may not exist earlier
+const OPTIONAL_STATE = ['_txFilterUncategorized','_budgetPairCycle','_budgetPairGen','_txSubNav']; // introduced by A1a / A1b; may not exist earlier
 const _docGet = document.getElementById;
 function snap(){ var s={}; STATE.concat(OPTIONAL_STATE).forEach(function(n){ try{ s[n]=eval(n); }catch(e){ s[n]='__absent__'; } }); s.__doc=document.getElementById; return s; }
 function restore(s){ STATE.concat(OPTIONAL_STATE).forEach(function(n){ var __v=s[n]; if(__v==='__absent__')return; try{ eval(n+'=__v'); }catch(e){} }); document.getElementById=s.__doc; }
@@ -15616,7 +15672,7 @@ T('[A1a] X2: no schema/SQL/RPC/RLS surface in the app script is reachable from A
 T('[A1a] X3: Budget arithmetic characterization — fixture month renders Planned remaining $659.50',function(){
   var dom=captureDom(); renderApp=function(){};
   USER_ROLE='owner'; _registriesLoadStatus='loaded';
-  _categoriesCache=[cat('home.mortgage_rent'),cat(GROC),cat('misc.goal_sweep',{behavior_class:'savings_allocation',budget_treatment:'planned_allocation'}),cat('income.net_salary',{behavior_class:'income',budget_treatment:'display_only'})];
+  _categoriesCache=a1bBackedCategories(); // A1b §24 fixture repair: backed category table (sums unchanged)
   _budgetSelectedMonth='2026-08-01';
   _budgetLineRulesLoadStatus='loaded';
   _budgetLineRulesCache=[
@@ -15624,11 +15680,11 @@ T('[A1a] X3: Budget arithmetic characterization — fixture month renders Planne
     {id:'l2',category_key:GROC,line_label:'Groceries',amount:500,start_month:'2026-06-01',end_month:null,is_active:true},
     {id:'l3',category_key:'misc.goal_sweep',line_label:'Planned for Goals',amount:300,start_month:'2026-06-01',end_month:null,is_active:true},
     {id:'l4',category_key:'income.net_salary',line_label:'Net Salary',amount:5000,start_month:'2026-06-01',end_month:null,is_active:true}];
-  _budgetTransactions=[]; _budgetTransLoadStatus='loaded';
-  _budgetRegisterSpendCache=[{category_key:GROC,amount:-120.50,transaction_date:'2026-08-03'},{category_key:GROC,amount:-30,transaction_date:'2026-08-09'},
+  // A1b fixture repair: the same rows arrive as a committed month pair (the only Budget input). The
+  // NULL-category row makes the month COMPLETE WITH UNCATEGORIZED, so categorized figures stay visible.
+  a1bCommitPair('2026-08-01',[{category_key:GROC,amount:-120.50,transaction_date:'2026-08-03'},{category_key:GROC,amount:-30,transaction_date:'2026-08-09'},
     {category_key:GROC,amount:10,transaction_date:'2026-08-10'},{category_key:'home.mortgage_rent',amount:-1000,transaction_date:'2026-08-01'},
-    {category_key:null,amount:-99,transaction_date:'2026-08-12'},{category_key:'income.net_salary',amount:5000,transaction_date:'2026-08-15'}];
-  _budgetRegisterSpendLoadStatus='loaded';
+    {category_key:null,amount:-99,transaction_date:'2026-08-12'},{category_key:'income.net_salary',amount:5000,transaction_date:'2026-08-15'}],[]);
   renderBudget();
   var h=dom['budget-content'].innerHTML;
   // budget 1800 (rent+groceries+goal sweep line) minus spent 1140.50 (groceries 150.50-10 + rent 1000) = 659.50
@@ -15890,7 +15946,7 @@ function goalsLines(){ return [
   {id:'g4',category_key:'misc.goal_sweep',line_label:'Planned for Goals',amount:777,start_month:'2026-06-01',end_month:null,is_active:true},
   {id:'g5',category_key:'home.google',line_label:'Inactive',amount:5000,start_month:'2026-06-01',end_month:null,is_active:false},
   {id:'g6',category_key:'home.claudai',line_label:'Future',amount:4000,start_month:'2099-01-01',end_month:null,is_active:true}]; }
-function goalsAvailable(){ renderApp=function(){}; _registriesLoadStatus='loaded'; _categoriesCache=[cat(GROC)]; _budgetLineRulesLoadStatus='loaded'; _budgetLineRulesCache=goalsLines(); }
+function goalsAvailable(){ renderApp=function(){}; _registriesLoadStatus='loaded'; _categoriesCache=a1bBackedCategories(); /* A1b §24: backed table */ _budgetLineRulesLoadStatus='loaded'; _budgetLineRulesCache=goalsLines(); }
 function goalsCard(){ return _renderGoalsSavings(buildDashboardViewModel(WEEKS,{ak:7000,rt:7694.87})); }
 function cardValue(h,label){ var re=new RegExp(label.replace(/[()]/g,'\\$&')+'</div>\\s*<div[^>]*>([^<]*)</div>'); var m=re.exec(h); return m?m[1]:null; }
 T('[A1a] G1: authority available → living expenses equal the §15.3 sum (rent 1000 + groceries 500)',function(){
@@ -15942,15 +15998,19 @@ T('[A1a] G6: loading is presented differently from failure on the Goals card',fu
 
 console.log('\n── A1a: Manage Lines unavailable while budget-line state is not loaded (K2) ──');
 function blrLoaded(){ renderApp=function(){}; USER_ROLE='owner'; getAuthHeaders=async function(){return {};};
+  _registriesLoadStatus='loaded'; _categoriesCache=a1bBackedCategories(); // A1b §24: Manage Lines needs category authority
   _budgetLineRulesLoadStatus='loaded';
   _budgetLineRulesCache=[{id:'e1',category_key:'entertainment.event_2',line_label:'Concert',amount:100,start_month:'2026-09-01',end_month:null,is_active:true},
     {id:'r1',category_key:'home.mortgage_rent',line_label:'Rent',amount:1000,start_month:'2026-06-01',end_month:null,is_active:true}]; }
 const blrOk = [isBlrWrite, function(){ return resp(201,null); }];
+// A1b (INV-E §18.2): Add/Edit make a fresh single-key category read; answer it like PostgREST from the backed table.
+const catFresh = [isCatRead, function(e){ var m=/[?&]key=eq\.([^&]*)/.exec(e.url); var k=m?decodeURIComponent(m[1]):null;
+  return resp(200,a1bBackedCategories().filter(function(c){return c.key===k;})); }];
 function addModal(key,label){ _blrModal={mode:'add',key:key,monthIso:'2026-10-01',label:label,amount:'50',scope:'forward',saving:false,error:null,isIncome:false}; }
 function editModal(){ _blrModal={mode:'edit',key:'home.mortgage_rent',monthIso:'2026-10-01',label:'Rent',amount:'1100',scope:'forward',saving:false,error:null,isIncome:false,currentRow:_budgetLineRulesCache?_budgetLineRulesCache.find(function(r){return r.id==='r1';})||null:null}; }
 function archiveModal(){ _blrModal={mode:'archive',key:'home.mortgage_rent',monthIso:'2026-10-01',label:'Rent',saving:false,error:null,currentRow:_budgetLineRulesCache?_budgetLineRulesCache.find(function(r){return r.id==='r1';})||null:null}; }
 TA('[A1a] M1: loaded state — a valid Add writes once and reloads',async function(){
-  blrLoaded(); var f=router([blrOk]); fetch=f; captureDom(); addModal('home.google','Google');
+  blrLoaded(); var f=router([blrOk,catFresh]); fetch=f; captureDom(); addModal('home.google','Google');
   await _blrSaveAdd(); await flush();
   assert(f.log.filter(isBlrWrite).length===1,'expected 1 write, got '+f.log.filter(isBlrWrite).length);
 });
@@ -15990,17 +16050,21 @@ TA('[A1a] M4: success → failed reload → state is failed, and the next write 
   await _blrSaveAdd(); await flush();
   assert(f.log.filter(isBlrWrite).length===0,'write allowed after a failed reload');
 });
-TA('[A1a] M5: A1b INV-E NOT introduced — Add of a registry key with no live category backing still writes when loaded',async function(){
-  blrLoaded(); _registriesLoadStatus='loaded'; _categoriesCache=[cat(GROC)]; // entertainment.event_1 has no live category here
-  var f=router([blrOk]); fetch=f; captureDom(); addModal('entertainment.event_1','Special Dinner');
+// A1b rewrite by intent: these were A1a boundary tests ("INV-E not introduced yet"). A1b introduces INV-E, so the
+// boundary now reads: an unbacked key is refused at save time (fresh read, no write) and is not offered.
+TA('[A1a] M5: A1b INV-E — Add of a registry key with no live category backing is refused after a fresh read (no write)',async function(){
+  blrLoaded(); _categoriesCache=a1bBackedCategories().filter(function(c){return c.key!=='entertainment.event_1';});
+  var f=router([blrOk,[isCatRead,function(){return resp(200,[]);}]]); fetch=f; captureDom(); addModal('entertainment.event_1','Special Dinner');
   await _blrSaveAdd(); await flush();
-  assert(f.log.filter(isBlrWrite).length===1,'backed-key (INV-E) enforcement appears to have been introduced early');
+  assert(f.log.some(isCatRead)&&f.log.filter(isBlrWrite).length===0,'an unbacked key was written');
+  assert(_blrModal&&_blrModal.error,'the refusal must be visible');
 });
-T('[A1a] M5b: A1b INV-E NOT introduced — the Add list still offers every registry leaf',function(){
-  blrLoaded(); var dom=captureDom(); _blrOpenAdd('2026-10-01');
+T('[A1a] M5b: A1b INV-E — the Add list offers exactly the BACKED registry leaves',function(){
+  blrLoaded(); _categoriesCache=a1bBackedCategories().filter(function(c){return c.key!=='entertainment.event_1';});
+  var dom=captureDom(); _blrOpenAdd('2026-10-01');
   var h=(dom['blr-modal-slot']||{}).innerHTML||'';
   var leaves=BUDGET_CATEGORY_REGISTRY.filter(function(c){return c.leaf;}).map(function(c){return c.key;});
-  leaves.forEach(function(k){ assert(h.indexOf('value="'+k+'"')>=0,'registry leaf '+k+' no longer offered'); });
+  leaves.forEach(function(k){ var off=h.indexOf('value="'+k+'"')>=0; assert(k==='entertainment.event_1'?!off:off,'registry leaf '+k+(off?' offered although unbacked':' not offered although backed')); });
 });
 
 console.log('\n── A1a: Budget month-read generation guard (§17) and render gate (K3) ──');
@@ -16079,59 +16143,72 @@ T('[A1a] B6: entering the Budget tab resets BOTH month sources (one current pair
   assert(_budgetTransLoadStatus==='not_loaded','budget_transactions not reset on Budget entry (pair can mix old and new requests)');
 });
 
-console.log('\n── A1a: Budget load-failure presentation (K1) ──');
+console.log('\n── A1a: Budget load-failure presentation (K1 → A1b §19.1 per-cell, rewritten by intent) ──');
+// A1b (owner ruling D4): the transitional K1 whole-grid screen is replaced by the §19.1 per-cell contract.
+// Intent kept: a failed/incomplete current input never shows a partial or stale figure; the failed input is
+// named; Retry requests a fresh pair; a genuine zero-spend month is not a failure.
 function budAllLoaded(){ var dom=captureDom(); renderApp=function(){}; USER_ROLE='owner';
-  _registriesLoadStatus='loaded'; _categoriesCache=[cat(GROC),cat('home.mortgage_rent')]; _budgetSelectedMonth='2026-08-01';
+  _registriesLoadStatus='loaded'; _categoriesCache=a1bBackedCategories(); _budgetSelectedMonth='2026-08-01';
   _budgetLineRulesLoadStatus='loaded'; _budgetLineRulesCache=[{id:'l1',category_key:GROC,line_label:'Groceries',amount:500,start_month:'2026-06-01',end_month:null,is_active:true}];
-  _budgetTransLoadStatus='loaded'; _budgetTransactions=[]; _budgetRegisterSpendLoadStatus='loaded';
-  _budgetRegisterSpendCache=[{category_key:GROC,amount:-4321.09,transaction_date:'2026-08-05'}]; return dom; }
-function noFigures(h,label){ assert(!/<table/.test(h),label+': a grid was rendered'); assert(!/4,321\.09|\$4321/.test(h),label+': a stale figure is visible'); assert(!/Planned remaining/.test(h),label+': the figure strip was rendered'); }
+  a1bCommitPair('2026-08-01',[{category_key:GROC,amount:-4321.09,transaction_date:'2026-08-05'}],[]); return dom; }
+function failSource(name){ var c=_budgetPairCycle; var S={register:c.sources.register,legacy:c.sources.legacy}; S[name]={status:'failed',reason:'HTTP 500',rows:[]}; a1bCommitSources('2026-08-01',S.register,S.legacy); }
+function noFigures(h,label){ assert(!/4,321\.09|\$4321/.test(h),label+': a stale figure is visible');
+  var i=h.indexOf('Planned remaining'); assert(i>=0&&!/\$[0-9]/.test(h.slice(i,h.indexOf('</div>',h.indexOf('</span>',i)+7))),label+': the strip shows a figure');
+  var t=h.indexOf('Total Planned Budget'); assert(t>=0&&/Can.t verify/.test(h.slice(t,h.indexOf('</tr>',t))),label+': the Total Planned spent is not "can\'t verify"'); }
 var panelTexts={};
-[['Register spend failed',function(){_budgetRegisterSpendLoadStatus='failed';}],['budget_transactions failed',function(){_budgetTransLoadStatus='failed';}],
+[['Register spend failed',function(){failSource('register');}],['budget_transactions failed',function(){failSource('legacy');}],
  ['budget lines failed',function(){_budgetLineRulesLoadStatus='failed';}]].forEach(function(c,ix){
-  T('[A1a] F'+(ix+1)+': '+c[0]+' → whole-grid load-error state, no figures, Retry offered',function(){
+  T('[A1a] F'+(ix+1)+': '+c[0]+' → one integrity message naming it, no actual figure, Retry offered (A1b §19.1)',function(){
     var dom=budAllLoaded(); c[1](); renderBudget(); var h=dom['budget-content'].innerHTML;
-    assert(/id="budget-load-error"/.test(h),'load-error state (#budget-load-error) not rendered');
+    assert(/id="budget-integrity"/.test(h),'integrity message (#budget-integrity) not rendered');
+    assert(h.indexOf('id="budget-load-error"')<0,'the retired K1 whole-grid screen rendered');
     noFigures(h,c[0]);
-    assert(/id="budget-load-retry"/.test(h),'Retry control (#budget-load-retry) missing');
-    panelTexts[c[0]]=elementText(h,'budget-load-error');
+    assert(/id="budget-integrity-retry"/.test(h),'Retry control (#budget-integrity-retry) missing');
+    var _ii=h.indexOf('id="budget-integrity"'); panelTexts[c[0]]=h.slice(_ii,h.indexOf('id="budget-integrity-retry"',_ii)).replace(/<[^>]+>/g,' '); // whole message (elementText reads only the first text node)
   });
 });
-T('[A1a] F4: the error state identifies the failed source (each failure reads differently)',function(){
-  var ks=Object.keys(panelTexts); assert(ks.length===3,'error states not all rendered ('+ks.length+'/3)');
-  assert(panelTexts[ks[0]]!==panelTexts[ks[1]]&&panelTexts[ks[1]]!==panelTexts[ks[2]]&&panelTexts[ks[0]]!==panelTexts[ks[2]],'the failed source is not identified');
+T('[A1a] F4: the integrity message identifies the failed input (each failure reads differently)',function(){
+  var ks=Object.keys(panelTexts); assert(ks.length===3,'messages not all rendered ('+ks.length+'/3)');
+  assert(panelTexts[ks[0]]!==panelTexts[ks[1]]&&panelTexts[ks[1]]!==panelTexts[ks[2]]&&panelTexts[ks[0]]!==panelTexts[ks[2]],'the failed input is not identified');
 });
-TA('[A1a] F5: a prior successful cache cannot survive and render after the CURRENT request fails',async function(){
+TA('[A1a] F5: a prior successful pair cannot survive and render after the CURRENT request fails',async function(){
   var dom=budAllLoaded(); getAuthHeaders=async function(){return {};};
-  fetch=router([[function(e){return /\/transactions\?/.test(e.url);},function(){return resp(500,{});}]]);
+  fetch=router([[function(e){return /\/transactions\?/.test(e.url);},function(){return resp(500,{});}],
+    [function(e){return /\/budget_transactions\?/.test(e.url);},function(){return resp(200,[],{headers:{'content-range':'*/0'}});}]]);
   await _budgetLoadRegisterSpend('2026-08-01'); await flush();
-  assert(_budgetRegisterSpendLoadStatus==='failed','precondition: status failed');
+  assert(_budgetPairCycle.sources.register.status==='failed','precondition: current Register read failed');
   renderBudget(); var h=dom['budget-content'].innerHTML;
   noFigures(h,'after current failure');
-  assert(/id="budget-load-error"/.test(h),'load-error state not rendered after the current request failed');
+  assert(/id="budget-integrity"/.test(h),'integrity message not rendered after the current request failed');
 });
-T('[A1a] F6: a legitimate zero-spend month (both sources loaded, no rows) renders the grid, not an error',function(){
-  var dom=budAllLoaded(); _budgetRegisterSpendCache=[]; renderBudget(); var h=dom['budget-content'].innerHTML;
-  assert(/<table/.test(h),'zero-spend month must render the grid');
-  assert(!/id="budget-load-error"/.test(h),'zero-spend month must not look like a failure');
+T('[A1a] F6: a legitimate zero-spend month (both sources complete, no rows) renders normally, not as a failure',function(){
+  var dom=budAllLoaded(); a1bCommitPair('2026-08-01',[],[]); renderBudget(); var h=dom['budget-content'].innerHTML;
+  assert(/id="budget-grid"/.test(h),'zero-spend month must render the grid');
+  assert(!/id="budget-integrity"/.test(h)&&!/Can.t verify/.test(h),'zero-spend month must not look like a failure');
 });
 T('[A1a] F7: Retry resets the current month sources so a fresh pair is requested',function(){
-  var dom=budAllLoaded(); _budgetRegisterSpendLoadStatus='failed'; renderBudget(); var h=dom['budget-content'].innerHTML;
-  var m=/id="budget-load-retry"[^>]*onclick="(?:window\.)?([A-Za-z_$][\w$]*)\(/.exec(h)||/onclick="(?:window\.)?([A-Za-z_$][\w$]*)\([^"]*"[^>]*id="budget-load-retry"/.exec(h);
+  var dom=budAllLoaded(); failSource('register'); renderBudget(); var h=dom['budget-content'].innerHTML;
+  var m=/id="budget-integrity-retry"[^>]*onclick="(?:window\.)?([A-Za-z_$][\w$]*)\(/.exec(h)||/onclick="(?:window\.)?([A-Za-z_$][\w$]*)\([^"]*"[^>]*id="budget-integrity-retry"/.exec(h);
   assert(m,'Retry control has no handler');
   eval(m[1])();
-  assert(['not_loaded','loading'].indexOf(_budgetRegisterSpendLoadStatus)>=0&&['not_loaded','loading'].indexOf(_budgetTransLoadStatus)>=0,'Retry must reset BOTH sources, got '+_budgetRegisterSpendLoadStatus+'/'+_budgetTransLoadStatus);
+  assert(_budgetPairCycle===null&&['not_loaded','loading'].indexOf(_budgetRegisterSpendLoadStatus)>=0&&['not_loaded','loading'].indexOf(_budgetTransLoadStatus)>=0,'Retry must retire the pair and reset BOTH sources, got '+_budgetRegisterSpendLoadStatus+'/'+_budgetTransLoadStatus);
 });
-T('[A1a] F8: no A1b certification vocabulary in any rendered A1a state',function(){
-  var bad=/\bVERIFIED\b|\bUNVERIFIED\b|COMPLETE WITH UNCATEGORIZED|can't verify|\bverified\b/i;
-  var outs=[];
-  var d1=budAllLoaded(); renderBudget(); outs.push(['normal budget',d1['budget-content'].innerHTML]);
-  var d2=budAllLoaded(); _budgetRegisterSpendLoadStatus='failed'; renderBudget(); outs.push(['budget failure',d2['budget-content'].innerHTML]);
-  var d3=budAllLoaded(); _budgetRegisterSpendLoadStatus='loading'; renderBudget(); outs.push(['budget loading',d3['budget-content'].innerHTML]);
-  goalsAvailable(); _budgetLineRulesLoadStatus='failed'; outs.push(['goals unavailable',goalsCard()]);
-  regLedger(); outs.push(['register',_renderTxRegister()]);
-  regSetup({fd:{category_key:''}}); _categoriesCache=[]; _txLedgerLoadStatus='loaded'; _txLedgerCache=[]; outs.push(['register unavailable',_renderTxRegister()]);
-  outs.forEach(function(o){ var m=bad.exec(o[1]); assert(!m,o[0]+' contains certification vocabulary: "'+(m&&m[0])+'"'); });
+T('[A1a] F8: certification vocabulary appears only where §19.1 puts it (inverted by intent at A1b)',function(){
+  // A1a forbade A1b vocabulary; A1b requires it exactly per state: UNVERIFIED says "can't verify"; VERIFIED and
+  // COMPLETE WITH UNCATEGORIZED never call anything "verified"; Goals and Register carry no certification words.
+  var verifiedWord=/\bverified\b/i, bad=/\bVERIFIED\b|\bUNVERIFIED\b|COMPLETE WITH UNCATEGORIZED|can.t verify|\bverified\b/i;
+  var d1=budAllLoaded(); a1bCommitPair('2026-08-01',[{category_key:GROC,amount:-10,transaction_date:'2026-08-05'}],[]); renderBudget(); var v=d1['budget-content'].innerHTML;
+  assert(!bad.test(v),'VERIFIED month carries certification vocabulary');
+  var d2=budAllLoaded(); a1bCommitPair('2026-08-01',[{category_key:null,amount:-10,transaction_date:'2026-08-05'}],[]); renderBudget(); var u=d2['budget-content'].innerHTML;
+  assert(/uncategorized transaction/.test(u)&&!verifiedWord.test(u.replace(/can.t verify/ig,'')),'COMPLETE WITH UNCATEGORIZED must be described as uncategorized, never verified');
+  var d3=budAllLoaded(); failSource('register'); renderBudget(); var x=d3['budget-content'].innerHTML;
+  assert(/Can.t verify/.test(x),'UNVERIFIED must say "can\'t verify"');
+  var d4=budAllLoaded(); _budgetLineRulesLoadStatus='not_loaded'; _budgetLineRulesCache=null; renderBudget(); var ld=d4['budget-content'].innerHTML;
+  assert(/Loading/.test(ld)&&!bad.test(ld),'Budget loading must carry no certification vocabulary'); // restored from the A1a F8 (Fable R2 F-6)
+  goalsAvailable(); _budgetLineRulesLoadStatus='failed'; assert(!bad.test(goalsCard()),'Goals carries certification vocabulary');
+  regLedger(); assert(!bad.test(_renderTxRegister()),'Register carries certification vocabulary');
+  regSetup({fd:{category_key:''}}); _categoriesCache=[]; _txLedgerLoadStatus='loaded'; _txLedgerCache=[];
+  assert(!bad.test(_renderTxRegister()),'Register (categories unavailable) carries certification vocabulary'); // restored (Fable R2 F-6)
 });
 
 console.log('\n── A1a: wording (§15, K4) ──');
