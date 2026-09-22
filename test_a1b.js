@@ -99,7 +99,7 @@ const REG = BUDGET_CATEGORY_REGISTRY;
 const REG_EXPENSE_LEAVES = REG.filter(function(c){ return c.leaf&&!c.isIncome&&c.key!=='misc.goal_sweep'; }).map(function(c){return c.key;});
 const REG_INCOME_LEAVES = REG.filter(function(c){ return c.leaf&&c.isIncome; }).map(function(c){return c.key;});
 const REG_EXPENSE_PARENTS = REG.filter(function(c){ return !c.leaf&&!c.isIncome; }).map(function(c){return c.key;});
-const EXCLUDED_KEYS = ['income.deep_south_commissions','business.jabian_deposits_2026','income.interest','income.bkcpa_extra_pay'];
+const EXCLUDED_KEYS = ['income.deep_south_commissions','business.jabian_deposits_2026','income.interest','income.bkcpa_extra_pay','income.extra_pay'];
 function live(key, over){ return Object.assign({key:key,label:key,parent_key:key.indexOf('.')>0?key.split('.')[0]:null,is_leaf:true,lifecycle_status:'active',
   behavior_class:'expense',budget_treatment:'tracked',cashflow_treatment:'operating',merged_into_key:null,display_order:1},over||{}); }
 // A live category table that BACKS every registry key, plus the four §7 exclusions and ordinary
@@ -116,6 +116,7 @@ function liveCats(){
   out.push(live('business.jabian_deposits_2026',{parent_key:'business',behavior_class:'reimbursable_income',budget_treatment:'excluded'}));
   out.push(live('income.interest',{behavior_class:'income',budget_treatment:'display_only'}));
   out.push(live('income.bkcpa_extra_pay',{behavior_class:'income',budget_treatment:'display_only'}));
+  out.push(live('income.extra_pay',{behavior_class:'income',budget_treatment:'display_only'}));
   out.push(live('transfers.credit_card_payment',{parent_key:'transfers',behavior_class:'transfer',budget_treatment:'excluded'}));
   out.push(live('business.jabian_expenses_2026',{parent_key:'business',behavior_class:'reimbursable_expense',budget_treatment:'excluded'}));
   return out;
@@ -176,7 +177,7 @@ console.log('╚═════════════════════�
 console.log('  candidate: '+htmlPath);
 
 // ═══ S. Declarations, frozen predicates, static guards (§5, §7) ═══════════════════════════════
-T('[A1b-R1] S1: §7 exclusion declaration — exactly the four keys, each with a non-empty reason, frozen',function(){
+T('[A1b-R1] S1: §7 exclusion declaration — exactly the five keys, each with a non-empty reason, frozen',function(){
   assert(typeof BUDGET_INCOME_EXCLUSIONS==='object'&&BUDGET_INCOME_EXCLUSIONS,'BUDGET_INCOME_EXCLUSIONS missing');
   var ks=Object.keys(BUDGET_INCOME_EXCLUSIONS).sort();
   assert(JSON.stringify(ks)===JSON.stringify(EXCLUDED_KEYS.slice().sort()),'exclusion keys are '+JSON.stringify(ks));
@@ -651,7 +652,7 @@ T('[A1b-R1] I1: INV-A — every registry leaf BACKED → no violation; an unback
   var v=_budgetRegistryBackingViolations(byKey(without(liveCats(),'entertainment.week_5'))); assert(v.indexOf('entertainment.week_5')>=0,'got '+JSON.stringify(v));
   var w=_budgetRegistryBackingViolations(byKey(withCat(liveCats(),'misc.goal_sweep',{budget_treatment:'tracked',behavior_class:'expense'}))); assert(w.indexOf('misc.goal_sweep')>=0,'planned-allocation row must require planned_allocation: '+JSON.stringify(w));
 });
-T('[A1b-R1] I2: INV-C — the four exclusions produce no violation',function(){
+T('[A1b-R1] I2: INV-C — the five exclusions produce no violation',function(){
   var r=_budgetIncomeCoverage(liveCats()); assert(r.violations.length===0,'got '+JSON.stringify(r));
 });
 T('[A1b-R1] I3: INV-C — removing an exclusion flags that key; an unrepresented, unexcluded income category is flagged',function(){

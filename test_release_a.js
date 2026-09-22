@@ -400,6 +400,70 @@ test('[RA] FX-N12 the reconciled AMEX caveat says "at reconciliation", not "at c
   assert(/at reconciliation/.test(amexForecastCaveat({ num: 1, reconciled: true })) && !/closeout/.test(amexForecastCaveat({ num: 1, reconciled: true })));
 });
 
+// ═══ Adam Extra Pay category (Wendy request 2026-09-22; owner decisions same day) ═══════════════
+// Budgeted salary belongs in income.net_salary; net pay above the budgeted base belongs in
+// income.extra_pay. Excluded (not represented) for the same reason as its sibling
+// income.bkcpa_extra_pay: supplemental pay handled by the weekly model, not a recurring salary line.
+const XP = 'income.extra_pay';
+function xpLive(key, over) {
+  return Object.assign({ key: key, label: key, parent_key: key.indexOf('.') > 0 ? key.split('.')[0] : null,
+    is_leaf: true, lifecycle_status: 'active', behavior_class: 'expense', budget_treatment: 'tracked',
+    cashflow_treatment: 'operating', merged_into_key: null, display_order: 1 }, over || {});
+}
+const xpIncome = over => xpLive(XP, Object.assign({ behavior_class: 'income', budget_treatment: 'display_only' }, over || {}));
+
+test('[RA] XP-1 income.extra_pay is declared in BUDGET_INCOME_EXCLUSIONS with a substantive reason', () => {
+  const ex = need('BUDGET_INCOME_EXCLUSIONS');
+  assert(Object.prototype.hasOwnProperty.call(ex, XP), XP + ' is not declared in BUDGET_INCOME_EXCLUSIONS');
+  assert(typeof ex[XP] === 'string' && ex[XP].trim().length > 10, 'no substantive reason for ' + XP);
+  assert(Object.isFrozen(ex), 'declaration must stay frozen');
+});
+
+test('[RA] XP-2 the exclusion set is exactly five keys — the four A1b keys plus income.extra_pay', () => {
+  const ks = Object.keys(need('BUDGET_INCOME_EXCLUSIONS')).sort();
+  assert(JSON.stringify(ks) === JSON.stringify(['business.jabian_deposits_2026', 'income.bkcpa_extra_pay',
+    XP, 'income.deep_south_commissions', 'income.interest'].sort()), 'exclusion keys are ' + JSON.stringify(ks));
+});
+
+test('[RA] XP-3 income.extra_pay is excluded, never represented — the registry stays at 41 entries', () => {
+  assert(BUDGET_CATEGORY_REGISTRY.length === 41, 'registry is ' + BUDGET_CATEGORY_REGISTRY.length + ' entries; Extra Pay must not be represented');
+  assert(!_budgetRegistryEntry(XP), XP + ' must not be a registry entry (represented ∩ excluded = ∅)');
+  assert(_budgetIncomeCoverage([xpIncome()]).overlap.length === 0, 'overlap reported for ' + XP);
+});
+
+test('[RA] XP-4 INV-C — a live, active, income-countable income.extra_pay produces no violation', () => {
+  const r = _budgetIncomeCoverage([xpIncome()]);
+  assert(r.violations.length === 0, 'INV-C violations: ' + JSON.stringify(r.violations));
+  assert(r.findings.length === 0, 'INV-C findings: ' + JSON.stringify(r.findings));
+});
+
+test('[RA] XP-5 the exclusion is load-bearing — drop it and the same category is flagged', () => {
+  const ex = Object.assign({}, need('BUDGET_INCOME_EXCLUSIONS')); delete ex[XP];
+  const r = _budgetIncomeCoverage([xpIncome()], ex);
+  assert(r.violations.indexOf(XP) >= 0, 'without its exclusion ' + XP + ' must be an INV-C violation: ' + JSON.stringify(r));
+});
+
+test('[RA] XP-6 a non-income Extra Pay row is an audit finding, not a silent pass', () => {
+  const r = _budgetIncomeCoverage([xpLive(XP, { behavior_class: 'expense', budget_treatment: 'tracked' })]);
+  assert(r.findings.indexOf(XP) >= 0, 'expected an audit finding: ' + JSON.stringify(r));
+});
+
+test('[RA] XP-7 Extra Pay is income for Register classification and never counts as Budget spend', () => {
+  const c = xpIncome();
+  assert(_isCountableBudgetIncome(c) === true, 'Extra Pay must be countable income');
+  assert(_isCountableBudgetSpend(c) === false, 'Extra Pay must never count as Budget spend');
+  const cls = _classifyRegisterRow({ category_key: XP, amount: 411.14 }, { [XP]: c });
+  assert(cls.kind === 'counted' && cls.as === 'income', 'Register classification: ' + JSON.stringify(cls));
+});
+
+test('[RA] XP-8 Wendy\'s income.bkcpa_extra_pay is untouched — still excluded, still its own key', () => {
+  const ex = need('BUDGET_INCOME_EXCLUSIONS');
+  assert(Object.prototype.hasOwnProperty.call(ex, 'income.bkcpa_extra_pay'), 'Wendy\'s category lost its exclusion');
+  assert(ex['income.bkcpa_extra_pay'] !== ex[XP], 'the two extra-pay categories must carry distinct reasons');
+  const r = _budgetIncomeCoverage([xpIncome(), xpLive('income.bkcpa_extra_pay', { behavior_class: 'income', budget_treatment: 'display_only' })]);
+  assert(r.violations.length === 0 && r.findings.length === 0, 'both extra-pay categories must coexist cleanly: ' + JSON.stringify(r));
+});
+
 // ═══ Boundaries ════════════════════════════════════════════════════════════════════════════════
 test('[RA-BASE] runModel, submitCloseout, computeGoalTransferNetting, resolveWeekTransfers, isReservedAsOf, getCashAvailabilityEngine unchanged in role (present)', () => {
   for (const n of ['runModel', 'submitCloseout', 'computeGoalTransferNetting', 'resolveWeekTransfers', 'isReservedAsOf', 'getCashAvailabilityEngine']) assert(typeof eval(n) === 'function', n);
