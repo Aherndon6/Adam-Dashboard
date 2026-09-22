@@ -7,6 +7,7 @@ No production row was changed by this session; every query run was read-only.
 - Key `income.extra_pay`, label **"Adam Extra Pay"**. Wendy's `income.bkcpa_extra_pay` unchanged.
 - Adam's budgeted salary base = **$5,816.50**.
 - **"Start clean going forward"** — history is not retroactively split.
+- **De minimis threshold $50** — only net pay more than $50 over the base moves to Extra Pay.
 
 ## Sequencing
 All of this happens in the **Release A sitting, after the 2026-09-26 A1b sitting closes**. The
@@ -18,7 +19,7 @@ need the category to exist first, so they follow it in the same sitting.
 | Row | Date | Amount | From → To | Why |
 |---|---|---|---|---|
 | `54955374` | 2026-09-04 | $411.14 | `income.bkcpa_extra_pay` → `income.extra_pay` | Adam's Jabian FICA-threshold row, parked in Wendy's category. Wendy: *"it's in Wendy's Extra BK for now until you set up a category for it."* Moved there by the household on 2026-09-22; this is its intended home. |
-| `d3da2b55` | 2026-09-22 | $5,838.84 | split → $5,816.50 `income.net_salary` + **$22.34** `income.extra_pay` | First paycheck under the new rule. Entered as one row today; $22.34 sits above the budgeted base. Owner action in the app, not SQL. |
+| ~~`d3da2b55`~~ | 2026-09-22 | $5,838.84 | ~~split~~ **no action** | Superseded by the $50 de minimis decision below: $22.34 over base is under the threshold, so it stays a single Net Salary row. |
 
 ## Leave alone
 
@@ -33,27 +34,31 @@ Budgeted salary → `income.net_salary`. Net pay above $5,816.50 → `income.ext
 Wendy's budgeted salary → `income.net_salary_spouse` ($2,152.50, already clean); her supplemental
 BK pay → `income.bkcpa_extra_pay`, unchanged.
 
-### ⚠ Open question for the owner — the base is the lowest observed net, not a typical one
-$5,816.50 is the **minimum** of the six observed 2026 nets, so nearly every cheque produces a
-positive remainder, most of them trivial:
+### De minimis threshold: $50 (owner decision, 2026-09-22)
 
-| Paycheck | Net | Extra vs $5,816.50 |
-|---|---|---|
-| 2026-07-07 | 5,816.72 | $0.22 |
-| 2026-07-22 | 5,816.72 | $0.22 |
-| 2026-08-07 | 5,838.95 | $22.45 |
-| 2026-08-21 | 5,838.95 | $22.45 |
-| 2026-09-04 | 5,816.50 | $0.00 |
-| 2026-09-22 | 5,838.84 | $22.34 |
+**Split to Extra Pay only when net pay exceeds the budgeted base by more than $50.**
+Anything at or under $50 stays in Net Salary as ordinary withholding drift.
 
-That is a two-row split on most paychecks for a sum that is withholding drift, not extra earnings.
-Three ways out, owner's call — none of them blocks the category or the code:
-1. **Accept it.** Net Salary becomes exactly flat and every variance is visible. Costs a small split most fortnights.
-2. **De minimis threshold.** Only split above some amount (say $50); drift stays in Net Salary. Keeps the rule cheap, at the cost of a slightly non-flat Net Salary.
-3. **Split only on real events.** Reserve Extra Pay for genuine step changes — the FICA-threshold jump, true supplemental pay — and treat fortnightly drift as normal salary.
+Why a threshold was needed: $5,816.50 is the *lowest* of the six observed 2026 nets, so without one
+almost every paycheck throws a remainder, most of them noise.
 
-Recommendation: **(2)**. It delivers what Wendy actually asked for — extra money out of Net Salary —
-without generating $0.22 rows. The FICA row and any real supplemental pay clear any sane threshold.
+| Paycheck | Net | Over base | Under the $50 rule |
+|---|---|---|---|
+| 2026-07-07 | 5,816.72 | $0.22 | stays in Net Salary |
+| 2026-07-22 | 5,816.72 | $0.22 | stays in Net Salary |
+| 2026-08-07 | 5,838.95 | $22.45 | stays in Net Salary |
+| 2026-08-21 | 5,838.95 | $22.45 | stays in Net Salary |
+| 2026-09-04 | 5,816.50 | $0.00 | stays in Net Salary |
+| 2026-09-22 | 5,838.84 | $22.34 | **stays in Net Salary** |
+| 2026-09-04 (FICA) | +411.14 | $411.14 | **→ Adam Extra Pay** |
+
+The threshold is a household data-entry rule, not enforced in code. Nothing in `index.html`
+implements or checks it.
+
+#### Consequence: the 2026-09-22 paycheck is no longer split
+Row `d3da2b55` is $22.34 over base, under the threshold. It **stays as a single $5,838.84 row in
+`income.net_salary`** and needs no edit. That empties the "act on" list down to one item: moving the
+$411.14 FICA row. See the table above, which this decision supersedes.
 
 ### Note on the FICA row
 "Extra due to Fica" is not additional earnings: Adam crossed the Social Security wage base, so OASDI
