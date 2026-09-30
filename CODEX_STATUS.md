@@ -1,5 +1,28 @@
 # Codex Status: Herndon Financial OS
 
+## CURRENCY NOTE (2026-09-30): P3b-1 A1b DEPLOYED and PRODUCTION-ACCEPTED under owner ruling O4 (gate = closed cash-certification sitting, PASS or HOLD); zero financial writes; A1 complete
+
+**Canonical state.** A1b (spec rev 3.3 §21) is **live in production and accepted**. With A1a (accepted 2026-09-19), **P3b-1 A1 is complete.** This supersedes the 2026-09-19 note below (package prepared, not executed). This note is balance-free (rev 2.5 §7.5).
+
+- **Gate change (owner ruling O4, 2026-09-30, recorded in the package's owner-decisions sidecar, not in the frozen package):** A1b deploys after the most recent cash-certification sitting has **formally closed, PASS or HOLD**, never while one is open. O4 supersedes the "Sep 26 (Cal 38) cash-safety PASS" wording in the frozen package and in this file's 2026-09-19 note, which stay unchanged as history. Basis: A1b has no dependency on, modification to, or claimed remediation of the household cash-timing condition behind the Sep 26 MANUAL HOLD (independent verification 2026-09-26: call-graph reachability from 85 Weekly/Reconcile roots, hermetic isolation probes, full suites, rollback proof; Fable and ChatGPT both favoured this option). A1b-specific execution condition: deploy no later than Wed 2026-09-30. The cash verdict still governs goal funding only; the goal-recommendation REFUSE control is unchanged.
+- **Sitting (2026-09-30, owner signed in, Wendy off the app), frozen package MANIFEST `dcd4979624b1c62489885cbe6bb6ae25a0d939776a19a5456cc81c11f724b7a5`:**
+  - Step 0 attestation (O4 wording): most recent cert sitting Cal 38 closed MANUAL HOLD; none open.
+  - Preflight pre **PASS 38/38**; FP0 captured; drift check **PASS** (no STOP/HOLD/INFO; executed text byte-identical to `drift-check.sql` `fabe0b31…`); **FP0 = FP1** (16 tables); `baseline.js` **CAPTURED**; O4 Weekly smoke PRE **CAPTURED** (16/16, zero writes).
+  - Step 6 owner GO with pre-authorized acceptance recording and §5 rollback (triggers extended by O4 to Register, Weekly Model, Edit Week, Reconcile/closeout regressions).
+  - Push: plain fast-forward `c59bae6..0ea39e7  p3b1-a1b -> main` (pre-push static 1961/0; no force, hooks on).
+  - Preflight post **PASS 31/31**: served document == A1b artifact `867047fb76c5fef216d0c997ba6b9308725ee8a47dfbe19b421fabec001deebb`, BUILD_TS `2026-09-18T23:16:49`; libraries unchanged.
+  - `acceptance.js` **PASS 70/70**: all 8 months match the drift projection (July CWU notice with signed net and Register link; others VERIFIED), all Total Planned/Total Income rows and Goals figures identical to the A1a baseline, Manage Lines offers exactly the BACKED leaves, blank-category Register save refused with zero requests, Register counts identical, **zero financial writes**, every Supabase request accounted for.
+  - **FP2 = FP1** on all 16 tables (no production write across push and acceptance).
+  - O4 Weekly smoke POST **PASS 18/18**: Weekly engine output identical to the A1a PRE capture (15 weeks), Weekly/Edit Week/Reconcile/Register usable, zero write attempts.
+  - §27 audit (informational): approved NULL exception 1 (owner ruling O2: spec text expects 2), actionable 0, legacy rows 0; two 9/27 card-side payments await checking-side legs at the next reconciliation (INFO).
+- **Rollback:** not exercised. Target remains accepted A1a (`44893b6b…`) via the package §5 revert.
+- **Evidence:** `~/Herndon-Financial-OS-Evidence/p3b-1-a1b-sitting-20260930T121536Z/` (files 00–19); O4 sidecar `p3b-1-a1b-deploy-package-2026-09-19-OWNER-DECISIONS.md`; Weekly smoke `a1b-weekly-smoke-2026-09-30/`.
+- **Next (unchanged order):** Release A (re-freeze on the A1b base, incl. the Extra Pay category and its 5-key drift exclusion list) → Release B (new identity + own freeze) → G1 goal-recommendation guard; Wendy walkthrough after the Oct 3 certification sitting; V1 after the walkthrough.
+
+**Documentation only.** This note changes no code, test, SQL, schema, data, production or evidence.
+
+---
+
 ## CURRENCY NOTE (2026-09-19): P3b-1 A1b D3 PASS (pre-deployment baseline); deployment package PREPARED and FROZEN, NOT EXECUTED; A1b NOT DEPLOYED / NOT PRODUCTION-ACCEPTED; cash-safety remains HOLD
 
 **Canonical state.**
