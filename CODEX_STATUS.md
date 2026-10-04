@@ -1,5 +1,46 @@
 # Codex Status: Herndon Financial OS
 
+## CURRENCY NOTE (2026-10-04): Release A R2 (Release A + Adam Extra Pay) FROZEN — owner-authorized 2026-10-04; NOT pushed, NOT deployed; next = production-deployment authorization/preparation
+
+**Canonical state.** Release A R2 is **FROZEN** at the identity below. The freeze is an evidence and content decision only. **It does not authorize** a push to `main`, production deployment, production preflight, read-only production contact, production SQL, Phase A, Phase B, or any goal-funding execution. The standing goal-funding refusal is unchanged. Production still serves accepted A1b `867047fb76c5fef216d0c997ba6b9308725ee8a47dfbe19b421fabec001deebb`. This note is balance-free.
+
+- **A1b observation window CLOSED** at the Cal 39 cash sitting close (2026-10-04). No regression was seen; the O4 rollback authority is retired; the temporary push permission rules were removed. Accepted A1b is the production base.
+- **Frozen identity:**
+  - candidate `979ee598676df2083b83d3302519e69a48b38761` (tree `9601baa130261128f68e98adce6a71a254534f16`, branch `post-a1b/release-a-r2`, worktree `../Adam-Dashboard-wt-rel-a2`, local only);
+  - artifact `index.html` sha256 `7ea6fa36e062eba319e905c1f000fc316dabf670329b5c8cc799cc369cce182d`, BUILD_TS `2026-10-04T11:57:07`;
+  - deployment base `61b9302` (A1b `0ea39e7` + CODEX_STATUS-only);
+  - golden master `321ef095…` unchanged; 49 protected functions byte-identical.
+- **Package:** `~/Herndon-Financial-OS-Evidence/post-a1b-release-a-r2-package-2026-10-04/`.
+  - **Authoritative MANIFEST `6e956edf890a98fc0773ca6a3b1ec3982a5b588a010bb208a3a70e6b1ea3adbc` (76 members).** Retained historical identities: `2606e0d1` (OI-1), `39eeb1af` (staging), `34bd6abb` (post-Fable).
+  - Controlling record: `FREEZE-CANDIDATE-RECORD.md` (status FROZEN).
+- **Evidence bound by the freeze:**
+  - Suites: Release A 62/0 · G1 32/0 · A1b 212/0 · static 1961/0 · e2e 177/0/2.
+  - Mutation 20/20; hermetic DML rehearsal 26/26, DML mutants 14/14 detected.
+  - OI-1 browser rehearsal 30/30.
+  - Staging rehearsal: PASS, owner-accepted. Zero residue is bounded by the fingerprint and catalog coverage, not a total-database proof. Staging began empty. It ran through the MCP venue under a one-time owner deviation, which is not a general authorization for Claude Code to connect to staging or production.
+  - R0 dry-run gate 37/37; execution-byte gate 38/38; final simulated preflight 79 PASS / 0 STOP.
+  - Fable final: FREEZE-READY WITH NON-BLOCKING NOTES. Conditions of use N-1 to N-4 are in the freeze record.
+- **Rollback controls (package §7):**
+  - R0 = `r0/r0.sh`: one commit restoring `index.html` to `867047fb…`. The old five-revert R0 is rejected.
+  - M0 PASS in the same venue and role immediately before R1/R2.
+  - Execution-byte proof (`exec/exec-bytes.sh`) before B1/B2/R1/R2.
+- **OWNER CONDITION OC-1 (binding): the post-R0 tree is hybrid, so repository advancement is HOLD.**
+  - After any R0, production may run on A1b `867047fb…`, but the seven Release A R2 test and doc files stay on `main`.
+  - The repository must not be treated as canonical "A1b + CODEX_STATUS-only".
+  - No release, replay, preflight or base selection may assume otherwise.
+  - The next repository change after an R0 must first disposition those seven files under owner authorization.
+- **Audit:** the session's only production contact was 5 read-only Register SELECTs for the Cal 39 reconciliation, made before the Release A work began. There was none during the re-freeze, staging, repair or freeze.
+- **Next (owner-gated):**
+  1. Release A production-deployment authorization and preparation (push authority; production preflight authority).
+  2. Phase A sitting under O4: after the most recent cash-certification sitting is formally closed (PASS or HOLD), never while one is open; Wendy off the app.
+  3. Phase B under its own separate authorization.
+
+  Then Release B (new identity, own freeze), then G1.
+
+**Documentation only.** This note changes no code, test, SQL, schema, data, production or evidence.
+
+---
+
 ## CURRENCY NOTE (2026-09-30): P3b-1 A1b DEPLOYED and PRODUCTION-ACCEPTED under owner ruling O4 (gate = closed cash-certification sitting, PASS or HOLD); zero financial writes; A1 complete
 
 **Canonical state.** A1b (spec rev 3.3 §21) is **live in production and accepted**. With A1a (accepted 2026-09-19), **P3b-1 A1 is complete.** This supersedes the 2026-09-19 note below (package prepared, not executed). This note is balance-free (rev 2.5 §7.5).
