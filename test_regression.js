@@ -14040,7 +14040,7 @@ console.log('\n── Section 5G-1D Slice 4c: half-close repair confirmation ─
   });
   test('S5-F1b: toggleTask positive control — mutable week passes the guard (optimistic write occurs; auth reached)',function(){
     withGuardStubs({},function(c){
-      toggleTask(9,3,true,'misc_x',100);            // wk9 unreconciled post-anchor → mutable (non-goal key: P3c Release A gates goal_* keys separately)
+      toggleTask(9,3,true,'goal_x',100);            // wk9 unreconciled post-anchor → mutable
       assert(c.refusals===0,'no refusal on a mutable week');
       assert(c.authCalls===1,'guard passed → auth acquisition reached');
       assert(taskData['9_3']&&taskData['9_3'].completed===true,'optimistic taskData write occurred');

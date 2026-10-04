@@ -1255,7 +1255,7 @@ async function clickNav(page, id) {
       return {
         rowFound: !!target,
         hasLabel: wk1.html.indexOf('ABSENT-EXEC-TEST') >= 0,
-        execHdr1: wk1.html.indexOf('Marked done earlier: 1') >= 0,
+        execHdr1: wk1.html.indexOf('Executed earlier: 1') >= 0,
         cbChecked: cb ? cb.checked === true : false,
         cbDisabled: cb ? cb.disabled === true : false,
         cbNoHandler: target ? (target.innerHTML.indexOf('toggleTransfer') < 0) : false,
@@ -1267,7 +1267,7 @@ async function clickNav(page, id) {
     assert(res.cbChecked, 'executed-history checkbox must be checked');
     assert(res.cbDisabled, 'executed-history checkbox must be disabled');
     assert(res.cbNoHandler, 'executed-history row must have NO write handler (no toggleTransfer)');
-    assert(res.execHdr1, '"Marked done earlier: 1" must be visible (P3c Release A: a tick is an operator assertion)');
+    assert(res.execHdr1, '"Executed earlier: 1" must be visible');
     assert(res.denom1 !== null && res.denom1 === res.denom0, 'Weekly X/Y denominator must EXCLUDE executed history (' + res.denom0 + ' -> ' + res.denom1 + ')');
     assert(res.num1 === res.num0, 'Weekly X/Y numerator must be unchanged by executed history');
     assert(res.h0 && res.h1, 'History card for the week must render a count');

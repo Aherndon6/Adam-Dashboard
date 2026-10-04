@@ -99,7 +99,7 @@ const REG = BUDGET_CATEGORY_REGISTRY;
 const REG_EXPENSE_LEAVES = REG.filter(function(c){ return c.leaf&&!c.isIncome&&c.key!=='misc.goal_sweep'; }).map(function(c){return c.key;});
 const REG_INCOME_LEAVES = REG.filter(function(c){ return c.leaf&&c.isIncome; }).map(function(c){return c.key;});
 const REG_EXPENSE_PARENTS = REG.filter(function(c){ return !c.leaf&&!c.isIncome; }).map(function(c){return c.key;});
-const EXCLUDED_KEYS = ['income.deep_south_commissions','business.jabian_deposits_2026','income.interest','income.bkcpa_extra_pay','income.extra_pay'];
+const EXCLUDED_KEYS = ['income.deep_south_commissions','business.jabian_deposits_2026','income.interest','income.bkcpa_extra_pay'];
 function live(key, over){ return Object.assign({key:key,label:key,parent_key:key.indexOf('.')>0?key.split('.')[0]:null,is_leaf:true,lifecycle_status:'active',
   behavior_class:'expense',budget_treatment:'tracked',cashflow_treatment:'operating',merged_into_key:null,display_order:1},over||{}); }
 // A live category table that BACKS every registry key, plus the four §7 exclusions and ordinary
@@ -116,7 +116,6 @@ function liveCats(){
   out.push(live('business.jabian_deposits_2026',{parent_key:'business',behavior_class:'reimbursable_income',budget_treatment:'excluded'}));
   out.push(live('income.interest',{behavior_class:'income',budget_treatment:'display_only'}));
   out.push(live('income.bkcpa_extra_pay',{behavior_class:'income',budget_treatment:'display_only'}));
-  out.push(live('income.extra_pay',{behavior_class:'income',budget_treatment:'display_only'}));
   out.push(live('transfers.credit_card_payment',{parent_key:'transfers',behavior_class:'transfer',budget_treatment:'excluded'}));
   out.push(live('business.jabian_expenses_2026',{parent_key:'business',behavior_class:'reimbursable_expense',budget_treatment:'excluded'}));
   return out;
@@ -177,7 +176,7 @@ console.log('╚═════════════════════�
 console.log('  candidate: '+htmlPath);
 
 // ═══ S. Declarations, frozen predicates, static guards (§5, §7) ═══════════════════════════════
-T('[A1b-R1] S1: §7 exclusion declaration — exactly the five keys, each with a non-empty reason, frozen',function(){
+T('[A1b-R1] S1: §7 exclusion declaration — exactly the four keys, each with a non-empty reason, frozen',function(){
   assert(typeof BUDGET_INCOME_EXCLUSIONS==='object'&&BUDGET_INCOME_EXCLUSIONS,'BUDGET_INCOME_EXCLUSIONS missing');
   var ks=Object.keys(BUDGET_INCOME_EXCLUSIONS).sort();
   assert(JSON.stringify(ks)===JSON.stringify(EXCLUDED_KEYS.slice().sort()),'exclusion keys are '+JSON.stringify(ks));
@@ -652,7 +651,7 @@ T('[A1b-R1] I1: INV-A — every registry leaf BACKED → no violation; an unback
   var v=_budgetRegistryBackingViolations(byKey(without(liveCats(),'entertainment.week_5'))); assert(v.indexOf('entertainment.week_5')>=0,'got '+JSON.stringify(v));
   var w=_budgetRegistryBackingViolations(byKey(withCat(liveCats(),'misc.goal_sweep',{budget_treatment:'tracked',behavior_class:'expense'}))); assert(w.indexOf('misc.goal_sweep')>=0,'planned-allocation row must require planned_allocation: '+JSON.stringify(w));
 });
-T('[A1b-R1] I2: INV-C — the five exclusions produce no violation',function(){
+T('[A1b-R1] I2: INV-C — the four exclusions produce no violation',function(){
   var r=_budgetIncomeCoverage(liveCats()); assert(r.violations.length===0,'got '+JSON.stringify(r));
 });
 T('[A1b-R1] I3: INV-C — removing an exclusion flags that key; an unrepresented, unexcluded income category is flagged',function(){
@@ -1112,110 +1111,6 @@ TA('[A1b-BASE] D16 (R2 guard): legacy save reloads the pair (Round-1 behaviour k
   var f=router([[function(e){return e.method==='POST';},function(){return resp(201,[{id:'n1'}]);}]]); fetch=f;
   await _budgetSaveTransaction({transaction_date:'2026-08-07',amount:'5',transaction_type:'household_expense',category_key:GROC},null); await flush();
   assert(f.log.filter(isReg).length===1&&f.log.filter(isLeg).length===1&&cycle().gen!==g0,'legacy save did not reload the pair');
-});
-
-// ── Release A re-freeze (2026-10-04): Adam Extra Pay behaviour in realistic month state ──
-// Owner-required (re-freeze direction §8): Extra Pay stays out of Budget Total Income in a month
-// that actually contains an Extra Pay Register row; that month stays VERIFIED; Manage Lines and the
-// INV-E save guard refuse the key; the Register and Category Report pickers offer it; the
-// useSupabaseRegistries=false setting the exclusion depends on is pinned. Tag [A1b-XP].
-const XPK='income.extra_pay', BKK='income.bkcpa_extra_pay';
-function xpCats(o){ o=o||{}; var c=withCat(liveCats(),XPK,{label:'Adam Extra Pay'}); c=withCat(c,BKK,{label:'Wendy Extra BK Pay'});
-  if(o.noXp) c=without(c,XPK); return c; }
-function augMonth(extra){ return [reg('g',GROC,-40),reg('s','income.net_salary',6000),reg('t','transfers.credit_card_payment',-900)].concat(extra||[]); }
-function stateSig(ms){ return JSON.stringify({state:ms.state,reasons:ms.reasons,uncategorized:ms.uncategorized,auditFindings:ms.auditFindings}); }
-TA('[A1b-XP] XL-1: a month with an Adam Extra Pay row (and a Wendy Extra BK row) keeps Budget Total Income at registry salary only',async function(){
-  var base=await renderAug(augMonth(),[],{cats:xpCats()});
-  var withXp=await renderAug(augMonth([reg('x',XPK,411.14),reg('b',BKK,511.63)]),[],{cats:xpCats()});
-  var tb=rowByLabel(base,'Total Income'), tx=rowByLabel(withXp,'Total Income');
-  assert(tb&&tx,'precondition: Total Income row renders');
-  assert(/\$6,000\.00/.test(tx),'Total Income received must stay $6,000.00: '+txt(tx));
-  ['6,411.14','6,511.63','6,922.77','411.14','511.63'].forEach(function(v){ assert(tx.indexOf(v)<0,'Extra Pay leaked into Total Income ('+v+'): '+txt(tx)); });
-  assert(txt(tb)===txt(tx),'Total Income row changed when Extra Pay rows were present: '+txt(tb)+' vs '+txt(tx));
-});
-TA('[A1b-XP] XL-2: a month containing an Adam Extra Pay row is VERIFIED — no reason, no audit finding, nothing uncategorized',async function(){
-  budgetReady({cats:xpCats()}); await loadPair(augMonth([reg('x',XPK,411.14),reg('b',BKK,511.63)]),[]);
-  var ms=_budgetMonthState('2026-08-01');
-  assert(ms.state==='VERIFIED','got '+JSON.stringify(reasons(ms)));
-  assert((ms.reasons||[]).length===0,'reasons: '+JSON.stringify(ms.reasons));
-  assert(!(ms.auditFindings||[]).some(function(f){return f.key===XPK||f.key===BKK;}),'audit finding on an extra-pay key: '+JSON.stringify(ms.auditFindings));
-  assert(ms.uncategorized.count===0,'Extra Pay counted as uncategorized');
-});
-TA('[A1b-XP] XL-3: Phase B A1→A2 is Budget-invisible — moving the $411.14 row from Wendy Extra BK to Adam Extra Pay changes neither month state nor the Budget grid',async function(){
-  var onBk=await renderAug(augMonth([reg('x',BKK,411.14)]),[],{cats:xpCats()}); budgetReady({cats:xpCats()}); await loadPair(augMonth([reg('x',BKK,411.14)]),[]); var sBk=stateSig(_budgetMonthState('2026-08-01'));
-  var onXp=await renderAug(augMonth([reg('x',XPK,411.14)]),[],{cats:xpCats()}); budgetReady({cats:xpCats()}); await loadPair(augMonth([reg('x',XPK,411.14)]),[]); var sXp=stateSig(_budgetMonthState('2026-08-01'));
-  assert(sBk===sXp,'month state changed across the move: '+sBk+' vs '+sXp);
-  assert(gridHtml(onBk)===gridHtml(onXp),'Budget grid changed across the move');
-});
-TA('[A1b-XP] XL-4: Phase B A0→A1 is Budget-invisible — the new active category with no rows changes neither month state nor the Budget grid',async function(){
-  var a0=await renderAug(augMonth(),[],{cats:xpCats({noXp:true})}); budgetReady({cats:xpCats({noXp:true})}); await loadPair(augMonth(),[]); var s0=stateSig(_budgetMonthState('2026-08-01'));
-  var a1=await renderAug(augMonth(),[],{cats:xpCats()}); budgetReady({cats:xpCats()}); await loadPair(augMonth(),[]); var s1=stateSig(_budgetMonthState('2026-08-01'));
-  assert(s0===s1,'month state changed when the category was added: '+s0+' vs '+s1);
-  assert(gridHtml(a0)===gridHtml(a1),'Budget grid changed when the category was added');
-});
-TA('[A1b-XP] XL-5 (ordering evidence): the FORBIDDEN state — Extra Pay row live under the 4-key exclusions — fails closed as UNVERIFIED income_unrepresented, never as wrong totals',async function(){
-  var saved=BUDGET_INCOME_EXCLUSIONS; var four={}; Object.keys(saved).forEach(function(k){ if(k!==XPK) four[k]=saved[k]; });
-  try{
-    BUDGET_INCOME_EXCLUSIONS=Object.freeze(four);
-    budgetReady({cats:xpCats()}); await loadPair(augMonth(),[]);
-    var ms=_budgetMonthState('2026-08-01');
-    assert(ms.state==='UNVERIFIED'&&hasReason(ms,'income_unrepresented',XPK),'4-key code + live Extra Pay must fail closed: '+JSON.stringify(reasons(ms)));
-  } finally { BUDGET_INCOME_EXCLUSIONS=saved; }
-  budgetReady({cats:xpCats()}); await loadPair(augMonth(),[]);
-  assert(_budgetMonthState('2026-08-01').state==='VERIFIED','5-key code must restore VERIFIED');
-});
-T('[A1b-XP] XM-1: Manage Lines Add offers neither Adam Extra Pay nor Wendy Extra BK Pay',function(){
-  blrReady(validLines(),xpCats()); USER_ROLE='owner'; var dom=captureDom(); _blrOpenAdd('2026-10-01');
-  var h=(dom['blr-modal-slot']||{}).innerHTML||'';
-  assert(h.indexOf('value="'+GROC+'"')>=0||h.indexOf('value="entertainment.event_3"')>=0,'precondition: the Add modal renders backed keys');
-  assert(h.indexOf('value="'+XPK+'"')<0,'Adam Extra Pay offered in Manage Lines');
-  assert(h.indexOf('value="'+BKK+'"')<0,'Wendy Extra BK Pay offered in Manage Lines');
-  assert(h.indexOf('Adam Extra Pay')<0,'Adam Extra Pay label shown in Manage Lines');
-});
-['add','edit'].forEach(function(mode){
-  TA('[A1b-XP] XM-2-'+mode+': INV-E refuses a budget line on Adam Extra Pay (non-registry key) even when the live category is active, with no write',async function(){
-    blrWriteSetup(xpCats()); if(mode==='edit') _budgetLineRulesCache=validLines().concat([line(XPK,100)]);
-    var f=router([[isCatRead,function(){return resp(200,[live(XPK,{behavior_class:'income',budget_treatment:'display_only'})]);}],[isBlrWrite,function(){return resp(201,null);}]]); fetch=f;
-    if(mode==='add') addTo(XPK); else editOf(XPK);
-    quiet(true); try{ if(mode==='add') await _blrSaveAdd(); else await _blrSaveEdit(); await flush(); } finally { quiet(false); }
-    assert(f.log.filter(isBlrWrite).length===0,mode+' wrote a budget line on '+XPK);
-    assert(_blrModal&&/can only use a budget category/i.test(_blrModal.error||''),'refusal must be the non-registry message: '+(_blrModal&&_blrModal.error));
-  });
-});
-T('[A1b-XP] XM-3: a hand-inserted budget line on Adam Extra Pay makes BLR_STATE INVALID naming the key (fail closed, never silently counted)',function(){
-  blrReady(validLines().concat([line(XPK,100)]),xpCats());
-  var s=_blrState('2026-08-01'); assert(s.state==='INVALID'&&s.keys.indexOf(XPK)>=0,'got '+JSON.stringify(s));
-});
-T('[A1b-XP] XR-1: the Register category picker offers Adam Extra Pay exactly once, labelled "Adam Extra Pay"',function(){
-  regWriteSetup(); _categoriesCache=xpCats(); _budgetLineRulesCache=[]; _budgetLineRulesLoadStatus='loaded';
-  _txFormMode='add'; _txEditId=null; _txFormData={transaction_date:'2026-09-04',payee:'',memo:'',category_key:'',outflow:'',inflow:'',cleared:false};
-  var h=_renderTxRegister();
-  assert(count(h,/value="income\.extra_pay"/g)===1,'Register picker must offer income.extra_pay exactly once (got '+count(h,/value="income\.extra_pay"/g)+')');
-  assert(/value="income\.extra_pay"[^>]*>Adam Extra Pay</.test(h),'option label must be "Adam Extra Pay"');
-  assert(count(h,/value="income\.bkcpa_extra_pay"/g)===1,'Wendy Extra BK Pay must remain offered exactly once');
-});
-T('[A1b-XP] XR-2: the Category Report picker offers Adam Extra Pay exactly once',function(){
-  _categoriesCache=xpCats(); _budgetLineRulesCache=[]; _budgetLineRulesLoadStatus='loaded';
-  var opts=_catReportPickerCategories('2026-09-01').filter(function(c){return c.key===XPK;});
-  assert(opts.length===1&&opts[0].label==='Adam Extra Pay','Category Report picker: '+JSON.stringify(opts));
-});
-TA('[A1b-XP] XR-3: the Register save authority (A1a) accepts Adam Extra Pay and refuses it once the category is gone (no write either way)',async function(){
-  var f=router([[isCatRead,function(){return resp(200,[live(XPK,{behavior_class:'income',budget_treatment:'display_only'})]);}]]); fetch=f;
-  var e=await _txCategoryAuthorityError({},XPK); assert(e===null,'authority refused Adam Extra Pay: '+e);
-  f=router([[isCatRead,function(){return resp(200,[]);}]]); fetch=f;
-  e=await _txCategoryAuthorityError({},XPK); assert(/no longer exists/i.test(e||''),'deleted category must be refused before any write: '+e);
-  assert(f.log.every(function(x){return x.method==='GET';}),'authority check issued a write');
-});
-TA('[A1b-XP] XF-1: the exclusion depends on FEATURE_FLAGS.useSupabaseRegistries===false — pinned false; flipping it would surface Extra Pay as a Budget income row',async function(){
-  assert(FEATURE_FLAGS.useSupabaseRegistries===false,'useSupabaseRegistries must ship false (A0/A1/A2 invariant)');
-  var off=await renderAug(augMonth([reg('x',XPK,411.14)]),[],{cats:xpCats()});
-  assert(off.indexOf('Adam Extra Pay')<0,'flag false: Adam Extra Pay must not render in Budget');
-  var saved=FEATURE_FLAGS.useSupabaseRegistries;
-  try{
-    FEATURE_FLAGS.useSupabaseRegistries=true;
-    var on=await renderAug(augMonth([reg('x',XPK,411.14)]),[],{cats:xpCats()});
-    assert(on.indexOf('Adam Extra Pay')>=0,'characterization: with the flag on, live income leaves (incl. Extra Pay) become Budget income rows — this is why the flag is an acceptance invariant');
-  } finally { FEATURE_FLAGS.useSupabaseRegistries=saved; }
 });
 
 // ── Runner ────────────────────────────────────────────────────────────────
