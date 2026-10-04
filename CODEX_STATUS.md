@@ -1,5 +1,46 @@
 # Codex Status: Herndon Financial OS
 
+## CURRENCY NOTE (2026-10-04c): Release A R2 PRODUCTION SITTING CLOSED — Phase A deployed, Release A acceptance FAILED (18/19, C11), owner-selected R0 executed; production restored to accepted A1b; R2 is NOT production-accepted
+
+**Canonical state.** Production serves accepted A1b `867047fb76c5fef216d0c997ba6b9308725ee8a47dfbe19b421fabec001deebb` (BUILD_TS `2026-09-18T23:16:49`). Release A R2 was frozen (MANIFEST `6e956edf…`) and deployed for Phase A only. It **failed its frozen acceptance contract and was rolled back**, so it must not be described as a deployment success. This note is balance-free.
+
+- **Sitting 2026-10-04 (owner Step-0 attestation; read-only production SQL via MCP authorized for that sitting only):**
+  - Base push `61b9302..cc5f2ab` (CODEX_STATUS only).
+  - `preflight stage` **PASS 79/79**.
+  - **FP0** captured.
+  - 5-key drift check **PASS**.
+  - Phase A push `cc5f2ab..23ec061` (the 15 frozen commits).
+  - `preflight post` **PASS 79/79**: served `7ea6fa36…`.
+- **Acceptance:**
+  - **A0 `phaseb-acceptance` PASS 24/24**, zero writes.
+  - **Release A `acceptance.js` FAIL 18/19:** C11 only.
+  - **FP1 == FP0** on all 16 tables, so no production data was written.
+- **C11 diagnosis: acceptance-check false positive, pending correction.** With two goal recommendations rendered, C11's stale-wording regex ran across table cells into the second row's correct caveat. Every rendered caveat was the exact Release A wording.
+- **Owner selected the literal frozen rule (acceptance FAIL = STOP; R0):**
+  - classifier PRE;
+  - `r0.sh prepare` PASS;
+  - R0 push `23ec061..39d28e5` (`index.html` only);
+  - `r0.sh served` PASS (served `867047fb…`);
+  - A1b smoke PASS 18/18, run against a same-data reference captured on R2 immediately before R0 (the N-2 baseline definition was not satisfiable).
+- **Phase B was NOT executed.**
+- **OC-1 disposition:** commit `3a7f26e` (this branch) restores the seven residual Release A R2 test/doc files to their accepted-A1b-base state.
+  - Restored: `e2e.js`, `test_a1b.js`, `test_regression.js`.
+  - Removed: `test_g1.js`, `test_release_a.js` and the two 2026-09-22 Extra Pay docs.
+  - The tree now equals `61b9302` apart from `CODEX_STATUS.md`.
+  - OC-1 stays active until that cleanup reaches `origin/main` under owner authorization.
+- **Evidence:** `~/Herndon-Financial-OS-Evidence/release-a-r2-sitting-20261004T211445Z/` (00–20, SHA256SUMS).
+- **Next (owner-gated):** the Release A **R3** correction is local only:
+  - row-scoped C11;
+  - R0 rehearsal with real hooks;
+  - deterministic R0-smoke baseline;
+  - MCP transport control.
+
+  Then the R3 re-freeze adjudication, then a new deployment sitting under O4. The standing goal-funding refusal is unchanged.
+
+**Documentation only.** This note changes no code, test, SQL, schema, data, production or evidence.
+
+---
+
 ## CURRENCY NOTE (2026-10-04): Release A R2 (Release A + Adam Extra Pay) FROZEN — owner-authorized 2026-10-04; NOT pushed, NOT deployed; next = production-deployment authorization/preparation
 
 **Canonical state.** Release A R2 is **FROZEN** at the identity below. The freeze is an evidence and content decision only. **It does not authorize** a push to `main`, production deployment, production preflight, read-only production contact, production SQL, Phase A, Phase B, or any goal-funding execution. The standing goal-funding refusal is unchanged. Production still serves accepted A1b `867047fb76c5fef216d0c997ba6b9308725ee8a47dfbe19b421fabec001deebb`. This note is balance-free.
