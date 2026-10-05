@@ -12068,8 +12068,8 @@ function applyScenario(){
   var p=scenarioState.params;
   if(type==='commission'){
     var gross=parseFloat(p.gross)||0;
-    var ct=Math.round(gross*0.40*100)/100;
-    var ca=Math.round(gross*0.60*100)/100;
+    var ct=p.taxable?Math.round(gross*0.40*100)/100:0;
+    var ca=p.taxable?Math.round(gross*0.60*100)/100:0;
     var addEvs=p.taxable?[{l:'Commission income ('+f(gross)+')',t:'in',a:gross,tx:true}]:[{l:'Commission income ('+f(gross)+')',t:'in',a:gross}];
     scenarioState.previewOverride=buildScenarioPreviewOverride(wn,addEvs,ct,ca);
   }else if(type==='expense'){
@@ -12129,7 +12129,7 @@ function renderScenarioModal(){
   if(!scenarioState.commitModal){el.innerHTML='';return;}
   var type=scenarioState.type;var wn=scenarioState.weekNum;var p=scenarioState.params;
   var summary='';
-  if(type==='commission')summary='Add commission of '+f(parseFloat(p.gross)||0)+' to <strong>Week '+getCalWeek(wn)+' ('+getWeekDate(wn)+')</strong>. 40% ('+f(Math.round((parseFloat(p.gross)||0)*0.40*100)/100)+') → Tax HYSA, 60% ('+f(Math.round((parseFloat(p.gross)||0)*0.60*100)/100)+') → Alaska.';
+  if(type==='commission')summary='Add commission of '+f(parseFloat(p.gross)||0)+' to <strong>Week '+getCalWeek(wn)+' ('+getWeekDate(wn)+')</strong>'+(p.taxable?', taxable: 40% ('+f(Math.round((parseFloat(p.gross)||0)*0.40*100)/100)+') reserved → Vio Bank - Tax Reserve; the remaining 60% ('+f(Math.round((parseFloat(p.gross)||0)*0.60*100)/100)+') is not transferred separately and remains subject to the normal weekly waterfall.':' (not taxable — no tax reserve).');
   else if(type==='expense')summary='Add expense "'+((p.label||'One-time expense'))+'" of '+f(parseFloat(p.amount)||0)+' to <strong>Week '+getCalWeek(wn)+' ('+getWeekDate(wn)+')</strong>.';
   else if(type==='inflow')summary='Add inflow "'+((p.label||'One-time inflow'))+'" of '+f(parseFloat(p.amount)||0)+' to <strong>Week '+getCalWeek(wn)+' ('+getWeekDate(wn)+')</strong>'+(p.taxable?' (taxable — splits applied).':'.');
   else if(type==='goal')summary='Update goal targets: Alaska to '+f(parseFloat(p.ak)||goalAk)+', Retirement to '+f(parseFloat(p.rt)||goalRt)+'.';
