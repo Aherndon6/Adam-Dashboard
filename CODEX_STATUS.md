@@ -1,5 +1,71 @@
 # Codex Status: Herndon Financial OS
 
+## CURRENCY NOTE (2026-10-05b): Release B PRODUCTION-ACCEPTED and CLOSED. G3 (an untaxed What-If commission creates no tax reserve) + G4 P1–P24 (policy-neutral tax wording)
+
+**Canonical state.** Production serves Release B. The **accepted product/deploy commit is `3595e012c52fa9d8518be628b0afcf1d75064b8c`.**
+
+| Item | Value |
+|---|---|
+| `index.html` blob | `16a2f1b1eeeba19ed121efb5168aef384062dd36` |
+| Artifact sha256 | `6dc58e20ee56daa54ca5ff7fb8453fa8e802b7e8b38666d371698a467e0cc906` |
+| BUILD_TS | `2026-10-05T18:40:45` |
+| Base it replaced | R3 `0f9ef81`, served `7ea6fa36…` |
+
+- **Production bytes** were confirmed byte-identical to the frozen artifact.
+- Any later docs-only commit on `main` (including the one recording this note) is repository status only, **not** a new product artifact.
+- This note is balance-free.
+
+**Frozen package:** `~/Herndon-Financial-OS-Evidence/post-r3-release-b-package-2026-10-05/`. MANIFEST `e55924a4d28f07b61655e0722359f5f1eabe87d1552f02b51351b82f77191b76` (27 members). Owner freeze 2026-10-05; immutable historical evidence.
+
+**Scope:**
+- **G3:** the What-If Commission with Taxable OFF now gives `ct=0`/`ca=0`. There is no phantom 40% reserve, no false floor breach, and no phantom `ct` persisted on commit.
+- **G4:** the P1–P24 contract (`release-b-recon-2026-10-05/G4-STRING-REVIEW.md`, sha `c6c95ded…`).
+- **Out of scope:** no SQL, DDL, DML, RLS or data change. The 49 protected functions, golden master and fixtures are unchanged.
+
+**Deployment (2026-10-05, each step owner-gated):**
+- **G-D1:** `preflight-b.sh stage` PASS, 38/38 (live origin/main `0f9ef81`; production served `7ea6fa36`).
+- **G-D2:** plain fast-forward push `0f9ef81..3595e01`, exit 0.
+  - The read-only pre-push hook ran the static suite, 1961/0.
+  - `push_to_github.sh` was not used; it is forbidden for frozen releases because it re-stamps BUILD_TS.
+- **G-D3:** `preflight-b.sh post` PASS on the first poll. Then zero-write production acceptance, signed in as owner, with the exact frozen script bytes verified in-page by sha256:
+  - **Release B** `acceptance-b.js`: **42/42 PASS**.
+    - Taxable OFF: `ct=0`, `ca=0`, trajectory identical to the untaxed Inflow.
+    - Taxable ON: `ct=2000`, `ca=3000`; only the 40% is a modeled transfer.
+    - P1–P24 rendered; scenario state clean; Z1/Z3 clean; no page errors.
+  - **Release A** `acceptance-release-a-for-b.js` (the R3 script with only C1's BUILD_TS re-pinned): **19/19 PASS**, **C3 `NOT_AUTHORIZED`**, C12 clean.
+  - **Zero writes;** no database, SQL, MCP or staging contact.
+- **G-D4:** owner final ruling. **PRODUCTION-ACCEPTED → Release B CLOSED.**
+
+**Evidence:** `~/Herndon-Financial-OS-Evidence/release-b-recon-2026-10-05/`. Subdirectories include `deploy-gd1/`, `deploy-gd2/`, `deploy-gd3/`, `fable-review/` and `FREEZE-RECORD-RELEASE-B.md`, each with SHA256SUMS.
+
+**Standing rules:**
+- **The goal-funding execution HOLD remains in force.** Release B does not authorize goal funding.
+- Interim weekly cash certification remains authoritative for household cash decisions.
+
+**Rollback (R0-B, owner-only; `r0-b.sh` in the package):**
+- **Mechanism:** a single-file restore to R3 `7fb7397`/`7ea6fa36`.
+- **Data-compatible:** B-created rows stay valid under R3.
+- **Not behaviourally equivalent:** rollback restores R3's Taxable-OFF What-If defect **and** its false 60%-routing wording.
+- **Tests:** `test_release_b.js` reads 6 PASS / 10 RED after rollback, by design.
+
+**Household:** reload every Financial OS tab and device (including Wendy's) before further use or What-If activity. A stale R3 tab still carries the Taxable-OFF defect.
+
+**Bounded follow-ups carried (not started):**
+- **R-1:** the production Roadmap "Commission scenario" row still shows "40/60 split preview" until Adam edits it in the Wishlist UI. B changed only the code/seed text (P21/P22).
+- **O-4:** read-only audit of historical untaxed-commission phantom `ct` in `model_week_overrides`. Edit Week back-derivation (`grossFromCt`/`isPreTaxed`) can render such a phantom as Tax? ticked, and saving the week re-persists it. **Highest-priority substantive audit after R-1.**
+- **FD-1:** key-order-independent acceptance compares.
+- **FD-2:** stale AU-11 shadow comment.
+- **FD-3:** undeclared `activeGoalsTab` global in `applyScenario`.
+- **O1:** Executed commission-tax wording.
+- **Calendar Notes:** "Cal Wk" ISO-style numbering (editorial).
+- **Bounded terminology:** "Commission Tax Split" / "Commission split".
+
+**Canonical next:** R-1 → O-4 → normal roadmap (Wendy walkthrough → V1 → rollover planning/execution).
+
+**Documentation only.** This note changes no product, test, SQL, schema, data or production state.
+
+---
+
 ## CURRENCY NOTE (2026-10-05): Release A R3 + Adam Extra Pay COMPLETE in production — R3 Phase A PASS (owner-accepted), Phase B PASS, production state A2
 
 **Canonical state.** Production serves Release A R3 `7ea6fa36e062eba319e905c1f000fc316dabf670329b5c8cc799cc369cce182d` (BUILD_TS `2026-10-04T11:57:07`; `origin/main` `2675607`). The Phase B data change is applied. The Phase B state classifier reads **A2**. R2 remains a failed and rolled-back historical sitting (2026-10-04c note below) and is **not** production-accepted. This note is balance-free.
