@@ -120,7 +120,7 @@ test('[RB] GS-10 commit path control: a Taxable ON commission scenario still POS
   } finally { fetch = _fetch; canWriteFinancials = _cw; getAuthHeaders = _ah; clearScenario = _cl; if (save === undefined) delete overrideData[WN]; else overrideData[WN] = save; }
 });
 
-// ═══ [RB] G4 — policy-neutral wording, owner-approved contract P1–P22 (G4-STRING-REVIEW.md, 2026-10-05) ══
+// ═══ [RB] G4 — policy-neutral wording, owner-approved contract P1–P23 (G4-STRING-REVIEW.md, 2026-10-05) ══
 // TX-1 (frozen B) is REPLACED by TX-1′: it required the obsolete 2026-09-19 policy text, which the contract forbids.
 // Every surface is extracted by its own anchor and must match EXACTLY ONCE (fail-closed on 0 or >1), so no test
 // can pass by inspecting the wrong occurrence or fail on an unrelated one (e.g. the AU-11 comment at R3 :1812/:1842).
@@ -146,6 +146,8 @@ const FINAL = {
   P18: 'Taxable (model reserves 40% for taxes)',
   P20: 'Base tax reserve: $521.36 | Variable-income tax: an inflow marked taxable reserves 40% as a Checking → Vio transfer (deferred if below floor); untaxed inflows create no reserve; the 60% remainder is not transferred separately and remains subject to the normal weekly waterfall. Seeded Wk 6 commission: COMM_TAX $707.18 (transfer), COMM_AK $1,060.76 (no transfer; it only marks the week as a commission week, which selects a waterfall identical to the regular one).',
   P21: 'Week, gross amount, taxable toggle, with 40% tax-reserve preview when Taxable',
+  // P23 (owner amendment 2026-10-05, contract now P1–P23): the Goal Funding Order footnote's pre-waterfall sentences.
+  P23: 'Pre-waterfall: Base tax reserve ($521.36) and commission tax (40% → Vio for an inflow marked Tax?) are applied before the waterfall.',
 };
 // What-If renderers (real code, stubbed DOM). active:false keeps the runModel diff table out of the form.
 function whatIf(type, params, commitModal) { scenarioState = { active: !!commitModal, type, weekNum: WN, params, previewOverride: null, previewGoal: null, commitModal: !!commitModal }; }
@@ -172,6 +174,8 @@ function g4Surfaces() {
   const card = one(A, /<h3>Commission Tax Split<\/h3>([\s\S]*?)<\/div>/g, 'Commission Tax Split card')[1];
   const ps = [...card.matchAll(/<p>([\s\S]*?)<\/p>/g)].map(m => m[1]); assert(ps.length === 3, 'Commission Tax Split card must have exactly 3 paragraphs, has ' + ps.length);
   S['P5 Rules card p1'] = ps[0]; S['P6 Rules card p2'] = ps[1]; S['P7 Rules card p3'] = ps[2];
+  const order = one(A, /<h3>Goal Funding Order \(Phase 4 Direct Waterfall\)<\/h3>([\s\S]*?)<\/div>/g, 'Goal Funding Order card')[1];
+  S['P23 Goal Funding Order footnote'] = one(order, /<p style="font-size:12px;color:var\(--muted\)">([\s\S]*?)<\/p>/g, 'P23 footnote')[1];
   const sweeps = one(A, /<h3>How Surplus Sweeps Work<\/h3>([\s\S]*?)<\/div>/g, 'How Surplus Sweeps Work card')[1];
   const lis = [...one(sweeps, /<ol[^>]*>([\s\S]*?)<\/ol>/g, 'sweep priority list')[1].matchAll(/<li>([\s\S]*?)<\/li>/g)].map(m => m[1]);
   assert(/^Base income tax reserve/.test(lis[0] || ''), 'sweep list anchor: item 1 must be the base tax reserve'); S['P8 sweep list item 2'] = lis[1];
@@ -196,7 +200,7 @@ function g4Surfaces() {
   S['P22 dead Roadmap Commission scenario notes'] = one(fnSrc('_DEAD_renderRoadmap_phase2'), /\{title:'Commission scenario',notes:'([^']*)'/g, 'P22')[1];
   return S;
 }
-test('[RB] TX-1′ every replaced P1–P22 OLD string and the obsolete frozen-B policy text are gone', () => {
+test('[RB] TX-1′ every replaced P1–P23 OLD string and the obsolete frozen-B policy text are gone', () => {
   // Whole-file scope is safe ONLY for these literals: on R3 each occurs solely at its P-target (census in the RED-gate
   // evidence). P16's row is scoped to its label span (bare "60% → Alaska" also occurs in the AU-11 comment and R3 :7810).
   const OLD = ['title="Mark if commission or BK bonus inflow"', "'Mark if commission or BK bonus'", '>Commission / bonus split<',
@@ -209,7 +213,8 @@ test('[RB] TX-1′ every replaced P1–P22 OLD string and the obsolete frozen-B 
     'Commission, bonus — 40/60 split applies', '>Paycheck overage, extra cash<', 'Non-negotiable on all variable income. Always moves first before any other allocation.',
     'Add commission income with 40/60 tax/Alaska split', 'Taxable income (enables 40/60 split)', '<span class="sc-diff-lbl">60% → Alaska</span>',
     ') → Tax HYSA, 60% (', ') → Alaska.', 'Taxable (apply 40/60 commission split)', '(taxable — splits applied).',
-    'Commission tax split: 40% ($707.18) to Vio, 60% ($1,060.76) to Alaska savings', '40/60 split preview'];
+    'Commission tax split: 40% ($707.18) to Vio, 60% ($1,060.76) to Alaska savings', '40/60 split preview',
+    'Commission tax (40% → Vio / 60% → Alaska) fires on commission weeks.']; // P23: the false sentence itself (once on R3, :7810)
   const found = OLD.filter(s => html.indexOf(s) >= 0);
   // Frozen-B policy text. The date is matched only as the frozen-B "policy (owner, 2026-09-19)" phrase: the bare
   // "(owner, 2026-09-19)" legitimately occurs in the G1 vocabulary comment (R3 :4613), which B must not touch.
@@ -224,7 +229,7 @@ test('[RB] TX-3 no names, sources, thresholds, dates or false routing on any G4 
   for (const [k, v] of Object.entries(S)) { if (k[0] === '_') continue; const m = String(v).match(FORBID); if (m) bad.push(k + ' ⟵ "' + m[0] + '"'); }
   assert(bad.length === 0, bad.length + ' surface(s) carry forbidden wording: ' + JSON.stringify(bad));
 });
-test('[RB] TX-4 each FINAL P1–P22 string is exactly what its own surface carries', () => {
+test('[RB] TX-4 each FINAL P1–P23 string is exactly what its own surface carries', () => {
   const S = g4Surfaces(); const wn = 'Week ' + getCalWeek(WN) + ' (' + getWeekDate(WN) + ')';
   const want = {
     'P1 Edit Week Tax? tooltip (addEditEvent)': FINAL.P1, 'P2 Edit Week Tax? tooltip, inflow (renderEditDrawer)': FINAL.P1,
@@ -234,7 +239,8 @@ test('[RB] TX-4 each FINAL P1–P22 string is exactly what its own surface carri
     'P11 calculator Variable sublabel': FINAL.P11, 'P12 calculator Regular sublabel': FINAL.P12, 'P13 runEngine tax-step note': FINAL.P13, _P13_LABEL: FINAL.P13_LABEL,
     'P14 What-If card renderScenarios:commission': FINAL.P14, 'P14 What-If card _renderScenariosInline:commission': FINAL.P14,
     'P15 commission Taxable checkbox': FINAL.P15, 'P18 inflow Taxable checkbox': FINAL.P18,
-    'P20 AI context tax line': FINAL.P20, 'P21 WISHLIST_SEED Commission scenario notes': FINAL.P21, 'P22 dead Roadmap Commission scenario notes': FINAL.P21,
+    'P20 AI context tax line': FINAL.P20,
+    'P23 Goal Funding Order footnote': 'Not in waterfall: Taxable ETF ($4,999.79) — Stretch/Phase 5 only. No contributions until all T1-T10 goals are funded. ' + FINAL.P23 + ' All transfers respect the $6,500 hard floor.', 'P21 WISHLIST_SEED Commission scenario notes': FINAL.P21, 'P22 dead Roadmap Commission scenario notes': FINAL.P21,
   };
   // Summaries are compared as visible text (markup such as <strong> around the week is presentation, not contract).
   const wantText = {
