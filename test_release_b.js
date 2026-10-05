@@ -80,6 +80,46 @@ test('[RB] GS-7 the preview override is ct/ca-identical to base when not taxable
   assert(o.ct === inflow.ct && o.ca === inflow.ca, 'untaxed commission must match untaxed inflow on ct/ca');
 });
 
+// ═══ [RB] G3 additions (R3 base, owner test contract 2026-10-05) ════════════════════════════
+function trajectory(o) { const save = overrideData[WN]; overrideData[WN] = o;
+  try { return runModel(7000, 7694.87).map(w => [w.num, w.chk, w.sav, w.amx, w.tax, w.lc]); }
+  finally { if (save === undefined) delete overrideData[WN]; else overrideData[WN] = save; } }
+test('[RB] GS-8 Taxable OFF commission: model trajectory identical to the equivalent untaxed Inflow (no phantom reserve, no false floor breach)', () => {
+  const com = runScenario('commission', { gross: '5000', taxable: false }, WN);
+  const inf = runScenario('inflow', { amount: '5000', taxable: false, label: 'x' }, WN);
+  const A = trajectory(com), B = trajectory(inf);
+  const i = A.findIndex((r, k) => JSON.stringify(r) !== JSON.stringify(B[k]));
+  assert(i < 0, 'trajectories differ from week ' + (i >= 0 ? A[i][0] : '') + ': commission ' + JSON.stringify(A[i]) + ' vs inflow ' + JSON.stringify(B[i]));
+});
+test('[RB] GS-9 commit path: a Taxable OFF commission scenario never POSTs a phantom tax reserve to model_week_overrides', async () => {
+  const b = baseCtCa(WN); const save = overrideData[WN]; const sent = [];
+  const _fetch = fetch, _cw = canWriteFinancials, _ah = getAuthHeaders, _cl = clearScenario;
+  try {
+    fetch = function (u, init) { sent.push({ u: String(u), m: (init && init.method) || 'GET', body: init && init.body }); return Promise.resolve({ ok: true, status: 201, json: function () { return Promise.resolve([]); } }); };
+    canWriteFinancials = function () { return true; }; getAuthHeaders = async function () { return {}; }; clearScenario = function () {};
+    runScenario('commission', { gross: '5000', taxable: false }, WN);
+    await commitScenario();
+    const posts = sent.filter(x => x.m === 'POST' && /model_week_overrides/.test(x.u));
+    assert(posts.length === 1, 'expected exactly one model_week_overrides POST, got ' + posts.length);
+    const body = JSON.parse(posts[0].body);
+    assert(Number(body.ct) === Number(b.ct), 'committed ct must equal base (no phantom reserve): ' + body.ct + ' vs ' + b.ct);
+    assert(Number(body.ca) === Number(b.ca), 'committed ca must equal base: ' + body.ca + ' vs ' + b.ca);
+    const added = body.events_json[body.events_json.length - 1]; assert(added.a === 5000 && !added.tx, 'committed gross must be the untaxed inflow');
+  } finally { fetch = _fetch; canWriteFinancials = _cw; getAuthHeaders = _ah; clearScenario = _cl; if (save === undefined) delete overrideData[WN]; else overrideData[WN] = save; }
+});
+test('[RB] GS-10 commit path control: a Taxable ON commission scenario still POSTs the 40/60 split (unchanged behaviour)', async () => {
+  const b = baseCtCa(WN); const save = overrideData[WN]; const sent = [];
+  const _fetch = fetch, _cw = canWriteFinancials, _ah = getAuthHeaders, _cl = clearScenario;
+  try {
+    fetch = function (u, init) { sent.push({ u: String(u), m: (init && init.method) || 'GET', body: init && init.body }); return Promise.resolve({ ok: true, status: 201, json: function () { return Promise.resolve([]); } }); };
+    canWriteFinancials = function () { return true; }; getAuthHeaders = async function () { return {}; }; clearScenario = function () {};
+    runScenario('commission', { gross: '5000', taxable: true }, WN);
+    await commitScenario();
+    const body = JSON.parse(sent.filter(x => x.m === 'POST' && /model_week_overrides/.test(x.u))[0].body);
+    assert(body.ct === r2(b.ct + 2000) && body.ca === r2(b.ca + 3000), 'taxable commit must carry +2,000 ct / +3,000 ca: ' + body.ct + ' / ' + body.ca);
+  } finally { fetch = _fetch; canWriteFinancials = _cw; getAuthHeaders = _ah; clearScenario = _cl; if (save === undefined) delete overrideData[WN]; else overrideData[WN] = save; }
+});
+
 // ═══ [RB] G4 ═════════════════════════════════════════════════════════════════════════════════
 test('[RB] TX-1 no remaining instruction to route 40% of Wendy B&K / Deep South / every commission to Vio', () => {
   const stale = ['Mark if commission or BK bonus', 'Non-negotiable on all variable income', 'Commission, bonus — 40/60 split applies',
