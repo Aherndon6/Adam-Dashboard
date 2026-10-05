@@ -1,5 +1,24 @@
 # Codex Status: Herndon Financial OS
 
+## CURRENCY NOTE (2026-10-05c): R-1 CLOSED (Release B bounded Roadmap exception resolved). Canonical next: O-4
+
+**R-1 PASS / CLOSED (owner ruling, 2026-10-05).** After the household reload (Adam's and Wendy's devices), the production Roadmap "Commission scenario" row was corrected through the normal Wishlist UI: Edit → Notes → Save.
+- **The write:** exactly one PATCH to the existing `wishlist_items` row **id 16**, at 23:50:07Z.
+- **Notes now read exactly:** `Week, gross amount, taxable toggle, with 40% tax-reserve preview when Taxable`.
+- **Unchanged:** Title `Commission scenario`, Phase `Phase 3`, Type `feature`, Status `done`.
+- **Verified after a hard reload:** the change persisted; exactly one `Commission scenario` row; 77 items, unchanged; no seed re-insert or duplicate.
+- **No other data write.** No SQL, MCP or database tooling was used.
+
+**Evidence:** `~/Herndon-Financial-OS-Evidence/release-b-recon-2026-10-05/r1-and-docs-push/` (with SHA256SUMS).
+
+**Unchanged:** Release B remains CLOSED and production-accepted (product/deploy commit `3595e01`, served artifact `6dc58e20…`). The goal-funding HOLD remains in force.
+
+**Canonical next: O-4**, the historical phantom-`ct` audit in `model_week_overrides`. Phase A is read-only detection and classification only. Then the owner's disposition → Wendy walkthrough → V1 → rollover. The other bounded follow-ups (FD-1, FD-2, FD-3, O1, Cal-Wk editorial, "split" labels) are carried as recorded in the 2026-10-05b note.
+
+**Documentation only.** Balance-free; no product, test, SQL, schema or production state change.
+
+---
+
 ## CURRENCY NOTE (2026-10-05b): Release B PRODUCTION-ACCEPTED and CLOSED. G3 (an untaxed What-If commission creates no tax reserve) + G4 P1–P24 (policy-neutral tax wording)
 
 **Canonical state.** Production serves Release B. The **accepted product/deploy commit is `3595e012c52fa9d8518be628b0afcf1d75064b8c`.**
