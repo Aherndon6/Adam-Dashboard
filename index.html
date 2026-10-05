@@ -5095,7 +5095,7 @@ function addEditEvent(){
     '<select class="ev-edit-type"><option value="in">Inflow</option><option value="ob">Outflow</option></select>'+
     '<input class="ev-edit-amt" type="number" step="0.01" min="0" value="0">'+
     '<select class="ev-date-sel" title="Exact date (optional)">'+_weekDayOpts(editOpen,'')+'</select>'+
-    '<div class="ev-tax-wrap" title="Mark if commission or BK bonus inflow"><span class="ev-tax-lbl">Tax?</span><input class="ev-tax-cb" type="checkbox"></div>'+
+    '<div class="ev-tax-wrap" title="Taxable: ticked = the model reserves 40% of this inflow for taxes; unticked = no tax reserve"><span class="ev-tax-lbl">Tax?</span><input class="ev-tax-cb" type="checkbox"></div>'+
     '<button class="ev-del-btn" onclick="this.closest(\'.ev-edit-row\').remove()" title="Remove">&#10005;</button>';
   list.appendChild(div);
 }
@@ -6797,7 +6797,7 @@ function runEngine(vm){
   if(engineType==='variable'){
     var taxAmt=Math.round(amt*0.40*100)/100;
     var allocAmt=Math.round(amt*0.60*100)/100;
-    steps.push({type:'tax',num:'→',label:'40% Tax Reserve → Vio Bank (Tax HYSA)',amt:taxAmt,note:'Non-negotiable on all variable income. Always moves first before any other allocation.'});
+    steps.push({type:'tax',num:'→',label:'40% Tax Reserve → Vio Bank (Tax HYSA)',amt:taxAmt,note:'Variable Income mode sets aside 40% for taxes before any other allocation. Choose Regular Surplus for income you are not reserving tax on.'});
     steps.push({type:'info',label:'60% working allocation: '+f(allocAmt),amt:allocAmt,note:'Remaining funds follow the waterfall below.'});
     remaining=allocAmt;
   }
@@ -7367,10 +7367,10 @@ function _renderGoalsEngine(vm,w){
     '<span class="engine-label">Income type</span>'+
     '<div class="engine-type-row">'+
       '<button class="engine-type-btn'+(engineType==='variable'?' sel':'')+'" onclick="engineType=\'variable\';engineResult=null;renderApp()">'+
-        '💰 Variable Income<br><span style="font-size:10px;font-weight:400">Commission, bonus — 40/60 split applies</span>'+
+        '💰 Variable Income<br><span style="font-size:10px;font-weight:400">Sets aside 40% for tax first, then allocates the rest</span>'+
       '</button>'+
       '<button class="engine-type-btn'+(engineType==='regular'?' sel':'')+'" onclick="engineType=\'regular\';engineResult=null;renderApp()">'+
-        '📋 Regular Surplus<br><span style="font-size:10px;font-weight:400">Paycheck overage, extra cash</span>'+
+        '📋 Regular Surplus<br><span style="font-size:10px;font-weight:400">No tax set-aside — paycheck overage, extra cash</span>'+
       '</button>'+
     '</div>'+
     '<span class="engine-label" style="margin-bottom:4px">Current flags (live)</span>'+
@@ -7590,7 +7590,7 @@ function _DEAD_renderRoadmap_phase2(){
     {title:'Goal Registry foundation (Phase 6A)',notes:'goal_registry Supabase table (SELECT-only RLS). HARDCODED_GOALS_FALLBACK ensures model runs before DB load. Validation, 4-state goalsLoadStatus, fallback banner.',phase:'Phase 6',status:'done'},
     // ── Planned ──
     {title:'Scenario preview sandbox',notes:'Architecture that never writes to Supabase until user explicitly commits',phase:'Phase 3',status:'planned'},
-    {title:'Commission scenario',notes:'Week, gross amount, taxable toggle, 40/60 split preview',phase:'Phase 3',status:'planned'},
+    {title:'Commission scenario',notes:'Week, gross amount, taxable toggle, with 40% tax-reserve preview when Taxable',phase:'Phase 3',status:'planned'},
     {title:'Expense & Inflow scenarios',notes:'Add Expense, Add Inflow, Change Goal Target — with preview diff',phase:'Phase 3',status:'planned'},
     {title:'Scenario commit flow',notes:'Confirmation modal → persist → clear preview state',phase:'Phase 3',status:'planned'},
     {title:'Exact calendar dates on cash flows',notes:'Every transfer and action shows its calendar date, not just week number',phase:'Phase 3',status:'planned'},
@@ -7782,9 +7782,9 @@ function renderAssumptions(){
       '<p><strong>Three-tier display floors (advisory only — no model logic):</strong> $6,500 emergency floor (hard block) · $10,000 warning threshold (cautionary) · $12,000 target buffer (healthy). The $10k and $12k levels are display indicators on the Weekly tab only.</p>'+
     '</div>'+
     '<div class="panel assumption-card"><h3>Commission Tax Split</h3>'+
-      '<p>When Wendy or Adam has a commission or BK bonus inflow (taxable), the model routes: <strong>40% → Vio Bank - Tax Reserve</strong> and <strong>60% → current savings goal</strong>.</p>'+
-      '<p><code>COMM_TAX = $707.18</code> (40% of commission gross) and <code>COMM_AK = $1,060.76</code> (60%) are defined as constants. Week 6 commission is deferred because checking is below floor after obligations — both transfers pick up the following week.</p>'+
-      '<p>When a commission week has no surplus above the floor, the 40% commission tax transfer defers under the commission_tax action identity through commTaxPending. The 60% goal allocation is also deferred until the waterfall can safely fund it.</p>'+
+      '<p>When an inflow is marked <strong>Tax?</strong> in Edit Week, the model reserves <strong>40%</strong> of it as a transfer from Checking to <strong>Vio Bank - Tax Reserve</strong>. Inflows not marked Tax? create no tax reserve. The remaining 60% is not transferred separately and remains subject to the normal weekly waterfall.</p>'+
+      '<p><code>COMM_TAX = $707.18</code> and <code>COMM_AK = $1,060.76</code> are the 40% / 60% shares of the seeded Week 6 commission. Only <code>COMM_TAX</code> is a modeled transfer. <code>COMM_AK</code> moves no money; the 60% remainder is not transferred separately and remains subject to the normal weekly waterfall.</p>'+
+      '<p>When a commission week has no surplus above the floor, the 40% commission tax transfer defers under the commission_tax action identity through commTaxPending.</p>'+
     '</div>'+
     '<div class="panel assumption-card"><h3>Calendar Notes</h3>'+
       '<p>Three weeks are structurally thin — bill-heavy weeks with limited inflow. Checking stays above $0 throughout (EF backstop prevents negatives) but discretionary spending should be avoided.</p>'+
@@ -7807,7 +7807,7 @@ function renderAssumptions(){
         '<li><strong>T9 — Bryce Vehicle</strong> ($8,000) → Truist Checking hold. September 2026 decision point.</li>'+
         '<li><strong>T10 — Christmas Cruise</strong> ($2,500) → Truist Savings (earmarked). Decision pending post-Alaska.</li>'+
       '</ol>'+
-      '<p style="font-size:12px;color:var(--muted)">Not in waterfall: Taxable ETF ($4,999.79) — Stretch/Phase 5 only. No contributions until all T1-T10 goals are funded. Pre-waterfall: base tax ($521.36 → Vio) fires Week 2 (Vio Bank account setup deferred from Wk 1). Commission tax (40% → Vio / 60% → Alaska) fires on commission weeks. All transfers respect the $6,500 hard floor.</p>'+
+      '<p style="font-size:12px;color:var(--muted)">Not in waterfall: Taxable ETF ($4,999.79) — Stretch/Phase 5 only. No contributions until all T1-T10 goals are funded. Pre-waterfall: Base tax reserve ($521.36) and commission tax (40% → Vio for an inflow marked Tax?) are applied before the waterfall. All transfers respect the $6,500 hard floor.</p>'+
     '</div>'+
     '<div class="panel assumption-card"><h3>IRA/529 Holding Account Architecture</h3>'+
       '<p>IRA and 529 contributions do not go directly to their custodians. They route first to <strong>AMEX Savings as a holding account</strong>. The model can stage funds in AMEX while CPA clearance is pending, as long as the 5-week AMEX lookahead confirms the sweep is cash-safe.</p>'+
@@ -7848,7 +7848,7 @@ function renderAssumptions(){
       '<p><strong>Priority order (Phase 4 architecture):</strong></p>'+
       '<ol style="margin:6px 0 10px 18px;font-size:13px;line-height:1.9">'+
         '<li>Base income tax reserve ($521.36 → Vio Bank) — fires model Wk 2 (Vio account setup deferred from Wk 1)</li>'+
-        '<li>Commission 40% → Tax Reserve, 60% → Alaska — triggers on Wk 6 commission income</li>'+
+        '<li>Commission tax: 40% → Tax Reserve for an inflow marked Tax? (seeded on the Wk 6 commission); the 60% remainder is not transferred separately</li>'+
         '<li>Alaska fund → Truist Savings — sweeps each eligible week · <strong>completes model Wk 5 (Cal Wk 27, Jul 5-11)</strong></li>'+
         '<li>Savings seed — $3,772.74 one-time Truist Savings → AMEX, fires immediately after Alaska funded</li>'+
         '<li>RCCL → payment · DCL → payment (small, fast)</li>'+
@@ -7859,8 +7859,8 @@ function renderAssumptions(){
       '</ol>'+
       '<p><strong>CPA status:</strong> The <code>ira_cpa_cleared</code> flag is display-only for deployment readiness. It does not block checking → AMEX accumulation. IRA and 529 funds can stage in AMEX Savings when the 5-week lookahead confirms the sweep is cash-safe. Actual AMEX → T Rowe / 529 custodian deployment remains manual after CPA clearance.</p>'+
       '<p><strong>AMEX lookahead:</strong> Before sweeping checking into AMEX-held IRA/529 goals, the model projects scheduled inflows and bills forward 5 weeks. If the sweep would cause checking to fall below the $6,500 floor in that window, the AMEX goal defers and lower-priority goals are blocked for that week.</p>'+
-      '<p><strong>Commission income:</strong> When Adam or Wendy earns a commission or BK bonus, the model auto-routes 40% → Vio Bank Tax Reserve and 60% → the current open goal. Commission tax preserves its own <code>commission_tax</code> identity and carries forward through <code>commTaxPending</code> if floor-blocked.</p>'+
-      '<p><strong>Adding extra income:</strong> Use Edit Week to add one-time inflows. Check "Tax?" for taxable income — the 40/60 split fires automatically and accelerates whichever goal is currently open.</p>'+
+      '<p><strong>Commission income:</strong> For an inflow marked Tax?, the model reserves 40% as a transfer to Vio Bank Tax Reserve; the rest is not transferred separately and remains subject to the normal weekly waterfall. Inflows not marked Tax? create no tax reserve. Commission tax preserves its own <code>commission_tax</code> identity and carries forward through <code>commTaxPending</code> if floor-blocked.</p>'+
+      '<p><strong>Adding extra income:</strong> Use Edit Week to add one-time inflows. Tick "Tax?" if you want the model to reserve 40% of that inflow for taxes; leave it unticked for no tax reserve.</p>'+
     '</div>'+
   '</div>';
   document.getElementById('assumptions-content').innerHTML=html;
@@ -7888,7 +7888,7 @@ function renderEditDrawer(){
         '<select class="ev-edit-type"><option value="in"'+(ev.t==='in'?' selected':'')+'>Inflow</option><option value="ob"'+(ev.t==='ob'?' selected':'')+'>Outflow</option></select>'+
         '<input class="ev-edit-amt" type="number" step="0.01" min="0" value="'+Math.abs(ev.a)+'">'+
         '<select class="ev-date-sel" title="Exact date (optional)">'+_weekDayOpts(editOpen,ev.d||'')+'</select>'+
-        '<div class="ev-tax-wrap" title="'+(ev.t==='ob'?'N/A for outflows':'Mark if commission or BK bonus')+'"><span class="ev-tax-lbl">Tax?</span><input class="ev-tax-cb" type="checkbox"'+(isPreTaxed?' checked':'')+(ev.t==='ob'?' disabled':'')+' ></div>'+
+        '<div class="ev-tax-wrap" title="'+(ev.t==='ob'?'N/A for outflows':'Taxable: ticked = the model reserves 40% of this inflow for taxes; unticked = no tax reserve')+'"><span class="ev-tax-lbl">Tax?</span><input class="ev-tax-cb" type="checkbox"'+(isPreTaxed?' checked':'')+(ev.t==='ob'?' disabled':'')+' ></div>'+
         '<button class="ev-del-btn" onclick="this.closest(\'.ev-edit-row\').remove()" title="Remove">&#10005;</button>'+
       '</div>';
     });
@@ -7907,8 +7907,8 @@ function renderEditDrawer(){
         '<div class="drawer-sect">Cash flow events</div>'+
         '<div id="ev-edit-list">'+evRows+'</div>'+
         '<button class="modal-add-ev" onclick="addEditEvent()">+ Add event</button>'+
-        '<div class="drawer-sect">Commission / bonus split</div>'+
-        '<div class="comm-hint">Check <strong>Tax?</strong> on any inflow that is a <strong>Wendy or Adam commission</strong> or <strong>BK bonus</strong>. The model auto-routes <strong>40% → Vio Bank - Tax Reserve</strong> and <strong>60% → current savings goal</strong> on top of normal surplus logic.</div>'+
+        '<div class="drawer-sect">Tax reserve (Tax?)</div>'+
+        '<div class="comm-hint">Tick <strong>Tax?</strong> on an inflow to have the model reserve <strong>40%</strong> of it for taxes: a transfer from Checking to <strong>Vio Bank - Tax Reserve</strong> (carried forward if Checking has no room above the floor). Leave it unticked and no tax reserve is created. The rest of the inflow is not transferred separately and remains subject to the normal weekly waterfall.</div>'+
       '</div>'+
       '<div class="drawer-footer">'+
         (editSaving?
@@ -12131,7 +12131,7 @@ function renderScenarioModal(){
   var summary='';
   if(type==='commission')summary='Add commission of '+f(parseFloat(p.gross)||0)+' to <strong>Week '+getCalWeek(wn)+' ('+getWeekDate(wn)+')</strong>'+(p.taxable?', taxable: 40% ('+f(Math.round((parseFloat(p.gross)||0)*0.40*100)/100)+') reserved → Vio Bank - Tax Reserve; the remaining 60% ('+f(Math.round((parseFloat(p.gross)||0)*0.60*100)/100)+') is not transferred separately and remains subject to the normal weekly waterfall.':' (not taxable — no tax reserve).');
   else if(type==='expense')summary='Add expense "'+((p.label||'One-time expense'))+'" of '+f(parseFloat(p.amount)||0)+' to <strong>Week '+getCalWeek(wn)+' ('+getWeekDate(wn)+')</strong>.';
-  else if(type==='inflow')summary='Add inflow "'+((p.label||'One-time inflow'))+'" of '+f(parseFloat(p.amount)||0)+' to <strong>Week '+getCalWeek(wn)+' ('+getWeekDate(wn)+')</strong>'+(p.taxable?' (taxable — splits applied).':'.');
+  else if(type==='inflow')summary='Add inflow "'+((p.label||'One-time inflow'))+'" of '+f(parseFloat(p.amount)||0)+' to <strong>Week '+getCalWeek(wn)+' ('+getWeekDate(wn)+')</strong>'+(p.taxable?' (taxable — 40% tax reserve applied).':'.');
   else if(type==='goal')summary='Update goal targets: Alaska to '+f(parseFloat(p.ak)||goalAk)+', Retirement to '+f(parseFloat(p.rt)||goalRt)+'.';
   el.innerHTML='<div class="sc-modal-overlay"><div class="sc-modal">'+
     '<div class="sc-modal-title">⚠️ Commit to Live Model?</div>'+
@@ -12164,7 +12164,7 @@ function _renderScenariosInline(vm){
     '</div>';
   }
   html+='<div class="scenario-type-grid">'+
-    _stc('commission','💰','Commission','Add commission income with 40/60 tax/Alaska split')+
+    _stc('commission','💰','Commission','Add commission income (40% tax reserve only if Taxable)')+
     _stc('expense','💸','Add Expense','One-time expense in a specific week')+
     _stc('inflow','📥','Add Inflow','One-time income or transfer in')+
     _stc('goal','🎯','Change Goal Targets','Adjust Alaska or Retirement savings targets')+
@@ -12193,7 +12193,7 @@ function renderScenarios(vm){
   }
   // Scenario type picker
   html+='<div class="scenario-type-grid">'+
-    _stc('commission','💰','Commission','Add commission income with 40/60 tax/Alaska split')+
+    _stc('commission','💰','Commission','Add commission income (40% tax reserve only if Taxable)')+
     _stc('expense','💸','Add Expense','One-time expense in a specific week')+
     _stc('inflow','📥','Add Inflow','One-time income or transfer in')+
     _stc('goal','🎯','Change Goal Targets','Adjust Alaska or Retirement savings targets')+
@@ -12225,13 +12225,12 @@ function _renderScenarioForm(vm){
   if(type==='commission'){
     html+='<div class="sc-field"><label>Week</label><select onchange="scenarioState.weekNum=+this.value;scenarioState.params={};renderApp()">'+weekOpts+'</select></div>';
     html+='<div class="sc-field"><label>Gross amount</label><input type="number" min="0" step="0.01" placeholder="e.g. 5000" value="'+(p.gross||'')+'" onchange="scenarioState.params.gross=this.value;_updateScenarioPreview()"></div>';
-    html+='<div class="sc-cb-row"><input type="checkbox" id="sc-tax" '+(p.taxable?'checked':'')+' onchange="scenarioState.params.taxable=this.checked;_updateScenarioPreview()"><label for="sc-tax">Taxable income (enables 40/60 split)</label></div>';
+    html+='<div class="sc-cb-row"><input type="checkbox" id="sc-tax" '+(p.taxable?'checked':'')+' onchange="scenarioState.params.taxable=this.checked;_updateScenarioPreview()"><label for="sc-tax">Taxable (model reserves 40% for taxes)</label></div>';
     var gross=parseFloat(p.gross)||0;
     if(gross>0){
       html+='<div class="sc-preview-box"><div class="sc-preview-title">Split preview</div>'+
         '<div class="sc-diff-row"><span class="sc-diff-lbl">Income to Checking</span><span class="sc-diff-val pos">+'+f(gross)+'</span></div>'+
         (p.taxable?'<div class="sc-diff-row"><span class="sc-diff-lbl">40% → Vio Bank - Tax Reserve</span><span class="sc-diff-val neutral">'+f(Math.round(gross*0.40*100)/100)+'</span></div>':'')+
-        (p.taxable?'<div class="sc-diff-row"><span class="sc-diff-lbl">60% → Alaska</span><span class="sc-diff-val neutral">'+f(Math.round(gross*0.60*100)/100)+'</span></div>':'')+
       '</div>';
     }
     html+='<button class="sc-apply-btn" '+(gross>0?'':'disabled')+' onclick="applyScenario()">Preview impact →</button>';
@@ -12245,7 +12244,7 @@ function _renderScenarioForm(vm){
     html+='<div class="sc-field"><label>Week</label><select onchange="scenarioState.weekNum=+this.value;scenarioState.params={};renderApp()">'+weekOpts+'</select></div>';
     html+='<div class="sc-field"><label>Description</label><input type="text" placeholder="e.g. Side project payment" value="'+(p.label||'')+'" oninput="scenarioState.params.label=this.value"></div>';
     html+='<div class="sc-field"><label>Amount</label><input type="number" min="0" step="0.01" placeholder="e.g. 2500" value="'+(p.amount||'')+'" onchange="scenarioState.params.amount=this.value;_updateScenarioPreview()"></div>';
-    html+='<div class="sc-cb-row"><input type="checkbox" id="sc-inf-tax" '+(p.taxable?'checked':'')+' onchange="scenarioState.params.taxable=this.checked;_updateScenarioPreview()"><label for="sc-inf-tax">Taxable (apply 40/60 commission split)</label></div>';
+    html+='<div class="sc-cb-row"><input type="checkbox" id="sc-inf-tax" '+(p.taxable?'checked':'')+' onchange="scenarioState.params.taxable=this.checked;_updateScenarioPreview()"><label for="sc-inf-tax">Taxable (model reserves 40% for taxes)</label></div>';
     var amt2=parseFloat(p.amount)||0;
     html+='<button class="sc-apply-btn" '+(amt2>0?'':'disabled')+' onclick="applyScenario()">Preview impact →</button>';
   }else if(type==='goal'){
@@ -12300,7 +12299,7 @@ var WISHLIST_SEED=[
   {title:'Feature wishlist page',notes:'This page — Supabase-backed CRUD',phase:'Phase 2',status:'done'},
   // Phase 3 — done
   {title:'Scenario preview sandbox',notes:'Architecture that never writes to Supabase until explicitly committed',phase:'Phase 3',status:'done'},
-  {title:'Commission scenario',notes:'Week, gross amount, taxable toggle, 40/60 split preview',phase:'Phase 3',status:'done'},
+  {title:'Commission scenario',notes:'Week, gross amount, taxable toggle, with 40% tax-reserve preview when Taxable',phase:'Phase 3',status:'done'},
   {title:'Expense & Inflow scenarios',notes:'Add Expense, Add Inflow, Change Goal Target',phase:'Phase 3',status:'done'},
   {title:'Exact calendar dates on cash flows',notes:'Every transfer and action shows its calendar date',phase:'Phase 3',status:'done'},
   {title:'Wishlist full CRUD',notes:'Add ideas, edit cards, assign phases, move Planned → Done, synced via Supabase',phase:'Phase 3',status:'done'},
@@ -12814,7 +12813,7 @@ function _buildModelContext(){
   lines.push('  Truist Checking: $18,037.73 | Truist Savings: $3,772.77 | AMEX Savings: $103.64');
   lines.push('  Vio Bank Tax Reserve: $0.00 | Lending Club EF: $13,488.88');
   lines.push('Operating floor: $6,500 (all weeks) | Min transfer threshold: $100');
-  lines.push('Base tax reserve: $521.36 | Commission tax split: 40% ($707.18) to Vio, 60% ($1,060.76) to Alaska savings');
+  lines.push('Base tax reserve: $521.36 | Variable-income tax: an inflow marked taxable reserves 40% as a Checking → Vio transfer (deferred if below floor); untaxed inflows create no reserve; the 60% remainder is not transferred separately and remains subject to the normal weekly waterfall. Seeded Wk 6 commission: COMM_TAX $707.18 (transfer), COMM_AK $1,060.76 (no transfer; it only marks the week as a commission week, which selects a waterfall identical to the regular one).');
   lines.push('Retirement savings seed (Truist Savings → AMEX Savings): $3,772.74 | Alaska savings start: Cal Wk 27 (Model Wk 5)');
   lines.push('EF (Lending Club): $13,488.88 — structural reserve, untouched all year');
   lines.push('');
