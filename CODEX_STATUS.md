@@ -1,5 +1,52 @@
 # Codex Status: Herndon Financial OS
 
+## CURRENCY NOTE (2026-10-05): Release A R3 + Adam Extra Pay COMPLETE in production — R3 Phase A PASS (owner-accepted), Phase B PASS, production state A2
+
+**Canonical state.** Production serves Release A R3 `7ea6fa36e062eba319e905c1f000fc316dabf670329b5c8cc799cc369cce182d` (BUILD_TS `2026-10-04T11:57:07`; `origin/main` `2675607`). The Phase B data change is applied. The Phase B state classifier reads **A2**. R2 remains a failed and rolled-back historical sitting (2026-10-04c note below) and is **not** production-accepted. This note is balance-free.
+
+- **Governing package:** frozen R3 MANIFEST `9f2e3e08e72b653a8653a5b59dfa850d7ba8421533e2f2533f5d6415e2f50575` (80 members), applied under O4.
+- **OC-1 closed:**
+  - owner-authorized push `39d28e5..bdea650` (`3a7f26e` OC-1 cleanup + `bdea650` closeout);
+  - pre-push check 7/7 and post-push check PASS.
+- **R3 Phase A sitting (2026-10-04/05):**
+  - fresh owner Step-0 attestation, with a read-only MCP venue for that sitting;
+  - `preflight stage` 80/80, FP0, drift PASS;
+  - push `bdea650..2675607` (15 frozen commits, plain fast-forward);
+  - `preflight post` 80/80, served `7ea6fa36`;
+  - A0 phaseb-acceptance 24/24;
+  - Release A `acceptance.js` 19/19, C11 PASS on two simultaneous recommendations;
+  - FP1 == FP0.
+  - **Owner accepted it as PASS / production-accepted.**
+- **Phase B sitting (2026-10-05 00:38–01:01Z):**
+  - **Authorization:** separate contemporaneous owner authorization covering exactly the frozen Phase B chain via MCP, plus the household-off attestation. Every SQL statement was sent as frozen bytes in the exec-bytes transmit form, each after a server echo PASS. No SQL outside the package; no R1/R2.
+  - **M0:** PASS 14/14.
+  - **B0:** BASELINE captured; FP_B0 == FP0; classifier PRE.
+  - **B1:** PASS; `income.extra_pay` created exactly as frozen. B0→A1 closed-form delta 14/14, classifier A1, drift PASS.
+  - **A1 app acceptance:** run 1 FAILED only P1c, a false negative: the browser tool returns key-sorted objects and P1c compares `JSON.stringify`. After the owner ruling (re-run with only the bkRow key order restored), run 2 PASSED 62/62.
+  - **B2:** PASS; exactly `54955374` moved `income.bkcpa_extra_pay`→`income.extra_pay`. **R2 sentinel `a2_target_updated_at` = `2026-10-05 00:57:47.81152+00`.** A1→A2 delta 14/14, classifier A2, drift PASS.
+  - **A2 checks:** phaseb-acceptance A2 62/62; Release A `acceptance.js` 19/19.
+- **Closeout (B0→A2), all PASS:**
+  - category exact;
+  - only the target moved;
+  - target business fields unchanged (only `category_key` and the trigger `updated_at`);
+  - `464acee6` unchanged;
+  - Wendy's remaining population unchanged (8→7 = minus target);
+  - Budget totals identical to B0 in every month;
+  - only `transactions` and `categories` changed;
+  - zero app writes; no goal funding.
+- **Household rule:** reload every household tab and device (Wendy's included) before any Register edit. A stale tab re-saving `54955374` would revert it; the drift check (`xp_row_intact`) or classifier DRIFT would catch it.
+- **Rollback:** from A2, only R2 (sentinel above), and only with separate owner authorization. Code-only revert while the category exists remains forbidden.
+- **Evidence:** `~/Herndon-Financial-OS-Evidence/release-a-r3-sitting-20261004T235240Z/` (00–20 Phase A; `phase-b/` 00–30; SHA256SUMS).
+- **Follow-ups (not started; owner-gated):**
+  - make phaseb-acceptance P1c key-order-insensitive in any future package;
+  - Wendy walkthrough / V1 per the post-A1b order.
+
+  The standing goal-funding execution prohibition is unchanged.
+
+**Documentation only.** This note changes no code, test, SQL, schema, data, production or evidence.
+
+---
+
 ## CURRENCY NOTE (2026-10-04c): Release A R2 PRODUCTION SITTING CLOSED — Phase A deployed, Release A acceptance FAILED (18/19, C11), owner-selected R0 executed; production restored to accepted A1b; R2 is NOT production-accepted
 
 **Canonical state.** Production serves accepted A1b `867047fb76c5fef216d0c997ba6b9308725ee8a47dfbe19b421fabec001deebb` (BUILD_TS `2026-09-18T23:16:49`). Release A R2 was frozen (MANIFEST `6e956edf…`) and deployed for Phase A only. It **failed its frozen acceptance contract and was rolled back**, so it must not be described as a deployment success. This note is balance-free.
