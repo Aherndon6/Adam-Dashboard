@@ -4823,7 +4823,7 @@ function g1VerdictText(item){
   if(!item||typeof item!=='object')return 'Withhold: model check unavailable.';
   if(item.verdict==='NO_MODEL_OBJECTION')return 'No model objection: modeled Checking stays at or above '+_g1FloorTxt()+' across the known horizon (not a certification; income not yet entered in the week schedule is not counted).';
   var r=String(item.reason||'');
-  if(r==='candidate_breach')return 'Withhold: this transfer would take modeled Checking below '+_g1FloorTxt()+' in Cal '+getCalWeek(item.breachWeek)+(item.minChk!=null?' (low '+f(item.minChk)+')':'')+'.';
+  if(r==='candidate_breach')return 'Withhold: this transfer would take modeled Checking below '+_g1FloorTxt()+' in Cal '+getCalWeek(item.breachWeek)+(item.minChk!=null?' (low '+fsigned(item.minChk)+')':'')+'.';
   if(r==='pre_existing_breach')return 'Withhold: the model is already below '+_g1FloorTxt()+' in Cal '+getCalWeek(item.preExistingWeek!=null?item.preExistingWeek:item.breachWeek)+' without this week\'s goal transfers.';
   if(r==='prior_item_withheld')return 'Withhold: a higher-priority recommendation this week is withheld.';
   if(r==='netting_blocked')return 'Withhold: completed-transfer history needs review.';
@@ -5590,7 +5590,7 @@ function renderOverview(vm){
     interp='Checking is '+f(Math.abs(cushion))+' below the operating floor — immediate action required.';
   }else if(nearTermRisk){
     var gapAmt=r(OP_FL-nearTermRisk.chk);
-    interp='Wk '+getCalWeek(nearTermRisk.num)+' ('+nearTermRisk.dates+') projects '+f(nearTermRisk.chk)+' — '+f(gapAmt)+' below floor. Review collision map.';
+    interp='Wk '+getCalWeek(nearTermRisk.num)+' ('+nearTermRisk.dates+') projects '+fsigned(nearTermRisk.chk)+' — '+f(gapAmt)+' below floor. Review collision map.';
   }else if(openActsCount>0){
     interp=openActsCount+' open action'+(openActsCount!==1?'s':'')+' pending this week — check the weekly model before close.';
   }else if(cushion<1000){
@@ -5652,7 +5652,7 @@ function renderOverview(vm){
   html+='<div style="flex:1;min-width:0">';
   html+='<div style="font-size:15px;font-weight:700;color:#fff;line-height:1.4;margin-bottom:11px">'+interp+'</div>';
   html+='<div style="display:flex;flex-wrap:wrap;gap:6px">';
-  html+='<span class="cmd-chip">Proj. EOW Cash <strong>'+f(w.chk)+'</strong></span>';
+  html+='<span class="cmd-chip">Proj. EOW Cash <strong>'+fsigned(w.chk)+'</strong></span>';
   html+='<span class="cmd-chip">Floor <strong>'+f(OP_FL)+'</strong></span>';
   html+='<span class="cmd-chip '+(cushion<0?'chip-red':cushion<1000?'chip-amber':'chip-green')+'">Cushion <strong>'+(cushion>=0?'+':'')+f(Math.abs(cushion))+'</strong></span>';
   html+='<span class="cmd-chip">Reconciled through <strong>'+(lastReconNum?'Wk '+getCalWeek(lastReconNum):'—')+'</strong></span>';
@@ -5721,7 +5721,7 @@ function renderOverview(vm){
   // Formula + recommendation — shared function
   var _surplusRec=getNextDollarRec(vm,deployable,nearTermRisk);
   html+='<div class="ov3-formula">';
-  html+='<div class="ov3-formula-lhs">'+f(w.chk)+' checking &minus; '+f(OP_FL)+' floor = <strong>'+fsigned(deployable)+' deployable</strong></div>';
+  html+='<div class="ov3-formula-lhs">'+fsigned(w.chk)+' checking &minus; '+f(OP_FL)+' floor = <strong>'+fsigned(deployable)+' deployable</strong></div>';
   html+='<div class="ov3-formula-rec">→ '+_surplusRec+'</div>';
   html+='</div>';
   html+='</div>'; // end S2
@@ -5759,7 +5759,7 @@ function renderOverview(vm){
       // Middle: projections + drivers
       html+='<div>';
       html+='<div style="display:flex;align-items:baseline;gap:12px;margin-bottom:10px;flex-wrap:wrap">';
-      html+='<span style="font-size:16px;font-weight:800;color:var(--red)">'+f(rw.chk)+' projected</span>';
+      html+='<span style="font-size:16px;font-weight:800;color:var(--red)">'+fsigned(rw.chk)+' projected</span>';
       html+='<span style="font-size:12px;color:var(--muted)">floor '+f(OP_FL)+'</span>';
       html+='<span style="font-size:13px;font-weight:800;color:var(--red)">gap: '+(rwGap<0?'−':'+')+f(Math.abs(rwGap))+'</span>';
       html+='</div>';
@@ -6173,7 +6173,7 @@ function renderWeekDetail(w,weeks){
   var prevW=weeks.find(function(x){return x.num===w.num-1;}),nextW=weeks.find(function(x){return x.num===w.num+1;});
   var alertStrip='';
   if(w.calNote){alertStrip='<div class="week-alert-strip">⚠️ '+w.calNote+'</div>';}
-  else if(w.chk<2500){alertStrip='<div class="week-alert-strip">⚠️ Watch — checking at '+f(w.chk)+'. Below $2,500 buffer. Review discretionary spending.</div>';}
+  else if(w.chk<2500){alertStrip='<div class="week-alert-strip">⚠️ Watch — checking at '+fsigned(w.chk)+'. Below $2,500 buffer. Review discretionary spending.</div>';}
   // A8: milestone/guidance banner, computed here and rendered under the Wk header row
   // (was previously appended at the bottom of the week). Content and conditions unchanged.
   var weekBanner='';
@@ -6328,22 +6328,22 @@ function renderWeekDetail(w,weeks){
         var vStr=(v>=0?'+':'−')+f(Math.abs(v));
         var vLbl=v<-VAR_THRESHOLD?'Unfavorable':v>VAR_THRESHOLD?'Favorable':'On plan';
         var vLblCls=v<-VAR_THRESHOLD?'unfav':v>VAR_THRESHOLD?'fav':'ok';
-        actualCell='<td>'+f(acc.actual)+'</td>';
+        actualCell='<td>'+fsigned(acc.actual)+'</td>';
         varCell='<td class="'+vCls+'">'+vStr+'<span class="var-label '+vLblCls+'">'+vLbl+'</span></td>';
       }else{
         actualCell='<td style="color:var(--muted2)">—</td>';
         varCell='<td style="color:var(--muted2)">—</td>';
       }
-      return'<tr><td>'+acc.name+'</td><td>'+f(acc.start)+'</td><td>'+f(acc.model)+'</td>'+actualCell+varCell+'</tr>';
+      return'<tr><td>'+acc.name+'</td><td>'+fsigned(acc.start)+'</td><td>'+fsigned(acc.model)+'</td>'+actualCell+varCell+'</tr>';
     }).join('')+
     '</tbody></table>'+
-    '<div class="liq-row"><span class="liq-label">Operational liquidity (Checking + Savings)</span><span class="liq-val">'+f(w.ol)+'</span></div>'+
+    '<div class="liq-row"><span class="liq-label">Operational liquidity (Checking + Savings)</span><span class="liq-val">'+fsigned(w.ol)+'</span></div>'+
     (function(){
       var fl=OP_FL;
       var flLabel='Operating floor';
       var cushion=Math.round((w.chk-fl)*100)/100;
       var cCls=cushion<0?'risk':cushion<500?'warn':'good';
-      var cStr=(cushion>=0?'+':'')+f(cushion)+' vs floor';
+      var cStr=cushion>=0?'+'+f(cushion)+' vs floor':f(cushion)+' below floor';
       var statusStr=w.chk<OP_FL?'Watch — below operating floor':'Normal';
       var totalIn=w.evs.filter(function(e){return e.a>0;}).reduce(function(s,e){return s+e.a;},0);
       var totalOut=w.evs.filter(function(e){return e.a<0;}).reduce(function(s,e){return s+e.a;},0);
@@ -6356,14 +6356,14 @@ function renderWeekDetail(w,weeks){
       var goalTransfers=r(Math.max(0,totalChkDelta-billsOut));
       return'<div class="floor-health">'+
         '<div class="floor-row">'+
-          '<div class="floor-item"><div class="floor-lbl">Beginning</div><div class="floor-val">'+f(w.startChk)+'</div></div>'+
+          '<div class="floor-item"><div class="floor-lbl">Beginning</div><div class="floor-val">'+fsigned(w.startChk)+'</div></div>'+
           '<div class="floor-arrow">+</div>'+
           '<div class="floor-item"><div class="floor-lbl">Inflows</div><div class="floor-val" style="color:var(--green)">'+f(totalIn)+'</div></div>'+
           (savToChk>0?'<div class="floor-arrow">+</div><div class="floor-item"><div class="floor-lbl">Savings Drawdown</div><div class="floor-val" style="color:var(--blue)">'+f(savToChk)+'</div></div>':'')+
           (billsOut>0?'<div class="floor-arrow">−</div><div class="floor-item"><div class="floor-lbl">Outflows</div><div class="floor-val" style="color:var(--red)">'+f(billsOut)+'</div></div>':'')+
           (goalTransfers>0.5?'<div class="floor-arrow">−</div><div class="floor-item"><div class="floor-lbl">Goal Transfers</div><div class="floor-val" style="color:var(--amber)">'+f(goalTransfers)+'</div></div>':'')+
           '<div class="floor-arrow">=</div>'+
-          '<div class="floor-item"><div class="floor-lbl">Ending (Checking)</div><div class="floor-val">'+f(w.chk)+'</div></div>'+
+          '<div class="floor-item"><div class="floor-lbl">Ending (Checking)</div><div class="floor-val">'+fsigned(w.chk)+'</div></div>'+
         '</div>'+
         '<div class="floor-check-row">'+
           '<div class="floor-check-item"><div class="floor-lbl">'+flLabel+'</div><div class="floor-val">'+f(fl)+'</div></div>'+
@@ -6662,7 +6662,7 @@ function renderWeekDetail(w,weeks){
     // this week's recommended goal transfers were executed, so they are shown only as labelled estimates.
     var _pf=_reconPrefillValues(w);
     var pre=_pf.values;
-    var _pfRef=_pf.referenceIsModel?('<div class="recon-guidance-note"><strong>Model estimates — reference only, not bank truth:</strong> Truist Checking '+f(_pf.reference.chk)+' · Truist Savings '+f(_pf.reference.sav)+' · AMEX Savings '+f(_pf.reference.amx)+' · Vio Tax '+f(_pf.reference.tax)+' · Lending Club '+f(_pf.reference.lc)+'. These estimates assume this week\'s recommended goal transfers were executed (and every other modeled inflow, bill and rule). Enter the actual bank balance for every account.</div>'):'';
+    var _pfRef=_pf.referenceIsModel?('<div class="recon-guidance-note"><strong>Model estimates — reference only, not bank truth:</strong> Truist Checking '+fsigned(_pf.reference.chk)+' · Truist Savings '+fsigned(_pf.reference.sav)+' · AMEX Savings '+fsigned(_pf.reference.amx)+' · Vio Tax '+fsigned(_pf.reference.tax)+' · Lending Club '+fsigned(_pf.reference.lc)+'. These estimates assume this week\'s recommended goal transfers were executed (and every other modeled inflow, bill and rule). Enter the actual bank balance for every account.</div>'):'';
     var _canSave=canSaveRecon(w.num);
     html+='<div class="recon-form"><div class="recon-form-title">Reconcile — Wk '+getCalWeek(w.num)+' \xb7 '+w.dates+'</div>'+
       renderReconPhase01(w)+
@@ -6973,7 +6973,7 @@ function _renderGoalsSavings(vm){
     '<div style="display:flex;align-items:flex-start;gap:4px;flex-wrap:wrap;padding:4px 0 14px;overflow-x:auto">'+
       _fbox('Paychecks','Adam $5,817 · Wendy $2,153<br>(biweekly each)','var(--blue)','var(--blueSoft)')+
       _farrow('net in')+
-      _fbox('Truist Checking','Running balance<br>currently '+f(_curChk),'var(--ink)','var(--bg)')+
+      _fbox('Truist Checking','Running balance<br>currently '+fsigned(_curChk),'var(--ink)','var(--bg)')+
       _farrow('protect')+
       _fbox('Floor Protection','OP_FL $6,500<br>+ look-ahead floor','#92400e','#fef3c7')+
       _farrow('surplus')+
@@ -7002,7 +7002,7 @@ function _renderGoalsSavings(vm){
       '</div>'+
       '<div style="background:var(--bg);border:1px solid var(--border);border-radius:6px;padding:8px 10px">'+
         '<div style="font-size:10px;color:var(--muted);font-weight:600;text-transform:uppercase;letter-spacing:.05em">Planned Monthly Margin (Base Pay)</div>'+
-        '<div style="font-size:18px;font-weight:700;color:var(--green);margin:2px 0">'+(_netMo===null?'—':f(_netMo))+'</div>'+
+        '<div style="font-size:18px;font-weight:700;color:'+(_netMo!==null&&_netMo<0?'#ef4444':'var(--green)')+';margin:2px 0">'+(_netMo===null?'—':fsigned(_netMo))+'</div>'+
         '<div style="font-size:10px;color:var(--muted)">Planning estimate — not cash available to move.</div>'+_blrReason+
       '</div>'+
     '</div>'+
@@ -7487,8 +7487,8 @@ function _renderGoalsImpact(){
         '</div>'+
         '<div style="background:var(--surface2);border-radius:7px;padding:10px;text-align:center">'+
           '<div style="font-size:10px;color:var(--muted2);margin-bottom:3px">Lowest checking</div>'+
-          '<div style="font-size:14px;font-weight:700;color:var(--ink)">'+f(cs.scenarioMinChk)+'</div>'+
-          '<div style="font-size:10px;color:var(--muted2);margin-top:2px">baseline: '+f(cs.baselineMinChk)+'</div>'+
+          '<div style="font-size:14px;font-weight:700;color:var(--ink)">'+fsigned(cs.scenarioMinChk)+'</div>'+
+          '<div style="font-size:10px;color:var(--muted2);margin-top:2px">baseline: '+fsigned(cs.baselineMinChk)+'</div>'+
         '</div>'+
         '<div style="background:var(--surface2);border-radius:7px;padding:10px;text-align:center">'+
           '<div style="font-size:10px;color:var(--muted2);margin-bottom:3px">Total goal contributions</div>'+
@@ -7700,8 +7700,8 @@ function renderHistory(weeksArg){
       if(wx.reconciled&&acc.a!==undefined){
         var v=Math.round((acc.a-acc.m)*100)/100;
         var vCls=v<-VAR_THRESHOLD?'under':v>VAR_THRESHOLD?'over':'ok';
-        html+='<div class="hbal-actual">'+f(acc.a)+'</div><span class="hbal-var '+vCls+'">'+(v>=0?'+':'−')+f(Math.abs(v))+' vs plan</span>';
-      }else{html+='<div class="hbal-val">'+f(acc.m)+'</div><span class="hbal-var ok">modeled</span>';}
+        html+='<div class="hbal-actual">'+fsigned(acc.a)+'</div><span class="hbal-var '+vCls+'">'+(v>=0?'+':'−')+f(Math.abs(v))+' vs plan</span>';
+      }else{html+='<div class="hbal-val">'+fsigned(acc.m)+'</div><span class="hbal-var ok">modeled</span>';}
       html+='</div>';
     });
     html+='</div><div class="hcard-footer">';
@@ -9946,7 +9946,7 @@ function renderBudget(){
       // UX-0 (BUD-1): parents apply the same red/amber/neutral rule to their own totals; no badge.
       var _pState=_budgetRowState(pSpent,pBudget);
       var _pColor=_pState==='over'?'#ef4444':(_pState==='near'?'var(--amber)':((pRem===pBudget&&pSpent===0)?'var(--muted)':'var(--ink)'));
-      html+='<td style="text-align:right;padding:9px 8px 3px;font-weight:700;color:'+_pColor+'">'+((_actOk&&_planTotOk)?f(pRem):_BUDGET_CV)+'</td>';
+      html+='<td style="text-align:right;padding:9px 8px 3px;font-weight:700;color:'+_pColor+'">'+((_actOk&&_planTotOk)?(pRem<0?'Over by '+f(pRem):f(pRem)):_BUDGET_CV)+'</td>';
       html+='</tr>';
     }
 
@@ -10011,7 +10011,7 @@ function renderBudget(){
   html+='<td style="padding:6px 8px;font-weight:700">Total Planned Budget</td>';
   html+='<td style="text-align:right;padding:6px 8px;font-weight:700">'+(_actOk?fSpent(totalExpSpent):_BUDGET_CV)+'</td>';
   html+='<td style="text-align:right;padding:6px 8px;font-weight:700;color:var(--blue)">'+(_planTotOk?f(totalExpBudget):'—')+'</td>';
-  html+='<td style="text-align:right;padding:6px 8px;font-weight:700;color:'+_totColor+'">'+((_actOk&&_planTotOk)?f(totalRem):_BUDGET_CV)+'</td>';
+  html+='<td style="text-align:right;padding:6px 8px;font-weight:700;color:'+_totColor+'">'+((_actOk&&_planTotOk)?(totalRem<0?'Over by '+f(totalRem):f(totalRem)):_BUDGET_CV)+'</td>';
   html+='</tr>';
   if(!_planTotOk){ // §8.1: no balance verdict from budget-line totals that can't be trusted
     html+='<tr><td colspan="4" style="padding:5px 8px;font-size:11px;color:var(--muted)">Budget balance isn\'t shown until budget lines can be verified.</td></tr>';
@@ -10024,7 +10024,7 @@ function renderBudget(){
     +(balanced?'✓ Budget balanced':'⚠ Budget out of balance')
     +' <span style="font-size:10px;font-weight:400">(Income '+f(incomeTotal)+' − Total Planned '+f(totalExpBudget)+')</span></td>';
   html+='<td colspan="2" style="text-align:right;padding:5px 8px;font-size:11px">—</td>';
-  html+='<td style="text-align:right;padding:5px 8px;font-size:13px;font-weight:700;color:'+(balanced?'#166534':(budgetDiff>0?'var(--blue)':'#ef4444'))+'">'+f(budgetDiff)+'</td>';
+  html+='<td style="text-align:right;padding:5px 8px;font-size:13px;font-weight:700;color:'+(balanced?'#166534':(budgetDiff>0?'var(--blue)':'#ef4444'))+'">'+fsigned(budgetDiff)+'</td>';
   html+='</tr>';
   if(!balanced){
     html+='<tr style="background:#fef3c7">';
@@ -10142,7 +10142,7 @@ function renderBudget(){
   var _budgetStrip='<div style="display:flex;flex-wrap:wrap;gap:18px;align-items:center;padding:9px 12px;margin:0 0 12px;background:var(--surface2);border:1px solid var(--line);border-radius:8px">'
     +_attnItem('Over budget',_stripOk?_overCount+' '+(_overCount===1?'line':'lines'):_BUDGET_CV,_stripOk&&_overCount>0?'#ef4444':'var(--ink)')
     +_attnItem('Near limit',_stripOk?_nearCount+' '+(_nearCount===1?'line':'lines'):_BUDGET_CV,_stripOk&&_nearCount>0?'var(--amber)':'var(--ink)')
-    +_attnItem('Planned remaining',_stripOk?f(totalRem):_BUDGET_CV,_stripOk&&totalRem<0?'#ef4444':'var(--ink)')
+    +_attnItem(_stripOk&&totalRem<0?'Over plan by':'Planned remaining',_stripOk?f(totalRem):_BUDGET_CV,_stripOk&&totalRem<0?'#ef4444':'var(--ink)')
     +_attnItem('Income expected',_stripOk?f(_incomeExpected):_BUDGET_CV,'var(--muted)')
     +'</div>';
   // split/join (not String.replace) so '$' in the injected money strings is inserted literally.
@@ -10301,7 +10301,7 @@ function _renderBudgetRecon(monthIso,legSrc){
     ['Household Charges',f(householdAmt),'var(--ink)'],
     ['Reimbursable Charges',f(reimbAmt),'var(--muted)'],
     ['Statement Balance',stmtBal?f(stmtBal):'Not entered','var(--blue)'],
-    ['Difference (Stmt - Cleared)',stmtBal?f(diff):'—',diffColor]
+    ['Difference (Stmt - Cleared)',stmtBal?fsigned(diff):'—',diffColor]
   ];
   statItems.forEach(function(item){
     html+='<div style="background:var(--bg);border:1px solid var(--border);border-radius:6px;padding:7px 10px">';
@@ -12868,10 +12868,10 @@ function _buildModelContext(){
       });
     }
     // End balances
-    lines.push('  End balances: Chk='+f(w.chk)+' | Sav='+f(w.sav)+' | AMEX='+f(w.amx)+' | Tax='+f(w.tax)+' | LC='+f(w.lc));
+    lines.push('  End balances: Chk='+fsigned(w.chk)+' | Sav='+fsigned(w.sav)+' | AMEX='+fsigned(w.amx)+' | Tax='+fsigned(w.tax)+' | LC='+fsigned(w.lc));
     // Reconciliation actuals
     if(w.reconciled&&w.actualBals){
-      lines.push('  RECONCILED — Actual: Chk='+f(w.actualBals.chk)+' Sav='+f(w.actualBals.sav)+' | Chk variance: '+f(w.variance.chk));
+      lines.push('  RECONCILED — Actual: Chk='+fsigned(w.actualBals.chk)+' Sav='+fsigned(w.actualBals.sav)+' | Chk variance: '+fsigned(w.variance.chk));
     }
     // Goals progress
     lines.push('  Goals: AK saved='+f(w.akSaved)+' AK rem='+f(w.akRem)+' | Ret rem='+f(w.retRem)+' | Surplus='+f(w.surplusSwept));

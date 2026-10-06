@@ -5558,7 +5558,7 @@ test('5B-24: Budget printout total row uses "Total Planned Budget" label (update
   try{htmlSrc=require('fs').readFileSync(require('path').join(__dirname,'index.html'),'utf8');}catch(e){}
   assert(htmlSrc.length>0,'Could not read index.html');
   var budgetFnIdx=htmlSrc.indexOf('function renderBudget()');
-  var budgetFnSrc=htmlSrc.slice(budgetFnIdx,budgetFnIdx+24000); // widened for UX-0 row-treatment additions
+  var budgetFnSrc=a1bSrc('renderBudget'); // D-1 (2026-10-06): whole function — the fixed 24000-char window was outgrown by the sign-truthfulness edits
   assert(budgetFnSrc.includes('Total Planned Budget'),'total row must say Total Planned Budget');
   assert(!budgetFnSrc.includes('excl. goal sweep'),'goal sweep exclusion note must be removed');
   // P3b-1 A1a (§15): the allocation concept is now worded "Planned for Goals".
@@ -11578,7 +11578,8 @@ test('UX0.5-B2: attention strip is tallied inside the expense-leaf loop (matches
   // P3b-1 A1b (§19.1): each tile shows its grid value only when actuals and budget-line totals are trusted.
   assertIncludes(b,"_attnItem('Over budget',_stripOk?_overCount","over-budget tile must read _overCount");
   assertIncludes(b,"_attnItem('Near limit',_stripOk?_nearCount","near-limit tile must read _nearCount");
-  assertIncludes(b,"_attnItem('Planned remaining',_stripOk?f(totalRem)",'planned-remaining tile must read totalRem');
+  // D-1 (owner ruling 2026-10-06): the tile still reads totalRem, and a negative total is labelled "Over plan by" (sign-truthful).
+  assertIncludes(b,"_attnItem(_stripOk&&totalRem<0?'Over plan by':'Planned remaining',_stripOk?f(totalRem)",'planned-remaining tile must read totalRem, labelled "Over plan by" when negative');
   assertIncludes(b,'var _incomeExpected=Math.max(0,_iTotRem);','income expected must be clamped to >= 0 (never positive once fully/over-received)');
   assertIncludes(b,"_attnItem('Income expected',_stripOk?f(_incomeExpected)",'income-expected tile must read the clamped _incomeExpected');
   assertIncludes(b,'var _stripOk=_actOk&&_planTotOk;','strip values must be gated on the governed state');
