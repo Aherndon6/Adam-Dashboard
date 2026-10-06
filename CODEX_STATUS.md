@@ -1,5 +1,55 @@
 # Codex Status: Herndon Financial OS
 
+## CURRENCY NOTE (2026-10-06): Gate 7, N2 and V1 CLOSED. P3b-1 V1 PASS WITH DOCUMENTED DRIFT, 0 actionable failures. Canonical next: D-1 bounded fix + October-observation disposition → rollover
+
+**Gate 7: PASS WITH NOTES / CLOSED** (owner ruling, 2026-10-05).
+- By owner ruling, Household Admin Operating Acceptance substituted for Wendy's personal walkthrough. Adam executed it; household_admin role behavior rests on accepted code and RLS evidence.
+- Observe-only: no mutation (16-table fingerprint unchanged).
+- Wendy's later walkthrough is onboarding and is off the critical path.
+- **Notes carried, unexpanded:** D-1 (below) and N1/N3/N4/N5/N6.
+- **Evidence:** `~/Herndon-Financial-OS-Evidence/gate7-household-admin-acceptance-2026-10-05/`.
+
+**N2 (HTTPS): PASS / CLOSED** (owner ruling, 2026-10-06).
+- GitHub Pages "Enforce HTTPS" enabled. That setting was the only change.
+- HTTP now returns 301 to `https://dashboard.herndons.us/`; the HTTPS endpoint is valid.
+- **Unchanged:** the accepted production artifact (`6dc58e20…`, BUILD_TS `2026-10-05T18:40:45`); no repo, product or database change.
+- **Evidence (frozen):** `~/Herndon-Financial-OS-Evidence/n2-https-enforcement-20261006T011712Z/`.
+
+**V1 (P3b-1 §27 post-execution audit): PASS WITH DOCUMENTED DRIFT / CLOSED, 0 actionable failures** (owner ruling, 2026-10-06).
+- **NULL-category rows:** the historical R1 expectation of 2 approved exceptions becomes a current expectation of 1, under the recorded O2 disposition. Observed: 1 approved, 0 actionable.
+- **Dispositions reconciled:**
+  - `de93901d`: categorized under the recorded 2026-09-19 extra-pay disposition.
+  - `54955374`: later owner-authorized reclassification to `income.extra_pay`.
+  - `cb999ca4`: owner-accepted non-material payee typo correction; financial treatment unchanged, no actor inferred, row unchanged.
+- **R1 and C1:**
+  - R1 target and category populations reconciled to the historical R1 evidence plus documented later dispositions.
+  - Budget-line changes after C1 reconciled to later household Manage Lines operation; the C1 execution invariant holds.
+- **Checks passing:**
+  - transfer pairs and the family repayment;
+  - INV-A–D and the exclusion declaration;
+  - Budget, Register and Goals, under the owner-approved live-system interpretation (state reconciled to the A1b baseline plus attributed later activity).
+- **Harness mistake (not a product or data defect):** one check compared the app's budget-line cache with all server lines. The app loads active lines only: 57 active of 87 total, and the active populations match exactly. The original check and the corrective diagnostic are both preserved.
+- **Zero production writes during V1** (GET-only reads in the owner's browser session; all requests accounted for).
+- **Evidence (frozen; authoritative for detail):** `~/Herndon-Financial-OS-Evidence/v1-audit-20261006T0131Z/` (`06-V1-REPORT.md`, `08-OWNER-RULING-2026-10-06.md`, SHA256SUMS).
+
+**Carry-forward (recorded, not fixed):**
+- **D-1:** the Budget sign-semantics presentation defect. A bounded post-V1 product follow-up.
+- **October observations** (separate owner disposition pending; not part of D-1):
+  - the October Week and Planned-for-Goals lines run on into Nov–Jan (no end month);
+  - two October labels are missing a closing `)`;
+  - an inactive leftover October Planned-for-Goals line.
+- **Existing debts carried as recorded:** Gate 7 notes; FD-1, FD-2, FD-3; O1; Cal-Wk editorial.
+
+**Unchanged:**
+- Release B (`3595e01` / `6dc58e20…`), R-1 and O-4 remain CLOSED.
+- **The goal-funding HOLD remains in force.**
+
+**Canonical next:** D-1 bounded fix + October-observation disposition → rollover. Wendy onboarding is not on the critical path.
+
+**Documentation only.** Balance-free; no product, test, SQL, schema or production state change.
+
+---
+
 ## CURRENCY NOTE (2026-10-05d): O-4 CLOSED. No phantom or ambiguous override state; no correction. Canonical next: Wendy walkthrough → V1 → rollover
 
 **O-4 PASS / CLOSED (owner ruling, 2026-10-05).** Phase A was a read-only audit of production `model_week_overrides` for R3-era phantom commission tax created by the old What-If Taxable-OFF defect.
