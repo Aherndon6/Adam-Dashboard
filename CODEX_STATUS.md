@@ -1,5 +1,52 @@
 # Codex Status: Herndon Financial OS
 
+## CURRENCY NOTE (2026-10-05d): O-4 CLOSED. No phantom or ambiguous override state; no correction. Canonical next: Wendy walkthrough → V1 → rollover
+
+**O-4 PASS / CLOSED (owner ruling, 2026-10-05).** Phase A was a read-only audit of production `model_week_overrides` for R3-era phantom commission tax created by the old What-If Taxable-OFF defect.
+
+**Method:**
+- **Reads:** two PostgREST GETs (`select=*`), in the owner's signed-in app session. The full population was read and classified in-page.
+- **Signals:**
+  - the What-If-only label `Commission income ($X)`;
+  - the Edit Week serialization signature (every event carries a boolean `tx`);
+  - exact `ct`/`ca` = 40%/60% consistency against Tax?-ticked inflows.
+
+**Population:** 21 rows (canonical sha256 `7ff3346e…`).
+
+**Result: PHANTOM 0 / AMBIGUOUS 0 / LEGITIMATE 6 (weeks 2, 4, 6, 10, 12, 14) / NOT-A-CANDIDATE 15.**
+- No What-If commission label anywhere.
+- Every row was last written by Edit Week.
+- Every row is consistent; the nonzero rows reconcile exactly to 40/60 of deliberately ticked inflows.
+- No custom weeks; no row written after the Release B deploy.
+
+**Disposition:** **no correction warranted; no data mutation.** Whether the historical Tax? selections match today's household tax policy is a separate policy question, not an O-4 finding.
+
+**Limitations and scope:**
+- **Acknowledged limitation:** an R3 phantom later opened and saved in Edit Week could be "laundered" into a structurally legitimate row, and becomes undetectable if also renamed. Given the observed evidence, this does not justify expanding O-4.
+- **Declined as outside O-4:**
+  - the optional `weekly_tasks` / executed-transfer review. Any historical tax-reserve transfer audit would be a separately scoped control review.
+  - decrypting historical backups.
+
+**Zero writes.** No SQL, MCP, `weekly_tasks` read, or backup decryption.
+
+**Evidence:** `~/Herndon-Financial-OS-Evidence/o4-phase-a-2026-10-05/` (`O4-PHASE-A-REPORT.md`, `o4-detector-as-executed.js`, `o4-results.json`, SHA256SUMS).
+
+**Unchanged:**
+- Release B remains CLOSED and production-accepted (`3595e01` / `6dc58e20…`).
+- R-1 remains CLOSED.
+- The goal-funding HOLD remains in force.
+
+**Canonical next:**
+1. **Wendy walkthrough:** the P3b-1 spec §26 gate 7 post-build operating acceptance.
+2. **V1:** the §27 post-execution audit.
+3. **Rollover** planning and execution.
+
+Bounded debts (FD-1, FD-2, FD-3, O1, Cal-Wk editorial, "split" labels) are carried as recorded in 2026-10-05b.
+
+**Documentation only.** Balance-free; no product, test, SQL, schema or production state change.
+
+---
+
 ## CURRENCY NOTE (2026-10-05c): R-1 CLOSED (Release B bounded Roadmap exception resolved). Canonical next: O-4
 
 **R-1 PASS / CLOSED (owner ruling, 2026-10-05).** After the household reload (Adam's and Wendy's devices), the production Roadmap "Commission scenario" row was corrected through the normal Wishlist UI: Edit → Notes → Save.
