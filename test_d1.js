@@ -44,15 +44,15 @@ function fnSrc(name) { const i = html.indexOf('function ' + name + '('); assert(
 const G = getGoals();
 const BASE = applyCompletionSnapshots(runModel(G.ak, G.rt));
 const clone = ws => ws.map(w => Object.assign({}, w));
-// live 2026-10-06 negative-week semantics, applied to model weeks 26 / 29 / 30
+// live 2026-10-06 negative-week semantics, applied to model weeks 26 / 29 / 30 (unreconciled: mChk === chk, verified live)
 function negWeeks() {
   const ws = clone(BASE), set = (n, o) => Object.assign(ws.find(w => w.num === n), o);
-  set(26, { chk: -2955.21, startChk: 1446.29, ol: -2955.16 });
-  set(29, { chk: -727.42, startChk: 4222.79, ol: -727.37 });
-  set(30, { chk: -2574.92, startChk: -727.42, ol: -2574.87 });
+  set(26, { chk: -2955.21, mChk: -2955.21, startChk: 1446.29, ol: -2955.16 });
+  set(29, { chk: -727.42, mChk: -727.42, startChk: 4222.79, ol: -727.37 });
+  set(30, { chk: -2574.92, mChk: -2574.92, startChk: -727.42, ol: -2574.87 });
   return ws;
 }
-function posWeeks() { const ws = clone(BASE); Object.assign(ws.find(w => w.num === 26), { chk: 2955.21, startChk: 1446.29, ol: 2955.16 }); return ws; }
+function posWeeks() { const ws = clone(BASE); Object.assign(ws.find(w => w.num === 26), { chk: 2955.21, mChk: 2955.21, startChk: 1446.29, ol: 2955.16 }); return ws; }
 function withGlobals(over, fn) { const saved = {}; for (const k of Object.keys(over)) { saved[k] = eval(k); eval(k + '=over[k]'); } try { return fn(); } finally { for (const k of Object.keys(saved)) eval(k + '=saved[k]'); } }
 
 // ═══ [D1-REG] formatter contract unchanged ═══════════════════════════════
@@ -95,6 +95,13 @@ test('[D1] W-5 Week detail reconciliation reference (model estimates) keeps sign
   const s = fnSrc('renderWeekDetail');
   for (const k of ['chk', 'sav', 'amx', 'tax', 'lc']) assert(new RegExp("fsigned\\(_pf\\.reference\\." + k + "\\)").test(s), 'reference.' + k + ' must be sign-preserving');
   assert(!/[^d]f\(_pf\.reference\./.test(s), 'no magnitude-only reference balance remains');
+});
+
+test('[D1] W-6 Week detail: a negative reconciled actual balance keeps its sign in the account table', () => {
+  const ws = negWeeks(); const w = ws.find(x => x.num === 26);
+  Object.assign(w, { reconciled: true, actualBals: { chk: -10, sav: 50, amx: 1, tax: 1, lc: 1 }, variance: { chk: 2945.21, sav: 0, amx: 0, tax: 0, lc: 0 } });
+  const t = txt(renderWeekDetail(w, ws)); assert(/Truist Checking −\$1,446\.29|Truist Checking \$1,446\.29/.test(t), 'account table rendered');
+  assert(/−\$10\.00/.test(t) && directional(t, '10.00').length === 0, 'reconciled actual must read −$10.00: ' + JSON.stringify(directional(t, '10.00')));
 });
 
 // ═══ Overview ════════════════════════════════════════════════════════════
@@ -165,6 +172,12 @@ test('[D1] H-1 History: a negative modeled checking balance keeps its sign', () 
   assert(bad.length === 0, 'unsigned negative magnitudes: ' + JSON.stringify(bad.slice(0, 3)));
 });
 
+test('[D1] H-2 History: a negative reconciled actual balance keeps its sign', () => {
+  const ws = negWeeks(); Object.assign(ws.find(x => x.num === 26), { reconciled: true, actualBals: { chk: -10, sav: 50, amx: 1, tax: 1, lc: 1 }, variance: { chk: 2945.21, sav: 0, amx: 0, tax: 0, lc: 0 } });
+  const t = txt(withGlobals({ historyFilter: 'all' }, () => { const r = renderHistory(ws); return typeof r === 'string' ? r : __slot.innerHTML; }));
+  assert(/−\$10\.00/.test(t) && directional(t, '10.00').length === 0, 'History reconciled actual must read −$10.00');
+});
+
 // ═══ Ask Claude context (owner-only AI context) ══════════════════════════
 test('[D1] A-1 Ask Claude context: negative model balances and a negative reconciled variance are transmitted with their sign', () => {
   const ws = negWeeks(); const w = ws.find(x => x.num === 26);
@@ -204,7 +217,7 @@ test('[D1] B-1 Budget: negative Planned remaining / total Remaining / group Rema
   const t = await budgetText([line(GROC, 500), line(RENT, 1000), line('income.net_salary', 6000), line('misc.goal_sweep', 200)], [reg('a', GROC, -700), reg('b', RENT, -1100)]);
   assert(/Over plan by \$100\.00/.test(t), 'strip must say "Over plan by $100.00": ' + (t.match(/.{0,40}100\.00.{0,20}/) || [''])[0]);
   assert(/Total Planned Budget[^]*?Over by \$100\.00/.test(t), 'Total row Remaining must read "Over by $100.00"');
-  assert(/Over by \$200\.00/.test(t), 'Food group Remaining must read "Over by $200.00"');
+  assert(/Food & Dining \$700\.00 \$500\.00 Over by \$200\.00/.test(t), 'Food group-header Remaining must read "Over by $200.00": ' + (t.match(/Food & Dining.{0,40}/) || [''])[0]);
   assert(!/Planned remaining \$100\.00/.test(t), 'no "Planned remaining $100.00" for an over-plan month');
 });
 test('[D1] B-2 Budget: a negative Income − Total Planned difference keeps its sign', async () => {
