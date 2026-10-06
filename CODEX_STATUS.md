@@ -1,5 +1,64 @@
 # Codex Status: Herndon Financial OS
 
+## CURRENCY NOTE (2026-10-06b): D-1 CLOSED (sign-truthfulness release deployed and accepted); October observations dispositioned. Canonical next: 2027 rollover
+
+**D-1: CLOSED / PASS** (owner rulings, 2026-10-06).
+
+**Scope:**
+- **Reclassified.** The Gate 7 finding (the Budget "Planned remaining" sign drop) proved to be a **material sign-truthfulness presentation/control defect**: negative values were rendered through `f()` as positive magnitudes. That affected projected checking (Week detail, Overview risk cards, History), floor-gap wording, What-If minimum checking, the G1 low figure, the owner-only Ask Claude context, and Budget remaining / over-plan displays.
+- **Release (Option B):** one bounded presentation release, 26 sites in 9 functions.
+  - signed balances via the existing `fsigned()`;
+  - "below floor" wording for a negative floor gap;
+  - "Over plan by" / "Over by" for Budget negatives;
+  - a negative Planned Monthly Margin rendered signed and not green;
+  - the Ask Claude context keeps signs.
+- **Unchanged (proven):**
+  - the shared `f()` (deliberately);
+  - model arithmetic (`runModel`, and identical model output on the same data);
+  - Budget arithmetic, What-If and Edit Week write paths, goal authority, schema, RLS and data.
+- **Protected-49:** only `renderBudget` changed, under an explicit owner-approved re-pin; 49/49 match the re-pinned baseline. The Release B baseline is untouched.
+- **Tests:**
+  - new `test_d1.js` 26/26 (RED first at `064b56f`; every changed line guarded);
+  - suites green: Release B, Release A, G1, A1b, static 1961/0, e2e;
+  - two static assertions repaired by intent (5B-24 whole-function scope; UX0.5-B2 new directional tile).
+
+**Deploy and acceptance:**
+- **Commits:** `4fb5f65` → `7c33907` → `c7bf25e` → `b0762e3` (BUILD_TS only). Pushed as a plain fast-forward `064b56f..b0762e3`.
+- **Served:** `ea8d39ca…` / BUILD_TS `2026-10-05T22:06:03`. HTTP still returns 301 → HTTPS.
+- **Production acceptance (frozen zero-write script): PASS**, against the live negative-projection weeks.
+- **Supplementary What-If check: PASS.**
+- **Zero writes:** the 16-table fingerprint is unchanged from Gate 7 / V1.
+- **Household reload:** done.
+- **Rollback (not used):** revert `b0762e3` + `c7bf25e`.
+
+**October observations (no data write):**
+- **O-A:** INTENDED CARRY-FORWARD / NO ACTION. Manage Lines is effective-from-month. The dated labels carried into later months are cosmetic debt.
+- **O-B:** COSMETIC PRODUCTION-DATA LABEL DEFECT / DEFER, for a later Manage Lines edit (two labels missing `)`).
+- **O-C:** HARMLESS INACTIVE RESIDUE / NO ACTION.
+
+**Negative cash projections:**
+- The live model projects negative checking in three late-2026 weeks.
+- D-1 makes the UI and the Ask Claude context truthful about them; it does **not** resolve them.
+- They are preserved separately as planning signals for rollover / planning work (evidence record; balances not reproduced here).
+- The Saturday manual cash-certification authority is unchanged.
+
+**Evidence:**
+- `~/Herndon-Financial-OS-Evidence/d1-october-scoping-2026-10-06/` (scoping gate);
+- `d1-release-2026-10-06/` (frozen candidate package and validation);
+- `d1-deploy-20261006/` (deploy, acceptance, zero-write proof, closeout).
+
+**Unchanged:**
+- Release B, R-1, O-4, Gate 7, N2 and V1 remain CLOSED.
+- **The goal-funding HOLD remains in force.**
+
+**Carried (unexpanded):** Gate 7 notes N1/N3/N4/N5/N6; FD-1/FD-2/FD-3; O1; Cal-Wk editorial; the October label cosmetic debt.
+
+**Canonical next: 2027 rollover.** It is not started.
+
+**Documentation only.** Balance-free; no product, test, SQL, schema or production state change.
+
+---
+
 ## CURRENCY NOTE (2026-10-06): Gate 7, N2 and V1 CLOSED. P3b-1 V1 PASS WITH DOCUMENTED DRIFT, 0 actionable failures. Canonical next: D-1 bounded fix + October-observation disposition → rollover
 
 **Gate 7: PASS WITH NOTES / CLOSED** (owner ruling, 2026-10-05).
