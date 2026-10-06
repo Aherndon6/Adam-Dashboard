@@ -1,5 +1,44 @@
 # Codex Status: Herndon Financial OS
 
+## CURRENCY NOTE (2026-10-06c): Weekly Operating Authority Exit Gate. A 2027 rollover acceptance requirement (owner decision; not implemented)
+
+**Owner decision (2026-10-06):** the Financial OS dashboard is to become the authority and the normal operating interface for the Saturday weekly reconciliation.
+- Claude Code exits routine weekly reconciliation and returns to its proper role: builder, technical analyst / challenger, defect investigator, and controlled change implementer.
+- **Not before rollover.** Certification runs against the post-rollover system, not the current pre-rollover period.
+
+**Exit gate (a first-class rollover acceptance requirement):**
+1. Complete and production-accept the 2027 rollover.
+2. Run two consecutive normal Saturday reconciliations dashboard-first. Adam operates the Financial OS normally, without Claude Code directing the reconciliation.
+3. During those two Saturdays, Claude Code may perform an independent after-the-fact shadow review only.
+4. If both Saturdays PASS, certify **WEEKLY OPERATING AUTHORITY — FINANCIAL OS DASHBOARD ACCEPTED** and **CLAUDE CODE SHADOW RECONCILIATION — RETIRED**.
+
+**Acceptance criteria for each shadow Saturday:**
+- the Register reconciles to bank/card truth;
+- opening/closing balances and weekly placement are correct;
+- transfers and card payments are paired correctly;
+- reconciled-week immutability and owner-reopen work correctly;
+- the dashboard exposes the conditions that genuinely need owner attention;
+- the shadow review finds no material discrepancy the dashboard failed to expose;
+- Adam needs no Claude Code calculation, interpretation or repair;
+- the household-admin workflow stays operable where applicable;
+- forward projections are truthful, including negative cash values;
+- no production repair results from the reconciliation.
+
+**After certification:**
+- The Saturday procedure is dashboard-only. It needs no Claude Code guidance, diagnostic scripts, database fingerprints, evidence packages, independent Code calculations, or Code approval of a normal weekly close.
+- Claude Code is reintroduced only for an actual defect, an unexplained discrepancy, a controlled system change, or another engineering reason.
+
+**Canonical path:** pre-rollover cleanup CLOSED → **2027 rollover** → rollover production acceptance → two consecutive dashboard-first Saturday shadow certifications → the Financial OS becomes the sole normal weekly reconciliation authority → Claude Code exits routine weekly operations.
+
+**Unchanged:**
+- Until certification, the existing Saturday manual cash-certification process stays in force.
+- The goal-funding HOLD remains.
+- Canonical next: **2027 rollover** (not started).
+
+**Documentation only.** Balance-free; no product, test, SQL, schema or production state change.
+
+---
+
 ## CURRENCY NOTE (2026-10-06b): D-1 CLOSED (sign-truthfulness release deployed and accepted); October observations dispositioned. Canonical next: 2027 rollover
 
 **D-1: CLOSED / PASS** (owner rulings, 2026-10-06).
