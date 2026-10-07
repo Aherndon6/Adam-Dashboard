@@ -32,7 +32,12 @@ let sc = scriptMatch[1];
 sc = sc.replace(/\bconst\b/g,'var');
 sc = sc.replace(/^try\s*\{[\s\S]*?\}\s*catch[\s\S]*?\}/m,'');
 sc = sc.replace(/^loadAll\(\);/m,'');
-const stub = `
+// 2027 rollover Package A: deterministic clock. The suite once read the machine clock (it
+// went 1960/1 from 2027-01-03, Gate 1). It now runs at local noon on HFOS_TEST_DATE, default
+// the legacy pin date; calendar-dependent behavior is tested at explicit dates in test_rollover.js.
+const ROLLOVER_KIT = require('./tools/rollover-test-kit');
+const HFOS_TEST_DATE = ROLLOVER_KIT.resolveTestDate(process.env.HFOS_TEST_DATE);
+const stub = ROLLOVER_KIT.clockStubSource(HFOS_TEST_DATE) + `
 var window={fetch:function(){return Promise.resolve({ok:true,json:function(){return Promise.resolve([])}});}};
 var document={getElementById:function(){return{innerHTML:'',addEventListener:function(){},value:'',textContent:'',style:{},classList:{remove:function(){},add:function(){}},scrollIntoView:function(){}};},querySelectorAll:function(){return[];},querySelector:function(){return null;},addEventListener:function(){},activeElement:null,body:{style:{}}};
 var localStorage={getItem:function(){return null;},setItem:function(){}};
@@ -46,6 +51,14 @@ var supabase={createClient:function(){return{auth:{
 }};} };
 `;
 try { eval(stub+sc); } catch(e) { console.error('FATAL eval:',e.message); process.exit(1); }
+
+// 2027 rollover Package A: this suite is 2026 characterization. It runs on the frozen 2026
+// composition: WD_2026_FROZEN once the product defines it (frozen spec v2.1 §5.1), else WD,
+// which before the rollover IS the frozen source. Runtime-composition behavior is tested in
+// test_rollover.js. See docs/rollover-package-a.md for the per-test classification.
+const LEGACY_FROZEN_2026_ROWS = (typeof WD_2026_FROZEN !== 'undefined') ? WD_2026_FROZEN : WD;
+WD = LEGACY_FROZEN_2026_ROWS;
+console.log('  [harness] clock pinned to ' + HFOS_TEST_DATE + ' (HFOS_TEST_DATE); legacy suite bound to the frozen 2026 composition (' + WD.length + ' rows)');
 
 // Shared model output
 const WEEKS = runModel(7000, 7694.87);
@@ -180,15 +193,33 @@ console.log('── Section 5G-1C-2/C1: Golden-Master Identity Gate ──');
   }
 
   // Re-derive under the pinned currentW (save/restore so no other test is affected).
+  // Package A: the frozen 2026 composition and the 2026 goal inputs the fixture was captured
+  // with (the hard-coded fallback registry) are bound explicitly rather than inherited.
   function reDerive(){
     const _sw=currentW; currentW=GOLD._meta.pinnedCurrentW;
+    const _save={WD:WD,ov:overrideData,snap:goalSnapData,reg:GOALS_REGISTRY,rwf:REGULAR_WATERFALL,vwf:VARIABLE_WATERFALL,pt:PRIORITY_TIERS};
+    WD=LEGACY_FROZEN_2026_ROWS; overrideData={}; goalSnapData={};
+    applyGoalsFromData(HARDCODED_GOALS_FALLBACK.slice());
     try{
       const w=runModel(GOLD._meta.runModelArgs[0],GOLD._meta.runModelArgs[1]);
       const vm=buildDashboardViewModel(w,{ak:GOLD._meta.runModelArgs[0],rt:GOLD._meta.runModelArgs[1]});
       const ggf={}; GOLD._meta.goalOrder.forEach(function(id){ ggf[id]=getGoalFunded(id,vm); });
       return {weeks:w,goalCompletion:vm.goalCompletion,getGoalFunded:ggf};
-    } finally { currentW=_sw; }
+    } finally {
+      currentW=_sw; WD=_save.WD; overrideData=_save.ov; goalSnapData=_save.snap;
+      GOALS_REGISTRY=_save.reg; REGULAR_WATERFALL=_save.rwf; VARIABLE_WATERFALL=_save.vwf; PRIORITY_TIERS=_save.pt;
+    }
   }
+
+  test('PKGA harness: clock is pinned (new Date() and Date.now() equal local noon on HFOS_TEST_DATE)',function(){
+    const [y,m,d]=HFOS_TEST_DATE.split('-').map(Number);
+    const pin=new __HFOS_RealDate(y,m-1,d,12,0,0,0).getTime();
+    assert(new Date().getTime()===pin&&Date.now()===pin,'clock not pinned');
+    assert(new Date(2026,5,7).getFullYear()===2026,'explicit-argument dates must be untouched');
+  });
+  test('PKGA harness: legacy suite is bound to the 31-row frozen 2026 composition',function(){
+    assert(WD===LEGACY_FROZEN_2026_ROWS&&WD.length===31&&WD[0][0]===1&&WD[30][0]===31,'not bound to the frozen 2026 composition');
+  });
 
   test('C1 golden master: fixture loads + structurally intact',function(){
     assert(GOLD.weeks.length===31,'weeks!=31');

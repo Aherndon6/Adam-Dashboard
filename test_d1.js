@@ -17,7 +17,9 @@ const htmlPath = process.env.HFOS_INDEX || './index.html';
 const html = fs.readFileSync(htmlPath, 'utf8');
 let sc = html.match(/<script>([\s\S]*?)<\/script>/)[1];
 sc = sc.replace(/\bconst\b/g, 'var').replace(/^try\s*\{[\s\S]*?\}\s*catch[\s\S]*?\}/m, '').replace(/^loadAll\(\);/m, '');
-const stub = `
+// 2027 rollover Package A: deterministic clock (HFOS_TEST_DATE, default the legacy pin date).
+const ROLLOVER_KIT = require('./tools/rollover-test-kit');
+const stub = ROLLOVER_KIT.clockStubSource(process.env.HFOS_TEST_DATE) + `
 var __slot={innerHTML:'',addEventListener:function(){},value:'',textContent:'',style:{},classList:{remove:function(){},add:function(){}},scrollIntoView:function(){}};
 var window={fetch:function(){return Promise.resolve({ok:true,json:function(){return Promise.resolve([])}});}};
 var document={getElementById:function(){return __slot;},querySelector:function(){return null},querySelectorAll:function(){return[]},addEventListener:function(){},createElement:function(){return{style:{},appendChild:function(){},setAttribute:function(){}}},body:{appendChild:function(){}}};
@@ -26,6 +28,9 @@ var requestAnimationFrame=function(){};var fetch=window.fetch;
 var supabase={createClient:function(){return{auth:{getSession:function(){return Promise.resolve({data:{session:null},error:null});},signInWithPassword:function(){return Promise.resolve({data:null,error:{message:'mock'}});},signOut:function(){return Promise.resolve({error:null});},onAuthStateChange:function(){}}};}};
 `;
 try { eval(stub + sc); } catch (e) { console.error('FATAL eval:', e.message); process.exit(1); }
+// 2027 rollover Package A: 2026 characterization runs on the frozen 2026 composition
+// (WD_2026_FROZEN once the product defines it; before the rollover WD is that source).
+if (typeof WD_2026_FROZEN !== 'undefined') WD = WD_2026_FROZEN;
 renderApp = function () {}; setSection = function () {};
 console.error = function () {}; console.warn = function () {};
 

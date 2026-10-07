@@ -49,6 +49,12 @@ const path = require('path');
 const fs = require('fs');
 const vm = require('vm');
 const { fileURLToPath, URL: NodeURL } = require('url'); // `URL` below is the target-URL string
+// 2027 rollover Package A: deterministic browser clock. Every app context starts its clock
+// at local noon on HFOS_TEST_DATE (default: the legacy pin date) and time then flows
+// naturally (Playwright clock.install), so calendar-sensitive behavior no longer depends on
+// the machine date. Production verification keeps the real clock.
+const _ROLLOVER_KIT = require('./tools/rollover-test-kit');
+const E2E_TEST_DATE = _ROLLOVER_KIT.resolveTestDate(process.env.HFOS_TEST_DATE);
 
 // ── Run mode: full (default) vs smoke ─────────────────────────────────────
 // Full mode (default) runs the entire suite and ignores tags — behavior is
@@ -518,6 +524,7 @@ async function clickNav(page, id) {
     ? '  Isolation: PRODUCTION VERIFY — resolver allows CDN + production project; data writes blocked'
     : '  Isolation: HERMETIC — resolver allows CDN hosts only; fixture backend; unowned writes denied');
   if (!PROD_VERIFY_MODE) console.log('  Credentials: ' + (CREDENTIALS_PRESENT ? 'present in shell/.env — IGNORED (not read)' : 'none present'));
+  console.log(PROD_VERIFY_MODE ? '  Clock: real (production verification)' : '  Clock: pinned start ' + E2E_TEST_DATE + ' 12:00 local (HFOS_TEST_DATE), then flowing');
   console.log('');
 
   // Lazy Chromium (5G-QA-1 hardening): launch on first actual use (newContext)
@@ -541,6 +548,10 @@ async function clickNav(page, id) {
       const hermeticSession = o.hermeticSession !== false;
       delete o.hermeticSession;
       const ctx = await _realBrowser.newContext(o);
+      if (!PROD_VERIFY_MODE) {
+        const [y, m, d] = E2E_TEST_DATE.split('-').map(Number);
+        await ctx.clock.install({ time: new Date(y, m - 1, d, 12, 0, 0, 0) });
+      }
       await _installNetworkPolicy(ctx);
       if (!PROD_VERIFY_MODE && hermeticSession) {
         await ctx.addInitScript(_seedFixtureSession, { key: FIXTURE_SESSION_KEY, value: FIXTURE_SESSION_JSON });

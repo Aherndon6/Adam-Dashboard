@@ -34,7 +34,9 @@ let sc = scriptMatch[1];
 sc = sc.replace(/\bconst\b/g, 'var');
 sc = sc.replace(/^try\s*\{[\s\S]*?\}\s*catch[\s\S]*?\}/m, '');
 sc = sc.replace(/^loadAll\(\);/m, '');
-const stub = `
+// 2027 rollover Package A: deterministic clock (HFOS_TEST_DATE, default the legacy pin date).
+const ROLLOVER_KIT = require('./tools/rollover-test-kit');
+const stub = ROLLOVER_KIT.clockStubSource(process.env.HFOS_TEST_DATE) + `
 var window={fetch:function(){return Promise.resolve({ok:true,json:function(){return Promise.resolve([])}});}};
 var document={getElementById:function(){return{innerHTML:'',addEventListener:function(){},value:'',textContent:'',style:{},classList:{remove:function(){},add:function(){}},scrollIntoView:function(){}};},querySelectorAll:function(){return[];},querySelector:function(){return null;},addEventListener:function(){},activeElement:null,body:{style:{}}};
 var localStorage={getItem:function(){return null;},setItem:function(){},removeItem:function(){}};
@@ -47,6 +49,9 @@ var supabase={createClient:function(){return{auth:{
 }};} };
 `;
 try { eval(stub + sc); } catch (e) { console.error('FATAL eval:', e.message); process.exit(1); }
+// 2027 rollover Package A: 2026 characterization runs on the frozen 2026 composition
+// (WD_2026_FROZEN once the product defines it; before the rollover WD is that source).
+if (typeof WD_2026_FROZEN !== 'undefined') WD = WD_2026_FROZEN;
 const WEEKS = runModel(7000, 7694.87);
 // Silence expected diagnostic noise from fail-closed paths under test.
 const _origErr = console.error, _origWarn = console.warn, _origLog = console.log;

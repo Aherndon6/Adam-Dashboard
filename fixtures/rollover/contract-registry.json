@@ -1,0 +1,646 @@
+{
+ "_meta": {
+  "purpose": "Every frozen v2.1 \u00a713 test and Gate 1 implementation note, with its owning package. A PENDING entry is activated (written RED, then made green) when its package opens; it may not be deleted or downgraded without owner approval. test_rollover.js fails if this registry and the frozen spec diverge.",
+  "spec_path": "docs/rollover-2027-spec.md",
+  "spec_sha256": "b8443406c85e73cbe07b245293b1c03c041a336bea6c819ecb8099c3ba7bcf57",
+  "spec_version": "v2.1 (commit 9949225)",
+  "packages": {
+   "A": "test and evidence infrastructure (this package)",
+   "B": "year-neutral client hardening (C11, C18, C23, C24)",
+   "C": "server D-11 package",
+   "D": "period identity and 2027 client",
+   "E": "WD_2027 authoring tool and CI checks",
+   "F": "initialization, reversal, rollback and preflight",
+   "G": "integrated isolated-staging rehearsal and deployment"
+  },
+  "statuses": [
+   "PENDING",
+   "ACTIVE"
+  ],
+  "completion_rule": "A package is not complete, and may not be accepted, while any entry it owns is PENDING or any ACTIVE entry it owns does not resolve to an existing test. Gate: node tools/rollover-contracts.js complete <PKG> must exit 0 before the package's acceptance. Activation: write the test RED against the unchanged product, then implement until green, then set status ACTIVE with impl \"<file>#<TEST-ID>\"."
+ },
+ "entries": [
+  {
+   "id": "PKGA-A",
+   "package": "A",
+   "layer": "static",
+   "status": "ACTIVE",
+   "spec": "Package A authorization A",
+   "impl": "test_rollover.js#PKGA-FROZEN-1",
+   "note": "A frozen 2026 composition"
+  },
+  {
+   "id": "PKGA-B",
+   "package": "A",
+   "layer": "static",
+   "status": "ACTIVE",
+   "spec": "Package A authorization B",
+   "impl": "test_rollover.js#PKGA-CLOCK-2",
+   "note": "B clock pinning"
+  },
+  {
+   "id": "PKGA-C",
+   "package": "A",
+   "layer": "static",
+   "status": "ACTIVE",
+   "spec": "Package A authorization C",
+   "impl": "test_rollover.js#PKGA-REG-1",
+   "note": "C suite structure and contract registry"
+  },
+  {
+   "id": "PKGA-D",
+   "package": "A",
+   "layer": "static",
+   "status": "ACTIVE",
+   "spec": "Package A authorization D",
+   "impl": "docs/rollover-package-a.md#Legacy test classification",
+   "note": "D legacy test classification"
+  },
+  {
+   "id": "PKGA-E",
+   "package": "A",
+   "layer": "static",
+   "status": "ACTIVE",
+   "spec": "Package A authorization E",
+   "impl": "test_rollover.js#PKGA-PLAN-3",
+   "note": "E future-plan isolation"
+  },
+  {
+   "id": "PKGA-F",
+   "package": "A",
+   "layer": "static",
+   "status": "ACTIVE",
+   "spec": "Package A authorization F",
+   "impl": "test_rollover.js#PKGA-FP-1",
+   "note": "F OD-1 rollback fingerprint"
+  },
+  {
+   "id": "PKGA-F-NB5",
+   "package": "A",
+   "layer": "static",
+   "status": "ACTIVE",
+   "spec": "Package A authorization F",
+   "impl": "test_rollover.js#PKGA-NB5-3",
+   "note": "F NB-5 separate checkpoint comparison"
+  },
+  {
+   "id": "PKGA-G",
+   "package": "A",
+   "layer": "static",
+   "status": "ACTIVE",
+   "spec": "Package A authorization G",
+   "impl": "test_rollover.js#PKGA-FC-1",
+   "note": "G function-body capture"
+  },
+  {
+   "id": "PKGA-H",
+   "package": "A",
+   "layer": "static",
+   "status": "ACTIVE",
+   "spec": "Package A authorization H",
+   "impl": "test_rollover.js#PKGA-CAP-2",
+   "note": "H capture tool plan support"
+  },
+  {
+   "id": "PKGA-I",
+   "package": "A",
+   "layer": "static",
+   "status": "ACTIVE",
+   "spec": "Package A authorization I",
+   "impl": "test_rollover.js#PKGA-N9-1",
+   "note": "I N-9 static contract"
+  },
+  {
+   "id": "PKGA-J",
+   "package": "A",
+   "layer": "static",
+   "status": "ACTIVE",
+   "spec": "Package A authorization J",
+   "impl": "test_rollover.js#PKGA-PIN-1",
+   "note": "J protected-function pins"
+  },
+  {
+   "id": "PKGA-A1",
+   "package": "A",
+   "layer": "static",
+   "status": "ACTIVE",
+   "spec": "Package A authorization owner",
+   "impl": "test_rollover.js#PKGA-DONE-1",
+   "note": "owner A-1 package-completion check"
+  },
+  {
+   "id": "T-ID-1",
+   "package": "D",
+   "layer": "static",
+   "status": "PENDING",
+   "spec": "docs/rollover-2027-spec.md \u00a713"
+  },
+  {
+   "id": "T-ID-2",
+   "package": "D",
+   "layer": "static",
+   "status": "PENDING",
+   "spec": "docs/rollover-2027-spec.md \u00a713"
+  },
+  {
+   "id": "T-ID-3",
+   "package": "D",
+   "layer": "static",
+   "status": "PENDING",
+   "spec": "docs/rollover-2027-spec.md \u00a713"
+  },
+  {
+   "id": "T-ID-4",
+   "package": "D",
+   "layer": "static",
+   "status": "PENDING",
+   "spec": "docs/rollover-2027-spec.md \u00a713"
+  },
+  {
+   "id": "T-ID-5",
+   "package": "D",
+   "layer": "static",
+   "status": "PENDING",
+   "spec": "docs/rollover-2027-spec.md \u00a713"
+  },
+  {
+   "id": "T-ID-6",
+   "package": "D",
+   "layer": "static",
+   "status": "PENDING",
+   "spec": "docs/rollover-2027-spec.md \u00a713"
+  },
+  {
+   "id": "T-SCH-1",
+   "package": "D",
+   "layer": "static",
+   "status": "PENDING",
+   "spec": "docs/rollover-2027-spec.md \u00a713"
+  },
+  {
+   "id": "T-SCH-2",
+   "package": "D",
+   "layer": "static",
+   "status": "PENDING",
+   "spec": "docs/rollover-2027-spec.md \u00a713"
+  },
+  {
+   "id": "T-SCH-3",
+   "package": "D",
+   "layer": "static",
+   "status": "PENDING",
+   "spec": "docs/rollover-2027-spec.md \u00a713"
+  },
+  {
+   "id": "T-SCH-4",
+   "package": "D",
+   "layer": "static",
+   "status": "PENDING",
+   "spec": "docs/rollover-2027-spec.md \u00a713"
+  },
+  {
+   "id": "T-SCH-5a",
+   "package": "E",
+   "layer": "static-ci",
+   "status": "PENDING",
+   "spec": "docs/rollover-2027-spec.md \u00a713"
+  },
+  {
+   "id": "T-SCH-5b",
+   "package": "E",
+   "layer": "static-ci",
+   "status": "PENDING",
+   "spec": "docs/rollover-2027-spec.md \u00a713"
+  },
+  {
+   "id": "T-SCH-5c",
+   "package": "E",
+   "layer": "static-ci",
+   "status": "PENDING",
+   "spec": "docs/rollover-2027-spec.md \u00a713"
+  },
+  {
+   "id": "T-SCH-5d",
+   "package": "E",
+   "layer": "private-freeze-time",
+   "status": "PENDING",
+   "spec": "docs/rollover-2027-spec.md \u00a713"
+  },
+  {
+   "id": "T-SCH-6",
+   "package": "E",
+   "layer": "static-ci",
+   "status": "PENDING",
+   "spec": "docs/rollover-2027-spec.md \u00a713"
+  },
+  {
+   "id": "T-SCH-7",
+   "package": "D",
+   "layer": "static",
+   "status": "PENDING",
+   "spec": "docs/rollover-2027-spec.md \u00a713"
+  },
+  {
+   "id": "T-EDIT-1",
+   "package": "D",
+   "layer": "static",
+   "status": "PENDING",
+   "spec": "docs/rollover-2027-spec.md \u00a713"
+  },
+  {
+   "id": "T-EDIT-2",
+   "package": "D",
+   "layer": "static",
+   "status": "PENDING",
+   "spec": "docs/rollover-2027-spec.md \u00a713"
+  },
+  {
+   "id": "T-EDIT-3",
+   "package": "D",
+   "layer": "static",
+   "status": "PENDING",
+   "spec": "docs/rollover-2027-spec.md \u00a713"
+  },
+  {
+   "id": "T-CC-1",
+   "package": "D",
+   "layer": "static",
+   "status": "PENDING",
+   "spec": "docs/rollover-2027-spec.md \u00a713"
+  },
+  {
+   "id": "T-CC-2",
+   "package": "D",
+   "layer": "static",
+   "status": "PENDING",
+   "spec": "docs/rollover-2027-spec.md \u00a713"
+  },
+  {
+   "id": "T-CC-3",
+   "package": "D",
+   "layer": "static",
+   "status": "PENDING",
+   "spec": "docs/rollover-2027-spec.md \u00a713"
+  },
+  {
+   "id": "T-CC-4",
+   "package": "D",
+   "layer": "static",
+   "status": "PENDING",
+   "spec": "docs/rollover-2027-spec.md \u00a713"
+  },
+  {
+   "id": "T-CC-5",
+   "package": "D",
+   "layer": "static",
+   "status": "PENDING",
+   "spec": "docs/rollover-2027-spec.md \u00a713"
+  },
+  {
+   "id": "T-GL-1",
+   "package": "D",
+   "layer": "static",
+   "status": "PENDING",
+   "spec": "docs/rollover-2027-spec.md \u00a713"
+  },
+  {
+   "id": "T-GL-2",
+   "package": "D",
+   "layer": "static",
+   "status": "PENDING",
+   "spec": "docs/rollover-2027-spec.md \u00a713"
+  },
+  {
+   "id": "T-GL-3",
+   "package": "D",
+   "layer": "static",
+   "status": "PENDING",
+   "spec": "docs/rollover-2027-spec.md \u00a713"
+  },
+  {
+   "id": "T-GL-4",
+   "package": "D",
+   "layer": "static",
+   "status": "PENDING",
+   "spec": "docs/rollover-2027-spec.md \u00a713"
+  },
+  {
+   "id": "T-GL-5",
+   "package": "D",
+   "layer": "static",
+   "status": "PENDING",
+   "spec": "docs/rollover-2027-spec.md \u00a713"
+  },
+  {
+   "id": "T-GL-6",
+   "package": "D",
+   "layer": "static",
+   "status": "PENDING",
+   "spec": "docs/rollover-2027-spec.md \u00a713"
+  },
+  {
+   "id": "T-GL-7",
+   "package": "D",
+   "layer": "static",
+   "status": "PENDING",
+   "spec": "docs/rollover-2027-spec.md \u00a713"
+  },
+  {
+   "id": "T-GL-8",
+   "package": "D",
+   "layer": "static",
+   "status": "PENDING",
+   "spec": "docs/rollover-2027-spec.md \u00a713"
+  },
+  {
+   "id": "T-GL-9",
+   "package": "D",
+   "layer": "static",
+   "status": "PENDING",
+   "spec": "docs/rollover-2027-spec.md \u00a713"
+  },
+  {
+   "id": "T-GL-10",
+   "package": "D",
+   "layer": "static",
+   "status": "PENDING",
+   "spec": "docs/rollover-2027-spec.md \u00a713"
+  },
+  {
+   "id": "T-GL-11",
+   "package": "D",
+   "layer": "static",
+   "status": "PENDING",
+   "spec": "docs/rollover-2027-spec.md \u00a713"
+  },
+  {
+   "id": "T-TR-1",
+   "package": "D",
+   "layer": "static",
+   "status": "PENDING",
+   "spec": "docs/rollover-2027-spec.md \u00a713"
+  },
+  {
+   "id": "T-TR-2",
+   "package": "D",
+   "layer": "static",
+   "status": "PENDING",
+   "spec": "docs/rollover-2027-spec.md \u00a713"
+  },
+  {
+   "id": "T-TR-3",
+   "package": "D",
+   "layer": "static",
+   "status": "PENDING",
+   "spec": "docs/rollover-2027-spec.md \u00a713"
+  },
+  {
+   "id": "T-TR-4",
+   "package": "B",
+   "layer": "static",
+   "status": "PENDING",
+   "spec": "docs/rollover-2027-spec.md \u00a713"
+  },
+  {
+   "id": "T-TR-6",
+   "package": "D",
+   "layer": "static",
+   "status": "PENDING",
+   "spec": "docs/rollover-2027-spec.md \u00a713"
+  },
+  {
+   "id": "T-TR-8",
+   "package": "D",
+   "layer": "static",
+   "status": "PENDING",
+   "spec": "docs/rollover-2027-spec.md \u00a713"
+  },
+  {
+   "id": "T-TR-7",
+   "package": "D",
+   "layer": "static",
+   "status": "PENDING",
+   "spec": "docs/rollover-2027-spec.md \u00a713"
+  },
+  {
+   "id": "T-TR-5",
+   "package": "B",
+   "layer": "static",
+   "status": "PENDING",
+   "spec": "docs/rollover-2027-spec.md \u00a713"
+  },
+  {
+   "id": "T-PRE-2",
+   "package": "F",
+   "layer": "hermetic-db",
+   "status": "PENDING",
+   "spec": "docs/rollover-2027-spec.md \u00a713"
+  },
+  {
+   "id": "T-SNAP-1",
+   "package": "B",
+   "layer": "static",
+   "status": "PENDING",
+   "spec": "docs/rollover-2027-spec.md \u00a713"
+  },
+  {
+   "id": "T-CT-1",
+   "package": "D",
+   "layer": "static",
+   "status": "PENDING",
+   "spec": "docs/rollover-2027-spec.md \u00a713"
+  },
+  {
+   "id": "T-PRE-1",
+   "package": "F",
+   "layer": "hermetic-db",
+   "status": "PENDING",
+   "spec": "docs/rollover-2027-spec.md \u00a713"
+  },
+  {
+   "id": "T-SRV-1",
+   "package": "C",
+   "layer": "hermetic-db",
+   "status": "PENDING",
+   "spec": "docs/rollover-2027-spec.md \u00a713"
+  },
+  {
+   "id": "T-SRV-2",
+   "package": "C",
+   "layer": "hermetic-db",
+   "status": "PENDING",
+   "spec": "docs/rollover-2027-spec.md \u00a713"
+  },
+  {
+   "id": "T-SRV-3",
+   "package": "C",
+   "layer": "hermetic-db",
+   "status": "PENDING",
+   "spec": "docs/rollover-2027-spec.md \u00a713"
+  },
+  {
+   "id": "T-SRV-4",
+   "package": "C",
+   "layer": "hermetic-db",
+   "status": "PENDING",
+   "spec": "docs/rollover-2027-spec.md \u00a713"
+  },
+  {
+   "id": "T-SRV-5",
+   "package": "C",
+   "layer": "hermetic-db",
+   "status": "PENDING",
+   "spec": "docs/rollover-2027-spec.md \u00a713"
+  },
+  {
+   "id": "T-SRV-6",
+   "package": "C",
+   "layer": "hermetic-db",
+   "status": "PENDING",
+   "spec": "docs/rollover-2027-spec.md \u00a713"
+  },
+  {
+   "id": "T-SRV-7",
+   "package": "C",
+   "layer": "hermetic-db",
+   "status": "PENDING",
+   "spec": "docs/rollover-2027-spec.md \u00a713"
+  },
+  {
+   "id": "T-SRV-8",
+   "package": "C",
+   "layer": "hermetic-db",
+   "status": "PENDING",
+   "spec": "docs/rollover-2027-spec.md \u00a713"
+  },
+  {
+   "id": "T-SRV-9",
+   "package": "C",
+   "layer": "hermetic-db",
+   "status": "PENDING",
+   "spec": "docs/rollover-2027-spec.md \u00a713"
+  },
+  {
+   "id": "T-SRV-10",
+   "package": "C",
+   "layer": "hermetic-db",
+   "status": "PENDING",
+   "spec": "docs/rollover-2027-spec.md \u00a713"
+  },
+  {
+   "id": "T-SRV-11",
+   "package": "C",
+   "layer": "hermetic-db",
+   "status": "PENDING",
+   "spec": "docs/rollover-2027-spec.md \u00a713"
+  },
+  {
+   "id": "T-SRV-12",
+   "package": "C",
+   "layer": "hermetic-db",
+   "status": "PENDING",
+   "spec": "docs/rollover-2027-spec.md \u00a713"
+  },
+  {
+   "id": "T-SRV-13",
+   "package": "C",
+   "layer": "hermetic-db",
+   "status": "PENDING",
+   "spec": "docs/rollover-2027-spec.md \u00a713"
+  },
+  {
+   "id": "T-SRV-14",
+   "package": "C",
+   "layer": "hermetic-db",
+   "status": "PENDING",
+   "spec": "docs/rollover-2027-spec.md \u00a713"
+  },
+  {
+   "id": "T-SRV-15",
+   "package": "C",
+   "layer": "hermetic-db",
+   "status": "PENDING",
+   "spec": "docs/rollover-2027-spec.md \u00a713"
+  },
+  {
+   "id": "T-SRV-16",
+   "package": "C",
+   "layer": "hermetic-db",
+   "status": "PENDING",
+   "spec": "docs/rollover-2027-spec.md \u00a713"
+  },
+  {
+   "id": "T-SRV-17",
+   "package": "C",
+   "layer": "hermetic-db",
+   "status": "PENDING",
+   "spec": "docs/rollover-2027-spec.md \u00a713"
+  },
+  {
+   "id": "T-RB-1",
+   "package": "F",
+   "layer": "hermetic-db",
+   "status": "PENDING",
+   "spec": "docs/rollover-2027-spec.md \u00a713"
+  },
+  {
+   "id": "T-RB-2",
+   "package": "F",
+   "layer": "hermetic-db",
+   "status": "PENDING",
+   "spec": "docs/rollover-2027-spec.md \u00a713"
+  },
+  {
+   "id": "T-RB-3",
+   "package": "F",
+   "layer": "hermetic-db",
+   "status": "PENDING",
+   "spec": "docs/rollover-2027-spec.md \u00a713"
+  },
+  {
+   "id": "T-RB-4",
+   "package": "F",
+   "layer": "hermetic-db",
+   "status": "PENDING",
+   "spec": "docs/rollover-2027-spec.md \u00a713"
+  },
+  {
+   "id": "T-RB-6",
+   "package": "F",
+   "layer": "hermetic-db",
+   "status": "PENDING",
+   "spec": "docs/rollover-2027-spec.md \u00a713"
+  },
+  {
+   "id": "T-RB-5",
+   "package": "G",
+   "layer": "isolated-staging",
+   "status": "PENDING",
+   "spec": "docs/rollover-2027-spec.md \u00a713"
+  },
+  {
+   "id": "X-C18",
+   "package": "B",
+   "layer": "static",
+   "status": "PENDING",
+   "spec": "\u00a79 C18",
+   "note": "Pin the current week in 5G1C1-12; Package A already reproduces the defect deterministically (test_rollover.js PKGA-CLOCK-4)."
+  },
+  {
+   "id": "X-N9",
+   "package": "C",
+   "layer": "static-ci",
+   "status": "PENDING",
+   "spec": "Gate 1 note N-9",
+   "note": "New helper functions REVOKE EXECUTE FROM PUBLIC, anon, authenticated; checker tools/rollover-function-capture.js checkHelperRevokes, active on fixtures in Package A (PKGA-N9-*)."
+  },
+  {
+   "id": "X-NB5",
+   "package": "G",
+   "layer": "isolated-staging",
+   "status": "PENDING",
+   "spec": "Gate 1 note NB-5, \u00a716 step 11",
+   "note": "Checkpoint-C equivalence lists newly generated created_at (and generated ids) explicitly via compareCheckpoint; separate from the \u00a718 fingerprint (PKGA-NB5-*)."
+  }
+ ]
+}

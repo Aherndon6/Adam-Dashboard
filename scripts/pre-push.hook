@@ -60,6 +60,22 @@ if [ $GATE_RC -ne 0 ]; then
 fi
 
 echo "$GATE_OUT" | grep -E "^  (Passed|Failed):"
+
+# 2027 rollover suite (Package A, 2026-10-07): harness, future-plan isolation, rollback
+# fingerprint tooling and the frozen-spec contract registry. Same blocking rule.
+if [ -f test_rollover.js ]; then
+  echo "pre-push: running 2027 rollover suite..."
+  ROLL_OUT="$(node test_rollover.js 2>&1)"
+  ROLL_RC=$?
+  if [ $ROLL_RC -ne 0 ]; then
+    echo "$ROLL_OUT" | tail -40
+    echo ""
+    echo "PUSH BLOCKED: the 2027 rollover suite (test_rollover.js) is failing."
+    echo "  - git push --no-verify   (deliberate bypass — record that you did)"
+    exit 1
+  fi
+  echo "$ROLL_OUT" | grep -E "^  (Passed|Failed):"
+fi
 echo "pre-push: static suite green. Note e2e is NOT run here — use"
 echo "          'bash push_to_github.sh \"msg\"' for the full gate."
 exit 0
