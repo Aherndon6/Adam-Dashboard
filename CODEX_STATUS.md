@@ -1,5 +1,80 @@
 # Codex Status: Herndon Financial OS
 
+## CURRENCY NOTE (2026-10-07): Reconciliation / forward-cash architecture review CLOSED. Architecture v2 and P3 remain authoritative. Canonical next: 2027 rollover reconnaissance and specification
+
+**Outcome (owner rulings, 2026-10-07):**
+- **Independent review (Fable): PASS WITH REQUIRED CHANGES.** No Architecture v2 amendment, no P3 amendment.
+- The October reconciliation / forward-cash design is **implementation underneath frozen Architecture v2 and P3**.
+- **P3 is the only card-control model.** There is no Architecture v3.
+- **Superseded:** the October consolidated proposal (evidence folder, 2026-10-06), wherever it differs from the closeout record. **Do not implement the consolidated document as written.** The closeout's Section 3 lists every superseded rule, including:
+  - reimbursements counting before receipt;
+  - provisional capacity before certification;
+  - the median/history card estimator;
+  - upward estimate rounding;
+  - the dispositionable residual;
+  - a cumulative tie as certification evidence;
+  - the "no Register guard" non-goal.
+
+**Final rulings (summary; detail in the evidence closeout):**
+- **Horizon:** a 13-week rolling horizon. It supersedes the 2026-09-13 "reassessment frontier" wording.
+- **Reimbursements** count only after receipt.
+- **Before certification:** a forward view only (lowest projected Checking, its date, binding events, floor, reasons). No actionable capacity or allocation until CERTIFIED.
+- **States:** "ready to close" is derived. The persisted reconciliation states are open and certified.
+- **Status vocabulary:** INCOMPLETE, SYSTEM HOLD and OWNER HOLD are distinct.
+- **Operating allowance:** an owner-configured weekly allowance for routine non-card Checking spending. It is expected spending, carried through the Budget Rules input layer, and is not a buffer.
+- **Cards:** an owner-authored planning value per active card, under P3:
+  - a statement actual is typed from the statement;
+  - a closed cycle without a statement actual → INCOMPLETE;
+  - active/dormant coverage and freshness are P3 parameters.
+- **Tax:** estimation stays outside the OS. The OS tracks an owner-approved reserve requirement, verified reserved cash, the remaining amount and its priority.
+- **Emergency funds** (Vio Emergency, Lending Club/Happen, Fidelity Joint WROS-TOD) never count toward capacity.
+  - Fidelity is verified by a dated value snapshot.
+  - Verification is monthly, after the 10th, plus activity-triggered checks.
+  - Stale reserve evidence scopes only to the claims that depend on it.
+- **Wendy (household_admin)** may run the normal Close. No other role change.
+- **OWNER HOLD remains ON** through Gate F. It blocks approval of new OS-generated goal-allocation recommendations only. Release after Gate F is a separate explicit owner decision.
+
+**Older certified-period corrections (owner ruling, tested against v2 §4/§5 and invariant 5; compatible):**
+- An owner-only, explicitly authorized correction fixes the **original** Register record.
+- The row change and an append-only correction record (prior and corrected values, timestamp, owner, reason / evidence, affected periods) are written atomically through one owner-gated path, behind a server-side certified-period guard.
+- The original certification is **not rewritten**. The period shows "corrected after certification".
+- Only the affected period and account are re-checked. Later certified periods stand.
+- **Condition:** certification evidence is window-local (bank anchor + window activity + carry items + closing bank balance). The cumulative Register-vs-bank comparison is a non-authoritative cross-check.
+- Category-only edits need no correction record.
+- The latest-week `approved_reopen` is preserved for stored balances and basis.
+
+**Destructive privilege (sequencing only; no change authorized):**
+- Not a rollover blocker.
+- **The Gate R surface must be corrected before Gate R passes:** no client TRUNCATE on `weekly_reconciliations` or `transactions`. `accounts` and `categories` are covered transitively through the `transactions` foreign keys.
+- New reconciliation evidence tables are created without client UPDATE, DELETE or TRUNCATE. The revoke must be explicit, because public-schema default privileges grant them.
+- The remaining table-wide TRUNCATE posture is recorded technical debt.
+
+**Lanes:**
+- **Rollover (narrow; R1-R7 respected; no P3c-2 work):**
+  - durable `(model_year, week_num)` identity;
+  - explicit week date boundaries;
+  - a contiguous 2026 → 2027 chain with 2026 history protected;
+  - R-h as a capability only;
+  - a 2027 goal registry with year identity, due dates and fail-closed loading;
+  - owner-confirmed 2027 base pay;
+  - structured schedule dates;
+  - card rows from one issuer-rules source, using owner planning values;
+  - one owner-approved 2027 golden master, with the 2026 masters preserved.
+  - Open rollover-spec decisions **D10** and **D-11** belong to reconnaissance.
+- **Gate R:** statement check; residual rule; Wednesday cutoff; window-local evidence; certified-period guard and correction path; divergence locator; owner Reopen button; reserve freshness; the privilege surface above; fault-injection suite; at least two weeks of acceptance with content conditions; the ≤30-minute sitting metric and stop rule.
+- **Gate F:** dated walk with fail-closed parity; P3 conformance; capacity contract; allowance; disbursement coupling; non-monthly obligations plus attestation; netting; never-more-optimistic proof; the empty 2027 baseline waterfall (owner-approved golden-master recapture); exact independent agreement. Then the owner decides on OWNER HOLD.
+- **Deferred:** heuristic matching, payment pairing, history estimator, What-If rework, D10 extraction, import-assisted entry, K4 general audit, table-wide TRUNCATE debt.
+
+**Sequence (owner):** close review → rollover reconnaissance/specification → rollover → reconciliation work and the privilege fix → Gate R → forward-cash work → Gate F → owner decision on OWNER HOLD. Do not reorder without surfacing it to the owner.
+
+**This note updates the 2026-10-06c exit gate:** it is now two gates, Gate R (Reconciliation Authority) and Gate F (Forward Cash / Funding Authority). Until each passes, the Saturday manual cash certification remains authoritative.
+
+**Evidence (authoritative for detail, including Fable's verbatim findings):** `~/Herndon-Financial-OS-Evidence/architecture-review-closeout-2026-10-07.md`. The review package is `fable-architecture-review-2026-10-06/` (v2, P3, roadmap and consolidated proposal, hash-pinned).
+
+**Documentation only.** Balance-free. No product, test, SQL, schema, RLS, privilege, production or staging change. Not pushed.
+
+---
+
 ## CURRENCY NOTE (2026-10-06c): Weekly Operating Authority Exit Gate. A 2027 rollover acceptance requirement (owner decision; not implemented)
 
 **Owner decision (2026-10-06):** the Financial OS dashboard is to become the authority and the normal operating interface for the Saturday weekly reconciliation.
