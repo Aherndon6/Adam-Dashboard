@@ -1,9 +1,9 @@
-# 2027 Rollover Specification v2
+# 2027 Rollover Specification v2.1
 
 | | |
 |---|---|
-| Status | **FROZEN SPECIFICATION (v2).** The implementation specification for the 2027 rollover going forward. Documentation only. This document does **not** authorize implementation, SQL, schema changes, production or staging writes, golden-master changes, or a push. Implementation authority exists only through separate owner authorization of Gate 1 and each later gate in §23. |
-| Date | 2026-10-07 (v1 frozen; v2 frozen the same day) |
+| Status | **FROZEN SPECIFICATION (v2.1).** Frozen v2 (commit `333f5f4`) plus the Gate 1 errata OD-1 to OD-4 and six clarifications. v2.1 supersedes v2 as the implementation specification for the 2027 rollover; frozen v2 remains immutable historical evidence. Documentation only. This document does **not** authorize implementation, SQL, schema changes, production or staging writes, golden-master changes, or a push. Implementation authority exists only through separate owner authorization of Gate 1 and each later gate in §23. |
+| Date | 2026-10-07 (v1, v2 and v2.1 frozen the same day) |
 | Governing documents | Financial OS Architecture v2 (frozen 2026-08-30) and the P3 Card-Cycle Admissibility Contract remain authoritative. This specification is implementation underneath them. |
 | Consolidates | The rollover reconnaissance, the period-identity adversarial round, the proposed specification, the tightening round, the owner rulings of 2026-10-07, and the owner's disposition of the independent review of v1. Proposals superseded during those rounds are listed only in §25. |
 | Goal funding | **OWNER HOLD remains ON.** Nothing here changes it. |
@@ -14,7 +14,9 @@
 - **Independent review of v1 (Fable):** verdict **PASS WITH REQUIRED CHANGES**. Three required corrections (rollback, Edit-Week overrides, initialization atomicity) and fifteen non-blocking findings. Owner accepted the verdict and the dispositions on 2026-10-07. Architecture v2, P3, Design B, P2, Week-31 Option C and the O1/O2 rulings were not reopened.
 - **v2 truthfulness round (2026-10-07):** owner closed Q2-Q13 (§26) and added the household truthfulness rule (G12): Goals plan-year scoping and a read-only historical group (§7.6), local disclosures (C20-C25), and follow-ons H-1, GR-1 and F-1 (§23), none implemented in rollover.
 - **Fable re-review of v2 candidate `edcce633…`:** PASS WITH REQUIRED CHANGES (A-1 Cash Flow Mechanics pay literals; A-2 F-1 scope), B-1, B-2 and B-3 confirmed closed, Architecture v2 and P3 unchanged. Owner accepted 2026-10-07 and directed a final bounded hardening round (A-1, A-2, B-1 to B-13, D-2, D-3, D-5), applied here.
-- **v2 (this document):** frozen by owner authorization (record below).
+- **v2:** frozen by owner authorization (record below); commit `333f5f4`, file SHA-256 `de5419f54631cc93a21e0b42aad9600b10e25098c4f90c05c99d22cc6dd9e579`. That commit is immutable historical evidence.
+- **Gate 1 implementation reconnaissance (2026-10-07):** narrow FAIL on one frozen-spec contradiction (the `goal_registry` `updated_at` trigger made the RB-2 rollback comparison unsatisfiable after initialization). Owner rulings OD-1 to OD-5 approved. OD-1 to OD-4 and six clarifications are the v2.1 errata in this document; OD-5 is a sequencing permission (§23).
+- **v2.1 (this document):** frozen by owner authorization (record below). Errata are marked "(v2.1)" where they change text. Architecture v2, P3, Design B, P2, Option C, O1-O3, D10(b), D-11 and Q2-Q13 are unchanged. OWNER HOLD: ON.
 
 ### v2 freeze record
 
@@ -23,6 +25,16 @@
 - Governing authority: Financial OS Architecture v2 and the P3 Card-Cycle Admissibility Contract remain authoritative and unchanged
 - Implementation authority: none until the owner separately authorizes Gate 1 (§23); each later gate needs its own authorization
 - Frozen v1 (commit `644f3f7`) remains an immutable prior audit artifact and historical evidence; v2 is the implementation specification going forward
+- OWNER HOLD: ON
+
+### v2.1 freeze record
+
+- Freeze date: 2026-10-07
+- Owner approval: authorized freeze of the v2.1 candidate with SHA-256 `6f1e07932402e077a425a74ac89fbe497818bdad8f24491292a7c3bc8b0221ab` (1171 lines); only this freeze metadata was changed at freeze
+- Review: Fable verdict PASS WITH NON-BLOCKING FINDINGS; R-1 closed; NB-1 to NB-4 closed; NB-5 and N-9 carried as Gate 1 implementation notes, not specification requirements
+- Governing authority: Financial OS Architecture v2 and the P3 Card-Cycle Admissibility Contract remain authoritative and unchanged
+- Supersession: v2.1 supersedes v2 as the implementation specification for the 2027 rollover; frozen v2 (commit `333f5f4`) and frozen v1 (commit `644f3f7`) remain immutable historical evidence
+- Implementation authority: none; implementation requires separate owner authorization of each gate (§23)
 - OWNER HOLD: ON
 
 ### Legend
@@ -214,6 +226,8 @@ Read-only production verification (2026-10-07): all existing commitment and snap
 
 [F] **O1: A goal is snapshot-tracked for plan year Y if and only if an authorized opening snapshot exists for that goal at the designated opening position for Y.** The opening position is absolute week `openingWeekOfPlan(Y)` (§3).
 
+[F] **R(Y) (v2.1).** Wherever rollover logic derives plan Y's tracked goal set from `goal_funding_snapshots`, R(Y) is the set of goals with a row at (`model_year` = Y, `week_num` = `openingWeekOfPlan(Y)`) **and `source = 'opening_anchor'`**. It is never "every snapshot at the opening week": production holds `correction` rows at the 2026 opening week (week 5), and they are not opening snapshots.
+
 [F] For 2026 the derived set equals the current hard-coded eligible nine. Production verification: exactly nine opening snapshots at week 5, matching the list (E-2).
 
 ### 7.2 Opening snapshots are control data
@@ -280,14 +294,28 @@ Read-only production verification (2026-10-07): all existing commitment and snap
     - **IP-4** O5 completeness: every 2026 snapshot-tracked goal is carried or closed, never both, never neither; no successor names a goal that is not 2026 snapshot-tracked;
     - **IP-5** each carried opening value equals the predecessor's final 2026 funded value, or carries a permitted stated reason;
     - **IP-6** each closed predecessor's status is in the final-status set;
-    - **IP-7** manifest completeness: the manifest lists every inserted row and every 2026 status before and after, and its counts equal the database changes made inside the transaction.
+    - **IP-7** manifest completeness: the manifest lists every inserted row and every 2026 status before and after, together with the §18 excluded metadata values (`goal_registry.updated_at`) before and after (v2.1), and its counts equal the database changes made inside the transaction.
   - Any failure in preflight, a write or the postflight **rolls back everything**. No row remains.
   - On commit, the manifest records **PASS**, the run identity, the row fingerprints and (in the private evidence) the input-file hash.
 - [F] **Re-verification at the first close.** The closeout wrapper re-checks IP-2 to IP-6 when it closes the first week of any plan Y ≥ 2027 (§10), each in a form derived only from the database at that moment:
   - **IP-2 (first-close form):** every anchor's goal exists in `goal_registry` and is not `archived`. "Inserted by this run" is initialization-manifest evidence and is not re-checked at the first close;
   - **IP-3 to IP-6:** as written, with predecessors and stated reasons read from the anchor notes by the grammar below.
 
-  IP-1 and IP-7 depend on the owner input; they are covered by the transaction's atomicity and by O2 (only initialization writes opening anchors).
+  IP-1 and IP-7 depend on the owner input; they are covered by the transaction's atomicity and by O2 (only initialization writes opening anchors). Any assertion that needs the initialization manifest remains initialization evidence and is never described as a first-close database check (v2.1).
+- [F] **Re-verification scope (v2.1, OD-3).** The re-verification runs only on:
+  - a **new** close of plan Y's first closeable week (`openingWeekOfPlan(Y) + 1`); and
+  - the **half-close repair** of that same week, which completes the same authoritative transition.
+
+  It does **not** run on an idempotent retry of an already completed close, or on an `approved_reopen` of that week. An `approved_reopen` corrects balances only and never makes the week a new close. A later authorized correction to plan Y−1 therefore cannot make a completed plan opening impossible to retry or reopen. O3 is unchanged.
+- [F] **Stable predecessor state (v2.1, OD-4).** Snapshot rows of a goal are written only after that goal's `goal_registry` row is locked `FOR UPDATE`: by the closeout wrapper (eligible set), by `correct_goal_funding_snapshot` (its goal), and by the snapshot function, which is reachable only through the wrapper. Initialization and its reversal lock plan Y rows before plan Y−1 rows. Today the wrapper locks a constant goal set before any read. In rollover the set must be derived first, so the first close proceeds in this order:
+  1. acquire the existing advisory lock;
+  2. derive the candidate R(Y) from the opening anchors;
+  3. lock the R(Y) registry rows `FOR UPDATE` in identifier order;
+  4. re-derive R(Y) after those locks are held, and raise if it differs, so a concurrent initialization or reversal cannot leave the close working on a stale set;
+  5. lock **exactly** the R(Y−1) registry rows the verification relies on `FOR SHARE`, in identifier order;
+  6. perform the IP-3 to IP-6 reads.
+
+  `FOR SHARE` conflicts with `FOR UPDATE`, `FOR NO KEY UPDATE`, `UPDATE` and `DELETE`, so no competing writer can change those goals' registry rows or snapshot rows until the close commits. Each later read in the transaction sees one stable predecessor state. No competing path holds an R(Y−1) row while waiting for an R(Y) row, and all of them take R(Y−1) rows in identifier order, so no new deadlock cycle exists. This conclusion depends on R(Y) and R(Y−1) having disjoint identifiers (§7.3), enforced by the initialization preflight and IP-3; it is not a general locking rule. No lock object is added. Owner-run direct SQL outside these paths is governed procedurally, as today.
 - [F] **Anchor-note grammar (machine-parsed; frozen before any SQL is authored).** The `note` of every opening anchor for a plan Y ≥ 2027 is exactly one of:
   - `new`: a goal with no predecessor;
   - `carry:<predecessor_id>`: a carried goal whose opening value equals the predecessor's final value;
@@ -295,7 +323,7 @@ Read-only production verification (2026-10-07): all existing commitment and snap
 
   `<predecessor_id>` is the predecessor's registry identifier exactly as stored, matching `[a-z0-9_]+`. `<text>` is non-empty and contains no line break. Every identifier in the intended goal set G must also match `[a-z0-9_]+` (checked in the preflight). A note outside this grammar fails the postflight and the first-close re-verification. The initialization script and the closeout wrapper parse the same grammar. Opening anchors of the 2026 plan (week 5) are not parsed by it.
 - [F] **A 2026 change after initialization.** If a final 2026 value changes after initialization (a week-30 reopen or correction), the re-verification blocks the week-31 close (IP-5). The only remedy is the authorized pre-first-close mechanism:
-  1. reverse the initialization exactly per its manifest, in one transaction. The reversal deletes the manifest's rows, restores the recorded statuses, and aborts if any week ≥ 31 is closed or any manifest row differs from its manifest record;
+  1. reverse the initialization exactly per its manifest, in one transaction. The reversal deletes the manifest's rows, restores the recorded statuses, and aborts if any week ≥ 31 is closed or any manifest row differs from its manifest record. Comparisons use the §18 business and control fingerprint (v2.1, OD-1). The abort guards are evaluated only after the reversal holds the locks that make those reads stable (plan Y rows, then plan Y−1 rows, §7.4 OD-4). The foreign key's `ON DELETE RESTRICT` remains a backstop, not the primary concurrency control (v2.1);
   2. make the week-30 change;
   3. run initialization again.
 
@@ -321,6 +349,15 @@ Read-only production verification (2026-10-07): all existing commitment and snap
   - It does not express the household rule that 2027 money never funds 2026 goals.
   - It is not changed in rollover (no `runModel` or Gate F change). It is **disclosed locally** while it exists (C25, G12).
   - From week 31 the current plan is 2027. Until 2027 initialization, the 2027 waterfall is empty and the Goals view reports INCOMPLETE.
+- [F] **Post-boundary historical weeks (v2.1, OD-2).** Once the current plan is 2027, the unchanged engine receives the 2027 goal and waterfall inputs and applies them to every modeled week, including the 2026 weeks. Its goal allocations and goal variance for a week whose plan year is **earlier** than the current plan are therefore current-plan recomputations, not historical goal activity. For such a week (C28):
+  - modeled goal-allocation rows, their counts and modeled goal variance are not presented in week detail or History;
+  - a persisted `weekly_tasks` completion with recorded goal identity is shown from that record (its recorded label and amount) as a recorded completion (operator assertion), not a funding record;
+  - a persisted completion without sufficient recorded goal identity is never attributed to a current-plan goal by position or count. It is shown, where appropriate, as a recorded completion without goal attribution. No historical goal attribution is invented;
+  - History's open and done counts for such a week never count current-plan modeled goal rows;
+  - **every** household-facing consumer is bound by this rule (v2.1). No status, count, action list or goal presentation for an earlier-plan week may treat a current-plan modeled goal row as historical activity. This covers at least: the week-list and week-chip open-action state; the Overview and dashboard action list; week detail; History filtering; History counts. Recorded completions may still be shown under the rules above;
+  - one concise local line explains that goal history for that plan is in its read-only "<year> plan" group (§7.6), which shows recorded facts only.
+
+  Recorded transactions, reconciliations, snapshots, commitments and other persisted history remain available as before. Suppression is a presentation rule, applied in the render and counting layer. It is not a loss of recorded facts, not a second historical model, and not a recomputation of the earlier plan. `runModel` and the protected `resolveWeekTransfers` and `computeGoalTransferNetting` are unchanged; existing unprotected helpers such as `_legacyClassifyWeek` are not modified by this rule. Earlier-plan weeks are handled before their results reach the display or the counts. If implementation proves this cannot be met in the unprotected presentation and counting layer, work stops and returns to the owner.
 - [F] The waterfall remains recommendation policy shown under OWNER HOLD. Nothing here authorizes goal funding.
 
 ### 7.6 Goals plan-year scoping and the historical group
@@ -393,6 +430,7 @@ Example: a payment initiated in week 30 (2026 plan), still pending at that close
 | C25 | Pre-boundary disclosure (§7.5, G12). In week detail, the goal-transfer section of a week whose plan year is later than the current plan year shows one line while that week displays modeled goal allocations. When no opening anchor exists for that week's plan: "2027 goals are not initialized yet; projected goal allocations shown for 2027 weeks still use the 2026 plan." When the plan is initialized but has not yet begun: an equivalent line that the allocations still use the 2026 plan until 2027 begins. Years are derived. The line disappears once the week's plan is the current plan | No |
 | C26 | Cash Flow Mechanics base pay (G12; §9.1 item 14). For the 2026 plan, unchanged. For any other plan year, "Monthly Income" and "Planned Monthly Margin (Base Pay)" show the existing unavailable placeholder (the one the panel already shows when budget lines cannot be verified) with a short reason that base pay for that plan is not available in this panel, and the Paychecks flow box shows no amounts. The 2026 pay literals are never shown as current, no pay is inferred from 2026, and no value is derived from schedule events (that would be a second calculation path) | No |
 | C27 | Remaining year-pinned surfaces (§9.1 items 15-19), presentation only: (a) Overview Account Integrity labels for Truist Savings and AMEX Savings use plan-neutral account names when the current plan is not 2026; account identity and treatment unchanged; (b) the Overview "Actions" chip carries the C21 qualifier when the current week's plan is 2027 or later; (c) the Scenario Builder's "Change Goal Targets" option and its "Alaska remaining" preview are offered only while the current plan is 2026; (d) the Assumptions page states in one line that its goal amounts, weeks and calendar notes describe the 2026 plan when the current plan is not 2026; (e) the Ask Claude context derives the model range and week count, and labels its fixed 2026 facts as 2026-plan facts | No |
+| C28 | Post-boundary historical weeks (§7.5, G12, v2.1). For a week whose plan year is earlier than the current plan year, week detail and History omit modeled goal-allocation rows, their counts and modeled goal variance. They show persisted `weekly_tasks` completions with recorded goal identity from the record, as recorded completions (operator assertion), not funding records. A completion without sufficient recorded identity is shown without goal attribution and is never matched to a current-plan row by position or count. History counts for that week exclude current-plan modeled rows. The rule binds every household-facing consumer that could derive status, counts or actions from those rows: the week-list and week-chip open-action state, the Overview and dashboard action list, week detail, History filtering and History counts. One line points to the read-only "<year> plan" group. Years derived. Implemented in the render and counting layer only: `runModel`, `resolveWeekTransfers` and `computeGoalTransferNetting` (protected) and `_legacyClassifyWeek` are not changed. Weeks of the current plan are unchanged | No |
 
 [F] `runModel`, `reconEffectiveWD` and `getActiveModel` are **not changed**.
 
@@ -445,14 +483,14 @@ The inventory was taken read-only on 2026-10-07 by searching the client for the 
 **`save_weekly_closeout_with_snapshots`:**
 - P-Y3 (mismatch → raise);
 - week ≥ 1;
-- eligible set, expected count and opening-state check derived from opening snapshots (O1); empty → raise;
+- eligible set, expected count and opening-state check derived from R(`p_model_year`) (§7.1, `source = 'opening_anchor'` only; v2.1); empty → raise;
 - **archived contradiction:** raise if any goal tracked in the target week's plan year has registry status `archived` (§7.5);
 - **proven global contiguity:**
   - K = the set of complete weeks ≥ `openingWeekOfPlan(2026) + 1` (= 6). "Complete" = reconciliation present plus every snapshot required by that week's plan year;
   - K must equal {6, ..., max K}. A gap makes every normal closeout raise, naming the gap;
   - the next closeable week = 6 + |K|;
-  - the existing half-close repair path for the earliest incomplete week is unchanged;
-- **first-close re-verification:** when `p_week_num = openingWeekOfPlan(p_model_year) + 1` and `p_model_year ≥ 2027`, re-check §7.4 IP-2 to IP-6; any failure raises;
+  - the existing half-close repair path for the earliest incomplete week is unchanged, except for the first-close re-verification required by OD-3 (§7.4, v2.1);
+- **first-close re-verification:** when `p_week_num = openingWeekOfPlan(p_model_year) + 1` and `p_model_year ≥ 2027`, re-check §7.4 IP-2 to IP-6; any failure raises. It runs only on a new close and on the half-close repair of that week, never on an idempotent retry or `approved_reopen` (v2.1, OD-3). Before the IP reads it follows the §7.4 OD-4 rollover sequence: derive R(Y), lock R(Y) `FOR UPDATE`, re-derive and assert R(Y), lock exactly the R(Y−1) registry rows `FOR SHARE`, then verify (v2.1);
 - the latest completed week for reopen is global;
 - the monotonic prior and every snapshot read/write are scoped to `p_model_year`.
 
@@ -464,7 +502,7 @@ The inventory was taken read-only on 2026-10-07 by searching the client for the 
 **Other functions:**
 - `validate_commitment_state`: week ≥ 1.
 - `save_goal_funding_snapshots`: week ≥ 1; when called from closeout it writes `reconciliation` rows only, never an `opening_anchor` row and never at the opening position (O2).
-- `correct_goal_funding_snapshot`: P-Y3; eligibility from O1; the archived contradiction (§7.5); **rejects the opening position**.
+- `correct_goal_funding_snapshot`: P-Y3; eligibility from R(`p_model_year`) (v2.1); the archived contradiction (§7.5); **rejects the opening position**.
 
 [F] **Boundedness.** Three predicates were added after the v1 review: the archived contradiction, proven contiguity, and the first-close re-verification. Each is a read-only check inside a function already in D-11 scope, over tables that function already reads. None adds an object, grant, table or column.
 
@@ -606,6 +644,14 @@ The inventory was taken read-only on 2026-10-07 by searching the client for the 
 - **T-TR-6** Cash Flow Mechanics (C26):
   - with the current plan at 2027, neither 2026 pay literal nor any figure derived from them (monthly income, per-earner monthly amounts, margin) appears; the unavailable placeholder and the reason appear instead;
   - with the plan at 2026, the panel output equals today's.
+- **T-TR-8** Post-boundary historical weeks (C28, v2.1, OD-2), current week 31 or later with 2027 initialized:
+  - week detail and History for a 2026 week show no allocation to any 2027 goal, no modeled goal row or count, and no modeled goal variance;
+  - a persisted goal-task completion with recorded identity in that week is shown from its record, as a recorded completion (operator assertion);
+  - a pre-anchor 2026 week fixture with a null-key completion (no recorded `action_key` or label) shows it without goal attribution; it is not matched to any 2027 goal row; History's open and done counts for that week count no current-plan model row;
+  - an earlier-plan fixture with a null-key completion whose recorded label deliberately equals a current-plan modeled goal-row label is not bound or attributed to the current-plan goal; it remains a recorded completion (operator assertion) without invented goal attribution (v2.1). The intended mechanism withholds current-plan modeled goal rows from the earlier-plan presentation and counting paths; the protected resolver is not changed;
+  - the week-list and week-chip open-action state and the Overview and dashboard action list count no current-plan modeled goal row for a 2026 week (v2.1);
+  - the pointer line and the read-only "2026 plan" group are available;
+  - the modeled goal rows and amounts of 2027 weeks equal the values without the change.
 - **T-TR-7** Remaining surfaces (C27), current plan 2027:
   - the account names replace "Alaska Funding" and "IRA Staging";
   - the Actions chip carries the qualifier;
@@ -615,6 +661,13 @@ The inventory was taken read-only on 2026-10-07 by searching the client for the 
   
   With the plan at 2026, each surface equals today's output.
 - **T-TR-5** Allocation engine (C24): the informational statement and the 40% legacy label appear; for the same inputs, the engine's steps and amounts are unchanged.
+
+**Preflight clarifications (v2.1):**
+- **T-PRE-2** On fixtures, the preflight fails closed when:
+  - R(2026) (`opening_anchor` rows at week 5) differs from the expected population recorded from authoritative evidence, with `correction` rows at week 5 present and not counted;
+  - a registry row relied on by the §7.6 legacy-membership rule, or an intended 2027 row, lacks a non-null `created_at`;
+  - a named predecessor identifier does not resolve to an R(Y−1) goal (rename or cascade);
+  - the captured ACL baseline is missing for an object the comparison covers.
 
 **Loads (T-SNAP):**
 - **T-SNAP-1** Complete or fail closed (C11):
@@ -650,7 +703,7 @@ The inventory was taken read-only on 2026-10-07 by searching the client for the 
 - **T-SRV-12** Closeout cannot create, overwrite or modify an `opening_anchor` row, and cannot write at the opening position.
 - **T-SRV-13** After plan Y's first close, re-initializing Y's opening snapshots is rejected (O3): the reversal aborts.
 - **T-SRV-14** Initialization (§7.4):
-  - (a) a failure injected after some writes leaves zero residue: row fingerprints equal the pre-initialization state;
+  - (a) a failure injected after some writes leaves zero residue: the §18 business and control fingerprints of all rows equal the pre-initialization state;
   - (b) an intended goal without an anchor fails the postflight (IP-1);
   - (c) a successor identifier equal to a 2026 snapshot-tracked identifier fails (IP-3);
   - (d) a 2026 snapshot-tracked goal that is neither carried nor closed fails (IP-4);
@@ -660,12 +713,23 @@ The inventory was taken read-only on 2026-10-07 by searching the client for the 
   - (g) after a successful initialization, a changed week-30 value for a carried predecessor makes the week-31 close raise. After reversal and a fresh initialization, the week-31 close succeeds;
   - (h) a successful run records PASS. Its manifest lists every inserted row and status change and matches the database changes (IP-7).
 - **T-SRV-15** The closeout wrapper and the correction function raise when a goal tracked in the target week's plan has registry status `archived`.
+- **T-SRV-16** Re-verification scope by branch (v2.1, OD-3):
+  - a new first close of week 31 runs IP-2 to IP-6 (a failing predecessor condition raises);
+  - the half-close repair of week 31 runs them;
+  - an idempotent retry of a completed week-31 close does not run them and succeeds after a later authorized 2026 correction;
+  - an `approved_reopen` of week 31 is not blocked solely because 2026 history later changed through an authorized correction;
+  - a fixture with `correction` rows at the 2026 opening week derives R(2026) from `opening_anchor` rows only (v2.1).
+- **T-SRV-17** Stable predecessor state (v2.1, OD-4), in two concurrent sessions:
+  - a 2026 correction or week-30 reopen started during the first close waits for it (or the close waits), and the committed outcome equals a serial order;
+  - an initialization reversal racing the first close either completes before it (and the close then fails) or is refused after it;
+  - the §7.4 OD-4 sequence is followed: derive R(2027), lock R(2027) `FOR UPDATE`, re-derive and assert R(2027), then share-lock only the R(2026) rows, in identifier order, then verify;
+  - no deadlock arises across these pairings.
 
 **Rollback (T-RB):**
 - **T-RB-1** The rollback guard aborts, changing nothing, on each condition of §18 (1, 2, 3, 4a-4e), one fixture per condition.
 - **T-RB-2** Before the point of no simple return, rollback restores the prior implementation:
   - RB-1 to RB-4 pass;
-  - with no post-deploy writes, every pre-existing baseline row is byte-identical to its baseline.
+  - with no post-deploy household writes, every pre-existing baseline row equals its §18 business and control fingerprint; the excluded `goal_registry.updated_at` values remain visible in the evidence, before and after (v2.1).
 - **T-RB-3** Rollback after a legitimate post-deploy 2026 close (a week closed after deploy, including a patch to a pre-existing commitment row):
   - that week's reconciliation, snapshots and commitment rows are preserved and enumerated;
   - the patched commitment keeps its post-deploy value;
@@ -673,6 +737,10 @@ The inventory was taken read-only on 2026-10-07 by searching the client for the 
 - **T-RB-4** The 2027 FSA category:
   - with the row present and unreferenced, the guard reports eligible and rollback deletes exactly that row;
   - with any referencing row, the guard aborts (4c).
+- **T-RB-6** Fingerprint definition (v2.1, OD-1), for rollback and for the §7.4 reversal:
+  - a 2026 status changed by initialization and restored exactly, where only the trigger-maintained `goal_registry.updated_at` differs, passes RB-1 to RB-4;
+  - any unmanifested difference in a business or control field fails;
+  - the changed `updated_at` values appear in the rollback evidence, before and after, and are not silently discarded.
 - **T-RB-5** Staging sequencing (§16):
   - at the rehearsal step, conditions 1-3 are false and the guard reports eligible;
   - after re-establishment, the candidate state matches the pre-rehearsal checkpoint;
@@ -750,7 +818,11 @@ Notes:
 12. Close week 31 (2027), including the cross-year commitment; the first-close re-verification passes.
 13. Close week 32.
 14. Run the remaining T-SRV and T-RB cases, including T-RB-1 after the week-31 close. Cases that need a state no longer present (for example T-SRV-14's injected failure) run on a separate isolated fixture target [B].
-15. Confirm every pre-deploy baseline row is byte-identical, or is a simulated post-deploy write enumerated in step 10's evidence.
+15. Compare every pre-deploy baseline row by the §18 business and control fingerprint (v2.1). A row may differ only through:
+    - (a) simulated post-deploy household history enumerated in step 10's evidence; or
+    - (b) a status change recorded in the initialization manifest, expected here because step 11 re-established initialization.
+
+    Excluded `goal_registry.updated_at` values are listed in the evidence. Any other business or control difference fails.
 16. If the shared staging project was used, re-apply and verify the AU-11 state (step 1).
 
 [F] **Ordering assertion:** steps 10 and 11 precede step 12. The harness refuses step 12 until step 11's equivalence proof is recorded (T-RB-5).
@@ -798,7 +870,10 @@ Notes:
 - Catalog assertion (T-PRE-1): the five unchanged week-keyed tables keep integer `week_num` and have no week upper-bound check.
 - The complete-week set is contiguous from week 6 (§10).
 - No goal snapshot-tracked in 2026 has registry status `archived` (§7.5).
-- Grants as recorded in E-4.
+- **R(2026) population (v2.1):** the `opening_anchor` rows at week 5 equal the expected population recorded from authoritative evidence (E-2 observed nine). `correction` rows at week 5 are listed and not counted. The observed count is evidence for the expected state, not a constant in any server function.
+- **Creation evidence (v2.1):** `goal_registry.created_at` is nullable. Every row relied on by the §7.6 legacy-membership rule must have a non-null `created_at`, or the preflight fails closed. Initialization's postflight requires a non-null `created_at` on every row it inserts.
+- **Identifier stability (v2.1):** every predecessor identifier in the owner input resolves to an R(Y−1) goal. A predecessor renamed (`ON UPDATE CASCADE` changes snapshot keys but not `carry:` notes) fails closed here, and again at the first close through IP-4. No immutable-identifier mechanism is added.
+- **Privileges (v2.1):** compared against a captured ACL and catalog baseline of the covered objects, not against prose. Separately known privilege debt (R-9, TRUNCATE) is recorded as found and is not remediated in rollover (Gate R). New rollover objects (the two helpers) are created without client EXECUTE, so they do not repeat that posture.
 
 ### 17.2 Production evidence record
 
@@ -809,7 +884,7 @@ These are read-only observations of 2026-10-07. They are **not permanent assumpt
 | E-1 | `model_week_overrides`: 0 rows with week ≥ 31; 0 custom rows; maximum week 30 |
 | E-2 | `goal_funding_snapshots`: exactly 9 `opening_anchor` rows, all at (plan 2026, week 5); P-Y1 and P-Y2: 0 violations |
 | E-3 | The five unchanged week-keyed tables (`weekly_reconciliations`, `weekly_tasks`, `weekly_notes`, `model_week_overrides`, `custom_tasks`) use integer `week_num`; none has a week upper-bound check |
-| E-4 | No client EXECUTE on `repair_commitments_for_week`, `save_goal_funding_snapshots` or `save_reconciliation_with_commitments`. Authenticated EXECUTE only on `save_weekly_closeout_with_snapshots` and `correct_goal_funding_snapshot`. Signed-in users have SELECT only on `goal_funding_snapshots` and `cash_commitments` |
+| E-4 | No client EXECUTE on `repair_commitments_for_week`, `save_goal_funding_snapshots` or `save_reconciliation_with_commitments`. Authenticated EXECUTE only on `save_weekly_closeout_with_snapshots` and `correct_goal_funding_snapshot`. Signed-in users have SELECT only on `goal_funding_snapshots` and `cash_commitments` among the write privileges relevant to rollover; separately known privilege debt (e.g. TRUNCATE) is captured by the ACL baseline (§17.1, v2.1) |
 | E-5 | 0 `cash_commitments` rows with any week ≥ 31; 0 snapshots with week ≥ 31; 0 `weekly_reconciliations` rows with week ≥ 31 |
 
 ## 18. Rollback contract
@@ -818,6 +893,10 @@ These are read-only observations of 2026-10-07. They are **not permanent assumpt
 
 [F] **Definitions:**
 - **Pre-deploy baseline:** a per-row fingerprint (table, primary key, content hash) of every row in the fingerprinted tables, taken at §17 step 1.
+- **Business and control fingerprint (v2.1, OD-1):** the content hash covers every column except the following trigger-maintained metadata columns, named individually:
+  - `goal_registry.updated_at`, set by its `BEFORE UPDATE` trigger. Initialization status changes and their reversal both change it unavoidably.
+
+  No other column is excluded, and there is no general "ignore metadata" rule. Adding an exclusion requires proof that the column is trigger-maintained and changes unavoidably under an authorized restoration, plus owner approval. Each excluded value is recorded separately in the manifest and the rollback evidence, before and after the operation. A changed excluded value does not by itself fail a comparison, but it is always visible in the evidence. RB-1 to RB-4, guard conditions 4a and 4b, and the §7.4 reversal comparisons all use this fingerprint.
 - **Rollout manifest:** every data mutation made by the rollout. It contains exactly one row: the `categories` row `health_fitness.flexible_spending_2027`, with its full content. Server DDL and function bodies belong to the server package, not the manifest.
 - **Initialization manifest:** §7.4.
 - **Post-deploy household history:** every row inserted, updated or deleted after the baseline by ordinary authorized operation (closeouts, Register entry, Edit-Week, tasks and notes). It is not in either manifest.
@@ -853,7 +932,7 @@ In practice the point of no simple return is the **first 2027 close (week 31)**.
 - **(c) server restore:** restores the prior function bodies (stored with the server package) and the prior checks. Postgres validation of the restored checks is a second guard;
 - **(d) postflight.** Each must hold, or the whole rollback transaction rolls back and the failure is reported:
   - **RB-1 write set:** the pre-rollback and post-rollback fingerprints differ in exactly the manifest-reversal rows. No other row is inserted, updated or deleted by rollback;
-  - **RB-2 baseline (owner confirmed 2026-10-07):** every pre-deploy baseline row either equals its baseline fingerprint or differs only through post-deploy household history listed under RB-3. No baseline row differs through a rollout or initialization mutation; those were all reversed;
+  - **RB-2 baseline (owner confirmed 2026-10-07; fingerprint per v2.1 OD-1):** every pre-deploy baseline row either equals its baseline fingerprint or differs only through post-deploy household history listed under RB-3. No baseline row differs through a rollout or initialization mutation; those were all reversed;
   - **RB-3 enumeration:** the rollback evidence lists every post-deploy household history row (table, key, week, plan year, kind of change). Each is preserved. Weeks 28-30 closed after deploy appear here; they are never discarded to reproduce an old fingerprint;
   - **RB-4 compatibility:** the restored checks validate against every preserved row, and the complete-week set is contiguous from week 6.
 
@@ -965,6 +1044,8 @@ A future change to this contract would be an architecture question, not a routin
 | 4 | Boundary: week-30 close, 2027 initialization with recorded PASS, pre-first-close check, week-31 close (§17 steps 7-11) | Initialization authorization |
 | 5 | Rollover acceptance recorded | Status update |
 
+**Sequencing permission (v2.1, OD-5):** the year-neutral client items C11, C18, C23 and C24 may be implemented and, under their own owner-gated review and authorization, deployed before the §17 deploy window. This grants no implementation or deployment authority by itself, and changes nothing else in §17.
+
 **Follow-on items created by this specification (not implemented in rollover) [F]:**
 
 | ID | Item | Workstream and deadline |
@@ -1013,6 +1094,12 @@ A future change to this contract would be an architecture question, not a routin
 | Second override inspection before the first close | §17 step 9, §19.2 | First-close evidence |
 | Rollback household-use pause | §18 | Rollback runbook |
 | Prior golden isolation | §14, §22 | Golden harness |
+| v2.1 OD-1 business and control fingerprint | §18, §7.4 | T-RB-6 |
+| v2.1 OD-2 post-boundary historical weeks | §7.5, C28 | T-TR-8 |
+| v2.1 OD-3 re-verification scope | §7.4, §10 | T-SRV-16 |
+| v2.1 OD-4 stable predecessor state | §7.4, §10 | T-SRV-17 |
+| v2.1 R(Y) source filter; preflight clarifications | §7.1, §10, §17.1, §17.2 | T-SRV-16, T-PRE-2 |
+| v2.1 OD-5 sequencing permission | §23 | n/a |
 | Year-pinned code inventory | §9.1, C19 | Gate 1 search, T-GL-8, golden effect record |
 | Proven global contiguity | §10 | T-SRV-3 |
 | Cross-year commitments | §8 | T-CC-4, T-CC-5, T-SRV-6, T-SRV-7 |
@@ -1060,6 +1147,9 @@ A future change to this contract would be an architecture question, not a routin
 | Anchor-note format as a builder choice | Frozen anchor-note grammar (§7.4) |
 | IP-2 re-checked at the first close as "inserted by this run" | First-close IP-2 form derived from the database only (§7.4) |
 | F-1 limited to the allocation-engine 40% step | F-1 inventory of every 40% path (§23) |
+| v2: rollback fingerprints over full row content | v2.1 business and control fingerprint with named exclusions (§18) |
+| v2: first-close re-verification on every first-week close path | v2.1 scope: new close and half-close repair only (§7.4) |
+| v2: opening set as any snapshot at the opening week | v2.1 R(Y) with `source = 'opening_anchor'` (§7.1) |
 
 ## 26. Open specification questions
 
@@ -1083,6 +1173,8 @@ Q2-Q13 were closed by the owner on 2026-10-07:
   - Next Dollar (C23) and the allocation engine (C24) get local caveats; the protected calculation is unchanged;
   - the 40% tax-reserve logic is unchanged, labelled, and tracked as F-1 before Gate F.
 - **Q13 (multi-year navigation): CLOSED, Option 2 with timing modification.** Rollover preserves the data. H-1 is a post-rollover Gate R item, complete before Gate R is declared complete. The reconciled-period write guards are recorded as Gate R prerequisite GR-1. Neither is implemented in rollover.
+
+Gate 1 owner rulings OD-1 to OD-5 (2026-10-07) are incorporated in v2.1: OD-1 (§18), OD-2 (§7.5, C28), OD-3 and OD-4 (§7.4, §10), OD-5 (§23).
 
 No open question remains.
 
