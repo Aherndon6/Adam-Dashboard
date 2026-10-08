@@ -59,15 +59,26 @@ test('PKGA-CLOCK-3 the pinned Date preserves explicit dates, Date() strings and 
   throws(() => K.resolveTestDate('01/03/2027'), /YYYY-MM-DD/);
   assert(K.resolveTestDate(undefined) === K.LEGACY_DEFAULT_TEST_DATE && K.resolveTestDate('') === K.LEGACY_DEFAULT_TEST_DATE, 'default pin');
 });
-test('PKGA-CLOCK-4 KNOWN DEFECT reproduced deterministically: 5G1C1-12 passes on 2026-10-07 and fails from 2027-01-03 (fix: C18, registry X-C18)', () => {
-  function render(date) {
-    const c = K.loadApp({ date });
-    const cw = c.getCurrentWeek(), weeks = [];
+test('PKGA-CLOCK-4 CLOSED (C18): the pinned-week 5G1C1-12 fixture renders its label at every boundary date; the label logic never reads the clock', () => {
+  function render(date, cw) {
+    const c = K.loadApp({ date }), weeks = [];
     for (let i = 1; i <= 31; i++) weeks.push({ num: i, dates: 'x', goalSaved: { bailey_529: (i <= cw ? 0 : 2555) } });
     return c._renderGoalsFunding({ weeks, goalCompletion: {} }, weeks[cw - 1] || weeks[0]);
   }
-  assert(render('2026-10-07').includes('Partial in 2026'), 'expected pass on the legacy pin date');
-  assert(!render('2027-01-03').includes('Partial in 2026'), 'defect no longer reproduces: activate X-C18 and update this characterization');
+  ['2026-10-07', '2026-12-27', '2027-01-02', '2027-01-03', '2027-01-10'].forEach(d => assert(render(d, 18).includes('Partial in 2026'), d + ': label missing'));
+  // The label comes from _fundingWhenLabel, which is pure: identical items give identical labels in
+  // contexts pinned to different dates, and its source reads no clock or current week. (Other parts
+  // of the Funding Plan, e.g. the timeline's current-week marker, correctly move with the date.)
+  const item = { g: { auto: false, stretch: false, target: 3500 }, funded: 0, fundedYE: 2555, pct: 0, pctYE: 73, comp: null, isFunded: false, isLocked: false };
+  const a = K.loadApp({ date: '2026-10-07' }), b = K.loadApp({ date: '2027-01-10' });
+  K.deepEq(K.plain(a._fundingWhenLabel(item)), K.plain(b._fundingWhenLabel(item)), 'label');
+  assert(!/currentW|Date|getCurrentWeek/.test(a._fundingWhenLabel.toString()), '_fundingWhenLabel must not read the clock');
+  // The former defect: a fixture whose current week came from the live clock held no projected
+  // funding once the clock reached week 31, so the old assertion failed on correct output.
+  assert(!render('2027-01-03', 31).includes('Partial in 2026'), 'week-31 data has no projected funding (fixture, not product logic)');
+  const src = fs.readFileSync(path.join(REPO, 'test_regression.js'), 'utf8');
+  const blk = src.slice(src.indexOf("test('5G1C1-12"), src.indexOf("test('5G1C1-13"));
+  assert(!/getCurrentWeek\(\)/.test(blk) && /const _cw=18;/.test(blk), '5G1C1-12 must use a pinned current week (C18)');
 });
 test('PKGA-CLOCK-5 legacy suites read the clock only through the pinned stub', () => {
   ['test_regression.js', 'test_a1b.js', 'test_d1.js', 'test_release_a.js', 'test_release_b.js'].forEach(f => {
@@ -337,6 +348,250 @@ test('PKGA-REG-2 registry entries are well formed; Gate 1 notes C18, N-9 and NB-
   process.stdout.write('    registry: ' + JSON.stringify(counts) + '\n');
 });
 
+// ══ Package B: year-neutral client hardening (C11, C18, C23, C24) ══════════════
+// Contracts T-SNAP-1, T-TR-4, T-TR-5, X-C18 (frozen v2.1 §9, §13). Baseline product for
+// differential checks: the Package A commit, whose index.html is product b0762e3.
+console.log('── Package B contracts ──');
+const PKGB_BASE_COMMIT = '822062132e78812759dfb1dc3f2382253c361c12';
+let _baseIndexPath = null;
+function baseIndexPath() {
+  if (_baseIndexPath) return _baseIndexPath;
+  const html = execFileSync('git', ['show', PKGB_BASE_COMMIT + ':index.html'], { cwd: REPO, encoding: 'utf8', maxBuffer: 64 * 1024 * 1024 });
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'hfos-pkgb-'));
+  _baseIndexPath = path.join(dir, 'index.html'); fs.writeFileSync(_baseIndexPath, html);
+  process.on('exit', () => { try { fs.rmSync(dir, { recursive: true, force: true }); } catch (e) {} });
+  return _baseIndexPath;
+}
+function captureDom(c) {
+  const store = {};
+  c.document.getElementById = function (id) {
+    if (!store[id]) store[id] = { id, innerHTML: '', value: '', textContent: '', style: {}, classList: { add() {}, remove() {} }, addEventListener() {}, scrollIntoView() {}, querySelector() { return null; }, querySelectorAll() { return []; }, getContext() { return null; }, setAttribute() {} };
+    return store[id];
+  };
+  return store;
+}
+function vmFor(c) { freshGoals(c); c.overrideData = {}; return c.buildDashboardViewModel(c.applyCompletionSnapshots(c.runModel(7000, 7694.87)), { ak: 7000, rt: 7694.87 }); }
+
+// Mock PostgREST: per-table rows, server row cap (like max-rows), Prefer count=exact →
+// Content-Range, keyset id=gt + order=id.asc + limit, order=updated_at.desc[.nullslast]&limit=1,
+// model_year=eq filter (so the pre-C11 loader can be exercised), and fault injection.
+function mockPostgrest(tables, opt) {
+  opt = opt || {};
+  const calls = [];
+  let pageCalls = 0;
+  const fetchFn = function (url, init) {
+    const u = new URL(url); const table = u.pathname.replace('/rest/v1/', ''); calls.push(u.pathname + u.search);
+    const prefer = (init && init.headers && (init.headers.Prefer || init.headers.prefer)) || '';
+    let rows = (tables[table] || []).slice();
+    if (opt.mutate && opt.mutate.table === table) rows = opt.mutate.rowsAt(pageCalls, rows);
+    const my = u.searchParams.get('model_year'); if (my && /^eq\./.test(my)) rows = rows.filter(r => String(r.model_year) === my.slice(3));
+    const total = rows.length;
+    const order = u.searchParams.get('order') || '';
+    if (/^updated_at\.desc/.test(order)) rows.sort((a, b) => (a.updated_at < b.updated_at ? 1 : a.updated_at > b.updated_at ? -1 : 0));
+    else rows.sort((a, b) => (String(a.id) < String(b.id) ? -1 : String(a.id) > String(b.id) ? 1 : 0));
+    const gt = u.searchParams.get('id'); if (gt && /^gt\./.test(gt)) { const cur = gt.slice(3); rows = rows.filter(r => String(r.id) > cur); pageCalls++; if (opt.failPage && opt.failPage.table === table && pageCalls >= opt.failPage.at) return Promise.resolve(resp(500, [], null)); }
+    let lim = Number(u.searchParams.get('limit') || 1e9); lim = Math.min(lim, opt.cap || 1e9); rows = rows.slice(0, lim);
+    if (opt.dropFromPages && opt.dropFromPages.table === table && !/^updated_at/.test(order)) rows = rows.filter(r => opt.dropFromPages.ids.indexOf(r.id) < 0);
+    const cr = /count=exact/i.test(prefer) ? (opt.noCount && opt.noCount === table ? null : (rows.length ? '0-' + (rows.length - 1) + '/' + total : '*/' + total)) : null;
+    return Promise.resolve(resp(200, rows, cr));
+  };
+  function resp(status, body, cr) { return { ok: status >= 200 && status < 300, status, headers: { get: k => (String(k).toLowerCase() === 'content-range' ? cr : null) }, json: () => Promise.resolve(JSON.parse(JSON.stringify(body))) }; }
+  fetchFn.calls = calls;
+  return fetchFn;
+}
+function snapRow(i, my, wk, goal, src, note) { return { id: 's' + String(i).padStart(3, '0'), model_year: my, week_num: wk, goal_id: goal, funded_amount: 100 + i, source: src, note: note || null, created_at: '2026-07-0' + (1 + (i % 8)) + 'T00:00:00Z', updated_at: '2026-07-10T00:00:0' + (i % 10) + 'Z' }; }
+function snapFixture() {
+  const rows = [];
+  ['adam_ira', 'wendy_ira', 'alaska', 'bailey_529', 'bryce_529', 'preston_529', 'bryce_vehicle'].forEach((g, i) => rows.push(snapRow(i, 2026, 5, g, 'opening_anchor', '[PROD opening_anchor]')));
+  rows.push(snapRow(20, 2026, 30, 'adam_ira', 'reconciliation', null));
+  rows.push(snapRow(21, 2027, 30, 'adam_ira_2027', 'opening_anchor', 'carry:adam_ira'));
+  return rows;
+}
+function ccRow(i, my, wk) { return { id: 'c' + String(i).padStart(3, '0'), model_year: my, origin_model_week: wk, reflected_model_week: null, resolved_model_week: null, amount_cents: 1000 + i, payee: 'SYNTH ' + i, status: 'pending', updated_at: '2026-07-10T00:00:0' + (i % 10) + 'Z' }; }
+function ccFixture() { const r = []; for (let i = 0; i < 6; i++) r.push(ccRow(i, 2026, 20 + i)); r.push(ccRow(9, 2027, 31)); return r; }
+async function withMock(c, tables, opt, fn) { c.getAuthHeaders = async function () { return {}; }; c.fetch = mockPostgrest(tables, opt); return fn(c.fetch); }
+
+const _asyncB = [];
+function testAsync(name, fn) { _asyncB.push({ name, fn }); }
+
+testAsync('T-SNAP-1 (a) paging: the snapshot load pages past the server row cap until the reported count is loaded', async () => {
+  const c = K.loadApp({}); const rows = snapFixture();
+  await withMock(c, { goal_funding_snapshots: rows }, { cap: 3 }, () => c.reloadGoalSnapshots());
+  assert(c._goalSnapLoadStatus === 'loaded', 'status ' + c._goalSnapLoadStatus);
+  const got = Object.keys(c.goalSnapData).reduce((n, w) => n + Object.keys(c.goalSnapData[w]).length, 0);
+  assert(got === 8, 'all 8 plan-2026 rows must be present in the model projection; got ' + got + ' (partial page accepted as loaded)');
+  assert(Array.isArray(c.goalSnapRows) && c.goalSnapRows.length === 9, 'full-fidelity store must hold all 9 rows of every plan year; got ' + (c.goalSnapRows && c.goalSnapRows.length));
+});
+testAsync('T-SNAP-1 (b) a short or count-mismatched load makes Goals and closeout unavailable with the reason; no funded value renders', async () => {
+  const c = K.loadApp({}); const rows = snapFixture();
+  await withMock(c, { goal_funding_snapshots: rows }, { cap: 3, dropFromPages: { table: 'goal_funding_snapshots', ids: ['s004', 's005'] } }, () => c.reloadGoalSnapshots());
+  assert(c._goalSnapLoadStatus !== 'loaded', 'a short load must not be marked loaded');
+  assert(c.goalSnapRows.length === 0 && Object.keys(c.goalSnapData).length === 0, 'a partial history must not be retained');
+  const store = captureDom(c); const vmod = vmFor(c);
+  ['savings', 'priorities', 'funding', 'engine'].forEach(tab => {
+    c.goalsSubTab = tab; c.renderGoals(vmod);
+    const h = store['goals-content'].innerHTML;
+    assert(/Goal funding history is unavailable/.test(h) && h.indexOf(c._goalSnapLoadReason) >= 0, tab + ': reason not shown');
+    assert(!/goal-tbl-funded|Overall .* Progress|engine-output/.test(h), tab + ': a funded value rendered');
+  });
+  c.renderOverview(vmod);
+  const ov = store['overview-content'].innerHTML;
+  assert(/Goal funding history is unavailable/.test(ov) && !/Fund next queue item|ov3-alloc-row/.test(ov), 'overview rendered goal funding from a partial load');
+  c._reconBasis = 'posted_current_balance';
+  assert(c.canSaveRecon(7) === false && /Goal funding history is unavailable/.test(c.reconSaveBlockedReason(7)), 'closeout must be unavailable with the reason');
+  // A complete load followed by a short reload must not leave the earlier history in place.
+  const f = K.loadApp({});
+  await withMock(f, { goal_funding_snapshots: rows }, { cap: 3 }, () => f.reloadGoalSnapshots());
+  assert(f._goalSnapLoadStatus === 'loaded' && f.goalSnapRows.length === 9, 'setup: first load complete');
+  await withMock(f, { goal_funding_snapshots: rows }, { cap: 3, dropFromPages: { table: 'goal_funding_snapshots', ids: ['s004'] } }, () => f.reloadGoalSnapshots());
+  assert(f._goalSnapLoadStatus !== 'loaded' && f.goalSnapRows.length === 0 && Object.keys(f.goalSnapData).length === 0, 'a short reload kept the earlier history');
+});
+testAsync('T-SNAP-1 (c) a changing load (retried once) and a failed page both fail closed', async () => {
+  const c = K.loadApp({}); const base = snapFixture();
+  const grow = { table: 'goal_funding_snapshots', rowsAt: (n, rows) => rows.concat([Object.assign(snapRow(90, 2026, 6, 'alaska', 'reconciliation', null), { funded_amount: 500 + n, updated_at: '2026-12-31T00:00:0' + n + 'Z' })]) };
+  await withMock(c, { goal_funding_snapshots: base }, { cap: 3, mutate: grow }, () => c.reloadGoalSnapshots());
+  assert(c._goalSnapLoadStatus !== 'loaded' && /changed while loading/.test(c._goalSnapLoadReason), 'changing load: ' + c._goalSnapLoadStatus + ' / ' + c._goalSnapLoadReason);
+  const d = K.loadApp({});
+  await withMock(d, { goal_funding_snapshots: base }, { cap: 3, failPage: { table: 'goal_funding_snapshots', at: 2 } }, () => d.reloadGoalSnapshots());
+  assert(d._goalSnapLoadStatus === 'error' && /HTTP 500/.test(d._goalSnapLoadReason) && d.goalSnapRows.length === 0, 'failed page: ' + d._goalSnapLoadStatus);
+  const e = K.loadApp({});
+  await withMock(e, { goal_funding_snapshots: base }, { noCount: 'goal_funding_snapshots' }, () => e.reloadGoalSnapshots());
+  assert(e._goalSnapLoadStatus !== 'loaded' && /exact .* count/.test(e._goalSnapLoadReason), 'missing exact count must fail closed');
+});
+testAsync('T-SNAP-1 (d) row fidelity: plan-2026 and plan-2027 rows at week 30 stay distinct with model_year, source and note', async () => {
+  const c = K.loadApp({});
+  await withMock(c, { goal_funding_snapshots: snapFixture() }, { cap: 4 }, () => c.reloadGoalSnapshots());
+  assert(Array.isArray(c.goalSnapRows), 'no full-fidelity snapshot store: model_year, source and note are discarded');
+  const w30 = c.goalSnapRows.filter(r => r.week_num === 30).map(r => [r.model_year, r.goal_id, r.source, r.note, typeof r.created_at]);
+  K.deepEq(K.plain(w30).sort(), [[2026, 'adam_ira', 'reconciliation', null, 'string'], [2027, 'adam_ira_2027', 'opening_anchor', 'carry:adam_ira', 'string']], 'week-30 rows');
+  assert(c.goalSnapData[30] && c.goalSnapData[30].adam_ira === 120 && !('adam_ira_2027' in c.goalSnapData[30]), 'the model projection must hold plan-2026 rows only (year-neutral)');
+  const dupe = snapFixture().concat([Object.assign(snapRow(22, 2026, 30, 'adam_ira', 'correction', 'x'), { id: 's999' })]);
+  const d = K.loadApp({});
+  await withMock(d, { goal_funding_snapshots: dupe }, { cap: 4 }, () => d.reloadGoalSnapshots());
+  assert(d._goalSnapLoadStatus !== 'loaded', 'two rows for one (model_year, week, goal) must fail closed');
+  assert(d.goalSnapRows.length === 0 && Object.keys(d.goalSnapData).length === 0, 'rows read before the duplicate must not be retained');
+});
+testAsync('T-SNAP-1 (e) the commitment load pages completely across plan years and fails closed when short', async () => {
+  const c = K.loadApp({}); const cc = ccFixture();
+  await withMock(c, { cash_commitments: cc, weekly_reconciliations: [] }, { cap: 2 }, () => c.reloadReconAndCommitments());
+  assert(c._commitmentLoadStatus === 'loaded' && c.commitmentData.length === 7, 'all 7 commitments of every plan year must load; got ' + c.commitmentData.length);
+  assert(c.commitmentData.some(r => r.model_year === 2027), 'other plan years are loaded, not filtered out');
+  await withMock(c, { cash_commitments: cc, weekly_reconciliations: [] }, { cap: 2, dropFromPages: { table: 'cash_commitments', ids: ['c003'] } }, () => c.reloadReconAndCommitments());
+  assert(c._commitmentLoadStatus !== 'loaded' && c.commitmentData.length === 0, 'a short reload kept the earlier commitments');
+  const d = K.loadApp({});
+  await withMock(d, { cash_commitments: cc, weekly_reconciliations: [] }, { cap: 2, dropFromPages: { table: 'cash_commitments', ids: ['c003'] } }, () => d.reloadReconAndCommitments());
+  assert(d._commitmentLoadStatus !== 'loaded' && d.commitmentData.length === 0, 'a short commitment load must not be used');
+  d._goalSnapLoadStatus = 'loaded'; d._reconBasis = 'posted_current_balance';
+  assert(d.canSaveRecon(7) === false && /Commitments are unavailable/.test(d.reconSaveBlockedReason(7)), 'closeout must be unavailable with the reason');
+  const store = captureDom(d);
+  const html = d.renderCommitmentVisibility(20, d.applyCompletionSnapshots(d.runModel(7000, 7694.87)));
+  assert(/Commitments are unavailable/.test(html), 'commitment visibility must state the load is unavailable');
+});
+
+// T-SNAP-1 (f)/(g): G1, Goals and Overview depend on both loads (commitments clamp the goal sweep;
+// snapshots anchor each goal's funded amount in runModel), so missing evidence makes them
+// unavailable. It is never shown as zero commitments, a valid $0, NO_MODEL_OBJECTION or a hold.
+const SNAP1_AUTH = { state: 'AUTHORIZED', since: '2026-10-07', basis: 'test-only context (never the product constant)' };
+function snap1App(state) {
+  const c = K.loadApp({}); c.overrideData = {};
+  c.reconData = { 17: { chk: 22000, sav: 9000, amx: 0, tax: 0, lc: 0, balance_basis: 'posted_current_balance' } };
+  c._c11ApplySnapshots({ kind: 'ok', rows: state.snaps || [] });
+  c._c11ApplyCommitments({ kind: 'ok', rows: state.commitments || [] });
+  if (state.failCommitments) c._c11ApplyCommitments({ kind: 'incomplete', msg: 'loaded 0 of 1 commitments' });
+  if (state.failSnaps) c._c11ApplySnapshots({ kind: 'failed', msg: 'HTTP 500' });
+  const W = c.applyCompletionSnapshots(c.runModel(7000, 7694.87));
+  const keys = W.find(x => x.num === 18).acKeys.filter(k => typeof k === 'string' && k.indexOf('goal_') === 0);
+  return { c, W, keys };
+}
+const SNAP1_CARD = { id: 'x1', expected_item_id: 'synth_card_pay', model_year: 2026, commitment_source: 'wd_reconciliation', origin_model_week: 17,
+  payee: 'SYNTH CARD', commitment_class: 'credit_card_payment', required_or_discretionary: 'protected_required', source_account: 'truist_checking',
+  affects_deployable_cash: true, amount_cents: 300000, status: 'pending', reflected_model_week: null, resolved_model_week: null, resolution_type: null };
+function snap1Unavailable(t, reasonRe, label) {
+  const g1 = t.c.g1ResultForWeek(18, t.W);
+  assert(g1.status === 'UNAVAILABLE' && !(g1.items || []).length, label + ': G1 must be UNAVAILABLE with no verdicts; got ' + g1.status + ' ' + JSON.stringify((g1.items || []).map(i => [i.actionKey, i.verdict])));
+  assert(t.keys.length > 0, label + ': fixture must carry goal recommendations');
+  t.keys.forEach(k => {
+    const d = t.c.goalActionDecision(18, k, null, t.W);
+    assert(!d.actionable && d.model && d.model.verdict === 'WITHHOLD' && reasonRe.test(d.model.reason), label + ': ' + k + ' must WITHHOLD as unavailable; got ' + JSON.stringify(d.model));
+    assert(!/hold/i.test(d.model.reason), label + ': unavailability must not be reported as a hold');
+  });
+  // The write guard refuses on the model side alone: even with owner authority granted in this test context.
+  t.c.GOAL_FUNDING_OWNER_AUTHORITY = SNAP1_AUTH;
+  t.keys.forEach(k => assert(t.c.g1WriteGuard(18, k, null).allow === false, label + ': write guard allowed ' + k + ' with authority granted'));
+  const wk = t.c.renderWeekDetail(t.W.find(x => x.num === 18), t.W);
+  assert(!/No model objection/.test(wk), label + ': Weekly still shows a model answer');
+  const store = captureDom(t.c); const vmod = t.c.buildDashboardViewModel(t.W, { ak: 7000, rt: 7694.87 });
+  ['savings', 'priorities', 'funding', 'engine'].forEach(tab => {
+    t.c.goalsSubTab = tab; t.c.renderGoals(vmod); const h = store['goals-content'].innerHTML;
+    assert(reasonRe.test(h) && !/goal-tbl-funded|Overall .* Progress|engine-output|Recommended \$/.test(h), label + ': Goals ' + tab + ' rendered goal amounts or no reason');
+  });
+  t.c.renderOverview(vmod); const ov = store['overview-content'].innerHTML;
+  assert(reasonRe.test(ov) && !/Fund next queue item|ov3-alloc-row|All priority goals funded|Cushion thin|Retain — collision/.test(ov), label + ': Overview rendered a Next Dollar or queue answer');
+}
+test('T-SNAP-1 (f) a failed commitment load makes G1, Goals and Overview unavailable; the $3,000 reservation case never becomes NO_MODEL_OBJECTION', () => {
+  const L = snap1App({ commitments: [SNAP1_CARD] });
+  const wl = (L.c.g1ResultForWeek(18, L.W).items || []).find(i => i.actionKey === 'goal_wendy_ira');
+  assert(wl && wl.verdict === 'WITHHOLD' && wl.reason === 'candidate_breach', 'loaded: Wendy IRA must be withheld by the $3,000 reservation; got ' + JSON.stringify(wl));
+  L.c.GOAL_FUNDING_OWNER_AUTHORITY = SNAP1_AUTH;
+  assert(L.c.g1WriteGuard(18, 'goal_adam_ira', null).allow === true, 'control: with complete evidence and authority, a validated item is allowed (guard is not vacuous)');
+  const F = snap1App({ commitments: [SNAP1_CARD], failCommitments: true });
+  assert(F.c.commitmentData.length === 0 && F.c._commitmentLoadStatus === 'incomplete', 'setup: the commitment load failed');
+  snap1Unavailable(F, /Commitments are unavailable|commitments_unavailable/, 'commitments failed');
+  const cv = F.c.renderCommitmentVisibility(18, F.W);
+  assert(/Commitments are unavailable/.test(cv) && !/\$0\.00|no commitments/i.test(cv), 'missing commitments must not read as zero');
+});
+test('T-SNAP-1 (g) a failed snapshot load makes G1 unavailable: a goal the history shows funded is never re-recommended as NO_MODEL_OBJECTION', () => {
+  const funded = [{ id: 'g1', model_year: 2026, week_num: 17, goal_id: 'wendy_ira', funded_amount: 7500, source: 'reconciliation', note: null, created_at: '2026-10-03T00:00:00Z' }];
+  const L = snap1App({ snaps: funded });
+  assert(L.keys.indexOf('goal_wendy_ira') < 0, 'loaded: the funded Wendy IRA goal is not recommended');
+  const F = snap1App({ snaps: funded, failSnaps: true });
+  assert(F.keys.indexOf('goal_wendy_ira') >= 0, 'setup: without history the model re-recommends the funded goal');
+  snap1Unavailable(F, /Goal funding history is unavailable|goal_history_unavailable/, 'snapshots failed');
+});
+
+test('T-TR-4 Next Dollar (C23): every rendered occurrence carries the modeled/not-authorized caveat; getNextDollarRec unchanged', () => {
+  const FORMS = /(Below floor — do not deploy\. Address deficit first\.|Retain — collision window in Wk [^<]*?\)|Cushion thin — hold until next income week\.|Fund next queue item: [^<]*?(?:remaining\)|pending CPA clearance)|All priority goals funded — hold pending next strategic decision)/g;
+  let seen = 0;
+  [null, -5000].forEach(chkShift => {
+    const c = K.loadApp({}); c._goalSnapLoadStatus = 'loaded'; c._commitmentLoadStatus = 'loaded';
+    const store = captureDom(c); const vmod = vmFor(c);
+    if (chkShift !== null) vmod.weeks.forEach(w => { if (w.num === c.currentW) w.chk = c.OP_FL + chkShift; });
+    c.renderOverview(vmod);
+    const h = store['overview-content'].innerHTML;
+    const m = [...h.matchAll(FORMS)];
+    assert(m.length >= 2, 'expected both rendered Next Dollar sites; found ' + m.length);
+    m.forEach(x => { const tail = h.slice(x.index + x[0].length, x.index + x[0].length + 160); assert(/modeled, not authorized/.test(tail), 'occurrence without caveat: ' + x[0]); });
+    seen += m.length;
+  });
+  const base = fs.readFileSync(baseIndexPath(), 'utf8'), cur = fs.readFileSync(path.join(REPO, 'index.html'), 'utf8');
+  const pinNow = PINS.pin(cur, 'getNextDollarRec');
+  assert(pinNow === PINS.pin(base, 'getNextDollarRec') && pinNow.startsWith('6a3b9678'), 'getNextDollarRec source/pin changed: ' + pinNow);
+  assert(seen >= 4, 'scenario coverage');
+});
+test('T-TR-5 allocation engine (C24): informational/not-authorized statement and 40% legacy label; steps and amounts unchanged', () => {
+  function engineRun(indexPath) {
+    const c = K.loadApp({ indexPath }); c._goalSnapLoadStatus = 'loaded'; c._commitmentLoadStatus = 'loaded';
+    const store = captureDom(c); const vmod = vmFor(c);
+    c.engineType = 'variable'; c.engineAmt = '2500'; c.renderApp = function () {};
+    c.runEngine(vmod);
+    c.goalsSubTab = 'engine'; c.renderGoals(vmod);
+    return { steps: K.plain(c.engineResult), html: store['goals-content'].innerHTML };
+  }
+  const now = engineRun(), base = engineRun(baseIndexPath());
+  K.deepEq(now.steps, base.steps, 'engine steps');
+  assert(now.steps.some(s => s.type === 'tax'), 'fixture must exercise the 40% step');
+  assert(/Informational only\. Not authorized while OWNER HOLD is on \(before Gate F\)\./.test(now.html), 'informational statement missing');
+  assert(/Legacy 40% rule, not current household tax policy/.test(now.html), '40% legacy label missing');
+});
+test('X-C18 (C18): the legacy suite passes 5G1C1-12 at every Package A boundary date', () => {
+  ['2026-12-27', '2027-01-02', '2027-01-03', '2027-01-10'].forEach(d => {
+    let out = '', code = 0;
+    try { out = execFileSync(process.execPath, [path.join(REPO, 'test_regression.js')], { cwd: REPO, encoding: 'utf8', env: Object.assign({}, process.env, { HFOS_TEST_DATE: d }), stdio: ['ignore', 'pipe', 'pipe'], maxBuffer: 64 * 1024 * 1024 }); }
+    catch (e) { code = e.status; out = String(e.stdout); }
+    assert(code === 0 && /✓ 5G1C1-12/.test(out), d + ': legacy suite exit ' + code + (/✗ 5G1C1-12/.test(out) ? ' (5G1C1-12 failed)' : ''));
+  });
+});
+
 // ── Owner A-1: package-completion gate (fail closed) ──────────────────────────
 console.log('── Package completion (A-1) ──');
 const SYN = entries => ({ _meta: { packages: { A: 'a', B: 'b', D: 'd' } }, entries });
@@ -362,13 +617,20 @@ test('PKGA-DONE-5 fail closed: unknown package, and an ACTIVE entry whose test d
   const r = CONTRACTS.packageCompletion(SYN([{ id: 'X1', package: 'B', status: 'ACTIVE', impl: 'test_rollover.js#NO-SUCH-TEST-ID-xyz' }]), 'B');
   assert(!r.complete && r.unresolved[0] === 'X1', 'unresolvable ACTIVE impl must block completion');
 });
-test('PKGA-DONE-6 real registry: Package A is COMPLETE; Packages B-G are NOT COMPLETE with their PENDING contracts listed', () => {
+test('PKGA-DONE-6 real registry: Package A is COMPLETE; each later package reports exactly its registry state; C-G remain NOT COMPLETE', () => {
   const reg = CONTRACTS.loadRegistry();
   const a = CONTRACTS.packageCompletion(reg, 'A');
   assert(a.complete && a.owned === 12, 'Package A must satisfy its own completion rule: ' + JSON.stringify(a));
   const report = {};
-  ['B', 'C', 'D', 'E', 'F', 'G'].forEach(p => { const r = CONTRACTS.packageCompletion(reg, p); assert(!r.complete && r.pending.length === r.owned && r.owned > 0, p + ' should be NOT COMPLETE'); report[p] = r.pending.length; });
-  process.stdout.write('    later packages NOT COMPLETE (pending counts): ' + JSON.stringify(report) + '\n');
+  ['B', 'C', 'D', 'E', 'F', 'G'].forEach(p => {
+    const r = CONTRACTS.packageCompletion(reg, p), owned = reg.entries.filter(e => e.package === p);
+    const expectComplete = owned.length > 0 && owned.every(e => e.status === 'ACTIVE');
+    assert(r.owned === owned.length && r.complete === (expectComplete && r.unresolved.length === 0), p + ': completion does not match the registry');
+    assert(r.pending.length === owned.filter(e => e.status !== 'ACTIVE').length, p + ': pending list incomplete');
+    report[p] = r.complete ? 'COMPLETE' : 'NOT COMPLETE (' + r.pending.length + ' pending, ' + r.unresolved.length + ' unresolved)';
+  });
+  ['C', 'D', 'E', 'F', 'G'].forEach(p => assert(!CONTRACTS.packageCompletion(reg, p).complete, p + ' must still be NOT COMPLETE'));
+  process.stdout.write('    package completion: ' + JSON.stringify(report) + '\n');
 });
 test('PKGA-DONE-7 the completion CLI gate exits 0 for Package A and 1 for a package with PENDING contracts', () => {
   const cli = args => { try { return { code: 0, out: execFileSync(process.execPath, [path.join(REPO, 'tools', 'rollover-contracts.js')].concat(args), { cwd: REPO, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] }) }; } catch (e) { return { code: e.status, out: String(e.stdout) + String(e.stderr) }; } };
@@ -378,9 +640,15 @@ test('PKGA-DONE-7 the completion CLI gate exits 0 for Package A and 1 for a pack
   assert(z.code === 1 && /unknown package/.test(z.out), z.out);
 });
 
+(async () => {
+for (const t of _asyncB) {
+  try { await t.fn(); pass++; process.stdout.write('  ✓ ' + t.name + '\n'); }
+  catch (e) { fail++; failures.push({ name: t.name, error: e.message }); process.stdout.write('  ✗ ' + t.name + '\n    → ' + e.message + '\n'); }
+}
 console.log('\n══ RESULTS ══');
 console.log('  Passed:  ' + pass);
 console.log('  Failed:  ' + fail);
 if (fail) { failures.forEach(f => console.log('  ✗ ' + f.name + ' → ' + f.error)); process.exit(1); }
-console.log('  ✅ ALL ROLLOVER PACKAGE A TESTS PASSED');
+console.log('  ✅ ALL ROLLOVER TESTS PASSED');
 process.exit(0);
+})();

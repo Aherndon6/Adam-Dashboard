@@ -5280,8 +5280,31 @@ async function clickNav(page, id) {
       return route.fulfill({ status:200, contentType:'application/json', body: JSON.stringify({ ok:true, mode:'normal_closeout', week_num: coBody.p_week_num, snapshot_count:9 }) });
     });
     await page.route('**/rest/v1/weekly_reconciliations**', route => route.fulfill({ status:200, contentType:'application/json', body: reloadRecon }));
-    await page.route('**/rest/v1/cash_commitments**', route => route.fulfill({ status:200, contentType:'application/json', body:'[]' }));
-    await page.route('**/rest/v1/goal_funding_snapshots**', route => route.fulfill({ status:200, contentType:'application/json', body: reloadSnaps }));
+    // 2027 rollover C11: commitments and snapshots load completely or fail closed (exact count,
+    // keyset pages, change fingerprint), so these two stubs answer like PostgREST instead of
+    // returning one body for every query. Scenario rows keep their short form; the stub adds the
+    // stored columns (id, model_year, source, timestamps) the real table always has.
+    const pgrstLike = (route, rows) => {
+      const q = new globalThis.URL(route.request().url()).searchParams;
+      const exact = /count=exact/i.test(route.request().headers()['prefer'] || '');
+      let out = rows.slice();
+      if (q.get('select') === 'updated_at') {
+        out.sort((a, b) => String(b.updated_at).localeCompare(String(a.updated_at)));
+        out = out.slice(0, 1).map(r => ({ updated_at: r.updated_at }));
+      } else {
+        const gt = (q.get('id') || '').replace(/^gt\./, '');
+        if (gt) out = out.filter(r => String(r.id) > gt);
+        out.sort((a, b) => (String(a.id) < String(b.id) ? -1 : 1));
+        if (+q.get('limit')) out = out.slice(0, +q.get('limit'));
+      }
+      const headers = Object.assign({}, FIXTURE_CORS);
+      if (exact) headers['content-range'] = out.length ? '0-' + (out.length - 1) + '/' + rows.length : '*/' + rows.length;
+      return route.fulfill({ status:200, contentType:'application/json', headers, body: JSON.stringify(out) });
+    };
+    const storedSnap = r => Object.assign({ id: 'e2e-gfs-' + r.week_num + '-' + r.goal_id, model_year: 2026, source: 'reconciliation', note: null,
+      created_at: '2026-07-13T00:00:00Z', updated_at: '2026-07-13T00:00:00Z' }, r);
+    await page.route('**/rest/v1/cash_commitments**', route => pgrstLike(route, []));
+    await page.route('**/rest/v1/goal_funding_snapshots**', route => pgrstLike(route, JSON.parse(reloadSnaps).map(storedSnap)));
     // Reset app + mock state before each scenario (isolation without a fresh page load).
     const resetCloseout = (cfg) => { coBody = null; coPosts = 0;
       return page.evaluate((c) => {

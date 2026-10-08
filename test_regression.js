@@ -58,6 +58,11 @@ try { eval(stub+sc); } catch(e) { console.error('FATAL eval:',e.message); proces
 // test_rollover.js. See docs/rollover-package-a.md for the per-test classification.
 const LEGACY_FROZEN_2026_ROWS = (typeof WD_2026_FROZEN !== 'undefined') ? WD_2026_FROZEN : WD;
 WD = LEGACY_FROZEN_2026_ROWS;
+// 2027 rollover Package B (C11): the suite characterizes the app after a successful load of an
+// empty snapshot table and an empty commitment table (it never calls loadAll). Before C11 the
+// gates ignored the load state; now they require a complete load, so the harness states it.
+// Tests that exercise other load states set them explicitly.
+_goalSnapLoadStatus = 'loaded'; _commitmentLoadStatus = 'loaded';
 console.log('  [harness] clock pinned to ' + HFOS_TEST_DATE + ' (HFOS_TEST_DATE); legacy suite bound to the frozen 2026 composition (' + WD.length + ' rows)');
 
 // Shared model output
@@ -590,7 +595,10 @@ test('5G1C1-11: projected-YE remaining clamps to >= 0 (rounding never shows nega
 });
 // Full-render integration — deterministic synthetic vm (no live-percentage dependence).
 test('5G1C1-12: full render — $0 current + meaningful projected YE shows "Partial in 2026" (Bailey-style)',()=>{
-  const _cw=getCurrentWeek();
+  // 2027 rollover C18 (frozen spec v2.1 §9): the current week of this synthetic fixture is pinned.
+  // It was read from the live clock, so from 2027-01-03 (week 31, the last fixture week) the
+  // fixture itself held no projected funding and the assertion failed with correct product output.
+  const _cw=18; // the week of the legacy pin date (2026-10-07); any week before 31 expresses the case
   const synthWeeks=[];for(let i=1;i<=31;i++){synthWeeks.push({num:i,dates:'x',goalSaved:{bailey_529:(i<=_cw?0:2555)}});}
   const synthVm={weeks:synthWeeks,goalCompletion:{}};
   const h=_renderGoalsFunding(synthVm,synthWeeks[_cw-1]||synthWeeks[0]);
@@ -11302,9 +11310,13 @@ test('submitCloseout() ambiguous transport failure re-reads BOTH halves before a
   assertIncludes(catchBody,'_reconcileAmbiguousCloseout(n)');
 });
 
-test('reloadReconAndCommitments() fetches weekly_reconciliations + cash_commitments scoped to PLAN_YEAR',()=>{
+// 2027 rollover Package B (C11): intentional expectation change. Commitments of every plan year
+// are loaded complete-or-fail-closed (frozen spec v2.1 C11); the PLAN_YEAR query filter is gone.
+test('reloadReconAndCommitments() fetches weekly_reconciliations + every plan year of cash_commitments via the C11 complete load',()=>{
   assertIncludes(reloadBody,"/rest/v1/weekly_reconciliations?select=*");
-  assertIncludes(reloadBody,"/rest/v1/cash_commitments?model_year=eq.'+PLAN_YEAR");
+  assertIncludes(reloadBody,"_c11LoadTable(h,'cash_commitments','*','commitments')");
+  assertIncludes(reloadBody,"_c11ApplyCommitments(");
+  assert(reloadBody.indexOf("cash_commitments?model_year=eq.")<0,'no plan-year filter on the commitment load');
 });
 
 test('empty Phase 2 answers build an empty commitment array (unchanged builder behavior)',()=>{
@@ -13133,11 +13145,19 @@ console.log('\n── Section 5G-1D P0-4: reconciliation-delete guard (row-9) �
     test('5G1D-P04-15: the "Remove reconciliation" control is gated on canDeleteRecon(w.num) in the recon panel',function(){
       assert(/w\.reconciled&&canDeleteRecon\(w\.num\)\?/.test(html),'render must AND canDeleteRecon(w.num) with w.reconciled');
     });
-    test('5G1D-P04-16: the snapshot loaders set _goalSnapLoadStatus (loaded on parse; unavailable on 404; error otherwise)',function(){
-      assert(/_goalSnapLoadStatus='loaded';\}catch/.test(html),'loadAll sets loaded after a clean parse');
-      assert(/_goalSnapLoadStatus='unavailable'/.test(html),'404 → unavailable');
-      assert(/_goalSnapLoadStatus='error'/.test(html),'non-404/malformed → error');
-      assert(/goalSnapData=fresh;_goalSnapLoadStatus='loaded'/.test(html),'reloadGoalSnapshots sets loaded after a clean reload');
+    // 2027 rollover Package B (C11): intentional expectation change. Both snapshot loaders now go
+    // through the complete-or-fail-closed load; the status contract is unchanged in meaning
+    // (loaded only when complete; unavailable on 404; error on failure) and gains 'incomplete'.
+    test('5G1D-P04-16: the snapshot loaders set _goalSnapLoadStatus (loaded only on a complete load; unavailable on 404; error on failure; incomplete otherwise)',function(){
+      assert(_c11Status('ok')==='loaded'&&_c11Status('unavailable')==='unavailable'&&_c11Status('failed')==='error'&&_c11Status('incomplete')==='incomplete'&&_c11Status('changed')==='incomplete','status mapping');
+      assert(/_c11ApplySnapshots\(goalSnapshotsR\)/.test(html),'loadAll applies the C11 snapshot load');
+      assert(/_c11ApplySnapshots\(await _c11LoadTable\(h,'goal_funding_snapshots'/.test(html),'reloadGoalSnapshots uses the C11 snapshot load');
+      var _sv=[goalSnapRows,goalSnapData,_goalSnapLoadStatus,_goalSnapLoadReason];
+      try{
+        _c11ApplySnapshots({kind:'unavailable',msg:'x'}); assert(_goalSnapLoadStatus==='unavailable','404 → unavailable');
+        _c11ApplySnapshots({kind:'failed',msg:'HTTP 500'}); assert(_goalSnapLoadStatus==='error','failure → error');
+        _c11ApplySnapshots({kind:'ok',rows:[]}); assert(_goalSnapLoadStatus==='loaded'&&_goalSnapLoadReason==='','complete empty load → loaded');
+      }finally{goalSnapRows=_sv[0];goalSnapData=_sv[1];_goalSnapLoadStatus=_sv[2];_goalSnapLoadReason=_sv[3];}
     });
   }finally{reconData=_rd;goalSnapData=_gs;USER_ROLE=_role;_goalSnapLoadStatus=_ls;_reconDeleteError=_rde;reconDeleteConfirm=_rdc;renderApp=_render;}
 })();

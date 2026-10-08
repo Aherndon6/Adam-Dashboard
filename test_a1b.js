@@ -66,8 +66,8 @@ const OPTIONAL_STATE = ['_budgetPairCycle','_budgetPairGen','_budgetTransLoadGen
   '_accountsCache','_txLedgerAccountKey','_loadTxLedger','_txFormMode','_txFormData','_txEditId','_txFormError','_txFormSaving',
   '_txDeleteConfirmId','_txDeleteSaving','_txDeleteError','_txClearedError','_txClearedSavingId','_txLedgerCache','_txLedgerLoadStatus',
   '_txSubNav','_txFilterUncategorized','_budgetDeleteConfirmId'];
-function snap(){ var s={}; STATE.concat(OPTIONAL_STATE).forEach(function(n){ try{ s[n]=eval(n); }catch(e){ s[n]='__absent__'; } }); s.__doc=document.getElementById; s.__Date=global.Date; return s; }
-function restore(s){ STATE.concat(OPTIONAL_STATE).forEach(function(n){ var __v=s[n]; if(__v==='__absent__')return; try{ eval(n+'=__v'); }catch(e){} }); document.getElementById=s.__doc; global.Date=s.__Date; }
+function snap(){ var s={}; STATE.concat(OPTIONAL_STATE).forEach(function(n){ try{ s[n]=eval(n); }catch(e){ s[n]='__absent__'; } }); s.__doc=document.getElementById; s.__Date=global.Date; s.__PDate=Date; return s; }
+function restore(s){ STATE.concat(OPTIONAL_STATE).forEach(function(n){ var __v=s[n]; if(__v==='__absent__')return; try{ eval(n+'=__v'); }catch(e){} }); document.getElementById=s.__doc; global.Date=s.__Date; Date=s.__PDate; }
 function T(name, fn){ test(name, function(){ var s=snap(); try{ return fn(); } finally { restore(s); } }); }
 function TA(name, fn){ testAsync(name, async function(){ var s=snap(); try{ return await fn(); } finally { restore(s); } }); }
 
@@ -402,7 +402,8 @@ TA('[A1b-R1] G7: pinned month — both reads use the cycle month even if the res
 TA('[A1b-R1] G8 (E2): calendar rollover while the current-month pair is in flight cannot strand Budget in loading',async function(){
   budgetReady(); _budgetSelectedMonth='';
   var RealDate=global.Date, now=new RealDate(2026,8,30,23,59,0).getTime();
-  global.Date=class extends RealDate{ constructor(...a){ if(a.length===0) super(now); else super(...a); } static now(){ return now; } };
+  // Package B: the Package A clock stub binds the product's Date in this scope, so set it here too.
+  Date=global.Date=class extends RealDate{ constructor(...a){ if(a.length===0) super(now); else super(...a); } static now(){ return now; } };
   var dR=deferred(), dL=deferred(), n=0;
   fetch=router([[function(e){return isReg(e)&&/gte\.2026-09-01/.test(e.url);},function(){return dR.p;}],[function(e){return isLeg(e)&&/gte\.2026-09-01/.test(e.url);},function(){return dL.p;}]]);
   var renders=0; renderApp=function(){ renders++; renderBudget(); };
