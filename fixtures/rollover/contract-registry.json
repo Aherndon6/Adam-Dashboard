@@ -464,96 +464,110 @@
    "id": "T-SRV-1",
    "package": "C",
    "layer": "hermetic-db",
-   "status": "PENDING",
+   "status": "ACTIVE",
+   "impl": "test_rollover_server.js#T-SRV-1",
    "spec": "docs/rollover-2027-spec.md \u00a713"
   },
   {
    "id": "T-SRV-2",
    "package": "C",
    "layer": "hermetic-db",
-   "status": "PENDING",
+   "status": "ACTIVE",
+   "impl": "test_rollover_server.js#T-SRV-2",
    "spec": "docs/rollover-2027-spec.md \u00a713"
   },
   {
    "id": "T-SRV-3",
    "package": "C",
    "layer": "hermetic-db",
-   "status": "PENDING",
+   "status": "ACTIVE",
+   "impl": "test_rollover_server.js#T-SRV-3",
    "spec": "docs/rollover-2027-spec.md \u00a713"
   },
   {
    "id": "T-SRV-4",
    "package": "C",
    "layer": "hermetic-db",
-   "status": "PENDING",
+   "status": "ACTIVE",
+   "impl": "test_rollover_server.js#T-SRV-4",
    "spec": "docs/rollover-2027-spec.md \u00a713"
   },
   {
    "id": "T-SRV-5",
    "package": "C",
    "layer": "hermetic-db",
-   "status": "PENDING",
+   "status": "ACTIVE",
+   "impl": "test_rollover_server.js#T-SRV-5",
    "spec": "docs/rollover-2027-spec.md \u00a713"
   },
   {
    "id": "T-SRV-6",
    "package": "C",
    "layer": "hermetic-db",
-   "status": "PENDING",
+   "status": "ACTIVE",
+   "impl": "test_rollover_server.js#T-SRV-6",
    "spec": "docs/rollover-2027-spec.md \u00a713"
   },
   {
    "id": "T-SRV-7",
    "package": "C",
    "layer": "hermetic-db",
-   "status": "PENDING",
+   "status": "ACTIVE",
+   "impl": "test_rollover_server.js#T-SRV-7",
    "spec": "docs/rollover-2027-spec.md \u00a713"
   },
   {
    "id": "T-SRV-8",
    "package": "C",
    "layer": "hermetic-db",
-   "status": "PENDING",
+   "status": "ACTIVE",
+   "impl": "test_rollover_server.js#T-SRV-8",
    "spec": "docs/rollover-2027-spec.md \u00a713"
   },
   {
    "id": "T-SRV-9",
    "package": "C",
    "layer": "hermetic-db",
-   "status": "PENDING",
+   "status": "ACTIVE",
+   "impl": "test_rollover_server.js#T-SRV-9",
    "spec": "docs/rollover-2027-spec.md \u00a713"
   },
   {
    "id": "T-SRV-10",
    "package": "C",
    "layer": "hermetic-db",
-   "status": "PENDING",
+   "status": "ACTIVE",
+   "impl": "test_rollover_server.js#T-SRV-10",
    "spec": "docs/rollover-2027-spec.md \u00a713"
   },
   {
    "id": "T-SRV-11",
    "package": "C",
    "layer": "hermetic-db",
-   "status": "PENDING",
+   "status": "ACTIVE",
+   "impl": "test_rollover_server.js#T-SRV-11",
    "spec": "docs/rollover-2027-spec.md \u00a713"
   },
   {
    "id": "T-SRV-12",
    "package": "C",
    "layer": "hermetic-db",
-   "status": "PENDING",
+   "status": "ACTIVE",
+   "impl": "test_rollover_server.js#T-SRV-12",
    "spec": "docs/rollover-2027-spec.md \u00a713"
   },
   {
    "id": "T-SRV-13",
-   "package": "C",
+   "package": "F",
+   "note": "Ownership corrected 2026-10-07 (owner): initialization/reversal implementation belongs to Package F. The frozen contract is unchanged.",
    "layer": "hermetic-db",
    "status": "PENDING",
    "spec": "docs/rollover-2027-spec.md \u00a713"
   },
   {
    "id": "T-SRV-14",
-   "package": "C",
+   "package": "F",
+   "note": "Ownership corrected 2026-10-07 (owner): initialization/reversal implementation belongs to Package F. The frozen contract is unchanged.",
    "layer": "hermetic-db",
    "status": "PENDING",
    "spec": "docs/rollover-2027-spec.md \u00a713"
@@ -562,21 +576,24 @@
    "id": "T-SRV-15",
    "package": "C",
    "layer": "hermetic-db",
-   "status": "PENDING",
+   "status": "ACTIVE",
+   "impl": "test_rollover_server.js#T-SRV-15",
    "spec": "docs/rollover-2027-spec.md \u00a713"
   },
   {
    "id": "T-SRV-16",
    "package": "C",
    "layer": "hermetic-db",
-   "status": "PENDING",
+   "status": "ACTIVE",
+   "impl": "test_rollover_server.js#T-SRV-16",
    "spec": "docs/rollover-2027-spec.md \u00a713"
   },
   {
    "id": "T-SRV-17",
    "package": "C",
    "layer": "hermetic-db",
-   "status": "PENDING",
+   "status": "ACTIVE",
+   "impl": "test_rollover_server.js#T-SRV-17",
    "spec": "docs/rollover-2027-spec.md \u00a713"
   },
   {
@@ -634,7 +651,8 @@
    "id": "X-N9",
    "package": "C",
    "layer": "static-ci",
-   "status": "PENDING",
+   "status": "ACTIVE",
+   "impl": "test_rollover_server.js#X-N9",
    "spec": "Gate 1 note N-9",
    "note": "New helper functions REVOKE EXECUTE FROM PUBLIC, anon, authenticated; checker tools/rollover-function-capture.js checkHelperRevokes, active on fixtures in Package A (PKGA-N9-*)."
   },

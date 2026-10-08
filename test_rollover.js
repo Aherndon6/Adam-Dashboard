@@ -617,7 +617,7 @@ test('PKGA-DONE-5 fail closed: unknown package, and an ACTIVE entry whose test d
   const r = CONTRACTS.packageCompletion(SYN([{ id: 'X1', package: 'B', status: 'ACTIVE', impl: 'test_rollover.js#NO-SUCH-TEST-ID-xyz' }]), 'B');
   assert(!r.complete && r.unresolved[0] === 'X1', 'unresolvable ACTIVE impl must block completion');
 });
-test('PKGA-DONE-6 real registry: Package A is COMPLETE; each later package reports exactly its registry state; C-G remain NOT COMPLETE', () => {
+test('PKGA-DONE-6 real registry: Package A is COMPLETE; each later package reports exactly its registry state; D-G remain NOT COMPLETE', () => {
   const reg = CONTRACTS.loadRegistry();
   const a = CONTRACTS.packageCompletion(reg, 'A');
   assert(a.complete && a.owned === 12, 'Package A must satisfy its own completion rule: ' + JSON.stringify(a));
@@ -629,7 +629,7 @@ test('PKGA-DONE-6 real registry: Package A is COMPLETE; each later package repor
     assert(r.pending.length === owned.filter(e => e.status !== 'ACTIVE').length, p + ': pending list incomplete');
     report[p] = r.complete ? 'COMPLETE' : 'NOT COMPLETE (' + r.pending.length + ' pending, ' + r.unresolved.length + ' unresolved)';
   });
-  ['C', 'D', 'E', 'F', 'G'].forEach(p => assert(!CONTRACTS.packageCompletion(reg, p).complete, p + ' must still be NOT COMPLETE'));
+  ['D', 'E', 'F', 'G'].forEach(p => assert(!CONTRACTS.packageCompletion(reg, p).complete, p + ' must still be NOT COMPLETE'));
   process.stdout.write('    package completion: ' + JSON.stringify(report) + '\n');
 });
 test('PKGA-DONE-7 the completion CLI gate exits 0 for Package A and 1 for a package with PENDING contracts', () => {
