@@ -885,7 +885,7 @@ button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-vis
 // ── Constants (unchanged) ──────────────────────────────────────────────────
 // Simplified architecture — $8,250 total from LC · $6,500 operating floor · no legacy mechanics
 // Real-world moves: keep $2,250 in chk, move $2,750 sav→chk, move $1,000 LC→chk, move $2,250 LC→chk (Option 1 correction)
-const BUILD_TS='2026-10-09T16:27:26'; // updated each push — local time string
+const BUILD_TS='2026-10-09T17:46:05'; // updated each push — local time string
 const START_CHK=18037.73,START_SAV=3772.77,START_AMX=103.64,START_TAX=0,START_LC=13488.88;
 const EF_AMT=13488.88; // LC/EF balance — static this model year (no transfers in or out)
 const BASE_TAX=521.36,RET_SAV_XFR=3772.74;
@@ -9660,7 +9660,7 @@ function renderTransactions(){
     // Register tab: active when showTransactionLedger=true; disabled placeholder otherwise.
     {id:'register',       label:FEATURE_FLAGS.showTransactionLedger?'Register':'Register — Phase 5E',
                           future:!FEATURE_FLAGS.showTransactionLedger},
-    {id:'reconciliation', label:'Reconciliation', future:true}
+    {id:'statement',      label:'Statement Compare'}   // R-lite (2026-10-09): js/r-lite.js renders into #rlite-root
   ];
   var nav='<div style="display:flex;gap:2px;padding:16px 16px 0;background:var(--surface);border-bottom:1px solid var(--line);flex-wrap:wrap">';
   subTabs.forEach(function(t){
@@ -9679,6 +9679,7 @@ function renderTransactions(){
   if(_txSubNav==='accounts')body=_renderTxAccounts();
   else if(_txSubNav==='categories')body=_renderTxCategories();
   else if(_txSubNav==='register'&&FEATURE_FLAGS.showTransactionLedger)body=_renderTxRegister();
+  else if(_txSubNav==='statement')body='<div id="rlite-root"></div>';
   el.innerHTML='<div style="padding:20px;max-width:1200px">'
     +'<div style="background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);overflow:hidden">'
     +nav+'<div>'+body+'</div></div></div>';
@@ -10016,9 +10017,7 @@ function renderBudget(){
     html+='<ol style="margin:0 0 14px 18px;padding:0">';
     html+='<li>When your credit card or bank statement arrives, go through each transaction in the list and check the <strong>Cleared</strong> box for anything that appears on the statement.</li>';
     html+='<li>Use the <strong>Account</strong> filter (top of the list) to show only one card at a time — makes it easier to work through one statement at a time.</li>';
-    html+='<li>In the <strong>Statement check</strong> panel, select the account and enter the statement ending balance. The panel shows your total cleared amount for that account vs the balance you entered.</li>';
-    html+='<li>When Cleared matches Statement Balance, you are reconciled. A green checkmark appears in the panel.</li>';
-    html+='<li>If they do not match, filter by that account and look for a missing or duplicate entry.</li>';
+    html+='<li>To compare a bank download with the Register, use <strong>Transactions → Statement Compare</strong>. It lists matches and exceptions for you to review; it doesn\'t reconcile or change anything.</li>';
     html+='</ol>';
 
     html+='<div style="font-weight:700;font-size:12px;margin-bottom:6px;color:var(--ink)">Reading the budget printout</div>';
@@ -10488,61 +10487,15 @@ function _renderBudgetForm(monthIso){
 
 // ── Reconciliation Panel ───────────────────────────────────────────────────
 function _renderBudgetRecon(monthIso,legSrc){
+  // R-lite (2026-10-09): the legacy Statement check is retired. It compared Budget-entered entries (not the Register)
+  // with a typed statement balance and could show a green result that wasn't true. Statement Compare replaces it.
   var html='<div id="budget-recon" class="panel" style="margin-bottom:16px">';
-  html+='<h3 style="margin:0 0 10px;font-size:13px;font-weight:700;color:var(--ink)">Statement check</h3>';
-  // P3b-1 A1b (§19.1, D5): results only from a COMPLETE legacy source of the current pair.
-  if(!legSrc||legSrc.status!=='complete'){
-    return html+'<div id="budget-recon-unavailable" style="font-size:12px;color:var(--muted);line-height:1.5">Can\'t verify the statement check for '+esc(_budgetMonthLabel(monthIso))
-      +': Budget-entered transactions for this month couldn\'t be fully loaded. Refresh to retry.</div></div>';
-  }
-
-  // Account picker
-  html+='<div style="display:flex;align-items:center;gap:10px;margin-bottom:10px;flex-wrap:wrap">';
-  html+='<label style="font-size:11px;font-weight:600;color:var(--muted)">Account:</label>';
-  html+='<select style="padding:5px 8px;border:1px solid var(--border);border-radius:6px;font-size:12px;background:var(--surface2);color:var(--ink)" onchange="window._budgetSetReconAccount(this.value)">';
-  _getPaymentAccountOptions().forEach(function(a){html+='<option value="'+esc(a)+'"'+(_budgetReconAccount===a?' selected':'')+'>'+esc(a)+'</option>';});
-  html+='</select>';
-  html+='<label style="font-size:11px;font-weight:600;color:var(--muted)">Statement balance:</label>';
-  html+='<input type="number" min="0" step="0.01" value="'+(_budgetReconBalance||'')+'" placeholder="0.00" style="width:110px;padding:5px 8px;border:1px solid var(--border);border-radius:6px;font-size:12px;background:var(--surface2);color:var(--ink)" onchange="window._budgetSetReconBalance(this.value)">';
+  html+='<h3 style="margin:0 0 10px;font-size:13px;font-weight:700;color:var(--ink)">Statement check (retired)</h3>';
+  html+='<div id="budget-recon-retired" style="font-size:12px;color:var(--muted);line-height:1.5">'
+    +'This check has been retired. It compared Budget-entered entries &mdash; not the Register &mdash; with a typed statement balance, and could show a result that wasn\'t true. '
+    +'To compare a bank download with the Register, use <strong>Transactions &rarr; Statement Compare</strong>. '
+    +'Statement Compare lists matches and exceptions for you to review; it doesn\'t reconcile, clear or change anything, and your normal reconciliation stays authoritative.</div>';
   html+='</div>';
-
-  // Compute totals for selected account
-  var acct=_budgetReconAccount;
-  var entered=0,clearedAmt=0,unclearedAmt=0,householdAmt=0,reimbAmt=0;
-  legSrc.rows.forEach(function(t){
-    if(t.payment_account!==acct)return;
-    var a=parseFloat(t.amount)||0;
-    entered+=a;
-    if(t.is_cleared)clearedAmt+=a; else unclearedAmt+=a;
-    if(t.transaction_type==='reimbursable_expense')reimbAmt+=a;
-    else if(t.transaction_type==='household_expense'&&!t.excluded_from_budget)householdAmt+=a;
-  });
-
-  var stmtBal=parseFloat(_budgetReconBalance)||0;
-  var diff=stmtBal-clearedAmt;
-  var diffColor=Math.abs(diff)<0.01?'var(--green)':(diff<0?'#ef4444':'var(--blue)');
-
-  html+='<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:8px;font-size:12px">';
-  var statItems=[
-    ['Entered Total',f(entered),'var(--ink)'],
-    ['Cleared',f(clearedAmt),'var(--green)'],
-    ['Uncleared',f(unclearedAmt),'#f59e0b'],
-    ['Household Charges',f(householdAmt),'var(--ink)'],
-    ['Reimbursable Charges',f(reimbAmt),'var(--muted)'],
-    ['Statement Balance',stmtBal?f(stmtBal):'Not entered','var(--blue)'],
-    ['Difference (Stmt - Cleared)',stmtBal?fsigned(diff):'—',diffColor]
-  ];
-  statItems.forEach(function(item){
-    html+='<div style="background:var(--bg);border:1px solid var(--border);border-radius:6px;padding:7px 10px">';
-    html+='<div style="font-size:10px;color:var(--muted);font-weight:600;margin-bottom:2px">'+item[0]+'</div>';
-    html+='<div style="font-size:15px;font-weight:700;color:'+item[2]+'">'+item[1]+'</div>';
-    html+='</div>';
-  });
-  if(stmtBal&&Math.abs(diff)<0.01){
-    html+='<div style="background:var(--greenSoft);border:1px solid var(--green);border-radius:6px;padding:7px 10px;display:flex;align-items:center;gap:6px">';
-    html+='<span style="font-size:14px">✓</span><span style="font-size:12px;font-weight:700;color:var(--green)">Reconciled</span></div>';
-  }
-  html+='</div></div>';
   return html;
 }
 
@@ -13146,5 +13099,6 @@ initAuth();
 </script>
 <script type="module" src="js/version-check.js"></script>
 <script type="module" src="js/register-assist.js"></script>
+<script type="module" src="js/r-lite.js"></script>
 </body>
 </html>

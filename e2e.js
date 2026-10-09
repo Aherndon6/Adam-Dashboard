@@ -593,9 +593,9 @@ async function clickNav(page, id) {
       !e.includes('net::ERR_') &&        // ignore expected Supabase offline (file:// mode)
       !e.includes('Failed to fetch') &&  // same
       !e.includes('status of 4') &&      // ignore Supabase 4xx in file:// mode (CORS/auth expected)
-      // Release 1/2: ES modules cannot load from file:// (browser rule; AGENTS.md: module code is verified on a
-      // static server). Ignore exactly that block for the two mounted modules — no other CORS error.
-      !((e.includes('/js/version-check.js') || e.includes('/js/register-assist.js')) && e.includes("from origin 'null' has been blocked by CORS policy"))
+      // Release 1/2/R-lite: ES modules cannot load from file:// (browser rule; AGENTS.md: module code is verified on a
+      // static server). Ignore exactly that block for the three mounted modules — no other CORS error.
+      !((e.includes('/js/version-check.js') || e.includes('/js/register-assist.js') || e.includes('/js/r-lite.js')) && e.includes("from origin 'null' has been blocked by CORS policy"))
     );
     assert(relevant.length === 0, 'Console errors: ' + relevant.join(' | '));
     await context.close();
@@ -5945,6 +5945,153 @@ async function clickNav(page, id) {
     await page.click('button[onclick="_saveTxForm()"]');
     await page.waitForSelector('#r2-dup');
     assert(posts.length === 0 && /Possible duplicate: Costco · \$84\.22/.test(await page.textContent('#r2-dup')), 'warned, nothing saved');
+    await context.close();
+  });
+
+  // ── R-lite V1 (2026-10-09): Statement Compare (js/r-lite.js) in real Chromium ──
+  console.log('\n── Section R4: Statement Compare (R-lite) ──');
+  const R4_SRC = require('fs').readFileSync(process.env.HFOS_RL || require('path').join(__dirname, 'js', 'r-lite.js'), 'utf8');   // HFOS_RL: mutation runs
+  const R4_FX = n => require('fs').readFileSync(require('path').join(__dirname, 'fixtures', 'r-lite', n), 'latin1');
+  const R4_ACCTS = [
+    { key: 'truist_checking', label: 'Truist Checking', account_type: 'checking', lifecycle_status: 'active', starting_balance: 1000 },
+    { key: 'amex_gold', label: 'AMEX Gold', account_type: 'credit_card', lifecycle_status: 'active', starting_balance: 0 },
+    { key: 'amex_platinum', label: 'AMEX Platinum', account_type: 'credit_card', lifecycle_status: 'active', starting_balance: 0 }];
+  // Register rows for a fixture: one row per bank transaction, same date and amount (fixture values are synthetic).
+  function r4RegFromOfx(text, acct, extra) {
+    const rows = []; let i = 0;
+    for (const m of text.matchAll(/<STMTTRN>[\s\S]*?<\/STMTTRN>/gi)) {
+      const d = /<DTPOSTED>(\d{8})/i.exec(m[0])[1], a = /<TRNAMT>([^<\r\n]+)/i.exec(m[0])[1].trim();
+      rows.push({ id: 'r4-' + (++i), account_key: acct, transaction_date: d.slice(0, 4) + '-' + d.slice(4, 6) + '-' + d.slice(6, 8), amount: parseFloat(a), payee: 'Payee ' + i, memo: null, category_key: 'gifts', cleared: false, source: 'manual', created_at: '2030-01-01T00:00:00Z' });
+    }
+    return rows.concat(extra || []);
+  }
+  const r4Sgml = o => 'OFXHEADER:100\nDATA:OFXSGML\nVERSION:102\nSECURITY:NONE\nENCODING:USASCII\nCHARSET:1252\nCOMPRESSION:NONE\nOLDFILEUID:NONE\nNEWFILEUID:NONE\n\n<OFX>\n<SIGNONMSGSRSV1>\n<SONRS>\n<STATUS>\n<CODE>0\n<SEVERITY>INFO\n</STATUS>\n</SONRS>\n</SIGNONMSGSRSV1>\n<CREDITCARDMSGSRSV1>\n<CCSTMTTRNRS>\n<TRNUID>1\n<STATUS>\n<CODE>0\n<SEVERITY>INFO\n</STATUS>\n<CCSTMTRS>\n<CURDEF>USD\n<CCACCTFROM>\n<ACCTID>' + (o.acct || 'XXXXXXXXXXXX2222') + '\n</CCACCTFROM>\n<BANKTRANLIST>\n<DTSTART>20261001\n<DTEND>20261007\n'
+    + (o.rows || []).map((r, i) => '<STMTTRN>\n<TRNTYPE>DEBIT\n<DTPOSTED>' + r[0] + '\n<TRNAMT>' + r[1] + '\n<FITID>F' + i + '\n<NAME>SYNTH ' + i + '\n</STMTTRN>\n').join('')
+    + '</BANKTRANLIST>\n' + (o.bal ? '<LEDGERBAL>\n<BALAMT>' + o.bal[0] + '\n<DTASOF>' + o.bal[1] + '\n</LEDGERBAL>\n' : '') + '</CCSTMTRS>\n</CCSTMTTRNRS>\n</CREDITCARDMSGSRSV1>\n</OFX>\n';
+  async function r4Open(opts) {
+    const { page, context } = await openApp(browser);
+    const writes = []; page.on('request', rq => { if (!['GET', 'HEAD', 'OPTIONS'].includes(rq.method())) writes.push(rq.method() + ' ' + rq.url()); });
+    await page.addScriptTag({ content: R4_SRC, type: 'module' });
+    await page.waitForFunction(() => document.documentElement.getAttribute('data-hfos-rlite') === 'on');
+    await page.evaluate(([accts, key, rows, status, bindings]) => {
+      try { localStorage.setItem('hfos.rlite.bindings', JSON.stringify(bindings || {})); } catch (e) {}
+      FEATURE_FLAGS.showTransactionSection = true; FEATURE_FLAGS.showTransactionLedger = true;
+      _accountsCache = accts; _categoriesCache = []; _registriesLoadStatus = 'loaded';
+      _txLedgerAccountKey = key; _txLedgerLoadStatus = status || 'loaded'; _txLedgerCache = status && status !== 'loaded' ? null : rows;
+      _loadTxLedger = async function () {};   // no network in these tests; history state is set directly
+      renderApp(); setSection('transactions'); setTxSubNav('statement');
+    }, [R4_ACCTS, opts.account || 'amex_gold', opts.rows || [], opts.status, opts.bindings]);
+    await page.waitForSelector('#rlite-account');
+    return { page, context, writes };
+  }
+  const r4Upload = (page, name, text) => page.setInputFiles('#rlite-file', { name, mimeType: 'application/octet-stream', buffer: Buffer.from(text, 'latin1') });
+  const r4Text = (page, sel) => page.evaluate(s => (document.querySelector(s) || {}).textContent || null, sel);
+
+  await test('R4-E1: Statement Compare tab; a real-structure Truist file → explicit account confirmation → all rows MATCHED; nothing is written', async () => {
+    const fx = R4_FX('truist-checking.qfx');
+    const { page, context, writes } = await r4Open({ account: 'truist_checking', rows: r4RegFromOfx(fx, 'truist_checking') });
+    const tab = await page.evaluate(() => [...document.querySelectorAll('#transactions-content button')].map(b => b.textContent).filter(t => /Statement Compare|Reconciliation/.test(t)));
+    assert(JSON.stringify(tab) === JSON.stringify(['Statement Compare']), 'tab name: ' + JSON.stringify(tab));
+    await r4Upload(page, 'acct_x.qfx', fx);
+    await page.waitForSelector('#rlite-binding-ask');
+    const ask = await r4Text(page, '#rlite-binding-ask');
+    assert(/checking account ending •1111/.test(ask) && /Truist Checking\?/.test(ask), 'household-language confirmation: ' + ask);
+    assert(!(await page.$('#rlite-results')), 'no results before the owner confirms');
+    await page.click('#rlite-confirm');
+    await page.waitForSelector('#rlite-summary');
+    const sum = await r4Text(page, '#rlite-summary');
+    assert(/Matched: 4/.test(sum) && /Bank only: 0/.test(sum) && /Register only: 0/.test(sum) && /Ambiguous \(bank\): 0/.test(sum), 'summary: ' + sum);
+    assert(writes.length === 0, 'no writes: ' + JSON.stringify(writes));
+    await context.close();
+  });
+  await test('R4-E2: incomplete Register history → "Comparison unavailable"; no results, no BANK ONLY, no totals (fail closed)', async () => {
+    const { page, context } = await r4Open({ account: 'amex_gold', status: 'incomplete' });
+    const un = await r4Text(page, '#rlite-unavailable');
+    assert(/Comparison unavailable/.test(un || ''), 'unavailable shown: ' + un);
+    await r4Upload(page, 'a.qfx', R4_FX('amex-card.qfx'));
+    await page.waitForSelector('#rlite-binding-ask');
+    await page.click('#rlite-confirm');
+    const body = await r4Text(page, '#rlite-results');
+    assert(/Comparison unavailable/.test(body || '') && !(await page.$('#rlite-summary')) && !/Bank only/.test(body || ''), 'no results: ' + body);
+    await context.close();
+  });
+  await test('R4-E3: an HTML error page saved as .qfx, and a non-QFX file, are rejected before any account question', async () => {
+    const { page, context } = await r4Open({ account: 'amex_gold' });
+    await r4Upload(page, 'activity.qfx', '<!DOCTYPE html><html><body>Your session has expired</body></html>');
+    await page.waitForSelector('#rlite-rejected');
+    assert(/web page \(HTML\)/.test(await r4Text(page, '#rlite-rejected')) && !(await page.$('#rlite-binding-ask')), 'HTML rejected');
+    await r4Upload(page, 'activity.csv', 'Date,Amount\n');
+    await page.waitForSelector('#rlite-rejected');
+    assert(/\.qfx or \.ofx/.test(await r4Text(page, '#rlite-rejected')), 'extension rejected');
+    await context.close();
+  });
+  await test('R4-E4: a remembered different card for this account FAILS CLOSED (no compare button); re-binding is a separate explicit action', async () => {
+    const { page, context } = await r4Open({ account: 'amex_gold', bindings: { amex_gold: '9999' } });
+    await r4Upload(page, 'a.qfx', R4_FX('amex-card.qfx'));
+    await page.waitForSelector('#rlite-binding-refused');
+    const msg = await r4Text(page, '#rlite-binding-refused');
+    assert(/•9999/.test(msg) && /•2222/.test(msg) && /Nothing was compared/.test(msg) && !(await page.$('#rlite-confirm')) && !(await page.$('#rlite-results')), 'refused: ' + msg);
+    page.once('dialog', d => d.dismiss());
+    await page.click('#rlite-rebind');
+    assert(await page.$('#rlite-binding-refused'), 'declining the re-bind keeps the refusal');
+    page.once('dialog', d => d.accept());
+    await page.click('#rlite-rebind');
+    await page.waitForSelector('#rlite-binding-ask');
+    const stored = await page.evaluate(() => JSON.parse(localStorage.getItem('hfos.rlite.bindings')));
+    assert(stored.amex_gold === '2222', 'explicit re-bind remembered: ' + JSON.stringify(stored));
+    await context.close();
+  });
+  await test('R4-E5: a card file can never be compared with a checking account; a last-4 remembered for another account is refused', async () => {
+    let { page, context } = await r4Open({ account: 'truist_checking' });
+    await r4Upload(page, 'a.qfx', R4_FX('amex-card.qfx'));
+    await page.waitForSelector('#rlite-binding-refused');
+    assert(/credit card ending •2222, but Truist Checking is a checking account/.test(await r4Text(page, '#rlite-binding-refused')), 'type mismatch refused');
+    await context.close();
+    ({ page, context } = await r4Open({ account: 'amex_gold', bindings: { amex_platinum: '2222' } }));
+    await r4Upload(page, 'a.qfx', R4_FX('amex-card.qfx'));
+    await page.waitForSelector('#rlite-binding-refused');
+    assert(/confirmed on this device as AMEX Platinum/.test(await r4Text(page, '#rlite-binding-refused')), 'other-account last-4 refused');
+    await context.close();
+  });
+  await test('R4-E6: if the Register history reloads after a comparison, the results are discarded until "Compare again"', async () => {
+    const { page, context } = await r4Open({ account: 'amex_gold', rows: r4RegFromOfx(R4_FX('amex-card.qfx'), 'amex_gold') });
+    await r4Upload(page, 'a.qfx', R4_FX('amex-card.qfx'));
+    await page.waitForSelector('#rlite-confirm'); await page.click('#rlite-confirm');
+    await page.waitForSelector('#rlite-summary');
+    await page.evaluate(() => { _txLedgerCache = _txLedgerCache.slice(1); renderApp(); });
+    await page.waitForSelector('#rlite-again');
+    assert(!(await page.$('#rlite-summary')), 'stale results discarded');
+    await page.click('#rlite-again');
+    await page.waitForSelector('#rlite-summary');
+    assert(/Bank only: 1/.test(await r4Text(page, '#rlite-summary')), 'recomputed against the new history');
+    await context.close();
+  });
+  await test('R4-E7: matching contract in the browser — window edge, ±7 veto, BANK ONLY hint, REGISTER ONLY only in range; current posted balance check AGREES only for today', async () => {
+    const reg = [
+      { id: 'a', account_key: 'amex_gold', transaction_date: '2026-10-01', amount: -10, payee: 'Edge', cleared: true },        // bank 10-05: −4 → MATCHED
+      { id: 'b', account_key: 'amex_gold', transaction_date: '2026-10-02', amount: -28, payee: 'Toll', cleared: true },        // bank 10-02: unique pair, but …
+      { id: 'c', account_key: 'amex_gold', transaction_date: '2026-10-08', amount: -28, payee: 'Toll', cleared: false },       // … another −28 at +6 (outside −4/+3, inside ±7) → VETO
+      { id: 'd', account_key: 'amex_gold', transaction_date: '2026-09-25', amount: -150, payee: 'Early', cleared: true },     // bank 10-04: −9 → BANK ONLY + hint
+      { id: 'e', account_key: 'amex_gold', transaction_date: '2026-10-03', amount: -77, payee: 'Missing', cleared: true },    // in range, no bank → REGISTER ONLY
+      { id: 'f', account_key: 'amex_gold', transaction_date: '2026-09-01', amount: -5, payee: 'Old', cleared: true }];       // outside range → not listed
+    const { page, context } = await r4Open({ account: 'amex_gold', rows: reg });
+    await r4Upload(page, 's.qfx', r4Sgml({ rows: [['20261005', '-10.00'], ['20261002', '-28.00'], ['20261004', '-150.00']], bal: ['-270.00', '20261007120000'] }));
+    await page.waitForSelector('#rlite-confirm'); await page.click('#rlite-confirm');
+    await page.waitForSelector('#rlite-summary');
+    const sum = await r4Text(page, '#rlite-summary'), res = await r4Text(page, '#rlite-results'), bal = await r4Text(page, '#rlite-balance');
+    assert(/Matched: 1/.test(sum) && /Bank only: 1/.test(sum) && /Register only: 1/.test(sum) && /Ambiguous \(bank\): 1/.test(sum) && /Ambiguous \(Register\): 1/.test(sum), 'states: ' + sum);
+    assert(/same amount appears again within 7 days/i.test(res), 'veto reason shown');
+    assert(/Possible counterpart outside the window: Register 2026-09-25 \(9 days earlier\)/.test(res), 'BANK ONLY hint: ' + (res.match(/Possible counterpart[^)]*\)/) || ['none'])[0]);
+    assert(!/\bOld\b/.test(res), 'the out-of-range Register row is not listed');
+    assert(/Current posted balance check/.test(bal) && /they agree/.test(bal) && /−\$270\.00/.test(bal), 'start 0 + cleared (−10 −28 −150 −77 −5) = −270 vs file −270 as of today: ' + bal);
+    await context.close();
+  });
+  await test('R4-E8: a balance dated before today is UNAVAILABLE while the transaction comparison still runs', async () => {
+    const { page, context } = await r4Open({ account: 'amex_gold', rows: [{ id: 'a', account_key: 'amex_gold', transaction_date: '2026-10-05', amount: -10, payee: 'X', cleared: true }] });
+    await r4Upload(page, 's.qfx', r4Sgml({ rows: [['20261005', '-10.00']], bal: ['-10.00', '20261006120000'] }));
+    await page.waitForSelector('#rlite-confirm'); await page.click('#rlite-confirm');
+    await page.waitForSelector('#rlite-summary');
+    assert(/Matched: 1/.test(await r4Text(page, '#rlite-summary')) && /Unavailable — The file's balance is as of 2026-10-06/.test(await r4Text(page, '#rlite-balance')), 'transactions compared; balance unavailable');
     await context.close();
   });
 

@@ -5720,11 +5720,12 @@ test('5B-35: reconciliation statement balance input uses onchange (not oninput) 
   var htmlSrc='';
   try{htmlSrc=require('fs').readFileSync(require('path').join(__dirname,'index.html'),'utf8');}catch(e){}
   assert(htmlSrc.length>0,'Could not read index.html');
-  // onchange fires on blur/enter only — does not re-render on every keystroke
-  assert(htmlSrc.includes('onchange="window._budgetSetReconBalance(this.value)"'),
-    'statement balance input must use onchange (not oninput) to avoid focus loss');
+  // R-lite (owner, 2026-10-09): the legacy Statement check panel is retired, so it has no balance input at all; the
+  // focus-loss guard still holds (no oninput re-render anywhere for that handler).
   assert(!htmlSrc.includes('oninput="window._budgetSetReconBalance(this.value)"'),
     'statement balance input must NOT use oninput (causes renderApp on every keystroke)');
+  assert(!/_budgetSetReconBalance\(this\.value\)/.test((htmlSrc.match(/function _renderBudgetRecon\([\s\S]*?\n}\n/)||[''])[0]),
+    'the retired Statement check renders no balance input');
 });
 
 test('5B-36: budget transaction INSERT uses return=representation and detects 0-row silent failure',()=>{
@@ -8600,8 +8601,12 @@ test('5E10-05: Help panel "Logging a Jabian expense" section points to the Jabia
 
 test('5E10-06: Help panel reconciliation/printout sections are unmodified (guardrail: do not touch reconciliation)',()=>{
   assertIncludes(budgetFnSrc,'Clearing transactions against your statement','Reconciliation help section header must be unchanged');
-  assertIncludes(budgetFnSrc,'In the <strong>Statement check</strong> panel, select the account and enter the statement ending balance.',
-    'Statement check help instructions must be present (5G-0 SYS-1 renamed the Budget block from Reconciliation to Statement check)');
+  // R-lite (owner-authorized documentation-text re-pin of renderBudget, 2026-10-09): the three Statement-check bullets
+  // were replaced by one pointing to Statement Compare; the rest of the section is unchanged.
+  assertIncludes(budgetFnSrc,'To compare a bank download with the Register, use <strong>Transactions → Statement Compare</strong>.',
+    'help points to Statement Compare');
+  assertIncludes(budgetFnSrc,'go through each transaction in the list and check the <strong>Cleared</strong> box','the Cleared-ticking guidance is unchanged');
+  assert(budgetFnSrc.indexOf('you are reconciled')===-1,'no help text claims "you are reconciled"');
 });
 
 test('5E10-07: _saveTxForm rejects a blank payee before the Supabase call',()=>{
@@ -16982,6 +16987,253 @@ test('R3-P7: the autocomplete rule only reads — rows are never changed; the ca
   const code = src.replace(/\/\/[^\n]*/g, '');
   assert((code.match(/_setTxFormField\('payee'/g) || []).length === 1, 'the payee changes in exactly one place: the accept action');
   assert((code.match(/_setTxFormField\('category_key'/g) || []).length === 2, 'category still changes only through search-result click or Use');
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// R-lite V1 — Statement Compare (owner authorization 2026-10-09; design locked: docs/r-lite-design-proposal.md §23).
+// R4-P* parser (real-structure fixtures in fixtures/r-lite/, synthetic values) · R4-C* matching contract A–F incl. the
+// ±7 veto guard · R4-R* effective range · R4-B* current posted balance check · R4-N* account binding · R4-W* limits.
+// ─────────────────────────────────────────────────────────────────────────────
+console.log('\n── R-lite: Statement Compare ──');
+const R4_PATH = process.env.HFOS_RL || './js/r-lite.js';   // overridable for mutation runs
+function r4Src() { return fs.readFileSync(R4_PATH, 'utf8'); }
+function r4Load() {
+  const src = r4Src();
+  assert(/^export function /m.test(src), 'js/r-lite.js is an ES module');
+  const body = src.replace(/^export function /gm, 'function ').replace(/^export const /gm, 'const ');
+  return new Function('window', 'document', body + '\n;return { parseOfx, toCents, compareStatement, statementTotals, postedBalanceCheck, bindingDecision, RLITE_BEFORE_DAYS, RLITE_AFTER_DAYS, RLITE_GUARD_DAYS };')(undefined, undefined);
+}
+const r4Fx = n => fs.readFileSync('./fixtures/r-lite/' + n, 'latin1');
+// Minimal SGML builder for edge cases (structure of the real Chase/Citi files).
+function r4Ofx(o) {
+  o = o || {};
+  const rows = (o.rows || []).map(r => '<STMTTRN>\n<TRNTYPE>' + (r.type || 'DEBIT') + '\n' + (r.posted === undefined ? '<DTPOSTED>20301001120000\n' : r.posted === null ? '' : '<DTPOSTED>' + r.posted + '\n')
+    + (r.amt === null ? '' : '<TRNAMT>' + (r.amt === undefined ? '-10.00' : r.amt) + '\n') + (r.fitid === null ? '' : '<FITID>' + (r.fitid || ('F' + Math.random().toString(36).slice(2))) + '\n') + '<NAME>' + (r.name || 'SYNTH') + '\n</STMTTRN>\n').join('');
+  const acct = o.cc === false ? '<BANKACCTFROM>\n<BANKID>999999999\n<ACCTID>' + (o.acct || '5555551111') + '\n<ACCTTYPE>' + (o.accttype || 'CHECKING') + '\n</BANKACCTFROM>\n'
+    : '<CCACCTFROM>\n<ACCTID>' + (o.acct || '555555-4444') + '\n</CCACCTFROM>\n';
+  const bal = o.bal === null ? '' : '<LEDGERBAL>\n<BALAMT>' + (o.bal || '-100.00') + '\n<DTASOF>' + (o.asof || '20301010120000') + '\n</LEDGERBAL>\n';
+  const wrapOpen = o.cc === false ? '<BANKMSGSRSV1>\n<STMTTRNRS>\n<TRNUID>1\n<STATUS>\n<CODE>' + (o.code || 0) + '\n<SEVERITY>INFO\n</STATUS>\n<STMTRS>\n' : '<CREDITCARDMSGSRSV1>\n<CCSTMTTRNRS>\n<TRNUID>1\n<STATUS>\n<CODE>' + (o.code || 0) + '\n<SEVERITY>INFO\n</STATUS>\n<CCSTMTRS>\n';
+  const wrapClose = o.cc === false ? '</STMTRS>\n</STMTTRNRS>\n</BANKMSGSRSV1>\n' : '</CCSTMTRS>\n</CCSTMTTRNRS>\n</CREDITCARDMSGSRSV1>\n';
+  return 'OFXHEADER:100\nDATA:OFXSGML\nVERSION:102\nSECURITY:NONE\nENCODING:USASCII\nCHARSET:1252\nCOMPRESSION:NONE\nOLDFILEUID:NONE\nNEWFILEUID:NONE\n\n<OFX>\n<SIGNONMSGSRSV1>\n<SONRS>\n<STATUS>\n<CODE>0\n<SEVERITY>INFO\n</STATUS>\n<DTSERVER>20301010120000\n<LANGUAGE>ENG\n</SONRS>\n</SIGNONMSGSRSV1>\n'
+    + wrapOpen + '<CURDEF>USD\n' + acct + '<BANKTRANLIST>\n<DTSTART>' + (o.start || '20301001') + '\n<DTEND>' + (o.end || '20301031') + '\n' + rows + '</BANKTRANLIST>\n' + bal + wrapClose + (o.extra || '') + '</OFX>\n';
+}
+test('R4-P1: the four real-structure fixtures parse — format, account kind, last-4, rows, dates, balance (Truist SGML/CRLF, AMEX OFX 2 XML, Citi CREDITLINE in the bank set, Chase digits-last4)', function () {
+  const M = r4Load();
+  const t = M.parseOfx(r4Fx('truist-checking.qfx'));
+  assert(t.ok && t.file.kind === 'checking' && t.file.last4 === '1111' && t.file.rows.length === 4 && t.file.version === '1', 'truist: ' + JSON.stringify(t.ok ? { k: t.file.kind, l: t.file.last4, n: t.file.rows.length } : t));
+  assert(t.file.org === 'BB&T', 'entities decoded: ' + t.file.org);
+  assert(t.file.rows.every(r => /^\d{4}-\d{2}-\d{2}$/.test(r.posted) && Number.isInteger(r.cents)) && t.file.rows.some(r => r.type === 'DEBIT'), 'normalized rows; TRNTYPE upper-cased');
+  assert(t.file.balance && /^\d{4}-\d{2}-\d{2}$/.test(t.file.balance.asOf) && Number.isInteger(t.file.balance.cents), 'balance with as-of date');
+  const a = M.parseOfx(r4Fx('amex-card.qfx'));
+  assert(a.ok && a.file.kind === 'credit_card' && a.file.last4 === '2222' && a.file.rows.length === 8 && a.file.version === '2' && a.file.rows.every(r => r.memo), 'amex: ' + JSON.stringify(a.ok ? { k: a.file.kind, l: a.file.last4 } : a));
+  const c = M.parseOfx(r4Fx('citi-card.qfx'));
+  assert(c.ok && c.file.kind === 'credit_card' && c.file.last4 === '3333', 'citi CREDITLINE is a credit card: ' + JSON.stringify(c.ok ? c.file.kind : c));
+  const h = M.parseOfx(r4Fx('chase-card.qfx'));
+  assert(h.ok && h.file.kind === 'credit_card' && h.file.last4 === '4444' && h.file.rows.length === 4, 'chase: ' + JSON.stringify(h.ok ? h.file.last4 : h));
+});
+test('R4-P2: HTML/error pages, empty or non-OFX files, and institution error statuses are rejected (no partial results)', function () {
+  const M = r4Load();
+  ['<!DOCTYPE html><html><body>Session expired</body></html>', '<html><head></head><body><OFX></OFX></body></html>', '', '   ', 'Date,Description,Amount\n10/01/2030,X,-1.00\n', 'garbage'].forEach(x => {
+    const r = M.parseOfx(x); assert(!r.ok && r.reason, 'must reject: ' + JSON.stringify(x.slice(0, 30)));
+  });
+  assert(/HTML|web page/i.test(M.parseOfx('<!DOCTYPE html><html></html>').reason), 'HTML named in the reason');
+  assert(!M.parseOfx(r4Ofx({ code: 2000, rows: [{}] })).ok, 'a non-zero institution status is rejected');
+});
+test('R4-P3: required evidence — missing FITID / amount / posting date, bad amounts, zero amount, invalid dates reject the whole file', function () {
+  const M = r4Load();
+  [[{ fitid: null }], [{ amt: null }], [{ posted: null }], [{ amt: '12.345' }], [{ amt: '1,234.00' }], [{ amt: 'abc' }], [{ amt: '.50' }], [{ amt: '0.00' }], [{ amt: '-0' }],
+   [{ posted: '20300230' }], [{ posted: '2030-10-01' }], [{ posted: 'abc' }], [{}, { fitid: null }]]
+    .forEach(rows => { const r = M.parseOfx(r4Ofx({ rows })); assert(!r.ok, 'must reject: ' + JSON.stringify(rows)); });
+});
+test('R4-P4: exact cents with no floating-point error; the sign comes from the amount, never from TRNTYPE', function () {
+  const M = r4Load();
+  [['-84.22', -8422], ['-0.1', -10], ['1234.5', 123450], ['+12.00', 1200], ['0.29', 29], ['-1000000.01', -100000001], ['7', 700]].forEach(([s, c]) => assert(M.toCents(s) === c, s + ' → ' + M.toCents(s) + ', expected ' + c));
+  [null, '', '1.234', '1e3', '--1', '12.', 'NaN'].forEach(s => assert(M.toCents(s) === null, JSON.stringify(s) + ' must not parse'));
+  const r = M.parseOfx(r4Ofx({ rows: [{ type: 'CREDIT', amt: '-5.00', fitid: 'A' }, { type: 'DEBIT', amt: '7.25', fitid: 'B' }] }));
+  assert(r.ok && r.file.rows[0].cents === -500 && r.file.rows[1].cents === 725, 'TRNTYPE ignored for the sign');
+});
+test('R4-P5: duplicate rows — byte-identical repeats collapse with a notice; the same FITID with different content rejects the file', function () {
+  const M = r4Load();
+  const same = M.parseOfx(r4Ofx({ rows: [{ fitid: 'X1', amt: '-5.00' }, { fitid: 'X1', amt: '-5.00' }, { fitid: 'X2', amt: '-6.00' }] }));
+  assert(same.ok && same.file.rows.length === 2 && same.file.notices.some(n => /duplicate/i.test(n)), 'collapsed: ' + JSON.stringify(same.ok ? same.file.notices : same));
+  assert(!M.parseOfx(r4Ofx({ rows: [{ fitid: 'X1', amt: '-5.00' }, { fitid: 'X1', amt: '-5.01' }] })).ok, 'conflicting FITID rejects');
+});
+test('R4-P6: exactly one account — two statements, two account ids or both message sets are rejected', function () {
+  const M = r4Load();
+  const one = r4Ofx({ rows: [{ fitid: 'A' }] });
+  assert(M.parseOfx(one).ok, 'control');
+  assert(!M.parseOfx(one.replace('</OFX>', one.slice(one.indexOf('<CREDITCARDMSGSRSV1>'), one.indexOf('</OFX>')) + '</OFX>')).ok, 'two statements');
+  assert(!M.parseOfx(r4Ofx({ rows: [{ fitid: 'A' }], extra: '<BANKMSGSRSV1></BANKMSGSRSV1>\n' })).ok, 'two message sets');
+  assert(!M.parseOfx(r4Ofx({ acct: 'XX12', rows: [{ fitid: 'A' }] })).ok, 'an account id without 4 digits cannot be bound');
+  assert(!M.parseOfx(r4Ofx({ cc: false, accttype: 'MONEYMRKT', rows: [{ fitid: 'A' }] })).ok, 'unsupported account type');
+});
+test('R4-P7: balance is optional — absent or incomplete balance leaves the transactions usable; a file with neither rows nor balance is rejected', function () {
+  const M = r4Load();
+  const nb = M.parseOfx(r4Ofx({ bal: null, rows: [{ fitid: 'A' }] }));
+  assert(nb.ok && nb.file.balance === null && nb.file.rows.length === 1, 'no balance: rows still usable');
+  const half = M.parseOfx(r4Ofx({ rows: [{ fitid: 'A' }] }).replace(/<DTASOF>[^\n]*\n/, ''));
+  assert(half.ok && half.file.balance === null && half.file.notices.some(n => /balance/i.test(n)), 'incomplete balance → none, with a notice');
+  const bo = M.parseOfx(r4Ofx({ rows: [] }));
+  assert(bo.ok && bo.file.rows.length === 0 && bo.file.balance, 'balance-only file is allowed');
+  assert(!M.parseOfx(r4Ofx({ rows: [], bal: null })).ok, 'nothing to compare → rejected');
+});
+test('R4-P8: statement dates never bound the rows — rows outside DTSTART/DTEND are kept and the effective range comes from the rows', function () {
+  const M = r4Load();
+  const r = M.parseOfx(r4Ofx({ start: '20301005', end: '20301125', rows: [{ fitid: 'A', posted: '20301003' }, { fitid: 'B', posted: '20301009' }] }));
+  assert(r.ok && r.file.rows.length === 2 && r.file.range.start === '2030-10-03' && r.file.range.end === '2030-10-09', 'range from rows: ' + JSON.stringify(r.ok ? r.file.range : r));
+  assert(r.file.period.start === '2030-10-05' && r.file.period.end === '2030-11-25', 'stated period kept for display only');
+});
+// ── matching contract (locked §23). Dates as 'YYYY-MM-DD'; cents integers.
+let r4seq = 0;
+const r4B = (posted, cents, o) => Object.assign({ fitid: 'b' + (++r4seq), posted, cents, name: 'BANK DESC' }, o || {});
+const r4R = (date, cents, o) => Object.assign({ id: 'r' + (++r4seq), date, cents, payee: 'Payee', cleared: false }, o || {});
+const r4State = (res, row) => (res.bank.find(x => x.row === row) || res.register.find(x => x.row === row) || {}).state;
+test('R4-C1: exact match, and the −4/+3 window edges (4 before and 3 after match; 5 before and 4 after do not)', function () {
+  const M = r4Load();
+  assert(M.RLITE_BEFORE_DAYS === 4 && M.RLITE_AFTER_DAYS === 3 && M.RLITE_GUARD_DAYS === 7, 'locked constants');
+  [['2030-10-10', 'MATCHED', /same amount and date/], ['2030-10-06', 'MATCHED', /4 days/], ['2030-10-13', 'MATCHED', /3 days/], ['2030-10-05', 'BANK ONLY', null], ['2030-10-14', 'BANK ONLY', null]].forEach(([rd, st, why]) => {
+    const b = r4B('2030-10-10', -2500), r = r4R(rd, -2500), res = M.compareStatement([b], [r]);
+    const e = res.bank.find(x => x.row === b);
+    assert(e.state === st, rd + ': expected ' + st + ', got ' + e.state);
+    if (why) assert(new RegExp(why.source, 'i').test(e.reason), 'reason explains the match: ' + e.reason);
+  });
+});
+test('R4-C2: descriptions never matter — a different bank description still matches a unique pair; a matching description never resolves an ambiguity', function () {
+  const M = r4Load();
+  const b = r4B('2030-10-10', -1234, { name: 'SQ *SOMETHING UNRELATED' }), r = r4R('2030-10-09', -1234, { payee: 'Kroger' });
+  assert(r4State(M.compareStatement([b], [r]), b) === 'MATCHED', 'unique pair matches regardless of description');
+  const b2 = r4B('2030-10-10', -1234, { name: 'KROGER #123' }), k = r4R('2030-10-10', -1234, { payee: 'Kroger' }), o = r4R('2030-10-11', -1234, { payee: 'Other' });
+  const res = M.compareStatement([b2], [k, o]);
+  assert(r4State(res, b2) === 'AMBIGUOUS' && r4State(res, k) === 'AMBIGUOUS' && r4State(res, o) === 'AMBIGUOUS', 'description never breaks the tie');
+});
+test('R4-C3: one bank vs two Register, two bank vs one Register, and identical same-day pairs are all AMBIGUOUS', function () {
+  const M = r4Load();
+  const b = r4B('2030-10-10', -500), r1 = r4R('2030-10-10', -500), r2 = r4R('2030-10-12', -500);
+  let res = M.compareStatement([b], [r1, r2]);
+  assert([b, r1, r2].every(x => r4State(res, x) === 'AMBIGUOUS'), '1 bank vs 2 register');
+  const b1 = r4B('2030-10-10', -500), b2 = r4B('2030-10-11', -500), r = r4R('2030-10-10', -500);
+  res = M.compareStatement([b1, b2], [r]);
+  assert([b1, b2, r].every(x => r4State(res, x) === 'AMBIGUOUS'), '2 bank vs 1 register');
+  const s1 = r4B('2030-10-10', -500), s2 = r4B('2030-10-10', -500), t1 = r4R('2030-10-10', -500), t2 = r4R('2030-10-10', -500);
+  res = M.compareStatement([s1, s2], [t1, t2]);
+  assert([s1, s2, t1, t2].every(x => r4State(res, x) === 'AMBIGUOUS'), 'identical same-day pairs are never paired arbitrarily');
+});
+test('R4-C4: the ±7 guard VETOES an otherwise unique pair — a nearby same-amount Register row (inclusive edge) or bank row; 8 days away does not veto', function () {
+  const M = r4Load();
+  const pair = () => [r4B('2030-10-10', -2800), r4R('2030-10-10', -2800)];
+  let [b, r] = pair(); let res = M.compareStatement([b], [r, r4R('2030-10-16', -2800)]);
+  assert(r4State(res, b) === 'AMBIGUOUS' && /again within 7 days/i.test(res.bank[0].reason), 'Register row +6 (outside −4/+3, inside ±7) vetoes: ' + res.bank[0].reason);
+  [b, r] = pair(); res = M.compareStatement([b], [r, r4R('2030-10-17', -2800)]);
+  assert(r4State(res, b) === 'AMBIGUOUS', '+7 is inside the guard (inclusive)');
+  [b, r] = pair(); res = M.compareStatement([b], [r, r4R('2030-10-18', -2800)]);
+  assert(r4State(res, b) === 'MATCHED', '+8 is outside the guard → MATCHED');
+  [b, r] = pair(); res = M.compareStatement([b], [r, r4R('2030-10-03', -2800)]);
+  assert(r4State(res, b) === 'AMBIGUOUS', '−7 vetoes');
+  [b, r] = pair(); res = M.compareStatement([b, r4B('2030-10-17', -2800)], [r]);
+  assert(r4State(res, b) === 'AMBIGUOUS', 'another bank row of the same amount 7 days later vetoes');
+  const b4 = r4B('2030-10-10', -2800), r4 = r4R('2030-10-06', -2800);   // pair 4 days apart: guard spans 10-06 −7 … 10-10 +7
+  res = M.compareStatement([b4], [r4, r4R('2030-09-29', -2800)]);
+  assert(r4State(res, b4) === 'AMBIGUOUS', 'the guard window spans both members (10-06 − 7 = 09-29)');
+  res = M.compareStatement([r4B('2030-10-10', -2800)], [r4R('2030-10-06', -2800), r4R('2030-09-28', -2800)]);
+  assert(res.bank[0].state === 'MATCHED', '09-28 is outside that span');
+});
+test('R4-C5: the guard never creates or chooses a match, and is not transitive (no ambiguity cluster)', function () {
+  const M = r4Load();
+  const b = r4B('2030-10-10', -900), r1 = r4R('2030-10-10', -900), r2 = r4R('2030-10-11', -900);
+  const res = M.compareStatement([b], [r1, r2]);
+  assert(res.bank.every(x => x.state !== 'MATCHED') && res.register.every(x => x.state !== 'MATCHED'), 'two candidates: never resolved');
+  const p1b = r4B('2030-10-01', -100), p1r = r4R('2030-10-01', -100), p2b = r4B('2030-10-09', -100), p2r = r4R('2030-10-09', -100), p3b = r4B('2030-10-17', -100), p3r = r4R('2030-10-17', -100);
+  const chain = M.compareStatement([p1b, p2b, p3b], [p1r, p2r, p3r]);
+  assert([p1b, p2b, p3b].every(x => r4State(chain, x) === 'MATCHED'), 'recurring pairs 8 days apart stay MATCHED (no chain veto): ' + chain.bank.map(x => x.state));
+  const q = [r4B('2030-10-01', -100), r4B('2030-10-08', -100)], qr = [r4R('2030-10-01', -100), r4R('2030-10-08', -100)];
+  const near = M.compareStatement(q, qr);
+  assert(near.bank.every(x => x.state === 'AMBIGUOUS'), 'recurring pairs 7 days apart are both vetoed (accepted cost)');
+});
+test('R4-C6: signs — a refund never matches or vetoes a purchase of the same size; card payments match like any other row', function () {
+  const M = r4Load();
+  const b = r4B('2030-10-10', -4500), r = r4R('2030-10-10', -4500), refund = r4R('2030-10-11', 4500), rb = r4B('2030-10-12', 4500);
+  const res = M.compareStatement([b, rb], [r, refund]);
+  assert(r4State(res, b) === 'MATCHED' && r4State(res, rb) === 'MATCHED' && r4State(res, refund) === 'MATCHED', 'purchase and refund pair separately: ' + res.bank.map(x => x.state));
+  const pay = r4B('2030-10-15', 116024, { type: 'CREDIT' }), payR = r4R('2030-10-15', 116024, { payee: 'Payment' });
+  assert(r4State(M.compareStatement([pay], [payR]), pay) === 'MATCHED', 'card payment (positive on the card) matches');
+  const only = M.compareStatement([r4B('2030-10-10', -4500)], [r4R('2030-10-10', 4500)]);
+  assert(only.bank[0].state === 'BANK ONLY', 'opposite sign is not a candidate');
+});
+test('R4-C7: BANK ONLY carries a "possible counterpart outside the window" hint (evidence only); REGISTER ONLY is limited to the effective range', function () {
+  const M = r4Load();
+  const b = r4B('2030-10-10', -15000), early = r4R('2030-10-01', -15000);   // 9 days early, like the real Truist cases
+  const res = M.compareStatement([b, r4B('2030-10-20', -100)], [early, r4R('2030-10-15', -700), r4R('2030-09-20', -800), r4R('2030-10-25', -900)]);
+  const be = res.bank.find(x => x.row === b);
+  assert(be.state === 'BANK ONLY' && be.hint && be.hint.days === -9, 'hint about the row 9 days earlier: ' + JSON.stringify(be));
+  const reg = res.register.map(x => x.row.date + ':' + x.state).sort();
+  assert(JSON.stringify(reg) === JSON.stringify(['2030-10-15:REGISTER ONLY']), 'only in-range unmatched Register rows are listed: ' + JSON.stringify(reg));
+  assert(res.context.notComparedAfter === 1 && res.range.start === '2030-10-10' && res.range.end === '2030-10-20', 'after-range rows counted, not listed: ' + JSON.stringify(res.context));
+});
+test('R4-C8: a Register row just outside the range can still be the unique match for a bank row at the edge (context), without being counted as a statement row', function () {
+  const M = r4Load();
+  const b = r4B('2030-10-10', -3300), r = r4R('2030-10-07', -3300), t = M.compareStatement([b, r4B('2030-10-20', -10)], [r, r4R('2030-10-20', -10)]);
+  assert(r4State(t, b) === 'MATCHED' && t.bank.find(x => x.row === b).register === r, 'edge context match');
+  const tot = M.statementTotals(t);
+  assert(tot.registerInRangeCents === -10 && tot.bankCents === -3310, 'Register total counts only rows dated inside the range: ' + JSON.stringify(tot));
+});
+test('R4-C9: deterministic and pure — shuffled inputs give identical results; inputs are never changed', function () {
+  const M = r4Load();
+  const bank = [], reg = [];
+  for (let i = 0; i < 40; i++) { const d = '2030-10-' + String(1 + (i % 28)).padStart(2, '0'); bank.push(Object.freeze(r4B(d, -(100 + (i % 7) * 50)))); reg.push(Object.freeze(r4R(d, -(100 + (i % 7) * 50)))); }
+  const key = res => JSON.stringify(res.bank.map(x => x.row.fitid + x.state + (x.register ? x.register.id : '')).sort()) + JSON.stringify(res.register.map(x => x.row.id + x.state).sort());
+  const a = M.compareStatement(Object.freeze(bank.slice()), Object.freeze(reg.slice())), b = M.compareStatement(bank.slice().reverse(), reg.slice().reverse());
+  assert(key(a) === key(b), 'order independence');
+});
+test('R4-B1: current posted balance check — AGREES / DIFFERS against the Register CLEARED balance as of the file date, only when that date is today', function () {
+  const M = r4Load();
+  const rows = [r4R('2030-10-01', -1000, { cleared: true }), r4R('2030-10-05', -500, { cleared: true }), r4R('2030-10-06', -300, { cleared: false }), r4R('2030-10-11', -200, { cleared: true })];
+  const ok = M.postedBalanceCheck({ cents: 8500, asOf: '2030-10-10', asOfRaw: '20301010120000' }, rows, 10000, '2030-10-10');
+  assert(ok.state === 'AGREES' && ok.registerCents === 8500, 'start 100.00 − 10.00 − 5.00 (cleared, ≤ as-of) = 85.00: ' + JSON.stringify(ok));
+  const d = M.postedBalanceCheck({ cents: 8000, asOf: '2030-10-10' }, rows, 10000, '2030-10-10');
+  assert(d.state === 'DIFFERS' && d.diffCents === -500, 'differs by −5.00: ' + JSON.stringify(d));
+});
+test('R4-B2: the balance check is UNAVAILABLE without an authoritative, compatible balance — never synthesized', function () {
+  const M = r4Load();
+  const rows = [r4R('2030-10-01', -1000, { cleared: true })];
+  [[null, 10000, '2030-10-10', /no posted balance/i], [{ cents: 1, asOf: '2030-10-09' }, 10000, '2030-10-10', /today|fresh/i], [{ cents: 1, asOf: '2030-10-11' }, 10000, '2030-10-10', /today|future/i],
+   [{ cents: 1, asOf: '2030-10-10' }, null, '2030-10-10', /starting balance/i]].forEach(([bal, start, today, re]) => {
+    const r = M.postedBalanceCheck(bal, rows, start, today);
+    assert(r.state === 'UNAVAILABLE' && re.test(r.reason) && r.registerCents === undefined, 'unavailable: ' + JSON.stringify(r));
+  });
+});
+test('R4-N1: account binding fails closed — type mismatch, a different remembered last-4, or a last-4 remembered for another account refuse; otherwise an explicit confirmation is required', function () {
+  const M = r4Load();
+  const gold = { key: 'amex_gold', label: 'AMEX Gold', account_type: 'credit_card' }, chk = { key: 'truist_checking', label: 'Truist Checking', account_type: 'checking' };
+  const cc = { kind: 'credit_card', last4: '2222' };
+  let d = M.bindingDecision(cc, chk, {});
+  assert(d.decision === 'refuse' && /credit card/i.test(d.message), 'a card file can never be compared with checking: ' + JSON.stringify(d));
+  d = M.bindingDecision(cc, gold, {});
+  assert(d.decision === 'confirm' && /•2222/.test(d.message) && /AMEX Gold/.test(d.message), 'first use asks: ' + d.message);
+  d = M.bindingDecision(cc, gold, { amex_gold: '2222' });
+  assert(d.decision === 'confirm' && /•2222/.test(d.message), 'remembered match still asks to confirm: ' + d.message);
+  d = M.bindingDecision(cc, gold, { amex_gold: '9999' });
+  assert(d.decision === 'refuse' && /•9999/.test(d.message) && /•2222/.test(d.message), 'different remembered card refuses: ' + d.message);
+  d = M.bindingDecision(cc, gold, { amex_platinum: '2222' });
+  assert(d.decision === 'refuse' && /amex_platinum|AMEX Platinum|another account/i.test(d.message), 'last-4 belongs to another account: ' + d.message);
+  d = M.bindingDecision({ kind: 'checking', last4: '1111' }, gold, {});
+  assert(d.decision === 'refuse', 'checking file vs card account refuses');
+  d = M.bindingDecision({ kind: 'savings', last4: '1111' }, chk, {});
+  assert(d.decision === 'refuse', 'savings file vs checking refuses');
+});
+test('R4-W1: limits — one ES module, no data access or writes, no globals; the tab is "Statement Compare"; the legacy check is retired; renderBudget changed in help text only', function () {
+  const src = r4Src(), code = src.replace(/\/\/[^\n]*/g, '');
+  assert(/<script type="module" src="js\/r-lite\.js"><\/script>/.test(html), 'mounted as an ES module');
+  assert(!/\bfetch\s*\(|XMLHttpRequest|rest\/v1|supabase/i.test(code), 'no data access: reads only the Register state already loaded');
+  assert(!/_saveTxForm|_setTxFormField|_confirmTxDelete|_toggleTxCleared|method\s*:/i.test(code), 'no Register writes of any kind');
+  assert(!/window\.[\w$]+\s*=[^=]/.test(code) && !/globalThis\./.test(code), 'no new globals');
+  assert(!/console\.(log|info|debug|warn|error)\(/.test(code), 'no transaction contents logged');
+  assert(!/\bReconciled\b|\bcertified\b|\breconciled\b/.test(code), 'never claims a result is reconciled or certified');
+  const tabs = r1Fn('renderTransactions');
+  assert(/label:'Statement Compare'/.test(tabs) && !/label:'Reconciliation'/.test(tabs), 'tab name');
+  const recon = r1Fn('_renderBudgetRecon');
+  assert(!/Reconciled/.test(recon.replace(/doesn.t reconcile|not reconcil/gi, '')) && /Statement Compare/.test(recon) && !/legSrc\.rows\.forEach/.test(recon), 'legacy panel retired: no totals, no "Reconciled"');
+  const rb = r1Fn('renderBudget');
+  assert(!/In the <strong>Statement check<\/strong> panel/.test(rb) && !/you are reconciled/.test(rb) && /Statement Compare/.test(rb), 'help text corrected');
 });
 
 (async () => {
