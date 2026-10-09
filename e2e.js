@@ -5819,6 +5819,109 @@ async function clickNav(page, id) {
     });
   }
 
+  // ── Register follow-ups (2026-10-09): payee autocomplete — offered from history, changed only on explicit acceptance ──
+  const R3_HIST = [r2Tx('u1', 'Uber', 'gifts', '2026-09-20', -10), r2Tx('u2', 'UBER', 'gifts', '2026-09-27', -11), r2Tx('u3', 'Uber', 'gifts', '2026-10-02', -12),
+    r2Tx('m1', 'Marriott', 'home.garden', '2026-08-01', -200), r2Tx('m2', 'Marshalls', 'gifts', '2026-08-02', -30), r2Tx('m3', "Marco's Pizza", 'food.restaurants', '2026-08-03', -25),
+    r2Tx('f1', 'Fresh Market', 'food.groceries', '2026-09-28', -18), r2Tx('t1', 'Target Optical', 'gifts', '2026-07-01', -90),
+    r2Tx('c1', 'Costco', 'food.groceries', '2026-10-07', -84.22)];
+  const r3Ac = page => page.evaluate(() => {
+    const l = document.getElementById('r2-payee-list'), pay = document.querySelector('#transactions-content input[placeholder="Required"]');
+    return { open: !!(l && l.style.display !== 'none' && l.querySelector('[role="option"]')), items: l ? [...l.querySelectorAll('[role="option"]')].map(o => o.getAttribute('data-payee')) : [],
+      active: l ? (l.querySelector('[role="option"][aria-selected="true"]') || {}).getAttribute?.('data-payee') || null : null,
+      payee: pay && pay.value, fdPayee: _txFormData.payee, cat: _txFormData.category_key, focus: document.activeElement && (document.activeElement.getAttribute('placeholder') || document.activeElement.id),
+      suggest: (document.getElementById('r2-suggest') || {}).textContent || null };
+  });
+  async function r3Type(page, text) { await page.click(R2_PAYEE); await page.keyboard.type(text, { delay: 20 }); }
+  for (const key of ['Tab', 'Enter']) {
+    await test('R3-E2 (' + key + '): "ube" offers Uber highlighted; ' + key + ' accepts it (payee only); the category suggestion then appears separately and nothing else changes until Use', async () => {
+      const { page, context, posts } = await r2Open({ txCache: R3_HIST.filter(t => t.id !== 'm2'), formData: { outflow: '12.00' } });
+      await r3Type(page, 'ube');
+      let a = await r3Ac(page);
+      assert(a.open && a.items[0] === 'Uber' && a.active === 'Uber' && a.payee === 'ube' && a.fdPayee === 'ube', 'offered, highlighted, not yet applied: ' + JSON.stringify(a));
+      await page.keyboard.press(key);
+      a = await r3Ac(page);
+      assert(a.payee === 'Uber' && a.fdPayee === 'Uber' && !a.open, key + ' accepted the payee: ' + JSON.stringify(a));
+      if (key === 'Tab') assert(a.focus === 'Optional', 'Tab also moves on to Memo as usual: ' + a.focus);
+      assert(a.cat === '' && /Suggested category: Gifts — used for 3 of the last 3 “Uber” entries/.test(a.suggest || ''), 'category untouched; separate suggestion shown: ' + JSON.stringify(a));
+      assert(posts.length === 0, 'accepting a payee never saves');
+      await context.close();
+    });
+  }
+  await test('R3-E3: several candidates ("mar") are listed with none chosen; Tab/Enter leave her text; a click (or ↓ then Enter) picks the one she means', async () => {
+    const { page, context } = await r2Open({ txCache: R3_HIST });
+    await r3Type(page, 'mar');
+    let a = await r3Ac(page);
+    assert(a.open && a.items.length === 4 && a.items.indexOf('Marshalls') >= 0 && a.items[3] === 'Fresh Market' && a.active === null, 'choices shown, none preselected: ' + JSON.stringify(a));
+    await page.keyboard.press('Enter');
+    a = await r3Ac(page);
+    assert(a.payee === 'mar' && a.fdPayee === 'mar', 'Enter with nothing highlighted changes nothing: ' + JSON.stringify(a));
+    await page.click('#r2-payee-list [data-payee="Marshalls"]');
+    a = await r3Ac(page);
+    assert(a.payee === 'Marshalls' && a.fdPayee === 'Marshalls' && !a.open && a.cat === '', 'click accepted Marshalls only: ' + JSON.stringify(a));
+    await page.fill(R2_PAYEE, ''); await r3Type(page, 'mar');
+    await page.keyboard.press('ArrowDown'); await page.keyboard.press('Enter');
+    a = await r3Ac(page);
+    assert(a.payee === "Marco's Pizza" && a.fdPayee === "Marco's Pizza" && !a.open, '↓ then Enter accepts the first listed (most recent of equal counts): ' + JSON.stringify(a));
+    await context.close();
+  });
+  await test('R3-E4: Escape dismisses without changing her text; continuing to type keeps her text; leaving the field without accepting keeps her text', async () => {
+    const { page, context } = await r2Open({ txCache: R3_HIST.filter(t => t.id !== 'm2') });
+    await r3Type(page, 'ube');
+    await page.keyboard.press('Escape');
+    let a = await r3Ac(page);
+    assert(!a.open && a.payee === 'ube', 'Escape dismissed, text kept: ' + JSON.stringify(a));
+    await page.keyboard.press('Tab');
+    a = await r3Ac(page);
+    assert(a.payee === 'ube' && a.focus === 'Optional', 'after Escape, Tab just moves on: ' + JSON.stringify(a));
+    await page.fill(R2_PAYEE, ''); await r3Type(page, 'uberx');
+    a = await r3Ac(page);
+    assert(a.payee === 'uberx' && a.fdPayee === 'uberx' && !a.open, 'typing on wins (no match left): ' + JSON.stringify(a));
+    await page.fill(R2_PAYEE, ''); await r3Type(page, 'ube');
+    await page.click('#transactions-content input[placeholder="Optional"]');
+    a = await r3Ac(page);
+    assert(a.payee === 'ube' && a.fdPayee === 'ube' && !a.open, 'blur without accepting substitutes nothing: ' + JSON.stringify(a));
+    await context.close();
+  });
+  await test('R3-E5: adversarial — "Target" typed in full while history only has "Target Optical": offered but not highlighted, Tab keeps "Target"', async () => {
+    const { page, context } = await r2Open({ txCache: R3_HIST });
+    await r3Type(page, 'Target');
+    let a = await r3Ac(page);
+    assert(a.open && JSON.stringify(a.items) === JSON.stringify(['Target Optical']) && a.active === null, 'offered, not preselected: ' + JSON.stringify(a));
+    await page.keyboard.press('Tab');
+    a = await r3Ac(page);
+    assert(a.payee === 'Target' && a.fdPayee === 'Target' && a.focus === 'Optional', 'her payee stands: ' + JSON.stringify(a));
+    await context.close();
+  });
+  await test('R3-E6: incomplete Register history → no autocomplete (the "history isn\'t loaded" note shows); exact typing still works', async () => {
+    const { page, context } = await r2Open({ txCache: R3_HIST });
+    await page.evaluate(() => { _txLedgerLoadStatus = 'failed'; _txLedgerCache = null; renderApp(); });
+    await r3Type(page, 'ube');
+    const a = await r3Ac(page);
+    const note = await page.evaluate(() => !!document.getElementById('r2-history-unavailable'));
+    assert(!a.open && a.payee === 'ube' && note, 'fails safe: ' + JSON.stringify(a));
+    await context.close();
+  });
+  await test('R3-E7: no regression — accept Uber, Use the category, Save & Add Another saves once with "Uber"; the next form has a blank payee and no list', async () => {
+    const { page, context, posts } = await r2Open({ txCache: R3_HIST.filter(t => t.id !== 'm2'), formData: { transaction_date: '2026-10-08' } });
+    await r3Type(page, 'ube'); await page.keyboard.press('Enter');
+    await page.click('#r2-use-suggestion');
+    await page.fill('#tx-form-outflow', '14.00');
+    await page.click('#r2-save-add');
+    await page.waitForFunction(() => _txFormMode === 'add' && !!document.getElementById('r2-date-kept'), null, { timeout: 4000 });
+    const a = await r3Ac(page);
+    assert(posts.length === 1 && posts[0].payee === 'Uber' && posts[0].category_key === 'gifts' && posts[0].amount === -14, 'one save: ' + JSON.stringify(posts));
+    assert(a.payee === '' && !a.open, 'next form clean: ' + JSON.stringify(a));
+    await context.close();
+  });
+  await test('R3-E8: no regression — a payee accepted from autocomplete still gets the duplicate warning before saving', async () => {
+    const { page, context, posts } = await r2Open({ txCache: R3_HIST, formData: { transaction_date: '2026-10-07', category_key: 'food.groceries', outflow: '84.22' } });
+    await r3Type(page, 'cost'); await page.keyboard.press('Enter');
+    await page.click('button[onclick="_saveTxForm()"]');
+    await page.waitForSelector('#r2-dup');
+    assert(posts.length === 0 && /Possible duplicate: Costco · \$84\.22/.test(await page.textContent('#r2-dup')), 'warned, nothing saved');
+    await context.close();
+  });
+
   // Empty smoke-selection guard (5G-QA-1 hardening): if smoke mode matched zero
   // tests, that is a configuration failure, not a pass. With the lazy browser
   // above, reaching here in the empty case means no Chromium was launched and no

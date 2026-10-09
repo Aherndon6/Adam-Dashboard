@@ -16901,6 +16901,83 @@ testAsync('R3-D2: Save with a blank date → the normal "Date is required." mess
   });
 });
 
+// R3-P: payee autocomplete (owner correction 2026-10-09): the module offers historical payees; nothing changes until
+// the person accepts one (Tab/Enter on the highlighted item, or a click). payeeCompletions() is the pure rule.
+function r3Load() {
+  const src = r2Src();
+  const body = src.replace(/^export function /gm, 'function ').replace(/^export const /gm, 'const ');
+  return new Function('window', 'document', body + '\n;return { payeeCompletions, normalizePayee, suggestCategory, PAYEE_MIN_CHARS, PAYEE_MAX_SHOWN };')(undefined, undefined);
+}
+const r3H = [r2Row('Uber', 'trip', '2026-09-20', -10), r2Row('UBER', 'trip', '2026-09-27', -11), r2Row('uber', 'trip', '2026-10-02', -12),
+  r2Row('Uber Eats', 'dining', '2026-09-01', -20), r2Row('Marriott', 'travel', '2026-08-01', -200), r2Row('Marshalls', 'shop', '2026-08-02', -30),
+  r2Row('Marshalls', 'shop', '2026-08-09', -31), r2Row("Marco's Pizza", 'dining', '2026-08-03', -25), r2Row('Marcos Pizza', 'dining', '2026-09-03', -26),
+  r2Row('Fresh Market', 'groc', '2026-09-28', -18), r2Row('Publix #55', 'groc', '2026-09-27', -48), r2Row('PUBLIX', 'groc', '2026-10-04', -73),
+  r2Row('Target Optical', 'health', '2026-07-01', -90), r2Row('Rube Goldberg Toys', 'gifts', '2026-06-01', -15)];
+const r3Names = r => r.candidates.map(c => c.payee);
+test('R3-P1: "ube" offers Uber (prefix of the whole name) highlighted, with the interior match after it; capitalization never matters', function () {
+  const M = r3Load();
+  const r = M.payeeCompletions('ube', r3H);
+  assert(JSON.stringify(r3Names(r)) === JSON.stringify(['uber', 'Uber Eats', 'Rube Goldberg Toys']), 'candidates: ' + JSON.stringify(r3Names(r)));
+  assert(r.defaultIndex === -1, 'two names start with "ube" (Uber, Uber Eats) → nothing pre-highlighted; she chooses');
+  const one = M.payeeCompletions('UBE', r3H.filter(x => x.payee !== 'Uber Eats'));
+  assert(one.candidates[0].payee === 'uber' && one.defaultIndex === 0, 'only Uber starts with "ube" → highlighted (Tab/Enter accept it): ' + JSON.stringify(one));
+  assert(one.candidates[0].count === 3, 'Uber/UBER/uber are one payee (3 entries); shown in its most recent spelling');
+});
+test('R3-P2: exact name typed → listed first as exact, never pre-highlighted (Tab/Enter leave her text alone); the exact category rule is unchanged', function () {
+  const M = r3Load();
+  const r = M.payeeCompletions('Uber', r3H);
+  assert(r.candidates[0].cls === 'exact' && r.candidates[0].payee === 'uber' && r.candidates[1].payee === 'Uber Eats', JSON.stringify(r.candidates));
+  assert(r.defaultIndex === -1, 'an exact name is never replaced by Tab/Enter');
+  const s = M.suggestCategory('Uber', r3H, () => true);
+  assert(s && s.categoryKey === 'trip' && s.count === 3 && s.of === 3, 'R2 exact rule on Uber unchanged: ' + JSON.stringify(s));
+});
+test('R3-P3: prefix, interior substring and multiple candidates — exact, then prefix, then substring; within a class most entries, then most recent', function () {
+  const M = r3Load();
+  assert(JSON.stringify(r3Names(M.payeeCompletions('pub', r3H))) === JSON.stringify(['PUBLIX']), 'prefix: Publix (store-number variants merged)');
+  const mar = M.payeeCompletions('mar', r3H);
+  assert(JSON.stringify(r3Names(mar)) === JSON.stringify(['Marcos Pizza', 'Marshalls', 'Marriott', 'Fresh Market']), 'mar → ' + JSON.stringify(r3Names(mar)));
+  assert(mar.candidates.map(c => c.cls).join() === 'prefix,prefix,prefix,substring' && mar.defaultIndex === -1, 'several reasonable candidates → shown, none chosen');
+  const ber = M.payeeCompletions('ber', r3H);
+  assert(r3Names(ber).indexOf('uber') >= 0 && ber.defaultIndex === -1, 'interior "ber" offers Uber but never pre-highlights a mid-word match');
+  const shuffled = M.payeeCompletions('mar', r3H.slice().reverse());
+  assert(JSON.stringify(r3Names(shuffled)) === JSON.stringify(r3Names(mar)), 'input order does not change the order shown');
+});
+test('R3-P4: punctuation, apostrophes and store numbers fold into one payee; the most recent spelling is the one offered', function () {
+  const M = r3Load();
+  const r = M.payeeCompletions('marco', r3H);
+  assert(r.candidates.length === 1 && r.candidates[0].payee === 'Marcos Pizza' && r.candidates[0].count === 2, "Marco's Pizza / Marcos Pizza are one payee: " + JSON.stringify(r.candidates));
+  const p = M.payeeCompletions('publi', r3H);
+  assert(p.candidates.length === 1 && p.candidates[0].payee === 'PUBLIX' && p.candidates[0].count === 2 && p.defaultIndex === 0, 'Publix #55 / PUBLIX merged, newest spelling: ' + JSON.stringify(p));
+});
+test('R3-P5: short or empty input offers nothing; no history → nothing; a long common fragment is capped with a "more" count', function () {
+  const M = r3Load();
+  assert(M.PAYEE_MIN_CHARS === 3 && M.PAYEE_MAX_SHOWN === 6, 'documented constants');
+  ['', ' ', 'u', 'ub', '#1', "'a"].forEach(q => assert(M.payeeCompletions(q, r3H).candidates.length === 0, JSON.stringify(q) + ' must offer nothing'));
+  assert(M.payeeCompletions('zzz', r3H).candidates.length === 0 && M.payeeCompletions('uber', null).candidates.length === 0 && M.payeeCompletions('uber', []).candidates.length === 0, 'no match / no history');
+  const many = []; for (let i = 0; i < 9; i++) many.push(r2Row('Shop ' + 'abcdefghi'[i], 'x', '2026-09-0' + (i + 1), -1));
+  const r = M.payeeCompletions('sho', many);
+  assert(r.candidates.length === 6 && r.more === 3, 'capped at 6 with "3 more": ' + JSON.stringify({ n: r.candidates.length, more: r.more }));
+});
+test('R3-P6: adversarial — a complete word she typed is never pre-highlighted for replacement ("Target" vs history "Target Optical")', function () {
+  const M = r3Load();
+  const t = M.payeeCompletions('Target', r3H);
+  assert(t.candidates.length === 1 && t.candidates[0].payee === 'Target Optical' && t.defaultIndex === -1, 'offered but not pre-highlighted: ' + JSON.stringify(t));
+  assert(M.payeeCompletions('Targ', r3H).defaultIndex === 0, 'mid-word "Targ" may pre-highlight the single prefix match');
+  assert(M.payeeCompletions('Target Opt', r3H).defaultIndex === 0, 'mid-word in the second word');
+  const sim = [r2Row('Fresh Market', 'groc', '2026-09-01', -1), r2Row('Fresh Thyme', 'groc', '2026-09-02', -1)];
+  assert(JSON.stringify(r3Names(M.payeeCompletions('fresh', sim))) === JSON.stringify(['Fresh Thyme', 'Fresh Market']) && M.payeeCompletions('fresh', sim).defaultIndex === -1, 'similar but distinct merchants are separate choices');
+});
+test('R3-P7: the autocomplete rule only reads — rows are never changed; the category rule thresholds are untouched', function () {
+  const M = r3Load();
+  const frozen = Object.freeze(r3H.map(r => Object.freeze(Object.assign({}, r))));
+  M.payeeCompletions('mar', frozen); M.payeeCompletions('ube', frozen);
+  const src = r2Src();
+  assert(/export const SUGGEST_MIN_ROWS = 2;/.test(src) && /export const SUGGEST_SHARE = 0\.75;/.test(src) && /export const SUGGEST_WINDOW = 10;/.test(src), 'R2 category thresholds unchanged');
+  const code = src.replace(/\/\/[^\n]*/g, '');
+  assert((code.match(/_setTxFormField\('payee'/g) || []).length === 1, 'the payee changes in exactly one place: the accept action');
+  assert((code.match(/_setTxFormField\('category_key'/g) || []).length === 2, 'category still changes only through search-result click or Use');
+});
+
 (async () => {
 for (const t of _asyncTests) {
   try { await t.fn(); pass++; process.stdout.write('  ✓ ' + t.name + '\n'); }

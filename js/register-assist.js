@@ -82,6 +82,36 @@ export function findPossibleDuplicates(c, rows) {
     .sort((a, b) => dist(a) - dist(b) || recentFirst(a, b));
 }
 
+// Payee autocomplete (owner, 2026-10-09): historical payees for what has been typed — offered, never applied.
+// Same normalization as above; one candidate per normalized payee, shown in its most recent spelling.
+// Classes: exact, then prefix of the whole name, then substring; within a class most entries, then most recent.
+// defaultIndex (what Tab/Enter accept without arrowing) is 0 only when exactly ONE name starts with the typed text,
+// none equals it, and the typing stops mid-word ("ube"→Uber yes; "Target" vs "Target Optical" no). Otherwise -1.
+export const PAYEE_MIN_CHARS = 3;
+export const PAYEE_MAX_SHOWN = 6;
+export function payeeCompletions(query, rows) {
+  const q = normalizePayee(query), none = { candidates: [], more: 0, defaultIndex: -1 };
+  if (q.replace(/ /g, '').length < PAYEE_MIN_CHARS || !Array.isArray(rows)) return none;
+  const groups = new Map();
+  for (const r of rows) {
+    if (!r || typeof r.payee !== 'string') continue;
+    const key = normalizePayee(r.payee);
+    if (!key) continue;
+    const cls = key === q ? 'exact' : key.startsWith(q) ? 'prefix' : key.indexOf(q) >= 0 ? 'substring' : null;
+    if (!cls) continue;
+    const g = groups.get(key);
+    if (!g) groups.set(key, { key, cls, count: 1, latest: r });
+    else { g.count++; if (recentFirst(r, g.latest) < 0) g.latest = r; }
+  }
+  const rank = { exact: 0, prefix: 1, substring: 2 };
+  const all = [...groups.values()]
+    .sort((a, b) => rank[a.cls] - rank[b.cls] || b.count - a.count || recentFirst(a.latest, b.latest) || (a.key < b.key ? -1 : a.key > b.key ? 1 : 0))
+    .map(g => ({ key: g.key, payee: g.latest.payee.trim(), count: g.count, cls: g.cls }));
+  const prefix = all.filter(c => c.cls === 'prefix');
+  const defaultIndex = !all.some(c => c.cls === 'exact') && prefix.length === 1 && prefix[0].key.charAt(q.length) !== ' ' ? 0 : -1;
+  return { candidates: all.slice(0, PAYEE_MAX_SHOWN), more: Math.max(0, all.length - PAYEE_MAX_SHOWN), defaultIndex };
+}
+
 // The next entry after a successful Save & Add Another: the fresh Add form, with the date just used kept
 // (when valid). Payee, memo, amounts and category clear; Cleared returns to unchecked.
 export function nextEntryFormData(saved, fresh) {
@@ -160,7 +190,8 @@ let cancelled = false;     // the person pressed Cancel while it was in flight �
 let carriedDate = null;    // the date kept from the previous entry (shown as such)
 let pending = null;        // {sig, mode, matches} — a possible-duplicate warning awaiting a decision
 let acknowledged = null;   // signature the person chose to "Save anyway"
-let editDuringSave = false; // an edit form was opened while a save started here was in flight → do not reopen
+let editDuringSave = false;
+let ac = null;              // payee autocomplete on screen: {items, more, index} — nothing is applied until accepted // an edit form was opened while a save started here was in flight → do not reopen
 
 function el(tag, attrs, text) {
   const n = document.createElement(tag);
@@ -328,6 +359,72 @@ function renderSaveAnother(p) {
     + 'background:var(--surface);color:' + (off ? 'var(--muted2)' : 'var(--blue)') + ';cursor:' + (off ? 'default' : 'pointer'));
 }
 
+// ── Payee autocomplete (view). The list sits under the Payee field; nothing changes until the person accepts an
+// item (Tab/Enter on the highlighted one, or a click). Escape dismisses; typing on or leaving the field keeps her text.
+function payeeInput(root) { return root.querySelector(PAYEE); }
+function closeAutocomplete() {
+  ac = null;
+  const l = document.getElementById('r2-payee-list');
+  if (l) l.remove();
+  const root = document.getElementById(ROOT_ID), inp = root && payeeInput(root);
+  if (inp) { inp.setAttribute('aria-expanded', 'false'); inp.removeAttribute('aria-activedescendant'); }
+}
+function renderAutocomplete(inp) {
+  let l = document.getElementById('r2-payee-list');
+  if (!ac || !ac.items.length) { closeAutocomplete(); return; }
+  if (!l) {
+    l = el('div', { id: 'r2-payee-list', role: 'listbox', 'aria-label': 'Payees used in this account',
+      style: 'position:absolute;left:0;right:0;top:100%;z-index:30;margin-top:2px;min-width:220px;background:var(--surface);border:1px solid var(--line);border-radius:6px;box-shadow:0 6px 16px rgba(0,0,0,.12);max-height:260px;overflow:auto' });
+    inp.parentElement.style.position = 'relative';
+    inp.parentElement.appendChild(l);
+  }
+  l.textContent = '';
+  l.appendChild(el('div', { style: 'padding:5px 10px 3px;font-size:10.5px;color:var(--muted);text-transform:uppercase;letter-spacing:.04em' },
+    'Payees in this account' + (ac.index >= 0 ? ' · Tab or Enter to use' : ' · click or ↓ to choose')));
+  ac.items.forEach((c, i) => {
+    const o = el('div', { role: 'option', id: 'r2-payee-opt-' + i, 'data-payee': c.payee, 'aria-selected': i === ac.index ? 'true' : 'false',
+      style: 'padding:6px 10px;font-size:12px;cursor:pointer;color:var(--text);' + (i === ac.index ? 'background:var(--blueSoft);' : '') }, c.payee);
+    o.appendChild(el('span', { style: 'color:var(--muted);margin-left:6px' }, '· ' + c.count + (c.count === 1 ? ' entry' : ' entries')));
+    o.addEventListener('mousedown', ev => ev.preventDefault());   // keep the cursor in Payee until the click lands
+    o.addEventListener('click', () => acceptPayee(c.payee));
+    l.appendChild(o);
+  });
+  if (ac.more) l.appendChild(el('div', { style: 'padding:5px 10px;font-size:11px;color:var(--muted)' }, ac.more + ' more — keep typing'));
+  inp.setAttribute('aria-expanded', 'true');
+  if (ac.index >= 0) inp.setAttribute('aria-activedescendant', 'r2-payee-opt-' + ac.index); else inp.removeAttribute('aria-activedescendant');
+}
+function updateAutocomplete(inp) {
+  const rows = ledgerRows();
+  const r = rows ? payeeCompletions(inp.value, rows) : { candidates: [] };
+  ac = r.candidates.length ? { items: r.candidates, more: r.more, index: r.defaultIndex } : null;
+  renderAutocomplete(inp);
+}
+// The person's explicit acceptance: only the payee changes (the category suggestion then re-evaluates separately).
+function acceptPayee(name) {
+  const root = document.getElementById(ROOT_ID), inp = root && payeeInput(root);
+  closeAutocomplete();
+  if (!inp || formMode() !== 'add') return;
+  inp.value = name;
+  _setTxFormField('payee', name);
+  const p = formParts();
+  if (p) { if (pending) { const c = proposedEntry(); if (!c || signature(c) !== pending.sig) { pending = null; renderWarning(p); } } renderAssist(p); }
+}
+function onPayeeKey(ev, inp) {
+  if (ev.key === 'Escape') { if (ac) { ev.preventDefault(); closeAutocomplete(); } return; }
+  if (ev.key === 'ArrowDown' || ev.key === 'ArrowUp') {
+    if (!ac) { updateAutocomplete(inp); if (!ac) return; }
+    ev.preventDefault();
+    const n = ac.items.length;
+    ac.index = ev.key === 'ArrowDown' ? Math.min(ac.index + 1, n - 1) : Math.max(ac.index - 1, -1);
+    renderAutocomplete(inp);
+    return;
+  }
+  if ((ev.key === 'Enter' || (ev.key === 'Tab' && !ev.shiftKey)) && ac && ac.index >= 0) {
+    if (ev.key === 'Enter') ev.preventDefault();   // Tab still moves on to the next field as usual
+    acceptPayee(ac.items[ac.index].payee);
+  }
+}
+
 function augment() {
   const mode = formMode();
   if (busy && mode === 'edit') editDuringSave = true;
@@ -339,6 +436,7 @@ function augment() {
   const dateInput = p.root.querySelector(DATE);
   if (dateInput && typeof _txFormData !== 'undefined' && _txFormData && String(_txFormData.transaction_date || '') === '' && dateInput.value !== '') dateInput.value = '';
   enhanceCategory(p);
+  ac = null;   // a re-render replaced the Payee field and its list
   if (mode !== 'add') return;
   renderSaveAnother(p);
   renderAssist(p);
@@ -408,7 +506,14 @@ if (typeof document !== 'undefined' && typeof window !== 'undefined') {
       if (pending) { const c = proposedEntry(); if (!c || signature(c) !== pending.sig) { pending = null; renderWarning(p); } }
       if (refreshLine) renderAssist(p);
     };
-    root.addEventListener('input', ev => { if (ev.target && ev.target.id !== 'r2-cat-search') onEdit(!!(ev.target.matches && ev.target.matches(PAYEE))); });
+    root.addEventListener('input', ev => {
+      if (!ev.target || ev.target.id === 'r2-cat-search') return;
+      const isPayee = !!(ev.target.matches && ev.target.matches(PAYEE));
+      onEdit(isPayee);
+      if (isPayee && formMode() === 'add') updateAutocomplete(ev.target);
+    });
+    root.addEventListener('keydown', ev => { if (ev.target && ev.target.matches && ev.target.matches(PAYEE) && formMode() === 'add') onPayeeKey(ev, ev.target); });
+    root.addEventListener('focusout', ev => { if (ev.target && ev.target.matches && ev.target.matches(PAYEE)) closeAutocomplete(); });
     root.addEventListener('change', ev => onEdit(!!(ev.target && ev.target.matches && ev.target.matches(DATE))));
     augment();
   }
