@@ -145,6 +145,9 @@ if (!_cliProdVerify && _confirm !== null) {
 }
 const PROD_VERIFY_MODE = _cliProdVerify;
 const SMOKE_MODE = !PROD_VERIFY_MODE && (_cliSmoke || _envMode === 'smoke');
+// Test-tooling filter (Release 2, for focused mutation runs): HFOS_E2E_GREP=<regex> runs only matching test
+// names in normal mode. Never applies to production verification. Unset = the complete suite.
+const E2E_GREP = (!PROD_VERIFY_MODE && process.env.HFOS_E2E_GREP) ? new RegExp(process.env.HFOS_E2E_GREP) : null;
 
 // Normal (hermetic) mode may only target a local file.
 if (!PROD_VERIFY_MODE && _hfosUrl !== null && !_hfosUrl.startsWith('file://')) {
@@ -426,7 +429,7 @@ function test(name, fn, opts = {}) {
   const tags = opts.tags || [];
   const isProdVerify = tags.includes('prod-verify');
   const selected = PROD_VERIFY_MODE ? isProdVerify
-    : (!isProdVerify && (!SMOKE_MODE || tags.includes('smoke')));
+    : (!isProdVerify && (!SMOKE_MODE || tags.includes('smoke')) && (!E2E_GREP || E2E_GREP.test(name)));
   if (!selected) {
     skipped++;
     if (isProdVerify) skippedProdVerify.push(name);
@@ -590,9 +593,9 @@ async function clickNav(page, id) {
       !e.includes('net::ERR_') &&        // ignore expected Supabase offline (file:// mode)
       !e.includes('Failed to fetch') &&  // same
       !e.includes('status of 4') &&      // ignore Supabase 4xx in file:// mode (CORS/auth expected)
-      // Release 1: ES modules cannot load from file:// (browser rule; AGENTS.md: module code is verified on a
-      // static server). Ignore exactly that one block for the new-version module — no other CORS error.
-      !(e.includes('/js/version-check.js') && e.includes("from origin 'null' has been blocked by CORS policy"))
+      // Release 1/2: ES modules cannot load from file:// (browser rule; AGENTS.md: module code is verified on a
+      // static server). Ignore exactly that block for the two mounted modules — no other CORS error.
+      !((e.includes('/js/version-check.js') || e.includes('/js/register-assist.js')) && e.includes("from origin 'null' has been blocked by CORS policy"))
     );
     assert(relevant.length === 0, 'Console errors: ' + relevant.join(' | '));
     await context.close();
@@ -5509,6 +5512,229 @@ async function clickNav(page, id) {
       return { rerendered: !!(el && !el.__r1Original), value: el && el.value, filter: _txFilterDateFrom };
     });
     assert(after.rerendered && after.value === '2026-10-05' && after.filter === '2026-10-05', 'Enter applies the typed filter: ' + JSON.stringify(after));
+    await context.close();
+  });
+
+  // ── Release 2 (2026-10-09): Register entry assist (js/register-assist.js) in real Chromium ──
+  // file:// cannot load module files, so each test injects the module source inline (same code, same page).
+  console.log('\n── Section R2: Register entry assist ──');
+  const R2_SRC = require('fs').readFileSync(process.env.HFOS_RA || require('path').join(__dirname, 'js', 'register-assist.js'), 'utf8');   // HFOS_RA: mutation runs
+  const R2_CATS = [
+    { key: 'food', label: 'Food & Dining', parent_key: null, is_leaf: false, lifecycle_status: 'active', behavior_class: null, budget_treatment: null },
+    { key: 'food.groceries', label: 'Groceries', parent_key: 'food', is_leaf: true, lifecycle_status: 'active', behavior_class: 'discretionary', budget_treatment: 'expense' },
+    { key: 'food.restaurants', label: 'Restaurants', parent_key: 'food', is_leaf: true, lifecycle_status: 'active', behavior_class: 'discretionary', budget_treatment: 'expense' },
+    { key: 'home', label: 'Home', parent_key: null, is_leaf: false, lifecycle_status: 'active', behavior_class: null, budget_treatment: null },
+    { key: 'home.garden', label: 'Garden', parent_key: 'home', is_leaf: true, lifecycle_status: 'active', behavior_class: 'discretionary', budget_treatment: 'expense' },
+    { key: 'gifts', label: 'Gifts', parent_key: null, is_leaf: true, lifecycle_status: 'active', behavior_class: 'discretionary', budget_treatment: 'expense' },
+    { key: 'food.old', label: 'Old Groceries', parent_key: 'food', is_leaf: true, lifecycle_status: 'archived', behavior_class: 'discretionary', budget_treatment: 'expense' }
+  ];
+  const r2Tx = (id, payee, cat, date, amount) => ({ id: 'r2e-' + id, account_key: 'truist_checking', transaction_date: date, payee, memo: null, amount,
+    category_key: cat, cleared: true, source: 'manual', created_at: date + 'T12:00:00Z', updated_at: date + 'T12:00:00Z' });
+  const R2_PAYEE = 'input[placeholder="Required"]';
+  // Owns every write: POST /transactions recorded (optionally delayed or failed); every read answered empty.
+  async function r2Open(opts) {
+    const { page, context } = await openApp(browser);
+    const posts = [], patches = [];
+    await page.route('**/rest/v1/transactions**', async route => {
+      const m = route.request().method();
+      if (m === 'POST') {
+        posts.push(JSON.parse(route.request().postData() || '{}'));
+        if (opts.postDelay) await new Promise(r => setTimeout(r, opts.postDelay));
+        return route.fulfill({ status: opts.postStatus || 201, contentType: 'application/json', body: opts.postStatus ? '{"message":"boom"}' : '[]' });
+      }
+      if (m === 'PATCH') { patches.push(JSON.parse(route.request().postData() || '{}')); return route.fulfill({ status: 204, body: '' }); }
+      return route.fulfill({ status: 200, contentType: 'application/json', body: '[]' });
+    });
+    await routeCategoryAuthority(page, R2_CATS);
+    await page.addScriptTag({ content: R2_SRC, type: 'module' });
+    await page.waitForFunction(() => document.documentElement.getAttribute('data-hfos-register-assist') === 'on');
+    await setupRegister(page, { categories: R2_CATS, txCache: opts.txCache || [], formMode: opts.formMode || 'add', editId: opts.editId || null,
+      formData: Object.assign({ transaction_date: '2026-10-03', payee: '', memo: '', category_key: '', outflow: '', inflow: '', cleared: false }, opts.formData || {}) });
+    if (opts.formMode !== 'edit') await page.waitForSelector('#r2-save-add');
+    return { page, context, posts, patches };
+  }
+  const r2State = page => page.evaluate(() => ({ mode: _txFormMode, fd: Object.assign({}, _txFormData), err: _txFormError, acct: _txLedgerAccountKey,
+    dateVal: (document.querySelector('#transactions-content input[type="date"]') || {}).value,
+    payeeVal: (document.querySelector('#transactions-content input[placeholder="Required"]') || {}).value,
+    payeeFocused: document.activeElement === document.querySelector('#transactions-content input[placeholder="Required"]'),
+    kept: !!document.getElementById('r2-date-kept'), dup: (document.getElementById('r2-dup') || {}).textContent || null,
+    suggest: (document.getElementById('r2-suggest') || {}).textContent || null, sel: (document.getElementById('tx-form-category') || {}).value }));
+  const R2_FULL = { transaction_date: '2026-10-03', payee: 'Publix', memo: 'weekly shop', category_key: 'food.groceries', outflow: '42.10', inflow: '', cleared: true };
+
+  await test('R2-E1: Save & Add Another — one POST through the normal save; only then a new form with the same account and date (marked), everything else cleared, cursor in Payee', async () => {
+    const { page, context, posts } = await r2Open({ formData: R2_FULL });
+    await page.click('#r2-save-add');
+    await page.waitForFunction(() => _txFormMode === 'add' && !!document.getElementById('r2-date-kept'), null, { timeout: 4000 });
+    const s = await r2State(page);
+    assert(posts.length === 1, 'exactly one POST, got ' + posts.length);
+    const b = posts[0];
+    assert(b.transaction_date === '2026-10-03' && b.payee === 'Publix' && b.memo === 'weekly shop' && b.amount === -42.1 && b.category_key === 'food.groceries'
+      && b.cleared === true && b.account_key === 'truist_checking' && b.source === 'manual', 'saved exactly as entered: ' + JSON.stringify(b));
+    assert(s.acct === 'truist_checking' && s.fd.transaction_date === '2026-10-03' && s.dateVal === '2026-10-03', 'account and date kept: ' + JSON.stringify(s));
+    assert(s.fd.payee === '' && s.fd.memo === '' && s.fd.outflow === '' && s.fd.inflow === '' && s.fd.category_key === '' && s.fd.cleared === false, 'transaction-specific fields cleared: ' + JSON.stringify(s.fd));
+    assert(s.kept && s.payeeFocused && s.payeeVal === '' && s.sel === '', 'kept-date marker shown, empty Payee focused, no category preselected: ' + JSON.stringify(s));
+    await context.close();
+  });
+
+  await test('R2-E2: a failed save keeps everything entered, shows the normal error, and does not open a next entry', async () => {
+    const { page, context, posts } = await r2Open({ formData: R2_FULL, postStatus: 500 });
+    await page.click('#r2-save-add');
+    await page.waitForFunction(() => !!_txFormError, null, { timeout: 4000 });
+    await page.waitForTimeout(150);
+    const s = await r2State(page);
+    assert(posts.length === 1, 'one attempted POST, got ' + posts.length);
+    assert(s.mode === 'add' && s.err === 'Save failed — please try again.' && !s.kept, 'normal failure state, no next entry: ' + JSON.stringify(s));
+    assert(JSON.stringify(s.fd) === JSON.stringify(R2_FULL) && s.payeeVal === 'Publix', 'entered values preserved: ' + JSON.stringify(s.fd));
+    await context.close();
+  });
+
+  await test('R2-E3: double-clicking Save & Add Another, then clicking Add as well, still saves exactly once', async () => {
+    const { page, context, posts } = await r2Open({ formData: R2_FULL, postDelay: 400 });
+    await page.dblclick('#r2-save-add');
+    await page.evaluate(() => { const b = document.querySelector('button[onclick="_saveTxForm()"]'); if (b) b.click(); const a = document.getElementById('r2-save-add'); if (a) a.click(); });
+    await page.waitForFunction(() => _txFormMode === 'add' && !!document.getElementById('r2-date-kept'), null, { timeout: 5000 });
+    await page.waitForTimeout(500);
+    assert(posts.length === 1, 'exactly one POST under double-click/race, got ' + posts.length);
+    await context.close();
+  });
+
+  await test('R2-E4: likely duplicate → warning names it and nothing is saved; Go back keeps the form; Save anyway saves exactly once', async () => {
+    const { page, context, posts } = await r2Open({ txCache: [r2Tx('1', 'Costco', 'food.groceries', '2026-10-07', -84.22)],
+      formData: { transaction_date: '2026-10-08', payee: 'COSTCO', memo: '', category_key: 'food.groceries', outflow: '84.22', inflow: '', cleared: false } });
+    await page.click('#r2-save-add');
+    await page.waitForSelector('#r2-dup');
+    let s = await r2State(page);
+    assert(/Possible duplicate: Costco · \$84\.22 · Truist Checking · Oct 7/.test(s.dup) && posts.length === 0, 'warning shown, nothing saved: ' + s.dup + ' posts=' + posts.length);
+    await page.click('#r2-dup-back');
+    s = await r2State(page);
+    assert(!s.dup && posts.length === 0 && s.mode === 'add' && s.fd.payee === 'COSTCO' && s.fd.outflow === '84.22', 'Go back: no transaction, form intact: ' + JSON.stringify(s));
+    await page.click('#r2-save-add');
+    await page.waitForSelector('#r2-dup');
+    await page.click('#r2-dup-save');
+    await page.waitForFunction(() => _txFormMode === 'add' && !!document.getElementById('r2-date-kept'), null, { timeout: 4000 });
+    assert(posts.length === 1 && posts[0].payee === 'COSTCO' && posts[0].amount === -84.22, 'Save anyway: exactly one POST of what was entered: ' + JSON.stringify(posts));
+    s = await r2State(page);
+    assert(s.fd.transaction_date === '2026-10-08' && !s.dup, 'next entry opens normally');
+    await context.close();
+  });
+
+  await test('R2-E5: the form\'s own Add button also checks first; a clearly different entry saves straight away with no warning', async () => {
+    const tx = [r2Tx('1', 'Costco', 'food.groceries', '2026-10-07', -84.22)];
+    const a = await r2Open({ txCache: tx, formData: { transaction_date: '2026-10-07', payee: 'Costco', memo: '', category_key: 'food.groceries', outflow: '84.22', inflow: '', cleared: false } });
+    await a.page.click('button[onclick="_saveTxForm()"]');
+    await a.page.waitForSelector('#r2-dup');
+    assert(a.posts.length === 0, 'Add with a likely duplicate: warning first, nothing saved');
+    await a.page.click('#r2-dup-save');
+    await a.page.waitForFunction(() => _txFormMode === null, null, { timeout: 4000 });
+    assert(a.posts.length === 1, 'Save anyway via Add: one POST, form closes as before, got ' + a.posts.length);
+    await a.context.close();
+    const b = await r2Open({ txCache: tx, formData: { transaction_date: '2026-10-07', payee: 'Costco', memo: '', category_key: 'food.groceries', outflow: '84.23', inflow: '', cleared: false } });
+    await b.page.click('button[onclick="_saveTxForm()"]');
+    await b.page.waitForFunction(() => _txFormMode === null, null, { timeout: 4000 });
+    const dupShown = await b.page.evaluate(() => !!document.getElementById('r2-dup'));
+    assert(b.posts.length === 1 && !dupShown, '1 cent different: saved directly, no warning (posts=' + b.posts.length + ')');
+    await b.context.close();
+  });
+
+  await test('R2-E6: after a warning, changing the entry means "Save anyway" re-checks what is now entered (the decision covers only what was shown)', async () => {
+    const { page, context, posts } = await r2Open({ txCache: [r2Tx('1', 'Costco', 'food.groceries', '2026-10-07', -84.22), r2Tx('2', 'Costco', 'food.groceries', '2026-10-06', -90.00)],
+      formData: { transaction_date: '2026-10-07', payee: 'Costco', memo: '', category_key: 'food.groceries', outflow: '84.22', inflow: '', cleared: false } });
+    await page.click('#r2-save-add');
+    await page.waitForSelector('#r2-dup');
+    await page.fill('#tx-form-outflow', '90.00');
+    await page.click('#r2-dup-save');
+    await page.waitForFunction(() => /\$90\.00/.test((document.getElementById('r2-dup') || {}).textContent || ''), null, { timeout: 3000 });
+    assert(posts.length === 0, 'a changed entry that is itself a likely duplicate is warned again, not saved');
+    await context.close();
+  });
+
+  await test('R2-E7: payee history suggests a category but never applies it; Use applies it; the person can still choose another', async () => {
+    const tx = [r2Tx('1', 'Publix', 'food.groceries', '2026-09-01', -10), r2Tx('2', 'PUBLIX #55', 'food.groceries', '2026-09-08', -20), r2Tx('3', 'publix', 'food.groceries', '2026-09-15', -30),
+      r2Tx('4', 'Kroger', 'food.groceries', '2026-09-16', -5)];
+    const { page, context, posts } = await r2Open({ txCache: tx, formData: { outflow: '12.00' } });
+    await page.fill(R2_PAYEE, 'Kroger');
+    let s = await r2State(page);
+    assert(!s.suggest, 'one prior entry is not enough for a suggestion: ' + s.suggest);
+    await page.fill(R2_PAYEE, 'PUBLIX #12');
+    s = await r2State(page);
+    assert(/Suggested category: Groceries — used for 3 of the last 3 “PUBLIX #12” entries in this account/.test(s.suggest || ''), 'suggestion shown: ' + s.suggest);
+    assert(s.fd.category_key === '' && s.sel === '', 'shown, not applied: ' + JSON.stringify({ fd: s.fd.category_key, sel: s.sel }));
+    await page.click('#r2-use-suggestion');
+    s = await r2State(page);
+    assert(s.fd.category_key === 'food.groceries' && s.sel === 'food.groceries' && !s.suggest, 'Use applies it: ' + JSON.stringify(s));
+    await page.selectOption('#tx-form-category', 'food.restaurants');
+    await page.click('button[onclick="_saveTxForm()"]');
+    await page.waitForFunction(() => _txFormMode === null, null, { timeout: 4000 });
+    assert(posts.length === 1 && posts[0].category_key === 'food.restaurants' && posts[0].payee === 'PUBLIX #12', 'the person\'s own choice is what saves: ' + JSON.stringify(posts));
+    await context.close();
+  });
+
+  await test('R2-E8: an archived category in the payee history is never suggested', async () => {
+    const tx = [r2Tx('1', 'Aldi', 'food.old', '2026-09-01', -10), r2Tx('2', 'Aldi', 'food.old', '2026-09-08', -20), r2Tx('3', 'Aldi', 'food.old', '2026-09-15', -30)];
+    const { page, context } = await r2Open({ txCache: tx, formData: { outflow: '12.00' } });
+    await page.fill(R2_PAYEE, 'Aldi');
+    const s = await r2State(page);
+    assert(!s.suggest, 'archived category must not be suggested: ' + s.suggest);
+    await context.close();
+  });
+
+  await test('R2-E9: category search and grouping — same option values, grouped by parent; a clicked result or an unambiguous Enter sets that exact key', async () => {
+    const { page, context, posts } = await r2Open({ formData: { payee: 'Lowes', outflow: '30.00' } });
+    const shape = await page.evaluate(() => { const sel = document.getElementById('tx-form-category');
+      return { groups: [...sel.querySelectorAll('optgroup')].map(g => g.label), values: [...sel.options].map(o => o.value).sort(), selected: sel.value }; });
+    assert(JSON.stringify(shape.groups) === JSON.stringify(['Food & Dining', 'Home', 'Other']), 'groups: ' + JSON.stringify(shape.groups));
+    assert(JSON.stringify(shape.values) === JSON.stringify(['', 'food.groceries', 'food.restaurants', 'gifts', 'home.garden']), 'same assignable keys only: ' + JSON.stringify(shape.values));
+    await page.fill('#r2-cat-search', 'gar');
+    const hits = await page.evaluate(() => [...document.querySelectorAll('#r2-cat-results button[data-key]')].map(b => b.getAttribute('data-key')));
+    assert(JSON.stringify(hits) === JSON.stringify(['home.garden']), 'search results: ' + JSON.stringify(hits));
+    await page.click('#r2-cat-results button[data-key="home.garden"]');
+    let s = await r2State(page);
+    assert(s.fd.category_key === 'home.garden' && s.sel === 'home.garden', 'clicked result sets the key: ' + JSON.stringify(s));
+    await page.fill('#r2-cat-search', 'food');
+    await page.press('#r2-cat-search', 'Enter');
+    s = await r2State(page);
+    assert(s.fd.category_key === 'home.garden', 'Enter with several matches changes nothing');
+    await page.fill('#r2-cat-search', 'rest');
+    await page.press('#r2-cat-search', 'Enter');
+    s = await r2State(page);
+    assert(s.fd.category_key === 'food.restaurants', 'Enter with one match selects it');
+    await page.click('button[onclick="_saveTxForm()"]');
+    await page.waitForFunction(() => _txFormMode === null, null, { timeout: 4000 });
+    assert(posts.length === 1 && posts[0].category_key === 'food.restaurants', 'saved category id: ' + JSON.stringify(posts));
+    await context.close();
+  });
+
+  await test('R2-E10: Cancel while a Save & Add Another is in flight → no next entry is opened', async () => {
+    const { page, context, posts } = await r2Open({ formData: R2_FULL, postDelay: 400 });
+    await page.click('#r2-save-add');
+    await page.click('button[onclick="_closeTxForm()"]');
+    await page.waitForTimeout(900);
+    const s = await r2State(page);
+    assert(posts.length === 1 && s.mode === null, 'save completed (existing behaviour) and no next form opened: posts=' + posts.length + ' mode=' + s.mode);
+    await context.close();
+  });
+
+  await test('R2-E12: when the account history is not loaded, the form says suggestions and the duplicate check are off (never silently), and saving still works', async () => {
+    const { page, context, posts } = await r2Open({ formData: { transaction_date: '2026-10-07', payee: 'Costco', memo: '', category_key: 'food.groceries', outflow: '84.22', inflow: '', cleared: false } });
+    await page.evaluate(() => { _txLedgerLoadStatus = 'failed'; _txLedgerCache = null; renderApp(); });
+    const note = await page.textContent('#r2-history-unavailable').catch(() => null);
+    assert(/payee suggestions and the duplicate check are off/.test(note || ''), 'visible note expected, got ' + note);
+    await page.click('button[onclick="_saveTxForm()"]');
+    await page.waitForFunction(() => _txFormMode === null, null, { timeout: 4000 });
+    assert(posts.length === 1, 'the save itself is unaffected: ' + posts.length);
+    await context.close();
+  });
+
+  await test('R2-E11: Edit mode is unchanged — no Save & Add Another, no duplicate check, the edit PATCHes as before', async () => {
+    const tx = [r2Tx('1', 'Costco', 'food.groceries', '2026-10-07', -84.22)];
+    const { page, context, posts, patches } = await r2Open({ txCache: tx, formMode: 'edit', editId: 'r2e-1',
+      formData: { id: 'r2e-1', transaction_date: '2026-10-07', payee: 'Costco', memo: '', category_key: 'food.groceries', outflow: '84.22', inflow: '', cleared: true } });
+    const ui = await page.evaluate(() => ({ again: !!document.getElementById('r2-save-add'), search: !!document.getElementById('r2-cat-search') }));
+    assert(!ui.again && ui.search, 'edit: no Save & Add Another; search available: ' + JSON.stringify(ui));
+    await page.click('button[onclick="_saveTxForm()"]');
+    await page.waitForFunction(() => _txFormMode === null, null, { timeout: 4000 });
+    const dup = await page.evaluate(() => !!document.getElementById('r2-dup'));
+    assert(patches.length === 1 && posts.length === 0 && !dup, 'edit saved by PATCH without a duplicate warning: ' + JSON.stringify({ patches: patches.length, posts: posts.length, dup }));
     await context.close();
   });
 

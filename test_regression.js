@@ -16644,6 +16644,201 @@ test('R1-5f: wiring — 15-minute interval, checks on tab-visible, no auto-reloa
   assert(!/version-check/.test(html.match(/<script>([\s\S]*?)<\/script>/)[1]), 'no version-check code in the inline script body');
 });
 
+// ─────────────────────────────────────────────────────────────────────────────
+// Release 2 (owner authorization 2026-10-09): Register entry assist — js/register-assist.js.
+// R2-D* payee normalization · R2-S* payee→category suggestion · R2-X* possible-duplicate rule ·
+// R2-N* next-entry contract · R2-C* category search/grouping · R2-H* the save hook · R2-W* wiring limits.
+// The domain rules are pure functions exercised here; the browser wiring is exercised in e2e (R2-E*).
+// ─────────────────────────────────────────────────────────────────────────────
+console.log('\n── Release 2: Register entry assist ──');
+const R2_PATH = process.env.HFOS_RA || './js/register-assist.js';   // overridable for mutation runs
+function r2Src() { return fs.readFileSync(R2_PATH, 'utf8'); }
+function r2Load() {
+  const src = r2Src();
+  assert(/^export function /m.test(src), 'js/register-assist.js is an ES module');
+  const body = src.replace(/^export function /gm, 'function ').replace(/^export const /gm, 'const ');
+  return new Function('window', 'document', body + '\n;return { normalizePayee, suggestCategory, findPossibleDuplicates, nextEntryFormData, matchCategoryOptions, groupCategoryOptions, SUGGEST_WINDOW, SUGGEST_MIN_ROWS, SUGGEST_SHARE, DUP_DAY_WINDOW };')(undefined, undefined);
+}
+let _r2seq = 0;
+function r2Row(payee, cat, date, amount, over) {
+  _r2seq++;
+  return Object.assign({ id: 'r2-' + String(_r2seq).padStart(4, '0'), account_key: 'acct_a', payee: payee, category_key: cat,
+    transaction_date: date, amount: amount, created_at: date + 'T12:00:00Z', source: 'manual' }, over || {});
+}
+const r2Any = () => true;
+test('R2-D1: payee normalization — case, punctuation, accents, apostrophes and trailing store numbers fold; nothing fuzzy', function () {
+  const M = r2Load();
+  [['Publix #1234', 'publix'], ['PUBLIX', 'publix'], ['  publix  ', 'publix'], ["Trader Joe's", 'trader joes'], ['Trader Joe’s', 'trader joes'],
+   ['Café Rio', 'cafe rio'], ['Costco   Wholesale', 'costco wholesale'], ['Costco Wholesale 0441', 'costco wholesale'], ['7-Eleven', '7 eleven'],
+   ['Barnes & Noble', 'barnes and noble'], ['123', '123'], ['', ''], [null, ''], ['Shell 12 34', 'shell']]
+    .forEach(([a, b]) => assert(M.normalizePayee(a) === b, JSON.stringify(a) + ' → ' + JSON.stringify(M.normalizePayee(a)) + ', expected ' + JSON.stringify(b)));
+  assert(M.normalizePayee('Publix Super Market') !== M.normalizePayee('Publix'), 'no fuzzy/prefix matching');
+});
+test('R2-S1: a clear history suggests that category, with an explainable count', function () {
+  const M = r2Load();
+  const rows = [r2Row('Publix', 'groc', '2026-09-01', -40), r2Row('PUBLIX #55', 'groc', '2026-09-08', -12), r2Row('publix', 'groc', '2026-09-15', -30), r2Row('Kroger', 'dining', '2026-09-16', -9)];
+  const s = M.suggestCategory('Publix', rows, r2Any);
+  assert(s && s.categoryKey === 'groc' && s.count === 3 && s.of === 3, 'expected groc 3 of 3, got ' + JSON.stringify(s));
+});
+test('R2-S2: conflicting history → no suggestion unless one category holds at least 75% of the considered entries (ties never suggest)', function () {
+  const M = r2Load();
+  const tie = [r2Row('Target', 'a', '2026-09-01', -1), r2Row('Target', 'b', '2026-09-02', -1), r2Row('Target', 'a', '2026-09-03', -1), r2Row('Target', 'b', '2026-09-04', -1)];
+  assert(M.suggestCategory('Target', tie, r2Any) === null, '2–2 tie must not suggest');
+  const three = [r2Row('Target', 'a', '2026-09-01', -1), r2Row('Target', 'a', '2026-09-02', -1), r2Row('Target', 'b', '2026-09-03', -1)];
+  assert(M.suggestCategory('Target', three, r2Any) === null, '2 of 3 (67%) must not suggest');
+  const q = three.concat([r2Row('Target', 'a', '2026-09-05', -1)]);
+  const s = M.suggestCategory('Target', q, r2Any);
+  assert(s && s.categoryKey === 'a' && s.count === 3 && s.of === 4, '3 of 4 (75%) suggests a, got ' + JSON.stringify(s));
+});
+test('R2-S3: insufficient history → no suggestion (one entry, none, uncategorized-only, or a one-character payee)', function () {
+  const M = r2Load();
+  assert(M.suggestCategory('Publix', [r2Row('Publix', 'groc', '2026-09-01', -1)], r2Any) === null, 'one prior entry is not enough');
+  assert(M.suggestCategory('Publix', [], r2Any) === null, 'no history');
+  assert(M.suggestCategory('Publix', [r2Row('Publix', null, '2026-09-01', -1), r2Row('Publix', '', '2026-09-02', -1)], r2Any) === null, 'uncategorized rows never count');
+  assert(M.suggestCategory('P', [r2Row('P', 'x', '2026-09-01', -1), r2Row('P', 'x', '2026-09-02', -1)], r2Any) === null, 'a one-character payee is too short');
+  assert(M.suggestCategory('Publix', null, r2Any) === null, 'missing history fails closed');
+});
+test('R2-S4: only the 10 most recent matching entries count (old habits age out; deterministic regardless of input order)', function () {
+  const M = r2Load();
+  assert(M.SUGGEST_WINDOW === 10 && M.SUGGEST_MIN_ROWS === 2 && M.SUGGEST_SHARE === 0.75, 'documented constants');
+  const old = []; for (let i = 1; i <= 12; i++) old.push(r2Row('Amazon', 'household', '2025-01-' + String(i).padStart(2, '0'), -5));
+  const recent = []; for (let i = 1; i <= 10; i++) recent.push(r2Row('Amazon', 'shopping', '2026-08-' + String(i).padStart(2, '0'), -5));
+  const s = M.suggestCategory('Amazon', old.concat(recent), r2Any);
+  assert(s && s.categoryKey === 'shopping' && s.of === 10, 'the recent window decides: ' + JSON.stringify(s));
+  const mixed = recent.slice(0, 7).concat([r2Row('Amazon', 'household', '2026-08-20', -5), r2Row('Amazon', 'household', '2026-08-21', -5), r2Row('Amazon', 'household', '2026-08-22', -5)]).concat(old);
+  assert(M.suggestCategory('Amazon', mixed, r2Any) === null, '7 of the 10 most recent (70%) must not suggest even though all-time history favors household');
+  const a = M.suggestCategory('Amazon', old.concat(recent), r2Any), b = M.suggestCategory('Amazon', recent.concat(old).reverse(), r2Any);
+  assert(JSON.stringify(a) === JSON.stringify(b), 'input order must not change the result');
+});
+test('R2-S5: a suggestion is only ever a currently assignable category — no fallback to a runner-up', function () {
+  const M = r2Load();
+  const rows = [r2Row('Publix', 'old_groc', '2026-09-01', -1), r2Row('Publix', 'old_groc', '2026-09-02', -1), r2Row('Publix', 'old_groc', '2026-09-03', -1), r2Row('Publix', 'groc', '2026-08-01', -1)];
+  assert(M.suggestCategory('Publix', rows, k => k !== 'old_groc') === null, 'an inactive/unassignable winner yields no suggestion');
+  assert(M.suggestCategory('Publix', rows.slice(0, 3), () => false) === null, 'nothing assignable → nothing suggested');
+});
+test('R2-X1: possible duplicate = same account, same signed amount to the cent, same normalized payee, dates within 3 days (nearest first)', function () {
+  const M = r2Load();
+  assert(M.DUP_DAY_WINDOW === 3, 'documented window');
+  const rows = [r2Row('Costco', 'groc', '2026-10-07', -84.22), r2Row('COSTCO #12', 'groc', '2026-10-04', -84.22), r2Row('Costco', 'groc', '2026-10-01', -84.22)];
+  const d = M.findPossibleDuplicates({ accountKey: 'acct_a', date: '2026-10-07', amount: -84.22, payee: 'costco' }, rows);
+  assert(d.length === 2 && d[0].transaction_date === '2026-10-07' && d[1].transaction_date === '2026-10-04', 'expected 10-07 then 10-04, got ' + JSON.stringify(d.map(r => r.transaction_date)));
+  const d2 = M.findPossibleDuplicates({ accountKey: 'acct_a', date: '2026-10-10', amount: -84.22, payee: 'Costco' }, rows);
+  assert(d2.length === 1 && d2[0].transaction_date === '2026-10-07', '3 days apart is inside the window');
+});
+test('R2-X2: clearly different transactions never warn (4 days apart, 1 cent off, inflow vs outflow, other account, other payee)', function () {
+  const M = r2Load();
+  const base = r2Row('Costco', 'groc', '2026-10-07', -84.22);
+  const c = { accountKey: 'acct_a', date: '2026-10-07', amount: -84.22, payee: 'Costco' };
+  assert(M.findPossibleDuplicates(c, [base]).length === 1, 'control: identical is a possible duplicate');
+  [[Object.assign({}, c, { date: '2026-10-11' }), '4 days later'], [Object.assign({}, c, { date: '2026-10-03' }), '4 days earlier'],
+   [Object.assign({}, c, { amount: -84.21 }), '1 cent off'], [Object.assign({}, c, { amount: 84.22 }), 'refund (inflow)'],
+   [Object.assign({}, c, { accountKey: 'acct_b' }), 'other account'], [Object.assign({}, c, { payee: 'Costco Gas' }), 'other payee']]
+    .forEach(([cand, why]) => assert(M.findPossibleDuplicates(cand, [base]).length === 0, why + ' must not warn'));
+  assert(M.findPossibleDuplicates(c, [Object.assign({}, base, { amount: '-84.22' })]).length === 1, 'string amounts from the API compare by cents');
+});
+test('R2-X3: an incomplete proposal or missing history never warns; the rule never mutates the ledger rows', function () {
+  const M = r2Load();
+  const rows = Object.freeze([Object.freeze(r2Row('Costco', 'groc', '2026-10-07', -84.22))]);
+  [{ accountKey: 'acct_a', date: '', amount: -84.22, payee: 'Costco' }, { accountKey: 'acct_a', date: '2026-02-30', amount: -84.22, payee: 'Costco' },
+   { accountKey: 'acct_a', date: '2026-10-07', amount: 0, payee: 'Costco' }, { accountKey: 'acct_a', date: '2026-10-07', amount: NaN, payee: 'Costco' },
+   { accountKey: 'acct_a', date: '2026-10-07', amount: -84.22, payee: '  ' }]
+    .forEach(c => assert(M.findPossibleDuplicates(c, rows).length === 0, 'incomplete proposal must not warn: ' + JSON.stringify(c)));
+  assert(M.findPossibleDuplicates({ accountKey: 'acct_a', date: '2026-10-07', amount: -84.22, payee: 'Costco' }, null).length === 0, 'no history → no warning');
+  assert(M.findPossibleDuplicates({ accountKey: 'acct_a', date: '2026-10-07', amount: -84.22, payee: 'Costco' }, rows).length === 1, 'frozen rows are read, not changed');
+});
+test('R2-N1: next-entry contract — keep the date just used; clear payee, memo, amounts, category; Cleared back to unchecked', function () {
+  const M = r2Load();
+  const fresh = { transaction_date: '2026-10-09', payee: '', memo: '', category_key: '', outflow: '', inflow: '', cleared: false };
+  const n = M.nextEntryFormData({ transaction_date: '2026-10-03', payee: 'Publix', memo: 'm', category_key: 'groc', outflow: '12.00', inflow: '', cleared: true }, fresh);
+  assert(JSON.stringify(n) === JSON.stringify(Object.assign({}, fresh, { transaction_date: '2026-10-03' })), 'contract: ' + JSON.stringify(n));
+  assert(M.nextEntryFormData({ transaction_date: '2026-02-30' }, fresh).transaction_date === '2026-10-09', 'an invalid saved date falls back to the normal default');
+  assert(fresh.transaction_date === '2026-10-09', 'the fresh form object is not mutated');
+});
+test('R2-C1: category search matches by word prefix on the shown label and its group; label-prefix matches first; no match → none', function () {
+  const M = r2Load();
+  const opts = [{ key: 'food.dining', label: 'Restaurants', group: 'Food & Dining' }, { key: 'food.groceries', label: 'Groceries', group: 'Food & Dining' },
+    { key: 'home.garden', label: 'Garden Supplies', group: 'Home' }, { key: 'kids.gro', label: 'Growth Fund Gifts', group: 'Kids' }];
+  const r = M.matchCategoryOptions('gro', opts).map(o => o.key);
+  assert(JSON.stringify(r) === JSON.stringify(['food.groceries', 'kids.gro']), 'gro → ' + JSON.stringify(r));
+  assert(JSON.stringify(M.matchCategoryOptions('home', opts).map(o => o.key)) === JSON.stringify(['home.garden']), 'a group name finds its categories');
+  assert(JSON.stringify(M.matchCategoryOptions('food gro', opts).map(o => o.key)) === JSON.stringify(['food.groceries']), 'group + label words narrow the result');
+  assert(M.matchCategoryOptions('zzz', opts).length === 0 && M.matchCategoryOptions('   ', opts).length === 0, 'no match / blank query → none');
+  assert(M.matchCategoryOptions('GROC', opts)[0].key === 'food.groceries', 'case-insensitive');
+});
+test('R2-C2: grouping is presentation only — every key appears exactly once, unchanged; groups sorted, ungrouped last', function () {
+  const M = r2Load();
+  const opts = [{ key: 'z1', label: 'Zeta', group: null }, { key: 'b2', label: 'Beta', group: 'Home' }, { key: 'a1', label: 'Alpha', group: 'Home' }, { key: 'c1', label: 'Gamma', group: 'Auto' }];
+  const g = M.groupCategoryOptions(opts);
+  assert(JSON.stringify(g.map(x => x.group)) === JSON.stringify(['Auto', 'Home', 'Other']), 'groups: ' + JSON.stringify(g.map(x => x.group)));
+  assert(JSON.stringify(g[1].options.map(o => o.key)) === JSON.stringify(['a1', 'b2']), 'labels sorted within a group');
+  const keys = g.flatMap(x => x.options.map(o => o.key)).sort();
+  assert(JSON.stringify(keys) === JSON.stringify(['a1', 'b2', 'c1', 'z1']), 'every key exactly once: ' + JSON.stringify(keys));
+  assert(g.every(x => x.options.every(o => opts.indexOf(o) >= 0)), 'the option objects are passed through, not rebuilt');
+});
+// R2-H: the one classic-script hook — _saveTxForm reports success (true) so Save & Add Another reopens only after persistence.
+function r2Resp(status, body) { return { ok: status >= 200 && status < 300, status: status, statusText: String(status), headers: { get: () => null }, json: () => Promise.resolve(body), text: () => Promise.resolve(JSON.stringify(body)) }; }
+async function r2Flush() { for (let i = 0; i < 40; i++) await Promise.resolve(); }
+async function r2WithSave(over, body) {
+  const keep = { fetch: typeof fetch !== 'undefined' ? fetch : undefined, gah: getAuthHeaders, ra: renderApp, lt: _loadTxLedger, role: USER_ROLE, rs: _registriesLoadStatus, ac: _accountsCache,
+    ak: _txLedgerAccountKey, cc: _categoriesCache, m: _txFormMode, fd: _txFormData, e: _txFormError, sv: _txFormSaving, eid: _txEditId };
+  const log = { posts: 0, catReads: 0 };
+  try {
+    USER_ROLE = 'owner'; _registriesLoadStatus = 'loaded';
+    _accountsCache = [{ key: 'acct_a', label: 'Test Checking', lifecycle_status: 'active', starting_balance: 0 }]; _txLedgerAccountKey = 'acct_a';
+    const GROC = { key: 'groc', label: 'Groceries', parent_key: null, is_leaf: true, lifecycle_status: 'active', behavior_class: 'discretionary', budget_treatment: 'expense' };
+    _categoriesCache = [GROC]; _txFormMode = 'add'; _txEditId = null; _txFormError = ''; _txFormSaving = false;
+    _txFormData = Object.assign({ transaction_date: '2026-10-07', payee: 'Costco', memo: '', category_key: 'groc', outflow: '84.22', inflow: '', cleared: false }, over.fd || {});
+    getAuthHeaders = async () => ({ apikey: 'test' }); renderApp = () => {}; _loadTxLedger = async () => {};
+    fetch = (u, o) => { const m = (o && o.method) || 'GET';
+      if (/\/categories\?/.test(u)) { log.catReads++; return Promise.resolve(over.cat ? over.cat() : r2Resp(200, [GROC])); }
+      if (/\/transactions/.test(u) && m === 'POST') { log.posts++; return over.post ? over.post() : Promise.resolve(r2Resp(201, null)); }
+      return Promise.resolve(r2Resp(200, [])); };
+    await body(log);
+  } finally {
+    fetch = keep.fetch; getAuthHeaders = keep.gah; renderApp = keep.ra; _loadTxLedger = keep.lt; USER_ROLE = keep.role; _registriesLoadStatus = keep.rs; _accountsCache = keep.ac;
+    _txLedgerAccountKey = keep.ak; _categoriesCache = keep.cc; _txFormMode = keep.m; _txFormData = keep.fd; _txFormError = keep.e; _txFormSaving = keep.sv; _txEditId = keep.eid;
+  }
+  return log;
+}
+testAsync('R2-H1: _saveTxForm resolves true only after a successful write (and the form is closed by that same path)', async function () {
+  await r2WithSave({}, async log => {
+    const r = await _saveTxForm(); await r2Flush();
+    assert(r === true, 'expected true after a successful POST, got ' + r);
+    assert(log.posts === 1 && _txFormMode === null, 'exactly one POST and the normal success reset');
+  });
+});
+testAsync('R2-H2: _saveTxForm never reports success for a refused or failed save (validation, category authority, HTTP error, network error, re-entry)', async function () {
+  const cases = [
+    ['validation (no payee)', { fd: { payee: '' } }, 0], ['category authority refuses', { cat: () => r2Resp(200, []) }, 0],
+    ['HTTP 500', { post: () => Promise.resolve(r2Resp(500, { message: 'x' })) }, 1], ['network error', { post: () => Promise.reject(new Error('down')) }, 1]];
+  for (const [why, over, posts] of cases) {
+    await r2WithSave(over, async log => {
+      const r = await _saveTxForm(); await r2Flush();
+      assert(r !== true, why + ': must not report success (got ' + r + ')');
+      assert(log.posts === posts && _txFormMode === 'add', why + ': form kept open with ' + posts + ' POST(s); got posts=' + log.posts + ' mode=' + _txFormMode);
+      if (why !== 'validation (no payee)') assert(_txFormData.payee === 'Costco' && _txFormData.outflow === '84.22', why + ': entered values preserved');
+    });
+  }
+  await r2WithSave({}, async log => {
+    _txFormSaving = true; const r = await _saveTxForm();
+    assert(r !== true && log.posts === 0, 're-entry while a save is in flight is refused and not reported as success');
+  });
+});
+test('R2-W1: limits — mounted as one ES module; the protected Register renderer is untouched; no new data access, globals, schema or automatic category decisions', function () {
+  const src = r2Src(); const code = src.replace(/\/\/[^\n]*/g, '');
+  assert(/<script type="module" src="js\/register-assist\.js"><\/script>/.test(html), 'mounted as an ES module');
+  assert(!/register-assist/.test(html.match(/<script>([\s\S]*?)<\/script>/)[1].replace(/\/\/[^\n]*/g, '')), 'no Release 2 feature code in the inline script body');
+  const pins = require('./tools/protected-pins'); const base = fs.readFileSync(process.env.HOME + '/Herndon-Financial-OS-Evidence/d1-release-2026-10-06/package/protected-49-baseline-d1.txt', 'utf8');
+  const want = (base.split('\n').find(l => / _renderTxRegister$/.test(l)) || '').split(' ')[0];
+  assert(want && require('crypto').createHash('sha256').update(pins.fnSrc(html, '_renderTxRegister')).digest('hex') === want, '_renderTxRegister must stay byte-identical to the production pin');
+  assert(!/\bfetch\s*\(/.test(code) && !/XMLHttpRequest|supabase|rest\/v1/i.test(code), 'no new data access: the module only reads the Register state already loaded');
+  assert(!/window\.[\w$]+\s*=[^=]/.test(code) && !/globalThis\./.test(code), 'no new globals');
+  assert((code.match(/_saveTxForm\(\)/g) || []).length >= 1 && !/method\s*:\s*['"](POST|PATCH|DELETE)/i.test(code), 'every save goes through the existing _saveTxForm path');
+  assert(!/category_key\s*=[^=]/.test(code), 'the module never assigns a category itself');
+  assert((code.match(/_setTxFormField\('category_key'/g) || []).length === 2, 'category changes only through the two explicit user actions (search result, Use suggestion)');
+  assert(!/\.focus\(\)/.test(code.replace(/payee\.focus\(\)/g, '')), 'the only focus call is putting the cursor in Payee for the next entry');
+});
+
 (async () => {
 for (const t of _asyncTests) {
   try { await t.fn(); pass++; process.stdout.write('  ✓ ' + t.name + '\n'); }
