@@ -17065,6 +17065,7 @@ test('R4-P6: exactly one account — two statements, two account ids or both mes
   assert(!M.parseOfx(one.replace('</OFX>', one.slice(one.indexOf('<CREDITCARDMSGSRSV1>'), one.indexOf('</OFX>')) + '</OFX>')).ok, 'two statements');
   assert(!M.parseOfx(r4Ofx({ rows: [{ fitid: 'A' }], extra: '<BANKMSGSRSV1></BANKMSGSRSV1>\n' })).ok, 'two message sets');
   assert(!M.parseOfx(r4Ofx({ acct: 'XX12', rows: [{ fitid: 'A' }] })).ok, 'an account id without 4 digits cannot be bound');
+  assert(!M.parseOfx(r4Ofx({ rows: [{ fitid: 'A' }] }).replace('</CCACCTFROM>', '<ACCTID>555555-9999\n</CCACCTFROM>')).ok, 'two different account ids in one statement');
   assert(!M.parseOfx(r4Ofx({ cc: false, accttype: 'MONEYMRKT', rows: [{ fitid: 'A' }] })).ok, 'unsupported account type');
 });
 test('R4-P7: balance is optional — absent or incomplete balance leaves the transactions usable; a file with neither rows nor balance is rejected', function () {
@@ -17111,9 +17112,11 @@ test('R4-C3: one bank vs two Register, two bank vs one Register, and identical s
   const b = r4B('2030-10-10', -500), r1 = r4R('2030-10-10', -500), r2 = r4R('2030-10-12', -500);
   let res = M.compareStatement([b], [r1, r2]);
   assert([b, r1, r2].every(x => r4State(res, x) === 'AMBIGUOUS'), '1 bank vs 2 register');
+  assert(/2 Register entries could be this transaction/.test(res.bank[0].reason) && res.bank[0].candidates.length === 2, 'the reason names the real cause: ' + res.bank[0].reason);
   const b1 = r4B('2030-10-10', -500), b2 = r4B('2030-10-11', -500), r = r4R('2030-10-10', -500);
   res = M.compareStatement([b1, b2], [r]);
   assert([b1, b2, r].every(x => r4State(res, x) === 'AMBIGUOUS'), '2 bank vs 1 register');
+  assert(res.bank.every(x => /could also belong to another bank transaction/.test(x.reason)), 'the reason names the shared Register entry: ' + res.bank.map(x => x.reason));
   const s1 = r4B('2030-10-10', -500), s2 = r4B('2030-10-10', -500), t1 = r4R('2030-10-10', -500), t2 = r4R('2030-10-10', -500);
   res = M.compareStatement([s1, s2], [t1, t2]);
   assert([s1, s2, t1, t2].every(x => r4State(res, x) === 'AMBIGUOUS'), 'identical same-day pairs are never paired arbitrarily');
@@ -17232,6 +17235,7 @@ test('R4-W1: limits — one ES module, no data access or writes, no globals; the
   assert(/label:'Statement Compare'/.test(tabs) && !/label:'Reconciliation'/.test(tabs), 'tab name');
   const recon = r1Fn('_renderBudgetRecon');
   assert(!/Reconciled/.test(recon.replace(/doesn.t reconcile|not reconcil/gi, '')) && /Statement Compare/.test(recon) && !/legSrc\.rows\.forEach/.test(recon), 'legacy panel retired: no totals, no "Reconciled"');
+  assert(/Statement check \(retired\)/.test(recon), 'the panel is visibly marked as retired');
   const rb = r1Fn('renderBudget');
   assert(!/In the <strong>Statement check<\/strong> panel/.test(rb) && !/you are reconciled/.test(rb) && /Statement Compare/.test(rb), 'help text corrected');
 });
