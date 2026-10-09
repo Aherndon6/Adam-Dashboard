@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| Status | **PROPOSAL.** Not implemented. Owner decisions requested in section 19 |
+| Status | **PROPOSAL, revised with the owner rulings of 2026-10-09 (section 20).** Not implemented. The parser and date contract stay **unfrozen** until real institution files are inspected (section 21) |
 | Authority | Owner R-lite authorization (2026-10-09). R-lite is **non-authoritative**: it assists, and the existing reconciliation process stays authoritative |
 | Production baseline | `14e76ec` (`BUILD_TS` `2026-10-09T16:27:26`). Releases 0–2 and the Register follow-ups are CLOSED |
 | Boundaries | No schema, RLS or grants. No writes. No new ledger, no certification, no lock. No OCR or OAuth. No Edge Function. No runModel, WD, closeout or rollover change. OWNER HOLD unchanged |
@@ -269,3 +269,73 @@ Excluded from V1:
 2. **Statement Check help text:** option (a), (b) or (c) from section 14 (recommended: b).
 3. **Matching window:** [bank date − 5, + 2 days] and the T1/T2/T3 hierarchy, as above.
 4. **Tab name:** "Statement compare" (not "Reconciliation").
+
+## 20. Owner rulings (2026-10-09)
+
+These supersede the matching sections above where they differ.
+
+**1. Format: QFX provisionally approved; verify before freeze.**
+
+| Account | Download options seen on the owner's screens |
+|---|---|
+| Truist Checking | XLS, CSV, **QFX**, QBO |
+| Citi Costco | CSV, TXT, **QFX**, QBO, OFX |
+| Chase Disney | Excel/CSV, **QFX**, QIF, QBO |
+| AMEX Gold | Excel, CSV, QuickBooks, "Quicken" (the extension is **not yet proven** to be QFX) |
+
+- **V1 account scope:** Truist Checking, AMEX Gold, Citi Costco, Chase Disney. Others only with evidence that weekly reconciliation needs them.
+- **CSV:** a potential fallback only. **No second parser** unless the real QFX files fail.
+- **The parser contract is built from real files,** not from the specification. Tests use **sanitized structural fixtures** derived from them. No real transaction data is committed.
+
+**2. Legacy Statement Check: option (a), under exact-diff control.**
+- **The panel:** the unprotected `_renderBudgetRecon` is replaced by a notice. Statement Compare is an **assistance / comparison tool that does not certify reconciliation**; the old check used Budget-entered entries, not the Register.
+- **The help text in protected `renderBudget`:** a **documentation-text-only** edit, then a re-pin. Controls:
+  - no executable, calculation or data-source change, and no reconciliation logic;
+  - the before/after diff is captured, and it is proven that only the intended text changed;
+  - then the re-pin, the protected-function and golden controls, and the regression suite.
+- No other protected function is touched. Option (b), the runtime rewrite, is rejected.
+
+**3. Matching: conservative V1.**
+- **MATCHED** only for a **unique** same-amount candidate (mutually unique on both sides):
+  - **Tier 1:** same date;
+  - **Tier 2:** Register date in **[institution date − 5, + 2]**. This window is **provisional until validated against real files and history** (section 21).
+- **Multiple plausible candidates stay AMBIGUOUS.**
+- **Tier 3 is removed from V1.** The institution description and the Register payee are **shown as evidence** to help the owner adjudicate an AMBIGUOUS row. They **never** turn an ambiguity into MATCHED. (The proposal's wording was contradictory: under mutual uniqueness there is nothing left to tie-break.)
+
+**4. Tab name:** **Statement Compare.** Never "Reconciliation".
+
+**5. Parser requirements.** The tests must attack:
+- missing `FITID`; duplicate `FITID`; duplicate downloaded rows;
+- absent ledger balance; missing or odd statement dates;
+- transaction-date vs posting-date differences;
+- debit/credit sign differences; payments/transfers; refunds/credits;
+- malformed OFX/QFX; an **HTML or error page saved as the file**;
+- wrong-account file; unexpected account identifier;
+- cent precision; empty transaction set;
+- a file covering a **broader range** than the comparison period.
+
+**Transaction comparison never depends on a balance.** With no authoritative balance in the file, transaction comparison may still run, and balance comparison is **UNAVAILABLE**. A balance is never synthesized.
+
+## 21. Real-file inspection (before the parser and date contract are frozen)
+
+**Method.**
+- The owner saves the downloads to `~/Herndon-Financial-OS-Evidence/r-lite-2026-10-09/raw/`. That is private, outside the repository, and never uploaded.
+- A local **structure profiler** (`r-lite-profile.js`, kept in the evidence folder) reports only:
+  - format, header, encoding;
+  - which fields exist and how often;
+  - date and amount *formats* (patterns, not values);
+  - sign counts by transaction type;
+  - transaction-date vs posting-date gaps;
+  - `FITID` uniqueness and shape;
+  - statement-period coverage;
+  - balance presence;
+  - the account id length plus its last 4.
+
+  It does **not** print payees, descriptions or amounts.
+- Sanitized fixtures keep each institution's exact structure (header, tag order, date/amount formats, optional-field pattern), with **synthetic** payees, amounts, ids and account numbers.
+
+**Window evidence.**
+- From the files: transaction-date vs posting-date gaps (where both exist).
+- Against the Register: the gap between each institution row and its unique same-amount Register row.
+
+  This second check needs a **read-only** query of those accounts' Register rows for the file periods (date and amount only), run either through the Supabase connector or through the app. **It needs a separate owner authorization.** It writes nothing, and only aggregate gap counts are recorded.
