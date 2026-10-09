@@ -16754,6 +16754,10 @@ test('R2-N1: next-entry contract — keep the date just used; clear payee, memo,
   assert(JSON.stringify(n) === JSON.stringify(Object.assign({}, fresh, { transaction_date: '2026-10-03' })), 'contract: ' + JSON.stringify(n));
   assert(M.nextEntryFormData({ transaction_date: '2026-02-30' }, fresh).transaction_date === '2026-10-09', 'an invalid saved date falls back to the normal default');
   assert(fresh.transaction_date === '2026-10-09', 'the fresh form object is not mutated');
+  const dirty = Object.assign({}, fresh, { payee: 'x', memo: 'x', category_key: 'groc', outflow: '1.00', inflow: '2.00', cleared: true });
+  const n2 = M.nextEntryFormData({ transaction_date: '2026-10-03', category_key: 'groc', cleared: true }, dirty);
+  assert(n2.payee === '' && n2.memo === '' && n2.category_key === '' && n2.outflow === '' && n2.inflow === '' && n2.cleared === false,
+    'the contract itself clears these, whatever the starting form holds: ' + JSON.stringify(n2));
 });
 test('R2-C1: category search matches by word prefix on the shown label and its group; label-prefix matches first; no match → none', function () {
   const M = r2Load();

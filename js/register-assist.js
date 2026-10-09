@@ -19,7 +19,7 @@ export const SUGGEST_SHARE = 0.75;    // one category must hold ≥ 75% of the c
 export const DUP_DAY_WINDOW = 3;      // possible duplicate: dates at most 3 days apart
 
 function words(s) {
-  return String(s == null ? '' : s).normalize('NFKD').replace(/[̀-ͯ]/g, '').toLowerCase()
+  return String(s == null ? '' : s).normalize('NFKD').replace(/[\u0300-\u036f]/g, '').toLowerCase()
     .replace(/['’]/g, '').replace(/&/g, ' and ').replace(/[^a-z0-9]+/g, ' ').trim().split(' ').filter(Boolean);
 }
 

@@ -5748,6 +5748,21 @@ async function clickNav(page, id) {
     await context.close();
   });
 
+  await test('R2-E15: Cancel during a save, then a new Add form: its Add button waits (with a visible note) instead of starting a second save in parallel', async () => {
+    const { page, context, posts } = await r2Open({ formData: R2_FULL, postDelay: 700 });
+    await page.click('#r2-save-add');
+    await page.click('button[onclick="_closeTxForm()"]');
+    await page.evaluate(() => { _openTxForm('add', null); _txFormData.payee = 'Second'; _txFormData.outflow = '5.00'; _txFormData.category_key = 'gifts'; renderApp(); });
+    const note = await page.textContent('#r2-still-saving').catch(() => null);
+    await page.click('button[onclick="_saveTxForm()"]');
+    await page.waitForTimeout(150);
+    const during = posts.length;
+    await page.waitForTimeout(900);
+    assert(/still saving/.test(note || '') && during === 1, 'the second form must wait while the first save is in flight (note=' + note + ', posts during=' + during + ')');
+    assert(posts.length === 1, 'no second save was started by that click: ' + posts.length);
+    await context.close();
+  });
+
   await test('R2-E11: Edit mode is unchanged — no Save & Add Another, no duplicate check, the edit PATCHes as before', async () => {
     const tx = [r2Tx('1', 'Costco', 'food.groceries', '2026-10-07', -84.22)];
     const { page, context, posts, patches } = await r2Open({ txCache: tx, formMode: 'edit', editId: 'r2e-1',
