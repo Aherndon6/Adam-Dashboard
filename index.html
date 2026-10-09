@@ -885,7 +885,7 @@ button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-vis
 // ── Constants (unchanged) ──────────────────────────────────────────────────
 // Simplified architecture — $8,250 total from LC · $6,500 operating floor · no legacy mechanics
 // Real-world moves: keep $2,250 in chk, move $2,750 sav→chk, move $1,000 LC→chk, move $2,250 LC→chk (Option 1 correction)
-const BUILD_TS='2026-10-09T10:42:07'; // updated each push — local time string
+const BUILD_TS='2026-10-09T12:28:12'; // updated each push — local time string
 const START_CHK=18037.73,START_SAV=3772.77,START_AMX=103.64,START_TAX=0,START_LC=13488.88;
 const EF_AMT=13488.88; // LC/EF balance — static this model year (no transfers in or out)
 const BASE_TAX=521.36,RET_SAV_XFR=3772.74;
@@ -8315,7 +8315,26 @@ function setTxFilter(field,value){
   else if(field==='status')_txFilterStatus=value;
   else if(field==='dateFrom')_txFilterDateFrom=value;
   else if(field==='dateTo')_txFilterDateTo=value;
+  if((field==='dateFrom'||field==='dateTo')&&_txDeferDateFilterWhileTyping(field==='dateFrom'?'tx-filter-date-from':'tx-filter-date-to'))return;
   renderApp();
+}
+// Release 1 (2026-10-09): the browser reports a complete date value while the user is still typing (one year digit
+// gives 0002-…); re-rendering then would destroy the field mid-entry (same root cause as the 2026-09-12 Add-form
+// fix). While the date filter field has focus, keep the value and apply once on blur or Enter. A date picked
+// without focus in the field, and every other filter, still apply immediately. The Register markup is unchanged.
+function _txDeferDateFilterWhileTyping(id){
+  var el=document.getElementById(id);
+  if(!el||document.activeElement!==el)return false;
+  if(el.dataset&&el.dataset.hfosApplyPending==='1')return true;
+  if(el.dataset)el.dataset.hfosApplyPending='1';
+  function apply(){   // runs once: both listeners are removed before the re-render
+    if(el.dataset)delete el.dataset.hfosApplyPending;
+    el.removeEventListener('blur',apply);el.removeEventListener('keydown',onKey);
+    renderApp();
+  }
+  function onKey(ev){if(ev&&ev.key==='Enter')apply();}
+  el.addEventListener('blur',apply);el.addEventListener('keydown',onKey);
+  return true;
 }
 function clearTxFilters(){_txFilterSearch='';_txFilterType='all';_txFilterStatus='all';_txFilterDateFrom='';_txFilterDateTo='';_txFilterUncategorized=false;renderApp();}
 function setTxFilterUncategorized(on){_txFilterUncategorized=!!on;renderApp();}
@@ -8743,7 +8762,7 @@ function _txLifecycleBadge(status){
 function _renderTxAccounts(){
   if(_registriesLoadStatus!=='loaded'||!_accountsCache){
     var msg=_registriesLoadStatus==='loading'?'Loading accounts…'
-      :_registriesLoadStatus==='failed'?'Registry load failed — check console. Reload to retry.'
+      :_registriesLoadStatus==='failed'?'Couldn\'t load the account list. Reload to retry.'
       :'Accounts not loaded.';
     return '<div style="padding:40px;text-align:center;color:var(--muted);font-size:13px">'+msg+'</div>';
   }
@@ -8787,7 +8806,7 @@ function _renderTxAccounts(){
 function _renderTxCategories(){
   if(_registriesLoadStatus!=='loaded'||!_categoriesCache){
     var msg=_registriesLoadStatus==='loading'?'Loading categories…'
-      :_registriesLoadStatus==='failed'?'Registry load failed — check console. Reload to retry.'
+      :_registriesLoadStatus==='failed'?'Couldn\'t load the category list. Reload to retry.'
       :'Categories not loaded.';
     return '<div style="padding:40px;text-align:center;color:var(--muted);font-size:13px">'+msg+'</div>';
   }
@@ -10681,7 +10700,7 @@ function renderApp(){
   }catch(e){
     console.error('[renderApp] Render error:',e);
     var _reb=document.getElementById('render-error-banner');
-    if(_reb){_reb.textContent='⚠ Render error: '+e.message+'\n'+e.stack;_reb.style.display='block';}
+    if(_reb){_reb.textContent='⚠ Something went wrong displaying this page. Reload to try again.';_reb.style.display='block';}   // Release 1: error + stack stay in the console
   }
 }
 // Backward-compat alias — all existing call sites use render()
@@ -10753,12 +10772,12 @@ function setAuthState(state){
   if(state==='checking_session'||state==='authenticated'){
     body.innerHTML='<div class="auth-state-msg">Signing in…</div>';
   } else if(state==='unauthenticated'){
-    body.innerHTML='<div class="auth-field"><label for="auth-email">Email</label><input type="email" id="auth-email" value="aherndon6@gmail.com" autocomplete="username"></div><div class="auth-field"><label for="auth-password">Password</label><input type="password" id="auth-password" autocomplete="current-password"></div><button class="auth-btn" id="auth-submit-btn" onclick="doLogin()">Sign in</button>';
+    body.innerHTML='<div class="auth-field"><label for="auth-email">Email</label><input type="email" id="auth-email" autocomplete="username"></div><div class="auth-field"><label for="auth-password">Password</label><input type="password" id="auth-password" autocomplete="current-password"></div><button class="auth-btn" id="auth-submit-btn" onclick="doLogin()">Sign in</button>';
     setTimeout(function(){var pw=document.getElementById('auth-password');if(pw)pw.focus();},50);
     document.addEventListener('keydown',function _authKey(e){if(e.key==='Enter'&&AUTH_STATE==='unauthenticated'){document.removeEventListener('keydown',_authKey);doLogin();}});
   } else if(state==='session_expired'){
     if(banner){banner.textContent='Your session expired. Please sign in again.';banner.style.display='block';}
-    body.innerHTML='<div class="auth-field"><label for="auth-email">Email</label><input type="email" id="auth-email" value="aherndon6@gmail.com" autocomplete="username"></div><div class="auth-field"><label for="auth-password">Password</label><input type="password" id="auth-password" autocomplete="current-password"></div><button class="auth-btn" id="auth-submit-btn" onclick="doLogin()">Sign in</button>';
+    body.innerHTML='<div class="auth-field"><label for="auth-email">Email</label><input type="email" id="auth-email" autocomplete="username"></div><div class="auth-field"><label for="auth-password">Password</label><input type="password" id="auth-password" autocomplete="current-password"></div><button class="auth-btn" id="auth-submit-btn" onclick="doLogin()">Sign in</button>';
     setTimeout(function(){var pw=document.getElementById('auth-password');if(pw)pw.focus();},50);
     document.addEventListener('keydown',function _authKey(e){if(e.key==='Enter'&&AUTH_STATE==='session_expired'){document.removeEventListener('keydown',_authKey);doLogin();}});
   } else if(state==='unauthorized'){
@@ -11803,7 +11822,7 @@ function _blrRenderModal(){
         html+='This line started in '+monthLabel+' with no prior history. It will be <strong>deactivated</strong> (set is_active = false).';
       }
       html+='</div>';
-      html+='<div style="color:#92400e;background:#fef3c7;border-radius:6px;padding:8px 10px;font-size:12px;margin-bottom:12px">This line will no longer appear from '+monthLabel+' onward. To restore, edit the row directly in Supabase.</div>';
+      html+='<div style="color:#92400e;background:#fef3c7;border-radius:6px;padding:8px 10px;font-size:12px;margin-bottom:12px">This line will no longer appear from '+monthLabel+' onward. Restoring an archived line isn\'t available in the app yet. Ask Adam if you need it back.</div>';
     }
     if(m.error){html+='<div style="color:#ef4444;font-size:12px;margin-bottom:8px">'+esc(m.error)+'</div>';}
     html+='</div>';
@@ -11961,7 +11980,9 @@ async function _blrSaveEdit(){
           throw new Error('Insert failed (HTTP '+ir.status+'); prior row was restored. No data lost. Details: '+et2);
         }catch(re){
           if(re.message.startsWith('Insert failed'))throw re;
-          throw new Error('Insert failed AND rollback failed — check budget_line_rules id '+closedRowId+' manually. Insert: '+et2+'. Rollback: '+re.message);
+          // Release 1: the technical detail (row id, both errors) is for Adam's diagnostics, not the household message.
+          console.error('[BLR] saveEdit: insert failed AND rollback failed — check budget_line_rules id '+closedRowId+' manually. Insert: '+et2+'. Rollback: '+re.message);
+          throw new Error("The change couldn't be completed and the old line couldn't be put back automatically. Please tell Adam before editing this line again.");
         }
       }
       throw new Error('Insert new row HTTP '+ir.status+': '+et2);
@@ -12276,7 +12297,7 @@ function applyScenario(){
     scenarioState.previewGoal={ak:parseFloat(p.ak)||goalAk,rt:parseFloat(p.rt)||goalRt};
   }
   scenarioState.active=true;
-  setSection('goals');activeGoalsTab='engine';renderApp();
+  setSection('goals');goalsSubTab='engine';renderApp();   // Release 1 (FD-3): goalsSubTab is the Goals sub-tab authority
 }
 
 // ── Scenario: clear ────────────────────────────────────────────────────────
@@ -12978,7 +12999,7 @@ function renderAskClaude(){
     '<textarea class="ask-input" id="ask-input" rows="2" placeholder="Ask a question..." onkeydown="if(event.key===\'Enter\'&&!event.shiftKey){event.preventDefault();sendAsk();}"></textarea>'+
     '<button class="ask-send-btn" onclick="sendAsk()" '+(askLoading||!anthropicKey?'disabled':'')+'>Send</button>'+
   '</div>'+
-  '<div class="ask-footer-note">Read-only · never modifies your model · key stored encrypted in Supabase</div>';
+  '<div class="ask-footer-note">Read-only · never modifies your model · your API key is stored in the household database (not encrypted) and is visible to signed-in household users</div>';
   html+='</div>';
   el.innerHTML=html;
   // Scroll to bottom
@@ -13117,5 +13138,6 @@ async function sendAsk(){
 setAuthState('checking_session');
 initAuth();
 </script>
+<script type="module" src="js/version-check.js"></script>
 </body>
 </html>

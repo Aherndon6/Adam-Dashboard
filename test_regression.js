@@ -16490,6 +16490,153 @@ testAsync('R0-C6: a pre-anchor week is refused as a locked historical week (not 
   assert(log.alerts.some(a => /is a locked historical week — its model edits are locked\./.test(a)), 'historical-lock wording expected: ' + JSON.stringify(log.alerts));
 });
 
+// ─────────────────────────────────────────────────────────────────────────────
+// Release 1 (owner authorization 2026-10-09): trust / Wendy quick wins — six items.
+// R1-1 login email · R1-2 household-safe messages · R1-3 typed-date Register filters · R1-4 truthful
+// Ask Claude credential wording · R1-5 new-version notice (js/version-check.js) · R1-6 FD-3 What-If tab.
+// ─────────────────────────────────────────────────────────────────────────────
+console.log('\n── Release 1: trust / Wendy quick wins ──');
+const R1_PINS = require('./tools/protected-pins');
+const r1Fn = name => R1_PINS.fnSrc(html, name) || '';
+test('R1-1: the sign-in form carries no pre-filled email (each browser/password manager supplies its own saved identity)', function () {
+  const src = r1Fn('setAuthState');
+  assert(src.indexOf('id="auth-email"') >= 0, 'sign-in email field present');
+  assert(src.indexOf('aherndon6@gmail.com') < 0, 'no hard-coded household email in the sign-in form');
+  assert(!/id="auth-email"[^>]*\svalue=/.test(src), 'the email input has no value attribute');
+  assert(/id="auth-email"[^>]*autocomplete="username"/.test(src), 'browser/password-manager autofill hint kept');
+});
+const R1_DEV_TOOLING = [/check (the )?console/i, /in Supabase/i, /SQL Editor/i, /budget_line_rules id/i];
+test('R1-2a: household-facing load/save messages never send the user to the console, Supabase, SQL or row IDs (accounts, categories, Manage Lines archive and failed edit)', function () {
+  [['_renderTxAccounts', "Couldn't load the account list. Reload to retry."], ['_renderTxCategories', "Couldn't load the category list. Reload to retry."],
+   ['_blrRenderModal', "Restoring an archived line isn't available in the app yet. Ask Adam if you need it back."],
+   ['_blrSaveEdit', "The change couldn't be completed and the old line couldn't be put back automatically. Please tell Adam before editing this line again."]]
+    .forEach(([fn, wording]) => {
+      const src = r1Fn(fn).replace(/console\.(error|warn|log)\([^;]*;/g, '');   // diagnostics stay in the console
+      R1_DEV_TOOLING.forEach(re => assert(!re.test(src), fn + ' still shows developer/admin tooling text: ' + re));
+      assert(r1Fn(fn).replace(/\\'/g, "'").indexOf(wording) >= 0, fn + ' must show: ' + wording);   // source holds JS-escaped quotes
+    });
+  assert(/console\.error\([^;]*budget_line_rules id/.test(r1Fn('_blrSaveEdit')), 'the technical row-id detail stays in console diagnostics for Adam');
+});
+test('R1-2b: a page render error shows the simple household message; the error and stack stay in console diagnostics only', function () {
+  const src = r1Fn('renderApp');
+  const banner = (src.match(/_reb\.textContent=[^;]*;/) || [''])[0];
+  assert(banner.indexOf("Something went wrong displaying this page. Reload to try again.") >= 0, 'household render-error message: ' + banner);
+  assert(!/e\.message|e\.stack/.test(banner), 'no error message or stack trace on screen: ' + banner);
+  assert(/console\.error\('\[renderApp\] Render error:',e\)/.test(src), 'the technical error is still logged to the console');
+});
+test('R1-4: no household-facing claim that the Anthropic credential is encrypted; the wording states the real storage and visibility', function () {
+  const visible = html.replace(/\/\/[^\n]*/g, '');
+  assert(!/stored encrypted|encrypted in Supabase|key is encrypted/i.test(visible), 'a false encryption claim remains');
+  assert(r1Fn('renderAskClaude').indexOf('your API key is stored in the household database (not encrypted) and is visible to signed-in household users') >= 0, 'truthful credential wording present');
+});
+function r1Elem(id) { const ls = {}; return { id, value: '', listeners: ls, dataset: {}, addEventListener(t, f, o) { (ls[t] = ls[t] || []).push({ f, o }); }, removeEventListener(t, f) { ls[t] = (ls[t] || []).filter(x => x.f !== f); }, blur() { (ls.blur || []).slice().forEach(x => x.f({ type: 'blur' })); } }; }
+function r1Fire(el, type, ev) { (el.listeners[type] || []).slice().forEach(x => { if (x.o && x.o.once) el.removeEventListener(type, x.f); x.f(Object.assign({ type }, ev || {})); }); }
+function r1WithFilterDom(focusId, body) {
+  const g = { gid: document.getElementById, ae: document.activeElement, ra: renderApp, f: _txFilterDateFrom, t: _txFilterDateTo };
+  const els = { 'tx-filter-date-from': r1Elem('tx-filter-date-from'), 'tx-filter-date-to': r1Elem('tx-filter-date-to') };
+  const log = { renders: 0 };
+  document.getElementById = id => els[id] || g.gid.call(document, id);
+  document.activeElement = focusId ? els[focusId] : null;
+  renderApp = function () { log.renders++; };
+  try { body(els, log); } finally { document.getElementById = g.gid; document.activeElement = g.ae; renderApp = g.ra; _txFilterDateFrom = g.f; _txFilterDateTo = g.t; }
+  return log;
+}
+test('R1-3a: typing a date into a focused Register date filter keeps the field (no re-render mid-entry), including the partial-year value 0002-10-05', function () {
+  r1WithFilterDom('tx-filter-date-from', (els, log) => {
+    setTxFilter('dateFrom', '0002-10-05');   // Chrome reports a complete value as soon as one year digit is typed
+    assert(log.renders === 0, 'the field must not be destroyed while the user is typing (renders=' + log.renders + ')');
+    setTxFilter('dateFrom', '2026-10-05');
+    assert(log.renders === 0, 'still typing: no re-render');
+    assert(_txFilterDateFrom === '2026-10-05', 'the typed value is preserved');
+  });
+});
+test('R1-3b: the typed date filter applies once on blur, and once on Enter (blur after Enter does not double-apply)', function () {
+  r1WithFilterDom('tx-filter-date-to', (els, log) => {
+    setTxFilter('dateTo', '2026-10-31'); setTxFilter('dateTo', '2026-10-31');
+    r1Fire(els['tx-filter-date-to'], 'blur');
+    assert(log.renders === 1, 'exactly one apply on blur, got ' + log.renders);
+  });
+  r1WithFilterDom('tx-filter-date-from', (els, log) => {
+    setTxFilter('dateFrom', '2026-10-01');
+    r1Fire(els['tx-filter-date-from'], 'keydown', { key: 'Enter' });
+    r1Fire(els['tx-filter-date-from'], 'blur');
+    assert(log.renders === 1, 'exactly one apply for Enter (+ the resulting blur), got ' + log.renders);
+  });
+});
+test('R1-3c: controls — a date chosen without focus in the field (date picker / programmatic), and the other filters, still apply immediately', function () {
+  r1WithFilterDom(null, (els, log) => { setTxFilter('dateFrom', '2026-10-01'); assert(log.renders === 1, 'unfocused date applies immediately'); });
+  r1WithFilterDom('tx-filter-date-from', (els, log) => { setTxFilter('type', 'out'); setTxFilter('status', 'cleared'); assert(log.renders === 2, 'type/status unaffected'); });
+  const fn = r1Fn('_renderTxRegister'); assert(fn.indexOf('onchange="setTxFilter(\\\'dateFrom\\\',this.value)"') >= 0, 'the pinned Register markup is unchanged');
+});
+test('R1-6: Apply from the standalone What-If section opens Goals → Waterfall / Scenarios (goalsSubTab), not Savings Goals', function () {
+  const g = { st: scenarioState, sub: goalsSubTab, ss: setSection, ra: renderApp, sec: activeSection };
+  try {
+    goalsSubTab = 'savings'; setSection = function (x) { activeSection = x; }; renderApp = function () {};
+    scenarioState = { active: false, type: 'outflow', weekNum: 20, params: { amount: '25', label: 'R1' }, previewOverride: null, previewGoal: null, commitModal: false };
+    applyScenario();
+    assert(goalsSubTab === 'engine', 'expected the Waterfall / Scenarios tab, got ' + goalsSubTab);
+    assert(typeof globalThis.activeGoalsTab === 'undefined', 'no stray undeclared activeGoalsTab global');
+  } finally { scenarioState = g.st; goalsSubTab = g.sub; setSection = g.ss; renderApp = g.ra; activeSection = g.sec; }
+});
+// R1-5: the new-version notice is an isolated ES module (AGENTS.md). Its logic is exercised here with an injected environment.
+const R1_VC_PATH = process.env.HFOS_VC || './js/version-check.js';   // overridable for mutation runs
+function r1LoadVersionModule() {
+  const src = fs.readFileSync(R1_VC_PATH, 'utf8');
+  assert(/^export function /m.test(src), 'js/version-check.js is an ES module');
+  const body = src.replace(/^export function /gm, 'function ').replace(/^export const /gm, 'const ');
+  return new Function('window', 'document', body + '\n;return { extractBuildTs, isDifferentBuild, createVersionCheck, VERSION_CHECK_INTERVAL_MS };')(undefined, undefined);
+}
+function r1Env(over) {
+  const log = { notices: [], reloads: 0, confirms: [], fetches: [] };
+  const env = Object.assign({ running: '2026-10-09T10:42:07', url: () => '/', fetch: (u, o) => { log.fetches.push({ u, o }); return Promise.resolve({ ok: true, text: () => Promise.resolve("x const BUILD_TS='2026-10-10T09:00:00'; y") }); },
+    showNotice: live => { log.notices.push(live); }, confirm: m => { log.confirms.push(m); return false; }, reload: () => { log.reloads++; } }, over || {});
+  return { env, log };
+}
+testAsync('R1-5a: a different live build (newer deploy) shows the notice once; the fetch is uncached', async function () {
+  const M = r1LoadVersionModule(); const { env, log } = r1Env(); const vc = M.createVersionCheck(env);
+  await vc.check(); await vc.check();
+  assert(log.notices.length === 1 && log.notices[0] === '2026-10-10T09:00:00', 'one notice: ' + JSON.stringify(log.notices));
+  assert(log.fetches[0].o && log.fetches[0].o.cache === 'no-store' && /[?&]hfos_version_check=/.test(log.fetches[0].u), 'uncached fetch: ' + JSON.stringify(log.fetches[0]));
+  assert(log.reloads === 0, 'never reloads by itself');
+});
+testAsync('R1-5b: a rollback to an OLDER build is also "different" (no timestamp-ordering assumption)', async function () {
+  const M = r1LoadVersionModule(); const { env, log } = r1Env({ fetch: () => Promise.resolve({ ok: true, text: () => Promise.resolve("const BUILD_TS='2026-10-01T08:00:00';") }) });
+  await M.createVersionCheck(env).check();
+  assert(log.notices.length === 1, 'older live build must also show the notice');
+});
+testAsync('R1-5c: same build → no notice; failed fetch / HTTP error / unparsable page → silent, no notice, retried later', async function () {
+  const M = r1LoadVersionModule();
+  const same = r1Env({ fetch: () => Promise.resolve({ ok: true, text: () => Promise.resolve("const BUILD_TS='2026-10-09T10:42:07';") }) });
+  await M.createVersionCheck(same.env).check(); assert(same.log.notices.length === 0, 'same build: no notice');
+  for (const f of [() => Promise.reject(new Error('offline')), () => Promise.resolve({ ok: false, status: 503 }), () => Promise.resolve({ ok: true, text: () => Promise.resolve('<html>no stamp</html>') }), () => Promise.resolve({ ok: true, text: () => Promise.reject(new Error('read')) })]) {
+    let calls = 0; const e = r1Env({ fetch: () => { calls++; return f(); } }); const vc = M.createVersionCheck(e.env);
+    await vc.check(); await vc.check();
+    assert(e.log.notices.length === 0, 'failure must stay silent'); assert(calls === 2, 'a failed check is retried later (not latched off)');
+  }
+});
+testAsync('R1-5d: Reload requires confirmation that unsaved work will be lost; declining does nothing; nothing ever reloads automatically', async function () {
+  const M = r1LoadVersionModule(); const { env, log } = r1Env(); const vc = M.createVersionCheck(env);
+  await vc.check(); assert(log.reloads === 0, 'showing the notice does not reload');
+  vc.reloadClicked(); assert(log.confirms.length === 1 && /unsaved/i.test(log.confirms[0]) && log.reloads === 0, 'declined confirmation → no reload');
+  env.confirm = m => { log.confirms.push(m); return true; }; vc.reloadClicked(); assert(log.reloads === 1, 'confirmed → reload');
+});
+testAsync('R1-5e: overlapping triggers (tab visible + interval) never run two checks at once', async function () {
+  const M = r1LoadVersionModule(); const releases = []; let calls = 0;
+  const { env } = r1Env({ fetch: () => { calls++; return new Promise(r => { releases.push(() => r({ ok: true, text: () => Promise.resolve("const BUILD_TS='2026-10-09T10:42:07';") })); }); } });
+  const vc = M.createVersionCheck(env); const a = vc.check(), b = vc.check(); releases.forEach(f => f()); await a; await b;
+  assert(calls === 1, 'one fetch while a check is in flight, got ' + calls);
+});
+test('R1-5f: wiring — 15-minute interval, checks on tab-visible, no auto-reload or focus calls in the module; index.html mounts it as a module', function () {
+  const src = fs.readFileSync(R1_VC_PATH, 'utf8');
+  assert(/VERSION_CHECK_INTERVAL_MS\s*=\s*15\s*\*\s*60\s*\*\s*1000/.test(src), '15-minute interval');
+  assert(/visibilitychange/.test(src) && /visibilityState\s*===\s*'visible'/.test(src), 'checks when the tab becomes visible');
+  const code = src.replace(/\/\/[^\n]*/g, '');
+  assert(!/\.focus\(/.test(code), 'never takes focus');
+  assert((code.match(/location\.reload\(/g) || []).length === 1 && /reload:\s*\(\)\s*=>\s*location\.reload\(\)/.test(code), 'location.reload only as the env.reload behind the confirmed Reload action');
+  assert(/<script type="module" src="js\/version-check\.js"><\/script>/.test(html), 'mounted as an ES module');
+  assert(!/version-check/.test(html.match(/<script>([\s\S]*?)<\/script>/)[1]), 'no version-check code in the inline script body');
+});
+
 (async () => {
 for (const t of _asyncTests) {
   try { await t.fn(); pass++; process.stdout.write('  ✓ ' + t.name + '\n'); }

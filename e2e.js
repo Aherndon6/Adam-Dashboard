@@ -589,7 +589,10 @@ async function clickNav(page, id) {
       !e.includes('favicon') &&          // ignore missing favicon
       !e.includes('net::ERR_') &&        // ignore expected Supabase offline (file:// mode)
       !e.includes('Failed to fetch') &&  // same
-      !e.includes('status of 4')         // ignore Supabase 4xx in file:// mode (CORS/auth expected)
+      !e.includes('status of 4') &&      // ignore Supabase 4xx in file:// mode (CORS/auth expected)
+      // Release 1: ES modules cannot load from file:// (browser rule; AGENTS.md: module code is verified on a
+      // static server). Ignore exactly that one block for the new-version module — no other CORS error.
+      !(e.includes('/js/version-check.js') && e.includes("from origin 'null' has been blocked by CORS policy"))
     );
     assert(relevant.length === 0, 'Console errors: ' + relevant.join(' | '));
     await context.close();
@@ -5478,6 +5481,36 @@ async function clickNav(page, id) {
 
     await context.close();
   }
+
+  // ── Release 1 (2026-10-09): typed-date entry in the Register filters (real keyboard, real Chromium) ──
+  await test('R1-E1: typing a full date into the Register "From" filter keeps the field until done (no re-render mid-entry); Enter applies it once', async () => {
+    const { page, context } = await openApp(browser, { locale: 'en-US' });
+    await page.evaluate(([mockAccounts, mockTxns]) => {
+      FEATURE_FLAGS.showTransactionLedger = true;
+      _accountsCache = mockAccounts; _registriesLoadStatus = 'loaded';
+      _txLedgerLoadStatus = 'loaded'; _txLedgerCache = mockTxns; _txLedgerAccountKey = 'truist_checking';
+      _txFilterDateFrom = ''; _txFilterDateTo = '';
+      renderApp(); setSection('transactions'); setTxSubNav('register');
+      document.getElementById('tx-filter-date-from').__r1Original = true;
+    }, [TX_MOCK_ACCOUNTS, RG_MOCK_TRANSACTIONS]);
+    const box = await page.locator('#tx-filter-date-from').boundingBox();
+    await page.click('#tx-filter-date-from', { position: { x: 10, y: box.height / 2 } });   // the month segment
+    await page.keyboard.press('Home');
+    await page.keyboard.type('10052026', { delay: 30 });   // en-US segments: mm dd yyyy
+    const mid = await page.evaluate(() => {
+      const el = document.getElementById('tx-filter-date-from');
+      return { same: !!(el && el.__r1Original), focused: document.activeElement === el, value: el && el.value, filter: _txFilterDateFrom };
+    });
+    assert(mid.same && mid.focused, 'the field must not be replaced or lose focus while typing: ' + JSON.stringify(mid));
+    assert(mid.value === '2026-10-05' && mid.filter === '2026-10-05', 'the full typed date is kept (no 0002-… partial year): ' + JSON.stringify(mid));
+    await page.keyboard.press('Enter');
+    const after = await page.evaluate(() => {
+      const el = document.getElementById('tx-filter-date-from');
+      return { rerendered: !!(el && !el.__r1Original), value: el && el.value, filter: _txFilterDateFrom };
+    });
+    assert(after.rerendered && after.value === '2026-10-05' && after.filter === '2026-10-05', 'Enter applies the typed filter: ' + JSON.stringify(after));
+    await context.close();
+  });
 
   // Empty smoke-selection guard (5G-QA-1 hardening): if smoke mode matched zero
   // tests, that is a configuration failure, not a pass. With the lazy browser
