@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| Status | **PROPOSAL, revised with the owner rulings of 2026-10-09 (section 20).** Not implemented. The parser and date contract stay **unfrozen** until real institution files are inspected (section 21) |
+| Status | **DESIGN LOCKED (owner final checkpoint, 2026-10-09; section 23).** Implementation authorized through a frozen candidate. No push, no deploy, no real shadow run |
 | Authority | Owner R-lite authorization (2026-10-09). R-lite is **non-authoritative**: it assists, and the existing reconciliation process stays authoritative |
 | Production baseline | `14e76ec` (`BUILD_TS` `2026-10-09T16:27:26`). Releases 0–2 and the Register follow-ups are CLOSED |
 | Boundaries | No schema, RLS or grants. No writes. No new ledger, no certification, no lock. No OCR or OAuth. No Edge Function. No runModel, WD, closeout or rollover change. OWNER HOLD unchanged |
@@ -491,3 +491,70 @@ These are rows with **no** Register row of the same amount within ±15 days:
 - **AMEX:** 5.
 
 These would appear as BANK ONLY. They may be genuinely missing Register entries, or entries Wendy split or combined (e.g. deposits); R-lite cannot tell which, and the owner adjudicates them in the shadow run. Payees were deliberately not inspected.
+
+## 23. Final owner rulings and the locked contracts (2026-10-09)
+
+Where earlier sections differ, this section governs.
+
+**Parser.** §22.5 is **approved** as written: OFX 1.02 SGML and OFX 2.02 XML; the observed bank and credit-card message types; exactly one account per file.
+- **Required evidence per row:** `FITID`, a signed amount (exact cents) and `DTPOSTED`.
+- The sign comes only from the amount.
+- Malformed required evidence, or HTML posing as QFX, rejects the file.
+- `FITID` is used **only** for file integrity and de-duplication. It is not Register identity, is never persisted, and no mapping table is created.
+- CSV is not needed for V1.
+
+**Window.** Approved at **−4 / +3**: Register date − institution `DTPOSTED`, inclusive. Exceptions outside it stay exceptions; the window is never widened to remove them.
+
+**MATCHED contract (locked).** Let *B* be an institution row and *R* a Register row of the selected (bound) account.
+
+| Step | Definition |
+|---|---|
+| A | Same bound account |
+| B | Same signed amount to the cent |
+| C | `eligible(B,R)` ⇔ A and B hold, and −4 ≤ (`R.date` − `B.posted`) ≤ +3 |
+| D | *B* has **exactly one** eligible *R*, looked for across the **whole** loaded Register history of the account (not only the effective range) |
+| E | That *R* has **exactly one** eligible *B* among the file's rows |
+| F | **±7 guard (veto).** Let *W* = [min(`B.posted`, `R.date`) − 7, max(`B.posted`, `R.date`) + 7], inclusive. If **any other** institution row *B′ ≠ B*, or **any other** Register row *R′ ≠ R*, has the **same signed amount** and a date inside *W*, the pair is **vetoed** |
+| Result | MATCHED only if A–F all hold. The reason shown: "same amount and date", or "same amount, N days apart" |
+
+- **The guard only vetoes.**
+  - It never creates or chooses a match.
+  - It never uses descriptions, merges, splits, or balances totals.
+  - It is evaluated once per candidate pair, **not transitively**, so no ambiguity cluster can grow.
+- **The evaluation is order-independent:** every pair is decided from the full row sets at once.
+
+**Per-row states.**
+- **Institution rows:**
+  - **MATCHED** when the contract holds.
+  - **BANK ONLY** when there are no eligible *R*. A same-amount Register row within ±15 days is shown as a "possible counterpart outside the window" hint, which is evidence only.
+  - **AMBIGUOUS** otherwise: several eligible *R*, a shared *R*, or a guard veto. The candidate and nearby rows are listed.
+- **Register rows inside the effective range:**
+  - **MATCHED** (paired);
+  - **AMBIGUOUS** (has at least one eligible *B* but isn't matched);
+  - **REGISTER ONLY** (no eligible *B*).
+- **Register rows outside the effective range** are **matching context only**:
+  - they can be a candidate, a match, or a guard row for an institution row;
+  - they are never listed as REGISTER ONLY and never counted in the Register total;
+  - the number of Register rows dated after the file's last row is shown as "not compared".
+
+**Effective range.** From the earliest to the latest `DTPOSTED` of the valid rows. It is displayed. `DTSTART`/`DTEND` are shown for information only.
+
+**Current posted balance check.** It is never called "reconciled" or "statement".
+- **What it compares:** the file's `LEDGERBAL` (`BALAMT` at `DTASOF`, shown with its date and time) **vs the Register cleared balance**: the account's starting balance plus every **cleared** row dated on or before the `DTASOF` date.
+- **The compatible cutoff:** the Register's Cleared marks reflect *now*, so the check runs only when the `DTASOF` date is **today**. A balance from a past date (an old download) or a future date gives **UNAVAILABLE**, with the reason. No balance in the file, or no starting balance on the account, also gives UNAVAILABLE.
+- **Outcomes:** AGREES, or DIFFERS by $X.
+- **Independence:** the check is independent of the transaction results in both directions, and never synthesized.
+
+**Account binding (fail closed).**
+- The owner selects the account. V1 accounts: Truist Checking, AMEX Gold, AMEX Platinum, Citi Costco, Chase Disney.
+- **Type compatibility:** `CHECKING` ↔ checking; the credit-card message set or `CREDITLINE` ↔ credit card. Anything else is **refused**.
+- **Remembered last-4** is a per-browser convenience, not authority:
+  - a file whose last-4 differs from the one remembered for that account → **refused** (no comparison);
+  - a last-4 remembered for **another** account → **refused**.
+- **Every import** shows "This file appears to be a credit card ending •NNNN. Compare it with AMEX Gold?" and needs an explicit confirmation.
+- **Re-binding** is a separate, explicit owner action.
+- The filename and `ORG` are never used. No server-side binding store.
+
+**Process.**
+- Fixture commits use the normal hook path. The docs-only exception is for docs only. The normal validation over `2a6e2bf` passed (private evidence).
+- The legacy Statement Check ruling stands: retire the unprotected panel; a documentation-text-only `renderBudget` re-pin with the exact before/after diff captured.
