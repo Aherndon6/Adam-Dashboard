@@ -1011,10 +1011,11 @@ TA('[A1b-R2] D10: Statement check is not authoritative-looking unless the legacy
   var i=h.indexOf('id="budget-recon"'); assert(i>=0,'Statement check panel not rendered at all (per-cell rendering expected)');
   var panel=h.slice(i,i+2500); assert(/can.t verify|unavailable/i.test(panel)&&!/Reconciled/.test(panel)&&!MONEY.test(txt(panel)),'Statement check presented without a complete legacy source: '+txt(panel).slice(0,160));
 });
-TA('[A1b-R2] D10b: Statement check computes normally from a COMPLETE legacy source even when the month is UNVERIFIED for another reason',async function(){
+TA('[A1b-R2] D10b: the retired Statement check (R-lite, owner 2026-10-09) shows its notice and no figures even from a COMPLETE legacy source',async function(){
+  // Superseded: the legacy check no longer computes from Budget-entered entries (owner retired it as misleading).
   var h=await renderAug([reg('a','nope.k',-40)],[leg('l',GROC,5)]);
   var i=h.indexOf('id="budget-recon"'); var panel=h.slice(i,i+2500);
-  assert(i>=0&&/\$5\.00/.test(panel),'Statement check suppressed although its legacy source is complete: '+txt(panel).slice(0,160));
+  assert(i>=0&&/retired/.test(panel)&&/Statement Compare/.test(panel)&&!MONEY.test(txt(panel))&&!/Reconciled/.test(panel),'retired panel expected: '+txt(panel).slice(0,160));
 });
 TA('[A1b-R2] D10c: legacy transaction list under an incomplete legacy source does not claim "No Budget-entered transactions"',async function(){
   var h=await renderAug([],null,{legResp:function(){return exact([],2);}});

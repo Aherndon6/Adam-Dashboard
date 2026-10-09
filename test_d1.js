@@ -238,9 +238,11 @@ test('[D1-REG] B-4 Budget zero control: exactly-on-plan reads $0.00 remaining', 
   const t = await budgetText([line(GROC, 500), line(RENT, 1000), line('income.net_salary', 6000), line('misc.goal_sweep', 200)], [reg('a', GROC, -500), reg('b', RENT, -1000)]);
   assert(/Planned remaining \$200\.00|Planned remaining \$0\.00/.test(t) && !/Over plan by/.test(t), 'on/under plan never reads as over: ' + (t.match(/Planned remaining.{0,20}/) || [''])[0]);
 });
-test('[D1] B-5 Budget statement check: a negative Statement − Cleared difference keeps its sign', () => {
+test('[D1] B-5 Budget statement check: retired by R-lite (owner 2026-10-09) — no Statement − Cleared difference or "Reconciled" is shown at all', () => {
+  // Superseded: the sign-preservation this test guarded belonged to the legacy Statement check, which the owner retired
+  // (it compared Budget-entered entries, not the Register). The truthful replacement is Transactions → Statement Compare.
   const src = fnSrc('_renderBudgetRecon');
-  assert(/\['Difference \(Stmt - Cleared\)',stmtBal\?fsigned\(diff\):'—',diffColor\]/.test(src), 'statement difference must be sign-preserving');
+  assert(!/Difference \(Stmt - Cleared\)|fsigned\(diff\)|Reconciled/.test(src) && /Statement check \(retired\)/.test(src), 'the retired check computes and claims nothing');
 });
 
 (async () => {

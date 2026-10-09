@@ -2506,7 +2506,8 @@ async function clickNav(page, id) {
     await context.close();
   }, { tags: ['smoke'] });
 
-  await test('BUD-4: cleared toggle reaches the Statement check through the re-read pair (A1b §17: the optimistic copy is not authoritative)', async () => {
+  await test('BUD-4: the retired Statement check (R-lite, owner 2026-10-09) shows no Cleared total, before or after a cleared toggle and pair re-read', async () => {
+    // Superseded: the legacy check used Budget-entered entries and was retired as misleading; it now computes nothing.
     // Intent kept: toggling cleared updates the reconciliation panel. A1b (§17, owner Round-2 ruling): the panel
     // reads only the committed pair, so an optimistic consumer-copy edit alone must NOT change it; the toggle's
     // pair re-read does. The re-read is simulated by committing the post-write pair (no network).
@@ -2530,9 +2531,7 @@ async function clickNav(page, id) {
       _budgetPairCycle = null; _budgetTransactions = []; _budgetTransLoadStatus = 'not_loaded'; _budgetRegisterSpendCache = []; _budgetRegisterSpendLoadStatus = 'not_loaded'; _budgetSelectedMonth = '';
       return { before, optimisticOnly, after };
     });
-    assert(result.before === '0.00', 'Cleared should be $0.00 before toggle, got: ' + result.before);
-    assert(result.optimisticOnly === '0.00', 'an optimistic consumer-copy edit alone must not change the Statement check, got: ' + result.optimisticOnly);
-    assert(result.after === '50.00', 'Cleared should be $50.00 once the pair is re-read, got: ' + result.after);
+    assert(result.before === 'not found' && result.optimisticOnly === 'not found' && result.after === 'not found', 'the retired check shows no Cleared figure: ' + JSON.stringify(result));
     await context.close();
   });
 
@@ -2924,7 +2923,7 @@ async function clickNav(page, id) {
     await context.close();
   });
 
-  await test('TX-8: Reconciliation still labeled future-phase; Register is live/clickable under production defaults (Phase 5E-3+)', async () => {
+  await test('TX-8: Register is live/clickable under production defaults; the former Reconciliation placeholder is now the live "Statement Compare" tab (R-lite, owner 2026-10-09)', async () => {
     const { page, context } = await openApp(browser);
     const result = await page.evaluate((mockAccounts) => {
       // showTransactionLedger is left at its production default (true) here on purpose —
@@ -2942,13 +2941,14 @@ async function clickNav(page, id) {
         registerIsPlainLabel: (html.match(/<button[^>]*>Register<\/button>/) || []).length > 0,
         registerNotDisabledSpan: !html.includes('Register — Phase 5E'),
         reconciliationLabel: html.includes('Reconciliation'),
-        registerNotClickable: html.includes('cursor:not-allowed') || html.includes('cursor: not-allowed')
+        statementCompareButton: (html.match(/<button[^>]*>Statement Compare<\/button>/) || []).length > 0,
+        anyDisabledTab: html.includes('cursor:not-allowed') || html.includes('cursor: not-allowed')
       };
     }, TX_MOCK_ACCOUNTS);
     assert(result.registerIsPlainLabel, 'Register must render as a plain clickable "Register" button when showTransactionLedger=true (production default)');
     assert(result.registerNotDisabledSpan, 'Register must NOT show the "Register — Phase 5E" disabled label when showTransactionLedger=true');
-    assert(result.reconciliationLabel, 'Reconciliation future tab must be present (phase suffix stripped per 5G-0 SYS-1; Phase 5F-1 not yet built)');
-    assert(result.registerNotClickable, 'Reconciliation (the one remaining future tab) must have cursor:not-allowed to signal it is disabled');
+    assert(!result.reconciliationLabel, 'no tab may be called "Reconciliation" — Statement Compare is assistance, not reconciliation (owner ruling)');
+    assert(result.statementCompareButton && !result.anyDisabledTab, 'Statement Compare is a live tab; no disabled placeholder tab remains');
     await context.close();
   });
 
