@@ -1,8 +1,8 @@
-# Release 1: trust / household quick wins (frozen candidate, 2026-10-09)
+# Release 1: trust / household quick wins (closed 2026-10-09)
 
 | | |
 |---|---|
-| Status | **FROZEN CANDIDATE — awaiting owner authorization to push.** Not pushed, not deployed |
+| Status | **DEPLOYED — PASS · PRODUCTION ACCEPTANCE — PASS · CLOSED** (owner, 2026-10-09). Pushed `96328a7..78ad6c7` (fast-forward); `BUILD_TS` `2026-10-09T12:38:29`; served `index.html` and `js/version-check.js` byte-identical to the commit |
 | Branch | `production-line-2026q4`. Product commits `c4daf1c` (six items) and `05d4d3f` (Fable review fixes), on top of live `96328a7` (Release 0) and docs `ad4a877` |
 | Authority | Owner authorization of 2026-10-09 (six items; the Budget "Statement check" item was dropped) |
 | Private evidence | `~/Herndon-Financial-OS-Evidence/release-1-2026-10-09/` (RED/GREEN, mutation run, browser acceptance with screenshots, final validation, December merge preview) |
@@ -57,7 +57,13 @@ Accepted non-blocking findings, not fixed:
 - **N-7:** a deploy followed quickly by a revert can leave a stale notice until the next reload.
 - **N-8:** other pre-existing raw `HTTP nnn` messages in Manage Lines.
 
-## Production acceptance (after an authorized push)
+## Production acceptance (owner, 2026-10-09): PASS
+
+A–E below all PASS. Adam and Wendy both confirmed the build. Check C used Goals → Waterfall / Scenarios → Preview impact (cancelled, not committed); the original FD-3 entry point, the standalone What-If section, has no menu entry, so the routing fix rests on R1-6 and its mutant.
+
+Observation, not Release 1 (the code is identical in `96328a7`): the Scenario Builder's "Impact on Wk 40 balances" box showed "(no change)" for a $1 Wk 40 expense. This is probably the current week's actual-balance anchoring, but it is unconfirmed. It goes to the What-If backlog.
+
+The checks:
 
 1. Confirm the served `index.html` equals the commit blob and carries the new `BUILD_TS`. Confirm `js/version-check.js` is served.
 2. Sign out, or use a private window: the email field is empty.
