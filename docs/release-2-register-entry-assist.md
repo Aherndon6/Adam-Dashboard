@@ -3,7 +3,7 @@
 | | |
 |---|---|
 | Status | **FROZEN CANDIDATE — awaiting owner authorization to push.** Not pushed, not deployed |
-| Branch | `production-line-2026q4`. Product commits `32f044d` (feature) and `ea345fe` (Fable review fixes), on top of live `78ad6c7` (Release 1) and docs `87d0d78` |
+| Branch | `production-line-2026q4`, on top of live `78ad6c7` (Release 1) and docs `87d0d78`. Commits: `32f044d` (feature), `ea345fe` (Fable review fixes), `f9c044f` (mutation-gap tests; readable accent-fold range), `d5c5ecd` (legacy-category test); docs `8608754` and this record |
 | Authority | Owner authorization of 2026-10-09: implementation through frozen candidate; no push, no deploy |
 | Private evidence | `~/Herndon-Financial-OS-Evidence/release-2-2026-10-09/` |
 
@@ -103,12 +103,12 @@ A deterministic rule; it **suggests, never decides**.
 | Check | Result |
 |---|---|
 | RED before the feature | 14 regression failures. 11/11 e2e failures on the pre-Release-2 code with a stub module |
-| GREEN on `ea345fe` | Regression 2009/0. e2e full suite 192/0 (2 prod-verify skipped; 0 real network contact) |
+| GREEN on `d5c5ecd` | Regression 2009/0. e2e full suite 194/0 (2 prod-verify skipped; 0 real network contact) |
 | Other suites | Release A 62/0. Release B 16/0. D1 26/0. A1b 212/0. G1 32/0. Rollover 49/0. Rollover server 25/0 |
 | Pins and golden | Protected pins D1 49/49. 2026 golden identical |
-| Mutation | See private evidence `mutation-results.txt` |
-| Browser acceptance (local static server, real module, Supabase mocked) | PASS |
-| Independent review (Fable) | APPROVE WITH NON-BLOCKING FINDINGS. N-1 to N-7 fixed in `ea345fe`. N-8 is a pre-existing out-of-scope defect, recorded below |
+| Mutation | 44 mutants: 41 killed. The 3 survivors (M4, M18, M28) are equivalent by construction (defence in depth). Earlier runs found gaps, closed by R2-E10 (double-click), R2-N1 (dirty form), R2-E15 and R2-E16 |
+| Browser acceptance (local static server, real module, Supabase mocked) | 6/6 PASS |
+| Independent review (Fable) | APPROVE WITH NON-BLOCKING FINDINGS (no blocking findings). N-1 to N-7 fixed in `ea345fe`. N-8 is a pre-existing out-of-scope defect, recorded below |
 
 ### Recorded, not fixed (out of scope)
 
@@ -133,11 +133,18 @@ Real entries made during acceptance are ordinary Register transactions; Wendy de
 
 ## Rollback
 
-`git revert ea345fe 32f044d` on `main`, then the normal push/deploy and a household reload. No data rollback: every transaction was saved by the normal path.
+`git revert d5c5ecd f9c044f ea345fe 32f044d` on `main`, then the normal push/deploy and a household reload. No data rollback: every transaction was saved by the normal path.
 
 ## December integration
 
-- Merge preview against `rollover-package-d`: the only conflict is the `BUILD_TS` line. Details are in private evidence `december-merge-preview.txt`.
+- Merge preview against `rollover-package-d` (`260169b` + `d5c5ecd`): the only conflict is the `BUILD_TS` line.
+- Merged suites:
+  - regression 2009/0;
+  - e2e 194/0;
+  - D candidate v2 pins 49/49;
+  - golden identical.
+- `test_rollover` shows the same two reds as the Release 0 and Release 1 previews (`PKGD-D2-SRC`: the Release 0 labels; `PKGD-DEPLOY-GUARD`: Package E pending).
+- Release 2 adds no new December requirement.
 - Rollover does not touch `_saveTxForm`, `_renderTxRegister`, `_openTxForm`, `_setTxFormField` or `_loadTxLedger`.
 
 ## R-lite observations (design facts from this work; R-lite NOT started)
