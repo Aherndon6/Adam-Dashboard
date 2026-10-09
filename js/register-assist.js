@@ -334,6 +334,10 @@ function augment() {
   if (mode !== 'add' && !busy) { carriedDate = null; pending = null; acknowledged = null; }
   const p = formParts();
   if (!p) return;
+  // A cleared (blank/invalid) date stays blank on screen: the renderer redraws an empty date as today, which would
+  // show a date the form does not hold. The data is never changed here; Save then gives "Date is required."
+  const dateInput = p.root.querySelector(DATE);
+  if (dateInput && typeof _txFormData !== 'undefined' && _txFormData && String(_txFormData.transaction_date || '') === '' && dateInput.value !== '') dateInput.value = '';
   enhanceCategory(p);
   if (mode !== 'add') return;
   renderSaveAnother(p);

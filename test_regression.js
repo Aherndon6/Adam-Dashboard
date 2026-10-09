@@ -8355,8 +8355,15 @@ test('5E8-R20b: _refreshTxFormCategoryLabels exists, is correctly scoped, and ne
     'must relabel only month-derived options, leaving placeholder and legacy options alone');
   assertIncludes(fnBlock,'_getRegisterCategoryLabel(o.value,monthIso)',
     'must resolve labels through the same helper the renderer uses');
-  assertIncludes(fnBlock,'_txDateToMonthIso(_txFormData.transaction_date)||_txDateToMonthIso(_today)',
-    'month resolution must mirror _renderTxRegister so the two cannot drift');
+  // 2026-10-09 (blank-date fix): the fallback is today's month via the global _todayTxDate() — the renderer's own
+  // _today is a local of _renderTxRegister and threw a ReferenceError here. Same rule, same value (checked below).
+  assertIncludes(fnBlock,'_txDateToMonthIso(_txFormData.transaction_date)||_txDateToMonthIso(_todayTxDate())',
+    'month resolution must mirror _renderTxRegister (form date, else today\'s month) so the two cannot drift');
+  var reg=html.slice(html.indexOf('function _renderTxRegister('));
+  assertIncludes(reg,"var _today=(function(){var n=new Date();return n.getFullYear()+'-'+String(n.getMonth()+1).padStart(2,'0')+'-'+String(n.getDate()).padStart(2,'0');})();",
+    'the renderer\'s _today is still the local YYYY-MM-DD date');
+  var n=new Date(), want=n.getFullYear()+'-'+String(n.getMonth()+1).padStart(2,'0')+'-'+String(n.getDate()).padStart(2,'0');
+  assert(_todayTxDate()===want,'_todayTxDate() gives the same local YYYY-MM-DD as the renderer\'s _today');
   assert(fnBlock.indexOf('renderApp()')===-1,
     'the in-place refresh helper must never call renderApp — that would reintroduce the defect');
 });
@@ -16854,6 +16861,44 @@ test('R2-W1: limits — mounted as one ES module; the protected Register rendere
   assert(!/category_key\s*=[^=]/.test(code), 'the module never assigns a category itself');
   assert((code.match(/_setTxFormField\('category_key'/g) || []).length === 2, 'category changes only through the two explicit user actions (search result, Use suggestion)');
   assert(!/\.focus\(\)/.test(code.replace(/payee\.focus\(\)/g, '')), 'the only focus call is putting the cursor in Payee for the next entry');
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Register follow-ups (owner authorization 2026-10-09, alongside the R-lite authorization; R-lite itself not started).
+// R3-D*: blank/invalid Add-form date (Fable R2 N-8) · R3-P*: partial-payee completions (js/register-assist.js).
+// ─────────────────────────────────────────────────────────────────────────────
+console.log('\n── Register follow-ups: blank date, partial payee ──');
+function r3WithLabelDom(body) {
+  const keep = { gid: document.getElementById, cc: _categoriesCache, fd: _txFormData, blr: _budgetLineRulesLoadStatus };
+  const opt = { value: 'groc', textContent: '(old label)', getAttribute: k => (k === 'data-mlabel' ? '1' : null) };
+  const sel = { options: [opt] };
+  try {
+    _categoriesCache = [{ key: 'groc', label: 'Groceries', parent_key: null, is_leaf: true, lifecycle_status: 'active', behavior_class: 'discretionary', budget_treatment: 'expense' }];
+    _budgetLineRulesLoadStatus = 'not_loaded';
+    _txFormData = { transaction_date: '2026-10-03', payee: 'Publix', memo: 'm', category_key: 'groc', outflow: '12.00', inflow: '', cleared: false };
+    document.getElementById = id => (id === 'tx-form-category' ? sel : keep.gid.call(document, id));
+    body(opt);
+  } finally { document.getElementById = keep.gid; _categoriesCache = keep.cc; _txFormData = keep.fd; _budgetLineRulesLoadStatus = keep.blr; }
+}
+test('R3-D1: clearing the Add-form date (blank or a partly typed, invalid date) throws nothing; category labels still resolve; nothing else changes', function () {
+  r3WithLabelDom(opt => {
+    let err = null;
+    try { _setTxFormField('transaction_date', ''); } catch (e) { err = e; }
+    assert(!err, 'clearing the date must not throw: ' + (err && err.message));
+    assert(_txFormData.transaction_date === '', 'the form holds the blank date as entered (no today substituted into the data)');
+    assert(opt.textContent === 'Groceries', 'labels resolved for the current month: ' + opt.textContent);
+    assert(_txFormData.payee === 'Publix' && _txFormData.outflow === '12.00' && _txFormData.category_key === 'groc', 'other entered values untouched');
+    err = null; try { _setTxFormField('transaction_date', '2026-10-05'); } catch (e) { err = e; }
+    assert(!err && _txFormData.transaction_date === '2026-10-05', 'a valid date afterwards behaves as before');
+  });
+});
+testAsync('R3-D2: Save with a blank date → the normal "Date is required." message, no request, every other value kept (control)', async function () {
+  await r2WithSave({ fd: { transaction_date: '' } }, async log => {
+    const r = await _saveTxForm(); await r2Flush();
+    assert(r !== true && log.posts === 0 && log.catReads === 0, 'refused before any request');
+    assert(_txFormError === 'Date is required.' && _txFormMode === 'add', 'normal validation: ' + _txFormError);
+    assert(_txFormData.payee === 'Costco' && _txFormData.outflow === '84.22' && _txFormData.category_key === 'groc', 'values kept');
+  });
 });
 
 (async () => {

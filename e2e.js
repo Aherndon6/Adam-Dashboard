@@ -5787,6 +5787,38 @@ async function clickNav(page, id) {
     await context.close();
   });
 
+  // ── Register follow-ups (2026-10-09): blank Add-form date (Fable R2 N-8) ──
+  console.log('\n── Section R3: Register follow-ups ──');
+  const R3_DATE = '#transactions-content input[type="date"][onchange^="_setTxFormField"]';   // the Add-form date (not the filters)
+  async function r3ClearDate(page) {
+    const box = await page.locator(R3_DATE).boundingBox();
+    await page.click(R3_DATE, { position: { x: 10, y: box.height / 2 } });
+    await page.keyboard.press('Backspace');   // Chrome: one emptied segment makes the whole value '' (blank/invalid)
+  }
+  for (const via of ['Add', 'Save & Add Another']) {
+    await test('R3-E1 (' + via + '): clearing the date → no page error; the field stays blank (no today shown), even after a re-render; Save gives "Date is required.", saves nothing, keeps everything else', async () => {
+      const { page, context, posts } = await r2Open({ formData: R2_FULL });
+      const errors = []; page.on('pageerror', e => errors.push(String(e)));
+      await r3ClearDate(page);
+      await page.waitForTimeout(100);
+      await page.selectOption('#tx-form-category', 'food.restaurants');   // a re-render of the form
+      const shown = await page.evaluate(sel => ({ dateVal: document.querySelector(sel).value, fd: _txFormData.transaction_date }), R3_DATE);
+      await page.click(via === 'Add' ? 'button[onclick="_saveTxForm()"]' : '#r2-save-add');
+      await page.waitForFunction(() => !!_txFormError, null, { timeout: 3000 });
+      await page.waitForTimeout(150);
+      const s = await r2State(page);
+      assert(errors.length === 0, 'no uncaught page error: ' + errors.join(' | '));
+      assert(shown.fd === '' && shown.dateVal === '', 'after a re-render the date field must show what is in the form (blank), not today: ' + JSON.stringify(shown));
+      assert(s.err === 'Date is required.' && posts.length === 0 && s.mode === 'add' && !s.kept, 'normal validation, nothing saved, no next entry: ' + JSON.stringify({ err: s.err, posts: posts.length }));
+      assert(s.fd.payee === 'Publix' && s.fd.memo === 'weekly shop' && s.fd.outflow === '42.10' && s.fd.category_key === 'food.restaurants' && s.fd.cleared === true, 'other values kept: ' + JSON.stringify(s.fd));
+      await page.fill(R3_DATE, '2026-10-04');
+      await page.click(via === 'Add' ? 'button[onclick="_saveTxForm()"]' : '#r2-save-add');
+      await page.waitForFunction(() => _txFormMode === null || !!document.getElementById('r2-date-kept'), null, { timeout: 4000 });
+      assert(posts.length === 1 && posts[0].transaction_date === '2026-10-04', 'with a valid date it saves once as before: ' + JSON.stringify(posts));
+      await context.close();
+    });
+  }
+
   // Empty smoke-selection guard (5G-QA-1 hardening): if smoke mode matched zero
   // tests, that is a configuration failure, not a pass. With the lazy browser
   // above, reaching here in the empty case means no Chromium was launched and no

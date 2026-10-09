@@ -885,7 +885,7 @@ button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-vis
 // ── Constants (unchanged) ──────────────────────────────────────────────────
 // Simplified architecture — $8,250 total from LC · $6,500 operating floor · no legacy mechanics
 // Real-world moves: keep $2,250 in chk, move $2,750 sav→chk, move $1,000 LC→chk, move $2,250 LC→chk (Option 1 correction)
-const BUILD_TS='2026-10-09T14:54:00'; // updated each push — local time string
+const BUILD_TS='2026-10-09T15:46:55'; // updated each push — local time string
 const START_CHK=18037.73,START_SAV=3772.77,START_AMX=103.64,START_TAX=0,START_LC=13488.88;
 const EF_AMT=13488.88; // LC/EF balance — static this model year (no transfers in or out)
 const BASE_TAX=521.36,RET_SAV_XFR=3772.74;
@@ -9005,7 +9005,9 @@ function _setTxFormField(field,val){
 function _refreshTxFormCategoryLabels(){
   var sel=document.getElementById('tx-form-category');
   if(!sel)return;
-  var monthIso=_txDateToMonthIso(_txFormData.transaction_date)||_txDateToMonthIso(_today);
+  // Blank/invalid date (2026-10-09 fix): fall back to today's month for the LABELS only, as the renderer does. The
+  // renderer's _today is local to _renderTxRegister; referencing it here threw a ReferenceError. The form's date stays blank.
+  var monthIso=_txDateToMonthIso(_txFormData.transaction_date)||_txDateToMonthIso(_todayTxDate());
   for(var i=0;i<sel.options.length;i++){
     var o=sel.options[i];
     if(o.getAttribute('data-mlabel')!=='1')continue;
