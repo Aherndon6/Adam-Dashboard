@@ -17024,6 +17024,11 @@ test('R4-P1: the four real-structure fixtures parse — format, account kind, la
   assert(t.file.org === 'BB&T', 'entities decoded: ' + t.file.org);
   assert(t.file.rows.every(r => /^\d{4}-\d{2}-\d{2}$/.test(r.posted) && Number.isInteger(r.cents)) && t.file.rows.some(r => r.type === 'DEBIT'), 'normalized rows; TRNTYPE upper-cased');
   assert(t.file.balance && /^\d{4}-\d{2}-\d{2}$/.test(t.file.balance.asOf) && Number.isInteger(t.file.balance.cents), 'balance with as-of date');
+  ['truist-checking.qfx', 'chase-card.qfx'].forEach(f => {   // both carry LEDGERBAL and AVAILBAL: the posted (ledger) one is used
+    const txt = r4Fx(f), led = /<LEDGERBAL>\s*<BALAMT>([^<\r\n]+)/i.exec(txt)[1].trim(), av = /<AVAILBAL>\s*<BALAMT>([^<\r\n]+)/i.exec(txt)[1].trim();
+    const pb = M.parseOfx(txt).file.balance;
+    assert(pb.cents === M.toCents(led) && (led === av || pb.cents !== M.toCents(av)), f + ': LEDGERBAL, not AVAILBAL');
+  });
   const a = M.parseOfx(r4Fx('amex-card.qfx'));
   assert(a.ok && a.file.kind === 'credit_card' && a.file.last4 === '2222' && a.file.rows.length === 8 && a.file.version === '2' && a.file.rows.every(r => r.memo), 'amex: ' + JSON.stringify(a.ok ? { k: a.file.kind, l: a.file.last4 } : a));
   const c = M.parseOfx(r4Fx('citi-card.qfx'));
@@ -17077,6 +17082,22 @@ test('R4-P7: balance is optional — absent or incomplete balance leaves the tra
   const bo = M.parseOfx(r4Ofx({ rows: [] }));
   assert(bo.ok && bo.file.rows.length === 0 && bo.file.balance, 'balance-only file is allowed');
   assert(!M.parseOfx(r4Ofx({ rows: [], bal: null })).ok, 'nothing to compare → rejected');
+});
+test('R4-P9: non-conforming structure is rejected rather than silently resolved; nested aggregates, comments, a BOM and <OFX attributes> are handled', function () {
+  const M = r4Load();
+  const base = r4Ofx({ rows: [{ fitid: 'A', amt: '-5.00' }] });
+  assert(M.parseOfx(base).ok, 'control');
+  assert(!M.parseOfx(base.replace('<TRNAMT>-5.00\n', '<TRNAMT>-5.00\n<TRNAMT>-9.00\n')).ok, 'a repeated TRNAMT in one row rejects');
+  assert(!M.parseOfx(base.replace('<FITID>A\n', '<FITID>A\n<FITID>B\n')).ok, 'a repeated FITID in one row rejects');
+  assert(!M.parseOfx(base.replace('</CCSTMTRS>', '<LEDGERBAL>\n<BALAMT>-1.00\n<DTASOF>20301010\n</LEDGERBAL>\n</CCSTMTRS>')).ok, 'a second LEDGERBAL rejects');
+  const unclosed = M.parseOfx(base.replace('</LEDGERBAL>\n', '<AVAILBAL>\n<BALAMT>999.00\n<DTASOF>20301011\n</AVAILBAL>\n'));
+  assert(unclosed.ok && unclosed.file.balance.cents === -10000 && unclosed.file.balance.asOf === '2030-10-10', 'an unclosed LEDGERBAL never takes AVAILBAL values: ' + JSON.stringify(unclosed.ok && unclosed.file.balance));
+  const nested = M.parseOfx(base.replace('<NAME>SYNTH\n', '<PAYEE>\n<NAME>NESTED PAYEE\n<ADDR1>X\n</PAYEE>\n<NAME>SYNTH\n').replace('<FITID>A\n', '<FITID>A\n<BANKACCTTO>\n<BANKID>1\n<ACCTID>777777\n</BANKACCTTO>\n'));
+  assert(nested.ok && nested.file.last4 === '4444' && nested.file.rows[0].name === 'SYNTH', 'nested PAYEE/BANKACCTTO inside a row are skipped: ' + JSON.stringify(nested.ok ? nested.file.rows[0] : nested));
+  const cm = M.parseOfx(base.replace('</BANKTRANLIST>', '<!-- <STMTTRN><TRNTYPE>DEBIT<DTPOSTED>20301002<TRNAMT>-1.00<FITID>Z</STMTTRN> -->\n</BANKTRANLIST>'));
+  assert(cm.ok && cm.file.rows.length === 1, 'commented-out rows are not transactions');
+  assert(M.parseOfx('\uFEFF' + base).ok && M.parseOfx('\u00EF\u00BB\u00BF' + base).ok, 'a byte-order mark is ignored');
+  assert(M.parseOfx(base.replace('<OFX>', '<OFX xmlns="http://ofx.net/ifx/2.0/ofx">')).ok, '<OFX> with attributes');
 });
 test('R4-P8: statement dates never bound the rows — rows outside DTSTART/DTEND are kept and the effective range comes from the rows', function () {
   const M = r4Load();

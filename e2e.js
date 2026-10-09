@@ -6086,6 +6086,16 @@ async function clickNav(page, id) {
     assert(/Current posted balance check/.test(bal) && /they agree/.test(bal) && /−\$270\.00/.test(bal), 'start 0 + cleared (−10 −28 −150 −77 −5) = −270 vs file −270 as of today: ' + bal);
     await context.close();
   });
+  await test('R4-E9: a Register amount that can\'t be read exactly (e.g. three decimals) makes the comparison unavailable — no partial results', async () => {
+    const { page, context } = await r4Open({ account: 'amex_gold', rows: [{ id: 'a', account_key: 'amex_gold', transaction_date: '2026-10-05', amount: '84.225', payee: 'X', cleared: true }] });
+    await r4Upload(page, 's.qfx', r4Sgml({ rows: [['20261005', '-10.00']] }));
+    await page.waitForSelector('#rlite-confirm'); await page.click('#rlite-confirm');
+    await page.waitForSelector('#rlite-results');
+    const t = await r4Text(page, '#rlite-results');
+    assert(/couldn't be read, so nothing was compared/.test(t) && !(await page.$('#rlite-summary')), 'fail closed: ' + t);
+    await context.close();
+  });
+  // R4-E7/E8 rely on the e2e frozen clock (HFOS_TEST_DATE, default 2026-10-07): a DTASOF of 20261007 is "today" there.
   await test('R4-E8: a balance dated before today is UNAVAILABLE while the transaction comparison still runs', async () => {
     const { page, context } = await r4Open({ account: 'amex_gold', rows: [{ id: 'a', account_key: 'amex_gold', transaction_date: '2026-10-05', amount: -10, payee: 'X', cleared: true }] });
     await r4Upload(page, 's.qfx', r4Sgml({ rows: [['20261005', '-10.00']], bal: ['-10.00', '20261006120000'] }));

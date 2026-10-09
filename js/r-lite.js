@@ -41,15 +41,15 @@ function decode(s) {
 // Parse one OFX 1.x (SGML) or 2.x (XML) bank/card download. All-or-nothing: {ok:false, reason} or {ok:true, file}.
 export function parseOfx(text) {
   const fail = reason => ({ ok: false, reason });
-  const t = String(text == null ? '' : text).replace(/^﻿/, '');
+  const t = String(text == null ? '' : text).replace(/^(\uFEFF|\u00EF\u00BB\u00BF)/, '').replace(/<!--[\s\S]*?-->/g, '');
   if (!t.trim()) return fail('The file is empty.');
   const head = t.slice(0, 4096);
   if (/<!doctype\s+html|<html[\s>]|<head[\s>]|<body[\s>]/i.test(head))
     return fail('This is a web page (HTML), not a bank download — the bank may have shown an error or sign-in page. Download the file again.');
   const version = /^\s*OFXHEADER:\s*100/m.test(head) ? '1' : /<\?OFX[^>]*OFXHEADER\s*=\s*"200"/i.test(head) ? '2' : null;
-  const start = t.search(/<OFX>/i);
+  const start = t.search(/<OFX\b[^>]*>/i);
   if (!version || start < 0) return fail('This isn\'t an OFX/QFX bank download.');
-  const tokens = [...t.slice(start).matchAll(/<(\/?)([A-Za-z0-9.]+)>([^<]*)/g)].map(m => ({ close: !!m[1], tag: m[2].toUpperCase(), val: m[3].trim() }));
+  const tokens = [...t.slice(start).replace(/^<OFX\b[^>]*>/i, '<OFX>').matchAll(/<(\/?)([A-Za-z0-9.]+)>([^<]*)/g)].map(m => ({ close: !!m[1], tag: m[2].toUpperCase(), val: m[3].trim() }));
   if (tokens.some(x => !x.close && x.tag === 'CODE' && x.val !== '' && x.val !== '0')) return fail('The bank file reports an error status. Download the file again.');
   const has = tag => tokens.some(x => !x.close && x.tag === tag);
   const isBank = has('BANKMSGSRSV1'), isCard = has('CREDITCARDMSGSRSV1');
@@ -57,18 +57,22 @@ export function parseOfx(text) {
   if (tokens.filter(x => !x.close && (x.tag === 'STMTRS' || x.tag === 'CCSTMTRS')).length !== 1) return fail('The file must hold exactly one statement (one account).');
 
   const raws = [], acctIds = new Set(), notices = [];
-  let cur = null, inBal = false, acctType = null, org = null, dtStart = null, dtEnd = null, balAmt = null, balAsOf = null, balSeen = false, nested = 0;
+  let cur = null, inBal = false, acctType = null, org = null, dtStart = null, dtEnd = null, balAmt = null, balAsOf = null, balSeen = 0, nested = 0, repeated = false;
   const finish = () => { if (cur) raws.push(cur); cur = null; nested = 0; };
   for (const x of tokens) {
     if (x.tag === 'STMTTRN') { if (x.close) finish(); else { finish(); cur = {}; } continue; }
     if (x.close && x.tag === 'BANKTRANLIST') { finish(); continue; }
     if (cur) {
       if (/^(BANKACCTTO|CCACCTTO|PAYEE)$/.test(x.tag)) nested += x.close ? -1 : 1;
-      else if (!x.close && !nested && x.val && cur[x.tag] === undefined) cur[x.tag] = x.val;
+      else if (!x.close && !nested && x.val) {
+        if (cur[x.tag] === undefined) cur[x.tag] = x.val;
+        else if (/^(FITID|TRNAMT|DTPOSTED)$/.test(x.tag)) repeated = true;   // malformed: never pick one silently
+      }
       continue;
     }
-    if (x.tag === 'LEDGERBAL') { inBal = !x.close; if (!x.close) balSeen = true; continue; }
+    if (x.tag === 'LEDGERBAL') { inBal = !x.close; if (!x.close) balSeen++; continue; }
     if (x.close) continue;
+    if (!x.val && x.tag !== 'BALAMT' && x.tag !== 'DTASOF') inBal = false;   // any other aggregate (e.g. AVAILBAL) ends LEDGERBAL
     if (x.tag === 'ACCTID' && x.val) acctIds.add(x.val);
     else if (x.tag === 'ACCTTYPE') acctType = x.val.toUpperCase();
     else if (x.tag === 'ORG') org = decode(x.val);
@@ -78,6 +82,8 @@ export function parseOfx(text) {
     else if (inBal && x.tag === 'DTASOF') balAsOf = x.val;
   }
   finish();
+  if (repeated) return fail('A transaction in the file repeats its amount, date or ID. Nothing was compared.');
+  if (balSeen > 1) return fail('The file has more than one posted balance. Nothing was compared.');
   if (acctIds.size !== 1) return fail('The file must name exactly one account.');
   const digits = [...acctIds][0].replace(/\D/g, '');
   if (digits.length < 4) return fail('The file\'s account number can\'t be identified.');
@@ -208,7 +214,7 @@ export function bindingDecision(file, account, remembered, labels) {
   if (mine && mine !== file.last4)
     return { decision: 'refuse', rebind: true, message: account.label + ' was confirmed on this device as the account ending •' + mine + ', but this file is for •' + file.last4 + '. Nothing was compared.' };
   return { decision: 'confirm', message: 'This file appears to be ' + KIND_WORDS[file.kind] + ' ending •' + file.last4 + '. Compare it with ' + account.label + '?'
-    + (mine ? ' (Confirmed before on this device.)' : ' (First time on this device; your answer will be remembered here.)') };
+    + (mine ? ' (Confirmed before on this device.)' : ' (First time on this device; your answer will be remembered here if your browser allows it.)') };
 }
 
 // ── DATA (read-only view of the Register state the app has already loaded) ──
@@ -235,7 +241,7 @@ function saveBinding(key, last4) { try { const v = loadBindings(); v[key] = last
 
 // ── VIEW ────────────────────────────────────────────────────────────────────
 const ROOT_ID = 'rlite-root';
-const S = { accountKey: null, fileName: null, parsed: null, binding: null, confirmed: false, result: null, stale: false, busy: false };
+const S = { accountKey: null, fileName: null, parsed: null, binding: null, confirmed: false, result: null, stale: false, busy: false, seq: 0 };
 function el(tag, attrs, text) {
   const n = document.createElement(tag);
   Object.keys(attrs || {}).forEach(k => n.setAttribute(k, attrs[k]));
@@ -254,7 +260,7 @@ function compareNow() {
   const L = ledgerState(), acct = accountRow(S.accountKey);
   if (!S.parsed || !S.parsed.ok || !S.confirmed || !acct || L.key !== S.accountKey || L.status !== 'loaded' || !Array.isArray(L.rows)) { S.result = null; return; }
   const reg = registerRowsFor(S.accountKey, L.rows);
-  if (!reg) { S.result = { error: 'A Register entry for this account couldn\'t be read, so nothing was compared.' }; return; }
+  if (!reg) { S.result = { forRows: L.rows, error: 'A Register entry for this account couldn\'t be read, so nothing was compared.' }; S.stale = false; return; }
   const file = S.parsed.file;
   const res = file.rows.length ? compareStatement(file.rows, reg) : null;
   const sb = acct.starting_balance === null || acct.starting_balance === undefined ? null : toCents(String(acct.starting_balance));
@@ -303,7 +309,7 @@ function render() {
   root.setAttribute('style', 'padding:16px');
   const intro = section(root, 'Statement Compare');
   line(intro, 'Compares a bank download (QFX/OFX) with this account\'s Register and lists matches and exceptions for you to review. It doesn\'t reconcile, clear or change anything — your normal reconciliation stays authoritative.', 'color:var(--text)');
-  line(intro, 'The file is read only in this browser; nothing is uploaded or saved.');
+  line(intro, 'The file is read only in this browser; nothing from it is uploaded or saved. Only the account\'s last 4 digits are remembered on this device (if your browser allows it).');
 
   const accts = supportedAccounts();
   if (!S.accountKey) { const cur = ledgerState().key; S.accountKey = accts.some(a => a.key === cur) ? cur : (accts[0] && accts[0].key) || null; }
@@ -405,14 +411,18 @@ function render() {
 
 async function readFile(f) {
   resetFile();
+  const seq = ++S.seq;   // a later selection wins; an earlier read finishing late is discarded
   S.fileName = f.name;
   if (f.size > RLITE_MAX_BYTES) { S.parsed = { ok: false, reason: 'The file is larger than 2 MB, which is too big for a statement download.' }; render(); return; }
   if (!/\.(qfx|ofx)$/i.test(f.name)) { S.parsed = { ok: false, reason: 'Choose a .qfx or .ofx file.' }; render(); return; }
   try {
-    const buf = new Uint8Array(await f.arrayBuffer());
-    const xml = buf[0] === 0x3C && buf[1] === 0x3F || (buf[0] === 0xEF && buf[3] === 0x3C);
-    S.parsed = parseOfx(new TextDecoder(xml ? 'utf-8' : 'windows-1252').decode(buf));
-  } catch (e) { S.parsed = { ok: false, reason: 'The file couldn\'t be read.' }; }
+    let buf = new Uint8Array(await f.arrayBuffer());
+    if (buf[0] === 0xEF && buf[1] === 0xBB && buf[2] === 0xBF) buf = buf.subarray(3);
+    const xml = buf[0] === 0x3C && buf[1] === 0x3F;
+    const parsed = parseOfx(new TextDecoder(xml ? 'utf-8' : 'windows-1252').decode(buf));
+    if (seq !== S.seq) return;
+    S.parsed = parsed;
+  } catch (e) { if (seq !== S.seq) return; S.parsed = { ok: false, reason: 'The file couldn\'t be read.' }; }
   render();
 }
 
