@@ -339,3 +339,155 @@ These supersede the matching sections above where they differ.
 - Against the Register: the gap between each institution row and its unique same-amount Register row.
 
   This second check needs a **read-only** query of those accounts' Register rows for the file periods (date and amount only), run either through the Supabase connector or through the app. **It needs a separate owner authorization.** It writes nothing, and only aggregate gap counts are recorded.
+
+## 22. Real-file evidence (2026-10-09) and recommended final contracts
+
+**Sources.**
+- Six real downloads (QFX), profiled locally for **structure only**. They stay in the private evidence folder.
+- An owner-authorized **read-only** Register extract: account, date and signed amount for the four accounts, Aug 10 – Oct 9. No writes.
+
+Only aggregates are recorded here. The sanitized structural fixtures are in `fixtures/r-lite/`: one per institution, exact structure, synthetic values, and a leak check passed against 1,280 real values.
+
+### 22.1 What the files contain
+
+| | Truist Checking | AMEX Gold | Citi Costco | Chase Disney |
+|---|---|---|---|---|
+| Format | OFX 1.02 SGML, CRLF | **OFX 2.02 XML**: AMEX's "Quicken" download **is QFX** (`.qfx`) | OFX 1.02 SGML, LF; extension `.QFX` | OFX 1.02 SGML, LF |
+| Message set / account type | Bank / `CHECKING` | Credit card | **Bank set with `ACCTTYPE` `CREDITLINE`** | Credit card |
+| Account id (`ACCTID`) | 10 digits | 21-character composite (`letters…\|digits`) | 16 characters (masked letters + 4 digits) | 15 characters (`digits-last4`) |
+| `ORG` | `BB&amp;T` (legacy, entity-escaped) | `AMEX` | `Citibank` | `B1` |
+| `FITID` | 10 digits; unique; **stable across overlapping downloads (25/25)** | 18 digits; unique; equals `REFNUM`; stability **unproven** (no overlapping rows in these files) | 14 digits; unique | 31 digits; unique |
+| Amount / sign | `n.dd`, debits negative | Same | Same | Same |
+| `TRNTYPE` | **Mixed case** (`Debit`/`Credit`), plus `DEP`, `ATM` | `DEBIT`/`CREDIT` | `DEBIT`/`CREDIT` | `DEBIT`/`CREDIT` |
+| Dates | `DTPOSTED` + `DTUSER` + `DTAVAIL` (no zone). `DTUSER` = `DTPOSTED` on 50 of 51 rows | `DTPOSTED` only, with milliseconds and a time zone | `DTPOSTED` only | `DTPOSTED` only, with a zone |
+| Statement period | `DTEND` = requested end **+1 day** | Closed statement: Aug 25 – Sep 23. **Current-cycle file: `DTEND` in the future, and 6 rows posted before `DTSTART`** | Aug 24 – Sep 20 (statement "closed Sep 22") | Aug 27 – Sep 26 |
+| Balance | `LEDGERBAL` + `AVAILBAL` | `LEDGERBAL` | `LEDGERBAL` | `LEDGERBAL` + `AVAILBAL` |
+| Balance as-of date | **The download date**, not the statement end | Same | Same | Same |
+| Description | `NAME` often cut at 32 characters (45 of 51 rows) | `NAME` (often cut at 32) **plus `MEMO` on every row** | `NAME` | `NAME` |
+
+**Across all six files:**
+- no duplicate or conflicting `FITID`s;
+- no zero amounts;
+- no unknown tags;
+- one account per file;
+- no pending marker of any kind, so the files appear to contain posted transactions only.
+
+### 22.2 Contradictions with our assumptions
+
+1. **`LEDGERBAL` is the balance on the day of download, not the statement balance.** No file contains a statement closing balance. Balance comparison is therefore "**institution posted balance on the download date vs the Register cleared balance**". That matches the Register's own rule: "the newest cleared row should match your posted account balance". It is meaningful only for a fresh download, and statement closing balances stay outside R-lite.
+2. **The statement period does not bound the rows.** AMEX's current-cycle file has rows before `DTSTART` and a `DTEND` in the future; Truist's `DTEND` is one day past the request. The comparison range must come from the **rows themselves**: earliest to latest posting date, never later than the download date.
+3. **Date meaning differs by institution.**
+   - Only Truist has `DTUSER`.
+   - AMEX's `DTPOSTED` behaves like a **transaction** date: 221 of 239 safe pairs fall on the same day.
+   - Truist and Chase Register dates run **before** the posting date.
+   - Citi Register dates run **after** it.
+4. **A credit card in the bank message set** (Citi `CREDITLINE`). The parser must accept both message sets and must take the sign **only** from `TRNAMT`, never from `TRNTYPE` (whose spelling varies).
+5. **`ORG` is not an institution name** you can rely on (`B1`, `BB&amp;T`), and `ACCTID` formats all differ. Only the **last 4 digits of `ACCTID`** are consistently derivable.
+6. **Account binding cannot be proven from the file alone.** The OS stores no account numbers, so the binding must be the owner's explicit confirmation, plus two checks:
+   - **Type consistency:** a checking file only for a checking account; a credit-card message set or `CREDITLINE` only for a credit card.
+   - **A remembered last-4:** per browser, with a warning on any mismatch.
+
+   A filename is never used.
+
+### 22.3 Date-window evidence
+
+Gap = Register date − institution date. Pairs are counted only when they are unique on both sides within ±15 days; ambiguous ones were excluded, not forced.
+
+| Account | Same day | Register 1–5 days before | Register after | Outside −5/+2 | Unable to pair safely | No Register row of that amount within ±15 days |
+|---|---|---|---|---|---|---|
+| Truist Checking (63 rows) | 31 | 1d: 6, 2d: 1, 3d: 2, **4d: 3** | 1d: 1, 2d: 1 | **2** (8 and 9 days before) | 8 | 8 |
+| AMEX Gold (285) | 221 | 1d: 12, 2d: 1 | 1d: 3 | **2** (3 days after) | 41 | 5 |
+| Citi Costco (16) | 14 | — | 2d: 1 | **1** (3 days after) | 0 | 0 |
+| Chase Disney (4) | 1 | 1d: 1, 2d: 2 | — | 0 | 0 | 0 |
+
+**Candidate windows** under the V1 rule (unique on both sides inside the window). Across all four accounts and every window tested, there were **0 conflicts** with the wide-search safe pair.
+
+| Window | Truist M / A / none | AMEX M / A / none | Citi M / A / none | Chase M / A / none |
+|---|---|---|---|---|
+| −4 / +2 | 47 / 6 / 10 | 262 / 16 / 7 | 15 / 0 / 1 | 4 / 0 / 0 |
+| **−4 / +3** | **47 / 6 / 10** | **263 / 17 / 5** | **16 / 0 / 0** | **4 / 0 / 0** |
+| −5 / +2 (provisional) | 47 / 6 / 10 | 261 / 17 / 7 | 15 / 0 / 1 | 4 / 0 / 0 |
+
+(M = MATCHED, A = AMBIGUOUS, none = no candidate.)
+
+**Recommendation: −4 / +3.**
+- It is the smallest window that holds every safe pair except Truist's two rows dated 8–9 days early (likely checks or ACH entered well before they posted). Those surface as visible BANK ONLY / REGISTER ONLY exceptions, not as matches.
+- Going to −5 adds nothing.
+- Going to +3 picks up three real card pairs.
+
+### 22.4 Repeated-amount guard (an extra safety option)
+
+**The risk.** Recurring same-amount charges (subscriptions, tolls, coffee) are where a false MATCHED could come from. AMEX has 25 window-unique matches whose amount repeats within ±15 days.
+
+**The option.** Add a guard: **MATCHED requires that no other same-amount row exists within ±7 days of either side.** Otherwise the row is AMBIGUOUS.
+
+| Option | Truist M / A | AMEX M / A | Recurring-amount matches left (AMEX) |
+|---|---|---|---|
+| −4 / +3, no guard | 47 / 6 | 263 / 17 | 25 |
+| **−4 / +3, ±7 guard** | **45 / 8** | **250 / 30** | **11** |
+| −4 / +3, ±10 guard | 45 / 8 | 248 / 32 | 9 |
+
+**Recommendation: adopt the ±7 guard.** It costs about 13 more AMBIGUOUS rows per AMEX month (about 10% of rows), in exchange for removing most of the recurring-amount pairings, which are exactly the false-MATCHED risk the owner ranked worst.
+
+### 22.5 Recommended final parser contract
+
+**Accepted input.**
+- OFX 1.x SGML (closing tags optional) or OFX 2.x XML; `.qfx`/`.ofx`, any case.
+- Either the bank message set (`CHECKING`, `SAVINGS`, `CREDITLINE`) or the credit-card message set.
+- **Exactly one** statement and account per file.
+
+**Field handling.**
+- **HTML entities** are decoded.
+- **Dates:** the first 8 digits are taken as the date; time and zone are ignored.
+- **Amounts:** parsed exactly to integer cents; the sign comes **from `TRNAMT` only**.
+- **Required per row:** `FITID`, `TRNAMT`, `DTPOSTED`.
+- **Optional:** `DTUSER`, `NAME`, `MEMO`, `TRNTYPE` (normalized to upper case), `REFNUM`.
+
+**Comparison range.** From the earliest to the latest posting date in the file, never later than the balance date (or today). `DTSTART`/`DTEND` are shown, but are **not** used as bounds.
+
+**Balance.** `LEDGERBAL` `BALAMT` + `DTASOF`, shown as "**posted balance on the download date**". It is compared only with the Register **cleared** balance as of that date. When absent: **BALANCE UNAVAILABLE**, and the transaction comparison still runs.
+
+**The whole file is rejected (no partial results) for:**
+- HTML or an error page;
+- not OFX;
+- unparseable;
+- more than one statement or account;
+- any row missing a required field;
+- an unparseable amount or date;
+- a zero amount;
+- a conflicting `FITID`.
+
+Byte-identical duplicate rows are collapsed with a notice.
+
+**A transaction-free file** with a balance runs only the balance check.
+
+**The bank's `FITID`** identifies rows **within a file only**. It is never matched to the Register (which has no such field) and never stored.
+
+### 22.6 Recommended final matching contract
+
+**MATCHED** requires all of:
+- the same account (with the owner's confirmation);
+- the same signed amount to the cent;
+- **mutual uniqueness** inside the window: the Register date in **[institution date − 4, + 3]**, where the institution date is `DTUSER` if present, else `DTPOSTED`;
+- the **±7-day repeated-amount guard**.
+
+The tier is reported: same date, or the "N days" gap.
+
+- **Description and payee** are shown as evidence only. They **never** create a match.
+- **Everything else:** BANK ONLY, REGISTER ONLY (in range) or AMBIGUOUS.
+- If Register history is not `loaded`, everything is **COMPARISON UNAVAILABLE**.
+
+### 22.7 Accounts and scope
+
+- **All four target accounts fit V1.** No institution needs a CSV fallback.
+- **Chase Disney** is very low volume (4 rows a month).
+- **AMEX Platinum:** both AMEX Gold downloads (closed and current cycle) share an identical structure, which supports **reusing the AMEX adapter for Platinum** without format-specific work. It gets real validation on its first file.
+- **No other account** showed evidence of being needed for routine reconciliation.
+
+### 22.8 Shadow-run expectations from the evidence
+
+These are rows with **no** Register row of the same amount within ±15 days:
+- **Truist:** 8;
+- **AMEX:** 5.
+
+These would appear as BANK ONLY. They may be genuinely missing Register entries, or entries Wendy split or combined (e.g. deposits); R-lite cannot tell which, and the owner adjudicates them in the shadow run. Payees were deliberately not inspected.
