@@ -16290,6 +16290,206 @@ T('[A1a] W5 (K4): "(flexible sweep line)" hint is kept unchanged',function(){
 
 })();
 
+// ─────────────────────────────────────────────────────────────────────────────
+// Release 0 (owner authorization 2026-10-09): reconciled-week model_week_overrides write guard.
+// Invariant: once a week is reconciled, the ordinary household paths — Edit Week Save, "Remove all edits"
+// (deleteWeekOverride) and What-If Scenario commit — must not alter that week's model_week_overrides row.
+// Authority: _weekIsImmutable (immediate local refusal) + a FRESH read-only weekly_reconciliations check at the
+// write boundary (a stale tab cannot rely on stale reconData). Fails closed; "cannot verify" is never shown as
+// "reconciled". Not server-enforced (direct REST/devtools remain possible; server immutability is post-rollover GR-1).
+// ─────────────────────────────────────────────────────────────────────────────
+console.log('\n── Release 0: reconciled-week override write guard ──');
+// saveWeekEdits must stay byte-identical to its protected pin. Exactly two baselines exist: production D-1
+// (1a508534…) and the parked 2027 rollover's Package D candidate v2 (838e3b98…, protected change P1), which this
+// release merges into in December. Release 0 itself never modifies the function.
+const R0_SAVEWEEKEDITS_PINS = { '1a508534068f966b81d5d4d1e24686f326112f6907acef8f25c1c55a2515fe90': 'production D-1',
+  '838e3b98c9a1d93241d61bafc42315d1ea33ca36e1df76e2dfcc26e3ce48672f': 'rollover Package D candidate v2' };
+const R0_PINS = require('./tools/protected-pins');
+// One controlled environment per scenario: role, auth, fetch (fresh-check reply + write capture), alert, DOM, render.
+async function r0With(opts, body) {
+  const g = globalThis;
+  const saved = { fetch, canWriteFinancials, getAuthHeaders, renderApp, renderEditDrawer, clearScenario, alert: g.alert,
+    qsa: document.querySelectorAll, gid: document.getElementById, bodyEl: document.body, recon: JSON.parse(JSON.stringify(reconData)),
+    ov: JSON.parse(JSON.stringify(overrideData)), editOpen, editDeleteConfirm, scen: JSON.parse(JSON.stringify(scenarioState)) };
+  const log = { writes: [], checks: [], alerts: [], renders: 0 };
+  fetch = function (u, init) {
+    u = String(u); const m = (init && init.method) || 'GET';
+    if (/\/weekly_reconciliations\?/.test(u) && m === 'GET') {
+      log.checks.push(u);
+      const reply = opts.check || { rows: [] };
+      if (opts.gate) return opts.gate().then(() => Promise.resolve({ ok: true, status: 200, json: function () { return Promise.resolve(reply.rows || []); } }));
+      if (reply.reject) return Promise.reject(reply.reject);
+      return Promise.resolve({ ok: reply.ok !== false, status: reply.ok === false ? 500 : 200, json: function () { return reply.json ? reply.json() : Promise.resolve(reply.rows); } });
+    }
+    if (m !== 'GET') log.writes.push({ u, m, body: init && init.body });
+    return Promise.resolve({ ok: true, status: 201, json: function () { return Promise.resolve([]); } });
+  };
+  canWriteFinancials = function () { return true; };
+  getAuthHeaders = opts.authHang ? function () { return new Promise(function () {}); } : opts.authFails ? async function () { throw new Error('[Auth] No authenticated session'); } : async function () { return { apikey: 'k', Authorization: 'Bearer t' }; };
+  const savedTimeout = (typeof R0_FRESH_CHECK_TIMEOUT_MS !== 'undefined') ? R0_FRESH_CHECK_TIMEOUT_MS : undefined;
+  if (opts.timeoutMs !== undefined) R0_FRESH_CHECK_TIMEOUT_MS = opts.timeoutMs;
+  // The suite forbids waiting on real timers (stale app timers from sync tests would fire): the deadline runs
+  // on a microtask instead, so R10 proves the deadline path without a macrotask yield.
+  const realST = setTimeout, realCT = clearTimeout;
+  if (opts.microtaskTimers) { setTimeout = function (fn) { queueMicrotask(fn); return 0; }; clearTimeout = function () {}; }
+  renderApp = function () { log.renders++; }; renderEditDrawer = function () {}; clearScenario = function () { log.cleared = true; };
+  g.alert = function (msg) { log.alerts.push(String(msg)); };
+  document.querySelectorAll = function () { return []; };
+  document.body = { style: {} };
+  if (opts.startDate) document.getElementById = function (id) { const el = saved.gid.call(document, id); if (id === 'edit-start-date') el.value = opts.startDate; return el; };
+  try { if (opts.setup) opts.setup(); await body(log); }
+  finally {
+    fetch = saved.fetch; canWriteFinancials = saved.canWriteFinancials; getAuthHeaders = saved.getAuthHeaders; renderApp = saved.renderApp;
+    renderEditDrawer = saved.renderEditDrawer; clearScenario = saved.clearScenario; g.alert = saved.alert;
+    document.querySelectorAll = saved.qsa; document.getElementById = saved.gid; document.body = saved.bodyEl;
+    Object.keys(reconData).forEach(k => delete reconData[k]); Object.assign(reconData, saved.recon);
+    Object.keys(overrideData).forEach(k => delete overrideData[k]); Object.assign(overrideData, saved.ov);
+    editOpen = saved.editOpen; editDeleteConfirm = saved.editDeleteConfirm; scenarioState = saved.scen;
+    if (savedTimeout !== undefined) R0_FRESH_CHECK_TIMEOUT_MS = savedTimeout;
+    setTimeout = realST; clearTimeout = realCT;
+  }
+  return log;
+}
+const R0_OPEN = 20, R0_RECON = 18;   // R0_RECON is reconciled locally in the scenarios that need it
+const r0Recon = n => { reconData[n] = { chk: 1, sav: 1, amx: 1, tax: 1, lc: 1, balance_basis: 'posted_current_balance', date: 'x' }; };
+const r0Seed = n => { overrideData[n] = { week_num: n, events_json: [{ l: 'R0 seed', t: 'out', a: 10 }], ct: 0, ca: 0, is_custom: false }; };
+const r0OvWrites = log => log.writes.filter(w => /model_week_overrides/.test(w.u));
+const r0Locked = log => log.alerts.some(a => /is reconciled — its model edits are locked\./.test(a));
+const r0Unverified = log => log.alerts.some(a => /Couldn't verify that Wk .* is open for editing\. Nothing was changed\. Reload and try again\./.test(a)) && !log.alerts.some(a => /reconciled/.test(a));
+const r0Scenario = n => { scenarioState = { active: true, type: 'outflow', weekNum: n, params: {}, previewOverride: buildScenarioPreviewOverride(n, [{ l: 'R0 scenario', t: 'out', a: 25 }], 0, 0), previewGoal: null, commitModal: true }; };
+
+testAsync('R0-R1: openEdit on a reconciled week opens no drawer and refuses as locked', async function () {
+  const log = await r0With({ setup: () => { r0Recon(R0_RECON); editOpen = null; } }, async () => { openEdit(R0_RECON); assert(editOpen === null, 'drawer must not open, editOpen=' + editOpen); });
+  assert(r0Locked(log), 'locked refusal expected: ' + JSON.stringify(log.alerts));
+  assert(r0OvWrites(log).length === 0, 'no write');
+});
+testAsync('R0-R2: deleteWeekOverride on a reconciled week issues no DELETE and the override remains', async function () {
+  let after;
+  const log = await r0With({ setup: () => { r0Recon(R0_RECON); r0Seed(R0_RECON); } }, async () => { await deleteWeekOverride(R0_RECON); after = overrideData[R0_RECON]; });
+  assert(r0OvWrites(log).length === 0, 'no DELETE expected: ' + JSON.stringify(r0OvWrites(log)));
+  assert(after && after.events_json[0].l === 'R0 seed', 'the override must remain');
+  assert(r0Locked(log), 'locked refusal expected');
+});
+testAsync('R0-R3: commitScenario on a reconciled week issues no POST, keeps the override and keeps the preview', async function () {
+  let after, cleared;
+  const log = await r0With({ setup: () => { r0Recon(R0_RECON); r0Seed(R0_RECON); r0Scenario(R0_RECON); } }, async (l) => { await commitScenario(); after = overrideData[R0_RECON]; cleared = !!l.cleared; });
+  assert(r0OvWrites(log).length === 0, 'no POST expected');
+  assert(after && after.events_json.length === 1 && after.events_json[0].l === 'R0 seed', 'the override must remain unchanged');
+  assert(!cleared, 'the scenario preview is kept (not cleared) on refusal');
+  assert(r0Locked(log), 'locked refusal expected');
+});
+testAsync('R0-R4: the drawer Save routes through the guard (reconciled week → no POST) and saveWeekEdits is byte-identical to its protected pin', async function () {
+  const drawer = R0_PINS.fnSrc(html, 'renderEditDrawer');
+  assert(drawer.indexOf('onclick="_saveWeekEditsGuarded(') >= 0, 'drawer Save must call the guarded wrapper');
+  assert(drawer.indexOf('onclick="saveWeekEdits(') < 0, 'drawer Save must not call saveWeekEdits directly');
+  const swePin = R0_PINS.pin(html, 'saveWeekEdits');
+  assert(Object.prototype.hasOwnProperty.call(R0_SAVEWEEKEDITS_PINS, swePin), 'saveWeekEdits must stay byte-identical to a protected baseline pin, got ' + swePin);
+  assert(R0_PINS.fnSrc(html, 'saveWeekEdits').indexOf('_overrideWriteAllowed') < 0, 'the guard lives outside the protected function');
+  const log = await r0With({ setup: () => { r0Recon(R0_RECON); r0Seed(R0_RECON); } }, async () => { await _saveWeekEditsGuarded(R0_RECON); });
+  assert(r0OvWrites(log).length === 0, 'no POST expected');
+  assert(r0Locked(log), 'locked refusal expected');
+});
+testAsync('R0-R5: stale tab — local state says open, the fresh server check says reconciled → Save, delete and Scenario commit all refuse', async function () {
+  const server = { rows: [{ week_num: R0_OPEN, chk: 1 }] };
+  const a = await r0With({ check: server, setup: () => { r0Seed(R0_OPEN); } }, async () => { await _saveWeekEditsGuarded(R0_OPEN); });
+  const b = await r0With({ check: server, setup: () => { r0Seed(R0_OPEN); } }, async () => { await deleteWeekOverride(R0_OPEN); });
+  const c = await r0With({ check: server, setup: () => { r0Seed(R0_OPEN); r0Scenario(R0_OPEN); } }, async () => { await commitScenario(); });
+  [a, b, c].forEach((l, i) => {
+    assert(l.checks.length === 1, 'path ' + i + ': exactly one fresh check expected, got ' + l.checks.length);
+    assert(l.checks[0].indexOf('week_num=eq.' + R0_OPEN) >= 0, 'path ' + i + ': the check must target the week');
+    assert(r0OvWrites(l).length === 0, 'path ' + i + ': no write expected');
+    assert(r0Locked(l), 'path ' + i + ': locked refusal expected');
+  });
+});
+testAsync('R0-R6: the fresh check cannot verify (network error, HTTP error, timeout/abort, malformed reply, wrong row, no session) → every write refuses with CANNOT VERIFY, never "reconciled"', async function () {
+  const abort = Object.assign(new Error('aborted'), { name: 'AbortError' });
+  const cases = [{ check: { reject: new Error('network') } }, { check: { ok: false } }, { check: { reject: abort } },
+    { check: { json: () => Promise.resolve({ not: 'an array' }) } }, { check: { rows: [{ week_num: R0_OPEN + 1 }] } },
+    { check: { json: () => Promise.reject(new Error('bad json')) } }, { authFails: true }];
+  for (const cs of cases) {
+    const paths = [async () => { await _saveWeekEditsGuarded(R0_OPEN); }, async () => { await deleteWeekOverride(R0_OPEN); }, async () => { r0Scenario(R0_OPEN); await commitScenario(); }];
+    for (const run of paths) {
+      let after;
+      const log = await r0With(Object.assign({ setup: () => { r0Seed(R0_OPEN); } }, cs), async () => { await run(); after = overrideData[R0_OPEN]; });
+      assert(r0OvWrites(log).length === 0, 'no write expected for ' + JSON.stringify(cs));
+      assert(after && after.events_json[0].l === 'R0 seed', 'override unchanged for ' + JSON.stringify(cs));
+      assert(r0Unverified(log), 'CANNOT VERIFY expected (not "reconciled") for ' + JSON.stringify(cs) + ': ' + JSON.stringify(log.alerts));
+    }
+  }
+});
+// Fable M1 (Release 0 review): the fresh check adds an await before saveWeekEdits reads the drawer. The
+// write must happen only if the SAME drawer for the SAME week is still open, and only once.
+function r0Gate() { let release; const p = new Promise(r => { release = r; }); return { wait: () => p, release: () => release() }; }
+testAsync('R0-R7: Save, then Cancel while the fresh check is pending → nothing is written', async function () {
+  const g = r0Gate();
+  const log = await r0With({ gate: g.wait, setup: () => { r0Seed(R0_OPEN); editOpen = null; openEdit(R0_OPEN); } }, async () => {
+    const pending = _saveWeekEditsGuarded(R0_OPEN);
+    closeEdit(); g.release(); await pending;
+  });
+  assert(r0OvWrites(log).length === 0, 'no POST after Cancel: ' + JSON.stringify(r0OvWrites(log)));
+});
+testAsync('R0-R8: Save on one week, then open another week while the check is pending → nothing is written for either', async function () {
+  const g = r0Gate();
+  const log = await r0With({ gate: g.wait, setup: () => { r0Seed(R0_OPEN); editOpen = null; openEdit(R0_OPEN); } }, async () => {
+    const pending = _saveWeekEditsGuarded(R0_OPEN);
+    closeEdit(); openEdit(R0_OPEN + 1); g.release(); await pending;
+  });
+  assert(r0OvWrites(log).length === 0, 'no POST after switching weeks: ' + JSON.stringify(r0OvWrites(log)));
+});
+testAsync('R0-R9: Save clicked twice while the check is pending → one check, at most one write', async function () {
+  const g = r0Gate();
+  const log = await r0With({ gate: g.wait, setup: () => { r0Seed(R0_OPEN); editOpen = null; openEdit(R0_OPEN); } }, async () => {
+    const a = _saveWeekEditsGuarded(R0_OPEN), b = _saveWeekEditsGuarded(R0_OPEN);
+    g.release(); await a; await b;
+  });
+  assert(log.checks.length === 1, 'one fresh check, got ' + log.checks.length);
+  assert(r0OvWrites(log).length === 1, 'exactly one POST, got ' + r0OvWrites(log).length);
+});
+testAsync('R0-R10: the session lookup hangs → the overall deadline refuses as CANNOT VERIFY, nothing is written, Save is usable again', async function () {
+  const log = await r0With({ authHang: true, timeoutMs: 1, microtaskTimers: true, setup: () => { r0Seed(R0_OPEN); editOpen = null; openEdit(R0_OPEN); } }, async () => {
+    // Watchdog on microtasks only: a guarded Save that never settles (no overall deadline) must FAIL, not hang.
+    let settled = false; _saveWeekEditsGuarded(R0_OPEN).then(() => { settled = true; }, () => { settled = true; });
+    for (let i = 0; i < 500 && !settled; i++) await Promise.resolve();
+    assert(settled, 'the guarded Save must settle within the overall deadline (it hung)');
+    assert(!_r0SavePending, 'the in-flight Save state is cleared');
+  });
+  assert(r0OvWrites(log).length === 0, 'no write');
+  assert(r0Unverified(log), 'CANNOT VERIFY expected: ' + JSON.stringify(log.alerts));
+});
+testAsync('R0-C1: open week — Edit Week Save still saves after one fresh check', async function () {
+  const log = await r0With({ check: { rows: [] }, setup: () => { r0Seed(R0_OPEN); editOpen = null; openEdit(R0_OPEN); } }, async () => { await _saveWeekEditsGuarded(R0_OPEN); });
+  assert(log.checks.length === 1, 'one fresh check');
+  const w = r0OvWrites(log); assert(w.length === 1 && w[0].m === 'POST' && JSON.parse(w[0].body).week_num === R0_OPEN, 'one POST for the open week: ' + JSON.stringify(w));
+  assert(log.alerts.length === 0, 'no refusal');
+});
+testAsync('R0-C2: open week — Remove all edits still deletes the override', async function () {
+  let after;
+  const log = await r0With({ check: { rows: [] }, setup: () => { r0Seed(R0_OPEN); } }, async () => { await deleteWeekOverride(R0_OPEN); after = overrideData[R0_OPEN]; });
+  const w = r0OvWrites(log); assert(w.length === 1 && w[0].m === 'DELETE' && w[0].u.indexOf('week_num=eq.' + R0_OPEN) >= 0, 'one DELETE: ' + JSON.stringify(w));
+  assert(after === undefined, 'the override is removed locally after a successful DELETE');
+});
+testAsync('R0-C3: open week — Scenario commit still commits and clears the preview', async function () {
+  let cleared;
+  const log = await r0With({ check: { rows: [] }, setup: () => { r0Scenario(R0_OPEN); } }, async (l) => { await commitScenario(); cleared = !!l.cleared; });
+  const w = r0OvWrites(log); assert(w.length === 1 && w[0].m === 'POST' && JSON.parse(w[0].body).week_num === R0_OPEN, 'one POST: ' + JSON.stringify(w));
+  assert(cleared, 'preview cleared after a successful commit');
+});
+testAsync('R0-C4: a new custom week (n=0) still saves, with no reconciliation check (a new week cannot be reconciled)', async function () {
+  const log = await r0With({ startDate: '2027-06-06' }, async () => { await _saveWeekEditsGuarded(0); });
+  assert(log.checks.length === 0, 'no fresh check for a new week');
+  const w = r0OvWrites(log); assert(w.length === 1 && JSON.parse(w[0].body).is_custom === true, 'one custom-week POST: ' + JSON.stringify(w));
+});
+testAsync('R0-C5: a goal scenario commit is unaffected (no override write, no reconciliation check)', async function () {
+  const log = await r0With({ setup: () => { r0Recon(R0_RECON); scenarioState = { active: true, type: 'goal', weekNum: R0_RECON, params: {}, previewOverride: null, previewGoal: { ak: goalAk, rt: goalRt }, commitModal: true }; } }, async () => { await commitScenario(); });
+  assert(log.checks.length === 0 && r0OvWrites(log).length === 0, 'goal path writes goals only');
+  assert(log.writes.some(w => /\/goals/.test(w.u)), 'goal saves still happen');
+});
+testAsync('R0-C6: a pre-anchor week is refused as a locked historical week (not claimed as reconciled when it is not)', async function () {
+  const n = _anchorBoundaryWeek(); assert(n >= 1, 'an anchor boundary exists');
+  const log = await r0With({ setup: () => { delete reconData[n]; editOpen = null; } }, async () => { openEdit(n); assert(editOpen === null, 'no drawer'); });
+  assert(log.alerts.some(a => /is a locked historical week — its model edits are locked\./.test(a)), 'historical-lock wording expected: ' + JSON.stringify(log.alerts));
+});
+
 (async () => {
 for (const t of _asyncTests) {
   try { await t.fn(); pass++; process.stdout.write('  ✓ ' + t.name + '\n'); }

@@ -885,7 +885,7 @@ button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-vis
 // ── Constants (unchanged) ──────────────────────────────────────────────────
 // Simplified architecture — $8,250 total from LC · $6,500 operating floor · no legacy mechanics
 // Real-world moves: keep $2,250 in chk, move $2,750 sav→chk, move $1,000 LC→chk, move $2,250 LC→chk (Option 1 correction)
-const BUILD_TS='2026-10-07T21:25:27'; // updated each push — local time string
+const BUILD_TS='2026-10-09T10:42:07'; // updated each push — local time string
 const START_CHK=18037.73,START_SAV=3772.77,START_AMX=103.64,START_TAX=0,START_LC=13488.88;
 const EF_AMT=13488.88; // LC/EF balance — static this model year (no transfers in or out)
 const BASE_TAX=521.36,RET_SAV_XFR=3772.74;
@@ -5152,7 +5152,87 @@ async function saveNote(weekNum,el){
 }
 
 // ── Edit drawer ────────────────────────────────────────────────────────────
-function openEdit(n){if(!canWriteFinancials())return;editOpen=n;document.body.style.overflow='hidden';renderApp();}
+// ── Release 0 (2026-10-09): reconciled-week model_week_overrides write guard ──────────────────────────
+// Invariant: once a week is reconciled, the ordinary household paths — Edit Week Save, "Remove all edits"
+// (deleteWeekOverride) and What-If Scenario commit — must not alter that week's model_week_overrides row.
+// Authority: _weekIsImmutable (the task writers' rule) for the immediate refusal, then a FRESH read-only
+// weekly_reconciliations check at the write boundary, so a stale tab cannot rely on stale reconData.
+// Fails closed: anything that cannot PROVE the week is still open refuses the write — and is reported as
+// "couldn't verify", never as "reconciled". No correction/reopen path is created here. Client-side only:
+// a signed-in client using devtools or direct REST can still write; server-side immutability (with the
+// explicit owner correction/reopen design) is post-rollover GR-1. saveWeekEdits itself is unchanged.
+var R0_FRESH_CHECK_TIMEOUT_MS=10000;
+function _overrideLocalLockState(n){
+  if(isWeekReconciled(n))return 'reconciled';
+  if(_weekIsImmutable(n))return 'historical';     // pre-anchor (write-locked legacy) week
+  return null;
+}
+async function _overrideWeekWriteStatus(n){
+  var local=_overrideLocalLockState(n);
+  if(local)return local;
+  // One overall deadline covers the session lookup AND the server read (a hung session refresh also ends
+  // as 'unverified', never as a stuck UI).
+  var ctl=(typeof AbortController!=='undefined')?new AbortController():null;
+  var timer=null;
+  var deadline=new Promise(function(res){timer=setTimeout(function(){if(ctl)ctl.abort();res('unverified');},R0_FRESH_CHECK_TIMEOUT_MS);});
+  try{return await Promise.race([_overrideFreshCheck(n,ctl),deadline]);}
+  finally{clearTimeout(timer);}
+}
+async function _overrideFreshCheck(n,ctl){
+  try{
+    var h=await getAuthHeaders();
+    var r=await fetch(SUPA_URL+'/rest/v1/weekly_reconciliations?week_num=eq.'+encodeURIComponent(n)+'&select=week_num',
+      Object.assign({headers:h,cache:'no-store'},ctl?{signal:ctl.signal}:{}));
+    if(!r||!r.ok)return 'unverified';
+    var rows=await r.json();
+    if(!Array.isArray(rows))return 'unverified';
+    if(rows.length===0)return 'open';
+    return rows.every(function(x){return x&&Number(x.week_num)===Number(n);})?'reconciled':'unverified';
+  }catch(e){return 'unverified';}
+}
+function _overrideLockedRefusal(n,kind){
+  var msg=kind==='historical'?'Wk '+getCalWeek(n)+' is a locked historical week — its model edits are locked.'
+    :'Wk '+getCalWeek(n)+' is reconciled — its model edits are locked.';
+  console.warn('override write refused: model wk '+n+' ('+(kind||'reconciled')+')');
+  try{alert(msg);}catch(_e){}
+}
+function _overrideUnverifiedRefusal(n){
+  console.warn('override write refused: model wk '+n+' could not be verified open');
+  try{alert("Couldn't verify that Wk "+getCalWeek(n)+" is open for editing. Nothing was changed. Reload and try again.");}catch(_e){}
+}
+// true only when the week is proven open; otherwise shows the matching refusal and returns false.
+async function _overrideWriteAllowed(n){
+  var st=await _overrideWeekWriteStatus(n);
+  if(st==='open')return true;
+  if(st==='unverified')_overrideUnverifiedRefusal(n);else _overrideLockedRefusal(n,st);
+  return false;
+}
+// The drawer's Save goes through this wrapper; saveWeekEdits (protected) is called unchanged. n=0 is a new
+// custom week, which cannot be reconciled. While the fresh check is pending the Save button is disabled IN
+// PLACE (no re-render: re-rendering would rebuild the rows and lose unsaved typing), a second Save is
+// ignored, and the save proceeds only if the SAME drawer session for the SAME week is still open — Cancel,
+// switching weeks or reopening during the check writes nothing (Fable M1).
+var _r0EditSession=0,_r0SavePending=false;
+function _r0SetSaveButtonBusy(busy){
+  try{
+    var b=(typeof document.querySelector==='function')?document.querySelector('.drawer-footer .modal-save'):null;
+    if(b){b.disabled=!!busy;b.style.opacity=busy?'.6':'';}
+  }catch(_e){}
+}
+async function _saveWeekEditsGuarded(n){
+  if(!canWriteFinancials())return;
+  if(n===0)return saveWeekEdits(n);
+  if(_r0SavePending)return;
+  var session=_r0EditSession;
+  _r0SavePending=true;_r0SetSaveButtonBusy(true);
+  var ok=false;
+  try{ok=await _overrideWriteAllowed(n);}
+  finally{_r0SavePending=false;_r0SetSaveButtonBusy(false);}
+  if(!ok)return;
+  if(editOpen!==n||_r0EditSession!==session)return;   // the drawer was closed, switched or reopened meanwhile
+  return saveWeekEdits(n);
+}
+function openEdit(n){if(!canWriteFinancials())return;_r0EditSession++;var _lk=(n!==0)?_overrideLocalLockState(n):null;if(_lk){_overrideLockedRefusal(n,_lk);return;}editOpen=n;document.body.style.overflow='hidden';renderApp();}
 function closeEdit(){editOpen=null;document.body.style.overflow='';renderApp();}
 function _weekDayOpts(weekNum,selectedD){
   var MO=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
@@ -5330,6 +5410,7 @@ function confirmEditDelete(n){if(!canWriteFinancials())return;editDeleteConfirm=
 function cancelEditDelete(){editDeleteConfirm=false;renderEditDrawer();}
 async function deleteWeekOverride(n){
   if(!canWriteFinancials())return;
+  if(!(await _overrideWriteAllowed(n))){editDeleteConfirm=false;renderApp();return;}   // Release 0
   try{
     var h=await getAuthHeaders();
     var r=await fetch(SUPA_URL+'/rest/v1/model_week_overrides?week_num=eq.'+n,{method:'DELETE',headers:h});
@@ -8036,7 +8117,7 @@ function renderEditDrawer(){
       '<div class="drawer-footer">'+
         (editSaving?
           '<button class="modal-save" disabled style="opacity:.6">Saving…</button>':
-          '<button class="modal-save" onclick="saveWeekEdits('+editOpen+')">Save &amp; Recalculate</button>')+
+          '<button class="modal-save" onclick="_saveWeekEditsGuarded('+editOpen+')">Save &amp; Recalculate</button>')+
         '<button class="modal-cancel" onclick="closeEdit()">Cancel</button>'+
         (!isNew&&ov?(editDeleteConfirm===editOpen?
           '<div class="confirm-row" style="margin:0"><span>Remove all edits for Week '+editOpen+'?</span><button class="confirm-no" onclick="cancelEditDelete()">Keep</button><button class="confirm-yes" onclick="deleteWeekOverride('+editOpen+')">Remove</button></div>':
@@ -12221,6 +12302,7 @@ async function commitScenario(){
       goalAk=_newAk;goalRt=_newRt;
     }else if(scenarioState.previewOverride){
       var payload=scenarioState.previewOverride;
+      if(!(await _overrideWriteAllowed(payload.week_num)))return;   // Release 0: refused; the preview is kept
       payload.updated_at=new Date().toISOString();
       var _csh=await getAuthHeaders();
       var _csr=await fetch(SUPA_URL+'/rest/v1/model_week_overrides',{method:'POST',headers:Object.assign({},_csh,{'Prefer':'resolution=merge-duplicates,return=minimal'}),body:JSON.stringify(payload)});
