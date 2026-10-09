@@ -5849,6 +5849,7 @@ async function clickNav(page, id) {
   }
   await test('R3-E3: several candidates ("mar") are listed with none chosen; Tab/Enter leave her text; a click (or ↓ then Enter) picks the one she means', async () => {
     const { page, context } = await r2Open({ txCache: R3_HIST });
+    const errs = []; page.on('pageerror', e => errs.push(String(e)));
     await r3Type(page, 'mar');
     let a = await r3Ac(page);
     assert(a.open && a.items.length === 4 && a.items.indexOf('Marshalls') >= 0 && a.items[3] === 'Fresh Market' && a.active === null, 'choices shown, none preselected: ' + JSON.stringify(a));
@@ -5862,6 +5863,7 @@ async function clickNav(page, id) {
     await page.keyboard.press('ArrowDown'); await page.keyboard.press('Enter');
     a = await r3Ac(page);
     assert(a.payee === "Marco's Pizza" && a.fdPayee === "Marco's Pizza" && !a.open, '↓ then Enter accepts the first listed (most recent of equal counts): ' + JSON.stringify(a));
+    assert(errs.length === 0, 'no page errors (Enter/Tab with nothing highlighted is a no-op): ' + errs.join(' | '));
     await context.close();
   });
   await test('R3-E4: Escape dismisses without changing her text; continuing to type keeps her text; leaving the field without accepting keeps her text', async () => {
@@ -5918,7 +5920,7 @@ async function clickNav(page, id) {
   });
   await test('R3-E6: incomplete Register history → no autocomplete (the "history isn\'t loaded" note shows); exact typing still works', async () => {
     const { page, context } = await r2Open({ txCache: R3_HIST });
-    await page.evaluate(() => { _txLedgerLoadStatus = 'failed'; _txLedgerCache = null; renderApp(); });
+    await page.evaluate(() => { _txLedgerLoadStatus = 'incomplete'; renderApp(); });   // rows still in memory, but not verified complete
     await r3Type(page, 'ube');
     const a = await r3Ac(page);
     const note = await page.evaluate(() => !!document.getElementById('r2-history-unavailable'));

@@ -16939,6 +16939,8 @@ test('R3-P3: prefix, interior substring and multiple candidates — exact, then 
   assert(mar.candidates.map(c => c.cls).join() === 'prefix,prefix,prefix,substring' && mar.defaultIndex === -1, 'several reasonable candidates → shown, none chosen');
   const ber = M.payeeCompletions('ber', r3H);
   assert(r3Names(ber).indexOf('uber') >= 0 && ber.defaultIndex === -1, 'interior "ber" offers Uber but never pre-highlights a mid-word match');
+  const freq = M.payeeCompletions('shop', [r2Row('Shop Alpha', 'x', '2026-01-01', -1), r2Row('Shop Alpha', 'x', '2026-01-02', -1), r2Row('Shop Alpha', 'x', '2026-01-03', -1), r2Row('Shop Beta', 'x', '2026-10-01', -1)]);
+  assert(JSON.stringify(r3Names(freq)) === JSON.stringify(['Shop Alpha', 'Shop Beta']), 'within a class, more entries beat a more recent single entry: ' + JSON.stringify(r3Names(freq)));
   const shuffled = M.payeeCompletions('mar', r3H.slice().reverse());
   assert(JSON.stringify(r3Names(shuffled)) === JSON.stringify(r3Names(mar)), 'input order does not change the order shown');
 });
