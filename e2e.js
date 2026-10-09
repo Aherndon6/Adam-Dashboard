@@ -5882,6 +5882,30 @@ async function clickNav(page, id) {
     assert(a.payee === 'ube' && a.fdPayee === 'ube' && !a.open, 'blur without accepting substitutes nothing: ' + JSON.stringify(a));
     await context.close();
   });
+  await test('R3-E9: Shift+Tab, ↑ back to "none" then Tab, and an IME-composition Enter never accept; the browser\'s own autofill is off', async () => {
+    const { page, context } = await r2Open({ txCache: R3_HIST.filter(t => t.id !== 'm2') });
+    await r3Type(page, 'ube');
+    await page.keyboard.press('Shift+Tab');
+    let a = await r3Ac(page);
+    assert(a.payee === 'ube', 'Shift+Tab: no acceptance: ' + JSON.stringify(a));
+    await page.click(R2_PAYEE); await page.keyboard.type('r', { delay: 20 }); await page.keyboard.press('Backspace');
+    a = await r3Ac(page);
+    assert(a.active === 'Uber', 'list back with Uber highlighted: ' + JSON.stringify(a));
+    await page.keyboard.press('ArrowUp');
+    a = await r3Ac(page);
+    assert(a.active === null, '↑ from the first item leaves nothing highlighted: ' + JSON.stringify(a));
+    await page.keyboard.press('ArrowDown');
+    await page.evaluate(sel => { const i = document.querySelector(sel); i.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', isComposing: true, bubbles: true, cancelable: true })); }, R2_PAYEE);
+    a = await r3Ac(page);
+    assert(a.payee === 'ube' && a.fdPayee === 'ube', 'IME-composition Enter must not accept: ' + JSON.stringify(a));
+    await page.keyboard.press('ArrowUp'); await page.keyboard.press('Tab');
+    a = await r3Ac(page);
+    assert(a.payee === 'ube' && a.focus === 'Optional', 'Tab with nothing highlighted just moves on: ' + JSON.stringify(a));
+    const off = await page.evaluate(sel => document.querySelector(sel).getAttribute('autocomplete'), R2_PAYEE);
+    assert(off === 'off', 'native autofill off on Payee: ' + off);
+    await context.close();
+  });
+
   await test('R3-E5: adversarial — "Target" typed in full while history only has "Target Optical": offered but not highlighted, Tab keeps "Target"', async () => {
     const { page, context } = await r2Open({ txCache: R3_HIST });
     await r3Type(page, 'Target');

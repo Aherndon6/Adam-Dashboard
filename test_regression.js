@@ -16946,6 +16946,8 @@ test('R3-P4: punctuation, apostrophes and store numbers fold into one payee; the
   const M = r3Load();
   const r = M.payeeCompletions('marco', r3H);
   assert(r.candidates.length === 1 && r.candidates[0].payee === 'Marcos Pizza' && r.candidates[0].count === 2, "Marco's Pizza / Marcos Pizza are one payee: " + JSON.stringify(r.candidates));
+  const inv = M.payeeCompletions('pub', [r2Row('Publix', 'groc', '2026-09-01', -1), r2Row('Publix', 'groc', '2026-09-08', -1), r2Row('Publix #1234', 'groc', '2026-10-01', -1)]);
+  assert(inv.candidates[0].payee === 'Publix' && inv.candidates[0].count === 3, 'the clean spelling is preferred over a newer one carrying a store number: ' + JSON.stringify(inv.candidates));
   const p = M.payeeCompletions('publi', r3H);
   assert(p.candidates.length === 1 && p.candidates[0].payee === 'PUBLIX' && p.candidates[0].count === 2 && p.defaultIndex === 0, 'Publix #55 / PUBLIX merged, newest spelling: ' + JSON.stringify(p));
 });
@@ -16964,6 +16966,8 @@ test('R3-P6: adversarial — a complete word she typed is never pre-highlighted 
   assert(t.candidates.length === 1 && t.candidates[0].payee === 'Target Optical' && t.defaultIndex === -1, 'offered but not pre-highlighted: ' + JSON.stringify(t));
   assert(M.payeeCompletions('Targ', r3H).defaultIndex === 0, 'mid-word "Targ" may pre-highlight the single prefix match');
   assert(M.payeeCompletions('Target Opt', r3H).defaultIndex === 0, 'mid-word in the second word');
+  const chk = M.payeeCompletions('Check 105', [r2Row('Check 1052', 'x', '2026-09-01', -100)]);
+  assert(chk.candidates.length === 1 && chk.candidates[0].payee === 'Check 1052' && chk.defaultIndex === -1, 'mid-number (a check number) is never pre-highlighted: ' + JSON.stringify(chk));
   const sim = [r2Row('Fresh Market', 'groc', '2026-09-01', -1), r2Row('Fresh Thyme', 'groc', '2026-09-02', -1)];
   assert(JSON.stringify(r3Names(M.payeeCompletions('fresh', sim))) === JSON.stringify(['Fresh Thyme', 'Fresh Market']) && M.payeeCompletions('fresh', sim).defaultIndex === -1, 'similar but distinct merchants are separate choices');
 });

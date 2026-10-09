@@ -83,10 +83,12 @@ export function findPossibleDuplicates(c, rows) {
 }
 
 // Payee autocomplete (owner, 2026-10-09): historical payees for what has been typed — offered, never applied.
-// Same normalization as above; one candidate per normalized payee, shown in its most recent spelling.
+// Same normalization as above; one candidate per normalized payee, shown in its most recent spelling that carries no
+// trailing store/reference number (else simply the most recent).
 // Classes: exact, then prefix of the whole name, then substring; within a class most entries, then most recent.
 // defaultIndex (what Tab/Enter accept without arrowing) is 0 only when exactly ONE name starts with the typed text,
-// none equals it, and the typing stops mid-word ("ube"→Uber yes; "Target" vs "Target Optical" no). Otherwise -1.
+// none equals it, and the typing stops mid-word and not on a digit ("ube"→Uber yes; "Target" vs "Target Optical" no;
+// "Check 105" vs "Check 1052" no). Otherwise -1.
 export const PAYEE_MIN_CHARS = 3;
 export const PAYEE_MAX_SHOWN = 6;
 export function payeeCompletions(query, rows) {
@@ -99,16 +101,22 @@ export function payeeCompletions(query, rows) {
     if (!key) continue;
     const cls = key === q ? 'exact' : key.startsWith(q) ? 'prefix' : key.indexOf(q) >= 0 ? 'substring' : null;
     if (!cls) continue;
+    const clean = words(r.payee).join(' ') === key;   // no trailing store/reference number was dropped
     const g = groups.get(key);
-    if (!g) groups.set(key, { key, cls, count: 1, latest: r });
-    else { g.count++; if (recentFirst(r, g.latest) < 0) g.latest = r; }
+    if (!g) groups.set(key, { key, cls, count: 1, latest: r, spelling: clean ? r : null });
+    else {
+      g.count++;
+      if (recentFirst(r, g.latest) < 0) g.latest = r;
+      if (clean && (!g.spelling || recentFirst(r, g.spelling) < 0)) g.spelling = r;
+    }
   }
   const rank = { exact: 0, prefix: 1, substring: 2 };
   const all = [...groups.values()]
     .sort((a, b) => rank[a.cls] - rank[b.cls] || b.count - a.count || recentFirst(a.latest, b.latest) || (a.key < b.key ? -1 : a.key > b.key ? 1 : 0))
-    .map(g => ({ key: g.key, payee: g.latest.payee.trim(), count: g.count, cls: g.cls }));
+    .map(g => ({ key: g.key, payee: (g.spelling || g.latest).payee.trim(), count: g.count, cls: g.cls }));
   const prefix = all.filter(c => c.cls === 'prefix');
-  const defaultIndex = !all.some(c => c.cls === 'exact') && prefix.length === 1 && prefix[0].key.charAt(q.length) !== ' ' ? 0 : -1;
+  const defaultIndex = !all.some(c => c.cls === 'exact') && prefix.length === 1 && prefix[0].key.charAt(q.length) !== ' '
+    && !/\d$/.test(q) ? 0 : -1;   // never mid-number (e.g. a check number)
   return { candidates: all.slice(0, PAYEE_MAX_SHOWN), more: Math.max(0, all.length - PAYEE_MAX_SHOWN), defaultIndex };
 }
 
@@ -190,8 +198,8 @@ let cancelled = false;     // the person pressed Cancel while it was in flight �
 let carriedDate = null;    // the date kept from the previous entry (shown as such)
 let pending = null;        // {sig, mode, matches} — a possible-duplicate warning awaiting a decision
 let acknowledged = null;   // signature the person chose to "Save anyway"
-let editDuringSave = false;
-let ac = null;              // payee autocomplete on screen: {items, more, index} — nothing is applied until accepted // an edit form was opened while a save started here was in flight → do not reopen
+let editDuringSave = false; // an edit form was opened while a save started here was in flight → do not reopen
+let ac = null;              // payee autocomplete on screen: {items, more, index} — nothing is applied until accepted
 
 function el(tag, attrs, text) {
   const n = document.createElement(tag);
@@ -410,6 +418,7 @@ function acceptPayee(name) {
   if (p) { if (pending) { const c = proposedEntry(); if (!c || signature(c) !== pending.sig) { pending = null; renderWarning(p); } } renderAssist(p); }
 }
 function onPayeeKey(ev, inp) {
+  if (ev.isComposing || ev.keyCode === 229) return;   // IME composition: its Enter/Tab belong to the input method
   if (ev.key === 'Escape') { if (ac) { ev.preventDefault(); closeAutocomplete(); } return; }
   if (ev.key === 'ArrowDown' || ev.key === 'ArrowUp') {
     if (!ac) { updateAutocomplete(inp); if (!ac) return; }
@@ -436,8 +445,10 @@ function augment() {
   const dateInput = p.root.querySelector(DATE);
   if (dateInput && typeof _txFormData !== 'undefined' && _txFormData && String(_txFormData.transaction_date || '') === '' && dateInput.value !== '') dateInput.value = '';
   enhanceCategory(p);
-  ac = null;   // a re-render replaced the Payee field and its list
+  closeAutocomplete();   // a re-render replaced the Payee field and its list
   if (mode !== 'add') return;
+  const pay = payeeInput(p.root);
+  if (pay) { pay.setAttribute('autocomplete', 'off'); pay.setAttribute('aria-autocomplete', 'list'); pay.setAttribute('aria-controls', 'r2-payee-list'); }
   renderSaveAnother(p);
   renderAssist(p);
   renderWarning(p);
