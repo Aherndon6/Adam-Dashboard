@@ -5763,6 +5763,17 @@ async function clickNav(page, id) {
     await context.close();
   });
 
+  await test('R2-E16: editing an older transaction whose category was retired keeps the "(legacy — re-categorize)" choice selected after grouping', async () => {
+    const tx = [r2Tx('1', 'Aldi', 'food.old', '2026-09-01', -10)];
+    const { page, context } = await r2Open({ txCache: tx, formMode: 'edit', editId: 'r2e-1',
+      formData: { id: 'r2e-1', transaction_date: '2026-09-01', payee: 'Aldi', memo: '', category_key: 'food.old', outflow: '10.00', inflow: '', cleared: true } });
+    await page.waitForSelector('#r2-cat-search');
+    const s = await page.evaluate(() => { const sel = document.getElementById('tx-form-category'); const o = [...sel.options].find(x => x.value === 'food.old');
+      return { value: sel.value, legacy: o ? o.textContent : null, grouped: sel.querySelectorAll('optgroup').length }; });
+    assert(s.value === 'food.old' && /legacy — re-categorize/.test(s.legacy || '') && s.grouped > 0, 'legacy choice kept and selected: ' + JSON.stringify(s));
+    await context.close();
+  });
+
   await test('R2-E11: Edit mode is unchanged — no Save & Add Another, no duplicate check, the edit PATCHes as before', async () => {
     const tx = [r2Tx('1', 'Costco', 'food.groceries', '2026-10-07', -84.22)];
     const { page, context, posts, patches } = await r2Open({ txCache: tx, formMode: 'edit', editId: 'r2e-1',
