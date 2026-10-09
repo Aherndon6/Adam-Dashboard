@@ -885,7 +885,7 @@ button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-vis
 // ── Constants (unchanged) ──────────────────────────────────────────────────
 // Simplified architecture — $8,250 total from LC · $6,500 operating floor · no legacy mechanics
 // Real-world moves: keep $2,250 in chk, move $2,750 sav→chk, move $1,000 LC→chk, move $2,250 LC→chk (Option 1 correction)
-const BUILD_TS='2026-10-09T12:28:12'; // updated each push — local time string
+const BUILD_TS='2026-10-09T12:38:29'; // updated each push — local time string
 const START_CHK=18037.73,START_SAV=3772.77,START_AMX=103.64,START_TAX=0,START_LC=13488.88;
 const EF_AMT=13488.88; // LC/EF balance — static this model year (no transfers in or out)
 const BASE_TAX=521.36,RET_SAV_XFR=3772.74;
@@ -8320,8 +8320,9 @@ function setTxFilter(field,value){
 }
 // Release 1 (2026-10-09): the browser reports a complete date value while the user is still typing (one year digit
 // gives 0002-…); re-rendering then would destroy the field mid-entry (same root cause as the 2026-09-12 Add-form
-// fix). While the date filter field has focus, keep the value and apply once on blur or Enter. A date picked
-// without focus in the field, and every other filter, still apply immediately. The Register markup is unchanged.
+// fix). While the date filter field has focus, keep the value and apply once on blur or Enter; this includes a
+// date chosen from the calendar picker (the field keeps focus), so the list updates when the user leaves the field.
+// A date set while the field is not focused, and every other filter, still apply immediately. Register markup unchanged.
 function _txDeferDateFilterWhileTyping(id){
   var el=document.getElementById(id);
   if(!el||document.activeElement!==el)return false;
@@ -9801,7 +9802,9 @@ async function _budgetSaveTransaction(formData, editId){
     if(!editId){
       var inserted=await r.json();
       if(!inserted||!inserted.length){
-        throw new Error('0 rows inserted — your account may not have write access. Run this in Supabase SQL Editor: SELECT au.email, app.role, app.active FROM app_users app JOIN auth.users au ON au.id = app.auth_user_id ORDER BY app.role;');
+        // Release 1: the access-diagnosis query is for Adam (console), not the household message.
+        console.error('[Budget] 0 rows inserted — likely no write access. Diagnose in the Supabase SQL Editor: SELECT au.email, app.role, app.active FROM app_users app JOIN auth.users au ON au.id = app.auth_user_id ORDER BY app.role;');
+        throw new Error("Nothing was saved — this sign-in may not have permission to add budget entries. Please tell Adam.");
       }
     }
     _budgetShowAddForm=false;_budgetEditId=null;_budgetFormData={};
@@ -11819,7 +11822,7 @@ function _blrRenderModal(){
       if(caseA){
         html+='This line has history before '+monthLabel+'. It will be <strong>closed at end of '+priorLabel+'</strong> and remain visible in all prior months.';
       } else {
-        html+='This line started in '+monthLabel+' with no prior history. It will be <strong>deactivated</strong> (set is_active = false).';
+        html+='This line started in '+monthLabel+' with no prior history. It will be <strong>deactivated</strong>.';
       }
       html+='</div>';
       html+='<div style="color:#92400e;background:#fef3c7;border-radius:6px;padding:8px 10px;font-size:12px;margin-bottom:12px">This line will no longer appear from '+monthLabel+' onward. Restoring an archived line isn\'t available in the app yet. Ask Adam if you need it back.</div>';
@@ -12973,7 +12976,7 @@ function renderAskClaude(){
   }else if(!anthropicKey){
     html+='<div class="ask-setup-card">'+
       '<h3>Connect your Anthropic API key</h3>'+
-      '<p>Paste your API key from <strong>console.anthropic.com</strong> → API Keys. It will be stored in Supabase so it syncs across devices. Claude will only use it to answer questions about your model — it never modifies your data.</p>'+
+      '<p>Paste your API key from <strong>console.anthropic.com</strong> → API Keys. It will be stored, not encrypted, in the household database (visible to signed-in household users) and in this browser, so it syncs across devices. Claude will only use it to answer questions about your model — it never modifies your data.</p>'+
       '<div class="ask-key-row">'+
         '<input class="ask-key-input" id="ask-key-field" type="password" placeholder="sk-ant-...">'+
         '<button class="ask-key-save" onclick="saveApiKey(document.getElementById(\'ask-key-field\').value)">Save key</button>'+
@@ -12999,7 +13002,7 @@ function renderAskClaude(){
     '<textarea class="ask-input" id="ask-input" rows="2" placeholder="Ask a question..." onkeydown="if(event.key===\'Enter\'&&!event.shiftKey){event.preventDefault();sendAsk();}"></textarea>'+
     '<button class="ask-send-btn" onclick="sendAsk()" '+(askLoading||!anthropicKey?'disabled':'')+'>Send</button>'+
   '</div>'+
-  '<div class="ask-footer-note">Read-only · never modifies your model · your API key is stored in the household database (not encrypted) and is visible to signed-in household users</div>';
+  '<div class="ask-footer-note">Read-only · never modifies your model · your API key is stored, not encrypted, in the household database (visible to signed-in household users) and in this browser</div>';
   html+='</div>';
   el.innerHTML=html;
   // Scroll to bottom

@@ -16505,17 +16505,19 @@ test('R1-1: the sign-in form carries no pre-filled email (each browser/password 
   assert(!/id="auth-email"[^>]*\svalue=/.test(src), 'the email input has no value attribute');
   assert(/id="auth-email"[^>]*autocomplete="username"/.test(src), 'browser/password-manager autofill hint kept');
 });
-const R1_DEV_TOOLING = [/check (the )?console/i, /in Supabase/i, /SQL Editor/i, /budget_line_rules id/i];
-test('R1-2a: household-facing load/save messages never send the user to the console, Supabase, SQL or row IDs (accounts, categories, Manage Lines archive and failed edit)', function () {
+const R1_DEV_TOOLING = [/check (the )?console/i, /in Supabase/i, /SQL Editor/i, /budget_line_rules id/i, /is_active\s*=/i, /app_users/i];
+test('R1-2a: household-facing load/save messages never send the user to the console, Supabase, SQL or row IDs (accounts, categories, Manage Lines archive and failed edit, budget entry save)', function () {
   [['_renderTxAccounts', "Couldn't load the account list. Reload to retry."], ['_renderTxCategories', "Couldn't load the category list. Reload to retry."],
    ['_blrRenderModal', "Restoring an archived line isn't available in the app yet. Ask Adam if you need it back."],
-   ['_blrSaveEdit', "The change couldn't be completed and the old line couldn't be put back automatically. Please tell Adam before editing this line again."]]
+   ['_blrSaveEdit', "The change couldn't be completed and the old line couldn't be put back automatically. Please tell Adam before editing this line again."],
+   ['_budgetSaveTransaction', "Nothing was saved — this sign-in may not have permission to add budget entries. Please tell Adam."]]
     .forEach(([fn, wording]) => {
       const src = r1Fn(fn).replace(/console\.(error|warn|log)\([^;]*;/g, '');   // diagnostics stay in the console
       R1_DEV_TOOLING.forEach(re => assert(!re.test(src), fn + ' still shows developer/admin tooling text: ' + re));
       assert(r1Fn(fn).replace(/\\'/g, "'").indexOf(wording) >= 0, fn + ' must show: ' + wording);   // source holds JS-escaped quotes
     });
   assert(/console\.error\([^;]*budget_line_rules id/.test(r1Fn('_blrSaveEdit')), 'the technical row-id detail stays in console diagnostics for Adam');
+  assert(/console\.error\([^;]*SQL Editor/.test(r1Fn('_budgetSaveTransaction')), 'the access-diagnosis query stays in console diagnostics for Adam');
 });
 test('R1-2b: a page render error shows the simple household message; the error and stack stay in console diagnostics only', function () {
   const src = r1Fn('renderApp');
@@ -16527,7 +16529,10 @@ test('R1-2b: a page render error shows the simple household message; the error a
 test('R1-4: no household-facing claim that the Anthropic credential is encrypted; the wording states the real storage and visibility', function () {
   const visible = html.replace(/\/\/[^\n]*/g, '');
   assert(!/stored encrypted|encrypted in Supabase|key is encrypted/i.test(visible), 'a false encryption claim remains');
-  assert(r1Fn('renderAskClaude').indexOf('your API key is stored in the household database (not encrypted) and is visible to signed-in household users') >= 0, 'truthful credential wording present');
+  const ask = r1Fn('renderAskClaude');
+  assert(ask.indexOf('your API key is stored, not encrypted, in the household database (visible to signed-in household users) and in this browser') >= 0, 'truthful credential wording in the footer');
+  assert(ask.indexOf('It will be stored, not encrypted, in the household database (visible to signed-in household users) and in this browser') >= 0, 'the same disclosure where the key is entered');
+  assert(!/stored in Supabase/i.test(ask), 'no bare "stored in Supabase" claim at key entry');
 });
 function r1Elem(id) { const ls = {}; return { id, value: '', listeners: ls, dataset: {}, addEventListener(t, f, o) { (ls[t] = ls[t] || []).push({ f, o }); }, removeEventListener(t, f) { ls[t] = (ls[t] || []).filter(x => x.f !== f); }, blur() { (ls.blur || []).slice().forEach(x => x.f({ type: 'blur' })); } }; }
 function r1Fire(el, type, ev) { (el.listeners[type] || []).slice().forEach(x => { if (x.o && x.o.once) el.removeEventListener(type, x.f); x.f(Object.assign({ type }, ev || {})); }); }
@@ -16632,6 +16637,8 @@ test('R1-5f: wiring — 15-minute interval, checks on tab-visible, no auto-reloa
   assert(/visibilitychange/.test(src) && /visibilityState\s*===\s*'visible'/.test(src), 'checks when the tab becomes visible');
   const code = src.replace(/\/\/[^\n]*/g, '');
   assert(!/\.focus\(/.test(code), 'never takes focus');
+  assert(!/window\.[\w$]+\s*=[^=]/.test(code) && !/globalThis\./.test(code), 'no new globals (AGENTS.md)');
+  assert(/matchMedia\('\(max-width:900px\)'\)/.test(code) && /calc\(72px \+ env\(safe-area-inset-bottom\)\)/.test(code), 'on phones the notice sits above the bottom nav');
   assert((code.match(/location\.reload\(/g) || []).length === 1 && /reload:\s*\(\)\s*=>\s*location\.reload\(\)/.test(code), 'location.reload only as the env.reload behind the confirmed Reload action');
   assert(/<script type="module" src="js\/version-check\.js"><\/script>/.test(html), 'mounted as an ES module');
   assert(!/version-check/.test(html.match(/<script>([\s\S]*?)<\/script>/)[1]), 'no version-check code in the inline script body');

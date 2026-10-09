@@ -46,7 +46,8 @@ export function createVersionCheck(env) {
 }
 
 // Browser wiring (skipped when the module is loaded for tests).
-if (typeof window !== 'undefined' && typeof document !== 'undefined' && !window.__hfosVersionCheck) {
+// No new globals (AGENTS.md): a module evaluates once per page, so no double-init guard is needed.
+if (typeof window !== 'undefined' && typeof document !== 'undefined') {
   const vc = createVersionCheck({
     running: (typeof BUILD_TS !== 'undefined') ? BUILD_TS : null,   // the classic script's build stamp
     url: () => location.pathname || '/',
@@ -59,7 +60,11 @@ if (typeof window !== 'undefined' && typeof document !== 'undefined' && !window.
       bar.id = 'hfos-version-notice';
       bar.setAttribute('role', 'status');
       bar.setAttribute('aria-live', 'polite');
-      bar.style.cssText = 'position:fixed;left:50%;bottom:16px;transform:translateX(-50%);z-index:9999;max-width:calc(100% - 32px);'
+      // Above the phone bottom nav (fixed at bottom:0 under 900px); 16px from the edge on desktop.
+      const phone = window.matchMedia && window.matchMedia('(max-width:900px)').matches;
+      bar.style.cssText = 'position:fixed;z-index:9999;'
+        + (phone ? 'left:16px;right:16px;bottom:calc(72px + env(safe-area-inset-bottom));'
+                 : 'left:50%;bottom:16px;transform:translateX(-50%);max-width:calc(100% - 32px);')
         + 'background:#1e293b;color:#fff;border-radius:10px;padding:10px 14px;font:13px/1.4 system-ui,sans-serif;'
         + 'box-shadow:0 6px 20px rgba(0,0,0,.25);display:flex;gap:12px;align-items:center;flex-wrap:wrap';
       const msg = document.createElement('span');
@@ -73,7 +78,7 @@ if (typeof window !== 'undefined' && typeof document !== 'undefined' && !window.
       document.body.appendChild(bar);
     },
   });
-  window.__hfosVersionCheck = vc;
+  document.documentElement.setAttribute('data-hfos-version-check', 'on');   // mount marker for acceptance checks
   document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') vc.check(); });
   setInterval(() => { vc.check(); }, VERSION_CHECK_INTERVAL_MS);
 }
