@@ -38,7 +38,7 @@ Rules:
 
 The flow is: institution download → deterministic comparison against the Register → balance tie and unmatched lists → owner adjudication using existing controls.
 
-**Next decision:** the R-lite checkpoint, about Nov 8; R-lite is not started. Its design inputs are recorded in `docs/release-2-register-entry-assist.md` ("R-lite observations").
+**Next decision:** the R-lite checkpoint, about Nov 8; R-lite is not started. The owner's Register follow-ups of 2026-10-09 (blank-date fix; payee autocomplete) were built as their own frozen candidate (`docs/register-followups-2026-10-09.md`), outside R-lite. Its design inputs are recorded in `docs/release-2-register-entry-assist.md` ("R-lite observations").
 
 **Required (owner, 2026-10-09):** R-lite must explicitly address the retirement or replacement of the misleading legacy Budget "Statement check" and its help reference. That item was dropped from Release 1: `renderBudget` is not renamed, retired, edited or re-pinned before R-lite.
 
