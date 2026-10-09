@@ -1,11 +1,11 @@
-# Register follow-ups: blank-date fix and payee autocomplete (frozen candidate, 2026-10-09)
+# Register follow-ups: blank-date fix and payee autocomplete (closed 2026-10-09)
 
 | | |
 |---|---|
-| Status | **FROZEN CANDIDATE — awaiting owner authorization to push.** Not pushed, not deployed |
+| Status | **DEPLOYED — PASS · PRODUCTION ACCEPTANCE — PASS · CLOSED** (owner, 2026-10-09). Pushed `3963ed1..14e76ec` (fast-forward); `BUILD_TS` `2026-10-09T16:27:26`; served `index.html` and `js/register-assist.js` byte-identical to the commit |
 | Branch | `production-line-2026q4`, on top of live `3963ed1` (Release 2) and docs `5c7c4de`. Commits: `8d23939` (blank-date fix), `d6c2661` (payee autocomplete), `b818b10` (Fable review fixes), `65cdb92` (mutation-gap tests), plus this record |
 | Authority | Owner amendment of 2026-10-09: blank-date fix approved; partial-payee matching for investigation and conditional implementation, corrected the same day to **user-controlled autocomplete on the Payee field** |
-| Not included | **R-lite itself is not started and not authorized in this work.** The owner's decision checkpoint is about Nov 8. The What-If "(no change)" issue stays out |
+| Not included | R-lite (a separate workstream; authorized by the owner and moved forward from about Nov 8, starting after this closure). The What-If "(no change)" issue stays out |
 | Private evidence | `~/Herndon-Financial-OS-Evidence/register-followups-2026-10-09/` |
 
 ## 1. Blank-date defect (Fable R2 N-8)
@@ -113,7 +113,18 @@
   - the payee list;
   - a cleared date now stays blank instead of reappearing as today.
 
-## Production acceptance (after an authorized push)
+## Production acceptance (owner, 2026-10-09): PASS (zero-write)
+
+| Check | Result |
+|---|---|
+| A. Autocomplete | **PASS**. "ube" on AMEX Gold listed "Uber · 9 entries", highlighted. Payee stayed "ube" until accepted, then became "Uber"; the category was untouched. No category suggestion appeared, which is correct: Uber's newest 10 entries there do not reach 75% in one category |
+| B. Escape / typing on | **PASS**. Typed text kept; nothing substituted |
+| C. Blank date | **PASS**. "Date is required."; the field stayed blank; no exception; other values kept |
+| D. Household build | **PASS** (Adam and Wendy) |
+
+Nothing was saved during acceptance.
+
+The checks as planned before the push:
 
 1. In Register → Add, type "ube" (or the first letters of a familiar payee).
    - The list appears and **nothing changes** until Tab/Enter on the highlighted item, or a click.

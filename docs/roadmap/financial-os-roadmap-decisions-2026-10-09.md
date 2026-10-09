@@ -14,7 +14,7 @@
 | 0 | **Release 0:** reconciled-week model-edit guard | **CLOSED. Live and accepted 2026-10-09** (`96328a7`; `docs/release-0-reconciled-week-guard.md`) |
 | 1 | **Release 1:** trust / Wendy quick wins | **CLOSED. Live and accepted 2026-10-09** (`78ad6c7`, product commits `c4daf1c` + `05d4d3f`; `docs/release-1-trust-quick-wins.md`). Six items: no pre-filled login email; household-safe error/admin wording; typed-date entry in Register filters; truthful Ask Claude credential wording; new-version / reload notice (never auto-reloads; not a replacement for the December stale-client control); FD-3 What-If tab. The Budget "Statement check" item was **dropped** by the owner (see 3.1) |
 | 2 | **Release 2:** Register entry assist | **CLOSED. Live and accepted 2026-10-09** (`3963ed1`; `docs/release-2-register-entry-assist.md`, which also records the R-lite design observations). The Release 1 version-notice production proof passed at this deploy |
-| 3 | **R-lite** reconciliation (read-only) | **Conditional.** Decision checkpoint **about Nov 8**: start before rollover only with high confidence that it can be implemented, adversarially tested, used in at least one shadow Saturday, accepted and merged into the rollover branch before the freeze. Otherwise it is the first major build after week 31. Scope in 3.1 below |
+| 3 | **R-lite** reconciliation (read-only) | **AUTHORIZED (owner, 2026-10-09)** under its own separate authorization. The about-Nov-8 decision checkpoint was moved forward because Releases 0–2 and the Register follow-ups (`docs/register-followups-2026-10-09.md`, closed 2026-10-09) finished well ahead of forecast. Next workstream. The pre-freeze bar stays: implemented, adversarially tested, used in at least one shadow Saturday, accepted and merged into the rollover branch before the Nov 20 freeze. Scope in 3.1 below |
 | 4 | **Production code freeze** | **Planned Nov 20.** After it, only rollover work and the required December integration. Emergency production correctness or security fixes need an explicit owner decision. Changing the date needs evidence brought to the owner |
 | 5 | **December rollover** | Resume from `docs/rollover-december-restart.md`. The December integration reconciles: `origin/main`, the production-work commits, local `main` `f4ab908`, `rollover-package-d`, the parked rollover status, and `AGENTS.md` law #2 |
 | 6 | **After rollover** | The remaining Gate R / security / model-authority work, then Gate F (sequence below) |
@@ -38,7 +38,10 @@ Rules:
 
 The flow is: institution download → deterministic comparison against the Register → balance tie and unmatched lists → owner adjudication using existing controls.
 
-**Next decision:** the R-lite checkpoint, about Nov 8; R-lite is not started. The owner's Register follow-ups of 2026-10-09 (blank-date fix; payee autocomplete) were built as their own frozen candidate (`docs/register-followups-2026-10-09.md`), outside R-lite. Its design inputs are recorded in `docs/release-2-register-entry-assist.md` ("R-lite observations").
+**Status (owner, 2026-10-09):**
+- R-lite is authorized and is the next workstream.
+- It starts after the Register follow-ups closed (blank-date fix; payee autocomplete; `docs/register-followups-2026-10-09.md`), which they did on 2026-10-09.
+- The frozen rollover authority is unchanged. Its design inputs are recorded in `docs/release-2-register-entry-assist.md` ("R-lite observations").
 
 **Required (owner, 2026-10-09):** R-lite must explicitly address the retirement or replacement of the misleading legacy Budget "Statement check" and its help reference. That item was dropped from Release 1: `renderBudget` is not renamed, retired, edited or re-pinned before R-lite.
 
