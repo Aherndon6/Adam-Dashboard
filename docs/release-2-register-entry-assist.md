@@ -1,8 +1,8 @@
-# Release 2: Register entry assist (frozen candidate, 2026-10-09)
+# Release 2: Register entry assist (closed 2026-10-09)
 
 | | |
 |---|---|
-| Status | **FROZEN CANDIDATE — awaiting owner authorization to push.** Not pushed, not deployed |
+| Status | **DEPLOYED — PASS · PRODUCTION ACCEPTANCE — PASS · CLOSED** (owner, 2026-10-09). Pushed `78ad6c7..3963ed1` (fast-forward); `BUILD_TS` `2026-10-09T14:54:00`; served `index.html`, `js/register-assist.js` and `js/version-check.js` byte-identical to the commit |
 | Branch | `production-line-2026q4`, on top of live `78ad6c7` (Release 1) and docs `87d0d78`. Commits: `32f044d` (feature), `ea345fe` (Fable review fixes), `f9c044f` (mutation-gap tests; readable accent-fold range), `d5c5ecd` (legacy-category test); docs `8608754` and this record |
 | Authority | Owner authorization of 2026-10-09: implementation through frozen candidate; no push, no deploy |
 | Private evidence | `~/Herndon-Financial-OS-Evidence/release-2-2026-10-09/` |
@@ -114,7 +114,20 @@ A deterministic rule; it **suggests, never decides**.
 
 **N-8 (pre-existing).** `_refreshTxFormCategoryLabels` refers to `_today`, which exists only inside `_renderTxRegister`. Clearing the Add form's date to blank therefore throws a console ReferenceError. Release 2 never triggers it. It goes to the backlog.
 
-## Production acceptance (after an authorized push)
+## Production acceptance (owner, 2026-10-09): PASS
+
+| Check | Result |
+|---|---|
+| Release 1 version-notice proof | **PASS**. The Release 1 tab left open showed the update notice and did not reload by itself |
+| A. Register assist UI | **PASS** |
+| B. Payee suggestion | **PASS**. "Everyday" → Jabian Expenses 2026 ("9 of the last 10"). Applied only on Use; the owner's own category was never overridden. A partial payee ("ube") correctly gave no suggestion |
+| C. Category search | **PASS** |
+| D. Save & Add Another with a real transaction | **PASS by owner waiver**. Not observed in production; relies on the frozen e2e, browser and mutation evidence |
+| E. Duplicate warning | **NOT EXERCISED** in production (no natural duplicate); the frozen evidence stands |
+| F. Household build | **PASS** (Adam and Wendy) |
+| Data check | Nothing was saved during acceptance |
+
+The checks as planned before the push:
 
 1. **Before the push**, Adam leaves one Release 1 dashboard tab open. After deploy, that tab must show the update notice when he returns to it, or within 15 minutes, and must **not** reload by itself. This is the final Release 1 version-notice proof.
 2. Confirm the served `index.html` and `js/register-assist.js` match the commit, and the new `BUILD_TS`.
