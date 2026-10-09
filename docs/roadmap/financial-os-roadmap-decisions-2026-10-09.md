@@ -12,7 +12,7 @@
 | # | Item | State / rule |
 |---|---|---|
 | 0 | **Release 0:** reconciled-week model-edit guard | **CLOSED. Live and accepted 2026-10-09** (`96328a7`; `docs/release-0-reconciled-week-guard.md`) |
-| 1 | **Release 1:** trust / Wendy quick wins | **Next.** Authorized for DESIGN only on 2026-10-09. Candidate scope: (1) no pre-filled login email; (2) remove household-facing developer/admin instructions (Supabase, SQL, console); (3) relabel or retire the misleading Budget "Statement check"; (4) fix typed-date entry in Register filters; (5) correct the false Ask Claude "stored encrypted" claim; (6) visible new-version / reload notice (never auto-reloads; not a replacement for the December stale-client control); (7) fix FD-3 What-If tab bug. About one sitting |
+| 1 | **Release 1:** trust / Wendy quick wins | **Implemented 2026-10-09 as a frozen candidate, awaiting owner push authorization** (`docs/release-1-trust-quick-wins.md`). Six items: no pre-filled login email; household-safe error/admin wording; typed-date entry in Register filters; truthful Ask Claude credential wording; new-version / reload notice (never auto-reloads; not a replacement for the December stale-client control); FD-3 What-If tab. The Budget "Statement check" item was **dropped** by the owner (see 3.1) |
 | 2 | **Release 2:** Register entry assist | **Approved in principle after Release 1** (scope in 2.1 below) |
 | 3 | **R-lite** reconciliation (read-only) | **Conditional.** Decision checkpoint **about Nov 8**: start before rollover only with high confidence that it can be implemented, adversarially tested, used in at least one shadow Saturday, accepted and merged into the rollover branch before the freeze. Otherwise it is the first major build after week 31. Scope in 3.1 below |
 | 4 | **Production code freeze** | **Planned Nov 20.** After it, only rollover work and the required December integration. Emergency production correctness or security fixes need an explicit owner decision. Changing the date needs evidence brought to the owner |
@@ -37,6 +37,8 @@ Rules:
 ### 3.1 R-lite boundary (v1)
 
 The flow is: institution download → deterministic comparison against the Register → balance tie and unmatched lists → owner adjudication using existing controls.
+
+**Required (owner, 2026-10-09):** R-lite must explicitly address the retirement or replacement of the misleading legacy Budget "Statement check" and its help reference. That item was dropped from Release 1: `renderBudget` is not renamed, retired, edited or re-pinned before R-lite.
 
 Not part of v1:
 - no schema;
