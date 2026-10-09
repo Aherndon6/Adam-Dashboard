@@ -24,10 +24,12 @@ function words(s) {
 }
 
 // Exact-match key for a payee: case, accents, apostrophes and punctuation fold; trailing store/reference
-// numbers drop ("Publix #1234" → "publix"). No fuzzy or prefix matching.
+// numbers drop ("Publix #1234" → "publix") — except a check number ("Check 1052" stays distinct).
+// No fuzzy or prefix matching.
+const CHECK_WORDS = ['check', 'chk', 'ck', 'cheque'];
 export function normalizePayee(s) {
   const w = words(s);
-  while (w.length > 1 && /^\d+$/.test(w[w.length - 1])) w.pop();
+  while (w.length > 1 && /^\d+$/.test(w[w.length - 1]) && CHECK_WORDS.indexOf(w[w.length - 2]) < 0) w.pop();
   return w.join(' ');
 }
 
@@ -158,6 +160,7 @@ let cancelled = false;     // the person pressed Cancel while it was in flight �
 let carriedDate = null;    // the date kept from the previous entry (shown as such)
 let pending = null;        // {sig, mode, matches} — a possible-duplicate warning awaiting a decision
 let acknowledged = null;   // signature the person chose to "Save anyway"
+let editDuringSave = false; // an edit form was opened while a save started here was in flight → do not reopen
 
 function el(tag, attrs, text) {
   const n = document.createElement(tag);
@@ -230,7 +233,8 @@ function enhanceCategory(p) {
     if (ev.key === 'Enter') {
       ev.preventDefault();
       const hits = matchCategoryOptions(box.value, opts);
-      if (hits.length === 1) list.querySelector('button[data-key]').click();   // only an unambiguous match
+      const only = hits.length === 1 ? list.querySelector('button[data-key]') : null;   // only an unambiguous match
+      if (only) only.click();
     }
   });
   cell.insertBefore(box, sel);
@@ -264,6 +268,8 @@ function renderAssist(p) {
   if (dateInput) dateInput.style.outline = kept ? '2px solid var(--amber)' : '';
   if (kept) bar.appendChild(el('span', { id: 'r2-date-kept', style: 'color:var(--amber);font-weight:600' },
     'Date kept from your last entry (' + fmtDate(carriedDate) + ') — change it if this one is different.'));
+  if (busy && !formSaving()) bar.appendChild(el('span', { id: 'r2-still-saving', style: 'color:var(--amber);font-weight:600' },
+    'Your previous entry is still saving — wait a moment before saving this one.'));
   const rows = ledgerRows(), payee = (_txFormData && _txFormData.payee) || '';
   if (!rows) bar.appendChild(el('span', { id: 'r2-history-unavailable', style: 'color:var(--amber)' },
     'This account\'s history isn\'t loaded, so payee suggestions and the duplicate check are off for now.'));
@@ -324,6 +330,7 @@ function renderSaveAnother(p) {
 
 function augment() {
   const mode = formMode();
+  if (busy && mode === 'edit') editDuringSave = true;
   if (mode !== 'add' && !busy) { carriedDate = null; pending = null; acknowledged = null; }
   const p = formParts();
   if (!p) return;
@@ -356,14 +363,14 @@ function saveAnyway() {
 }
 
 async function runSave(mode) {
-  busy = true; cancelled = false;
+  busy = true; cancelled = false; editDuringSave = false;
   const account = _txLedgerAccountKey, saved = Object.assign({}, _txFormData);
   augment();
   let ok = false;
   try { ok = (await _saveTxForm()) === true; } catch (e) { ok = false; } finally { busy = false; }
   if (ok) { acknowledged = null; pending = null; carriedDate = null; }
-  const reopen = ok && mode === 'again' && !cancelled && formMode() === null && _txLedgerAccountKey === account
-    && !deleteConfirmOpen();
+  const reopen = ok && mode === 'again' && !cancelled && !editDuringSave && formMode() === null
+    && _txLedgerAccountKey === account && !deleteConfirmOpen();
   if (!reopen) { augment(); return; }
   _openTxForm('add', null);
   if (formMode() !== 'add') return;
@@ -387,8 +394,18 @@ if (typeof document !== 'undefined' && typeof window !== 'undefined') {
       if (busy && t.closest(CANCEL)) { cancelled = true; return; }
       if (t.closest(PRIMARY) && formMode() === 'add') { ev.stopPropagation(); ev.preventDefault(); requestSave('save'); }
     }, true);
-    root.addEventListener('input', ev => { if (ev.target && ev.target.matches && ev.target.matches(PAYEE) && formMode() === 'add') { const p = formParts(); if (p) renderAssist(p); } });
-    root.addEventListener('change', ev => { if (ev.target && ev.target.matches && ev.target.matches(DATE) && formMode() === 'add') { const p = formParts(); if (p) renderAssist(p); } });
+    // Any edit to the entry: a duplicate warning that no longer describes what is entered is withdrawn (the
+    // next save re-checks), and the assist line (kept date, suggestion) follows the new values.
+    // (A blur-time "change" from Payee must not rebuild the line: that would remove a button mid-click.)
+    const onEdit = refreshLine => {
+      if (formMode() !== 'add') return;
+      const p = formParts();
+      if (!p) return;
+      if (pending) { const c = proposedEntry(); if (!c || signature(c) !== pending.sig) { pending = null; renderWarning(p); } }
+      if (refreshLine) renderAssist(p);
+    };
+    root.addEventListener('input', ev => { if (ev.target && ev.target.id !== 'r2-cat-search') onEdit(!!(ev.target.matches && ev.target.matches(PAYEE))); });
+    root.addEventListener('change', ev => onEdit(!!(ev.target && ev.target.matches && ev.target.matches(DATE))));
     augment();
   }
   document.documentElement.setAttribute('data-hfos-register-assist', 'on');   // mount marker for acceptance checks

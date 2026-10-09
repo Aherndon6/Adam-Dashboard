@@ -522,7 +522,7 @@ async function clickNav(page, id) {
     ? '  ▶▶▶ PRODUCTION VERIFICATION — live production contact (' + SUPA_HOST + '); prod-verify tests only ◀◀◀'
     : SMOKE_MODE
       ? '  ▶▶ SMOKE MODE — running smoke-tagged tests only ◀◀'
-      : '  ▶ FULL MODE (default) — running the complete suite');
+      : (E2E_GREP ? '  ▶ FILTERED RUN — only tests matching HFOS_E2E_GREP=' + E2E_GREP.source + ' (NOT the complete suite)' : '  ▶ FULL MODE (default) — running the complete suite'));
   console.log(PROD_VERIFY_MODE
     ? '  Isolation: PRODUCTION VERIFY — resolver allows CDN + production project; data writes blocked'
     : '  Isolation: HERMETIC — resolver allows CDN hosts only; fixture backend; unowned writes denied');
@@ -5636,15 +5636,17 @@ async function clickNav(page, id) {
     await b.context.close();
   });
 
-  await test('R2-E6: after a warning, changing the entry means "Save anyway" re-checks what is now entered (the decision covers only what was shown)', async () => {
+  await test('R2-E6: after a warning, changing the entry withdraws it and the next save re-checks what is now entered (a decision covers only what was shown)', async () => {
     const { page, context, posts } = await r2Open({ txCache: [r2Tx('1', 'Costco', 'food.groceries', '2026-10-07', -84.22), r2Tx('2', 'Costco', 'food.groceries', '2026-10-06', -90.00)],
       formData: { transaction_date: '2026-10-07', payee: 'Costco', memo: '', category_key: 'food.groceries', outflow: '84.22', inflow: '', cleared: false } });
     await page.click('#r2-save-add');
     await page.waitForSelector('#r2-dup');
     await page.fill('#tx-form-outflow', '90.00');
-    await page.click('#r2-dup-save');
+    const gone = await page.evaluate(() => !document.getElementById('r2-dup'));
+    assert(gone && posts.length === 0, 'editing the entry withdraws the stale warning; nothing saved');
+    await page.click('#r2-save-add');
     await page.waitForFunction(() => /\$90\.00/.test((document.getElementById('r2-dup') || {}).textContent || ''), null, { timeout: 3000 });
-    assert(posts.length === 0, 'a changed entry that is itself a likely duplicate is warned again, not saved');
+    assert(posts.length === 0, 'the changed entry is checked again and, being itself a likely duplicate, is warned — not saved');
     await context.close();
   });
 
@@ -5704,9 +5706,9 @@ async function clickNav(page, id) {
     await context.close();
   });
 
-  await test('R2-E10: Cancel while a Save & Add Another is in flight → no next entry is opened', async () => {
+  await test('R2-E10: Cancel while a Save & Add Another is in flight (even after a double-click) → no next entry is opened', async () => {
     const { page, context, posts } = await r2Open({ formData: R2_FULL, postDelay: 400 });
-    await page.click('#r2-save-add');
+    await page.dblclick('#r2-save-add');   // a second click while the first save is in flight must not reset the Cancel tracking
     await page.click('button[onclick="_closeTxForm()"]');
     await page.waitForTimeout(900);
     const s = await r2State(page);
@@ -5722,6 +5724,27 @@ async function clickNav(page, id) {
     await page.click('button[onclick="_saveTxForm()"]');
     await page.waitForFunction(() => _txFormMode === null, null, { timeout: 4000 });
     assert(posts.length === 1, 'the save itself is unaffected: ' + posts.length);
+    await context.close();
+  });
+
+  await test('R2-E13: Add with an incomplete entry (no amount) goes straight to the normal validation message — no warning, nothing saved', async () => {
+    const { page, context, posts } = await r2Open({ txCache: [r2Tx('1', 'Costco', 'food.groceries', '2026-10-07', -84.22)],
+      formData: { transaction_date: '2026-10-07', payee: 'Costco', memo: '', category_key: 'food.groceries', outflow: '', inflow: '', cleared: false } });
+    await page.click('button[onclick="_saveTxForm()"]');
+    await page.waitForFunction(() => !!_txFormError, null, { timeout: 3000 });
+    const s = await r2State(page);
+    assert(s.err === 'Enter an outflow or inflow amount.' && !s.dup && posts.length === 0 && s.mode === 'add', 'classic validation only: ' + JSON.stringify({ err: s.err, dup: s.dup, posts: posts.length }));
+    await context.close();
+  });
+
+  await test('R2-E14: an edit opened while a Save & Add Another is in flight → no Add form is reopened afterwards', async () => {
+    const tx = [r2Tx('1', 'Kroger', 'food.groceries', '2026-09-01', -5)];
+    const { page, context, posts } = await r2Open({ txCache: tx, formData: R2_FULL, postDelay: 400 });
+    await page.click('#r2-save-add');
+    await page.evaluate(() => { _openTxForm('edit', _txToFormData(_txLedgerCache[0])); });
+    await page.waitForTimeout(900);
+    const s = await r2State(page);
+    assert(posts.length === 1 && s.mode !== 'add', 'save completed; no Add form reopened over the interrupted edit: ' + JSON.stringify({ posts: posts.length, mode: s.mode }));
     await context.close();
   });
 
@@ -5769,7 +5792,7 @@ async function clickNav(page, id) {
   console.log('  Mode:    ' + (PROD_VERIFY_MODE ? 'PRODUCTION VERIFY (prod-verify only)' : SMOKE_MODE ? 'SMOKE (smoke-tagged only)' : 'FULL (default)'));
   console.log('  Passed:  ' + pass);
   console.log('  Failed:  ' + fail);
-  console.log('  Skipped: ' + skipped + (PROD_VERIFY_MODE ? ' (non-prod-verify tests)' : SMOKE_MODE ? ' (non-smoke tests, incl. prod-verify)' : ' (prod-verify tests)'));
+  console.log('  Skipped: ' + skipped + (PROD_VERIFY_MODE ? ' (non-prod-verify tests)' : SMOKE_MODE ? ' (non-smoke tests, incl. prod-verify)' : E2E_GREP ? ' (filtered out by HFOS_E2E_GREP, incl. prod-verify)' : ' (prod-verify tests)'));
   if (!PROD_VERIFY_MODE && skippedProdVerify.length) {
     console.log('    prod-verify (not run in this mode): ' + skippedProdVerify.join(' | '));
   }

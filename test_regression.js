@@ -16670,7 +16670,8 @@ test('R2-D1: payee normalization — case, punctuation, accents, apostrophes and
   const M = r2Load();
   [['Publix #1234', 'publix'], ['PUBLIX', 'publix'], ['  publix  ', 'publix'], ["Trader Joe's", 'trader joes'], ['Trader Joe’s', 'trader joes'],
    ['Café Rio', 'cafe rio'], ['Costco   Wholesale', 'costco wholesale'], ['Costco Wholesale 0441', 'costco wholesale'], ['7-Eleven', '7 eleven'],
-   ['Barnes & Noble', 'barnes and noble'], ['123', '123'], ['', ''], [null, ''], ['Shell 12 34', 'shell']]
+   ['Barnes & Noble', 'barnes and noble'], ['123', '123'], ['', ''], [null, ''], ['Shell 12 34', 'shell'],
+   ['Check 1052', 'check 1052'], ['CHK #1053', 'chk 1053'], ['ck 77', 'ck 77']]
     .forEach(([a, b]) => assert(M.normalizePayee(a) === b, JSON.stringify(a) + ' → ' + JSON.stringify(M.normalizePayee(a)) + ', expected ' + JSON.stringify(b)));
   assert(M.normalizePayee('Publix Super Market') !== M.normalizePayee('Publix'), 'no fuzzy/prefix matching');
 });
@@ -16823,6 +16824,18 @@ testAsync('R2-H2: _saveTxForm never reports success for a refused or failed save
     _txFormSaving = true; const r = await _saveTxForm();
     assert(r !== true && log.posts === 0, 're-entry while a save is in flight is refused and not reported as success');
   });
+});
+test('R2-W2: tripwire — the Register markup the module attaches to is still there (a renderer change fails here instead of silently switching the assist off)', function () {
+  const reg = r1Fn('_renderTxRegister'), src = r2Src();
+  [['PRIMARY', 'button[onclick="_saveTxForm()"]', '<button onclick="_saveTxForm()" '], ['CANCEL', 'button[onclick="_closeTxForm()"]', '<button onclick="_closeTxForm()" '],
+   ['PAYEE', "input[oninput=\"_setTxFormField(\\'payee\\',this.value)\"]", "+inp('payee','Required',fd.payee)"],
+   ['DATE', "input[type=\"date\"][onchange=\"_setTxFormField(\\'transaction_date\\',this.value)\"]", "+'onchange=\"_setTxFormField(\\'transaction_date\\',this.value)\" '"]]
+    .forEach(([name, sel, markup]) => {
+      assert(src.indexOf("const " + name + " = '" + sel + "';") >= 0, 'module selector ' + name + ' changed: expected ' + sel);
+      assert(reg.indexOf(markup) >= 0, '_renderTxRegister no longer renders what ' + name + ' selects: ' + markup);
+    });
+  assert(reg.indexOf("+'oninput=\"_setTxFormField(\\''+field+'\\',this.value)\" '") >= 0, 'the inp() helper still renders oninput="_setTxFormField(\'<field>\',this.value)"');
+  ['id="tx-form-category"', 'data-mlabel="1"', 'background:var(--blueSoft)', 'display:grid', "'<input type=\"date\" value=\"'"].forEach(m => assert(reg.indexOf(m) >= 0, '_renderTxRegister markup changed: ' + m));
 });
 test('R2-W1: limits — mounted as one ES module; the protected Register renderer is untouched; no new data access, globals, schema or automatic category decisions', function () {
   const src = r2Src(); const code = src.replace(/\/\/[^\n]*/g, '');
