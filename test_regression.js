@@ -8607,6 +8607,7 @@ test('5E10-06: Help panel reconciliation/printout sections are unmodified (guard
     'help points to Statement Compare');
   assertIncludes(budgetFnSrc,'go through each transaction in the list and check the <strong>Cleared</strong> box','the Cleared-ticking guidance is unchanged');
   assert(budgetFnSrc.indexOf('you are reconciled')===-1,'no help text claims "you are reconciled"');
+  assertIncludes(budgetFnSrc,'Reading the budget printout','Printout help section header must be unchanged');
 });
 
 test('5E10-07: _saveTxForm rejects a blank payee before the Supabase call',()=>{

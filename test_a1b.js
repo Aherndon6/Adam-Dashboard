@@ -1016,6 +1016,10 @@ TA('[A1b-R2] D10b: the retired Statement check (R-lite, owner 2026-10-09) shows 
   var h=await renderAug([reg('a','nope.k',-40)],[leg('l',GROC,5)]);
   var i=h.indexOf('id="budget-recon"'); var panel=h.slice(i,i+2500);
   assert(i>=0&&/retired/.test(panel)&&/Statement Compare/.test(panel)&&!MONEY.test(txt(panel))&&!/Reconciled/.test(panel),'retired panel expected: '+txt(panel).slice(0,160));
+  // Unrelated protection kept (per-cell independence): a COMPLETE legacy source still renders its own cell — the
+  // legacy transaction list — even though the month is UNVERIFIED for another reason (the unknown Register key).
+  var j=h.indexOf('id="budget-legacy-list"');
+  assert(j>=0&&/\$5\.00/.test(txt(h.slice(j,j+4000))),'legacy list suppressed although its legacy source is complete: '+txt(h.slice(j,j+300)));
 });
 TA('[A1b-R2] D10c: legacy transaction list under an incomplete legacy source does not claim "No Budget-entered transactions"',async function(){
   var h=await renderAug([],null,{legResp:function(){return exact([],2);}});

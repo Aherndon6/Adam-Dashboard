@@ -2506,11 +2506,9 @@ async function clickNav(page, id) {
     await context.close();
   }, { tags: ['smoke'] });
 
-  await test('BUD-4: the retired Statement check (R-lite, owner 2026-10-09) shows no Cleared total, before or after a cleared toggle and pair re-read', async () => {
-    // Superseded: the legacy check used Budget-entered entries and was retired as misleading; it now computes nothing.
-    // Intent kept: toggling cleared updates the reconciliation panel. A1b (§17, owner Round-2 ruling): the panel
-    // reads only the committed pair, so an optimistic consumer-copy edit alone must NOT change it; the toggle's
-    // pair re-read does. The re-read is simulated by committing the post-write pair (no network).
+  await test('BUD-4: cleared toggle reaches the Budget transaction list only through the re-read pair (A1b §17: the optimistic copy is not authoritative); the retired Statement check shows no Cleared total', async () => {
+    // R-lite (owner 2026-10-09) retired the legacy Statement check, which this test used to observe. The A1b §17
+    // protection is kept by observing the legacy transaction list instead (it renders only the committed pair).
     const { page, context } = await openApp(browser);
     await page.evaluate(A1B_PAGE_HELPERS);
     const result = await page.evaluate(() => {
@@ -2518,20 +2516,23 @@ async function clickNav(page, id) {
       var row = { id: testId, transaction_date: '2026-06-01', amount: '50.00', transaction_type: 'household_expense',
         category_key: 'entertainment', description: 'BUD-4 test', payment_account: 'AMEX Gold', is_cleared: false, cleared_date: null,
         excluded_from_budget: false, reimbursement_source: null, reimbursement_status: null, created_at: new Date().toISOString() };
-      _budgetReconAccount = 'AMEX Gold'; _budgetReconBalance = ''; _budgetSelectedMonth = '2026-06-01';
-      activeSection = 'budget';
+      _budgetSelectedMonth = '2026-06-01'; activeSection = 'budget';
       __a1bCommitPair('2026-06-01', [], [row]); renderApp();
-      var cl = function(){ var t = document.getElementById('budget-content') ? document.getElementById('budget-content').innerText : ''; var m = t.match(/Cleared\s*\$([0-9.,]+)/); return m ? m[1] : 'not found'; };
-      var before = cl();
+      var box = function(){ var cb = document.querySelector('#budget-legacy-list input[type="checkbox"][onchange*="' + testId + '"]'); return cb ? (cb.checked ? 'checked' : 'unchecked') : 'not found'; };
+      var stmtCleared = function(){ var p = document.getElementById('budget-recon'); return p && /Cleared\s*\$/.test(p.innerText) ? 'shown' : 'none'; };
+      var before = box(), panelBefore = stmtCleared();
       _budgetTransactions = _budgetTransactions.map(function(t){ return t.id === testId ? Object.assign({}, t, { is_cleared: true, cleared_date: '2026-06-24' }) : t; });
       renderApp();
-      var optimisticOnly = cl();
+      var optimisticOnly = box();
       __a1bCommitPair('2026-06-01', [], [Object.assign({}, row, { is_cleared: true, cleared_date: '2026-06-24' })]); renderApp();
-      var after = cl();
+      var after = box(), panelAfter = stmtCleared();
       _budgetPairCycle = null; _budgetTransactions = []; _budgetTransLoadStatus = 'not_loaded'; _budgetRegisterSpendCache = []; _budgetRegisterSpendLoadStatus = 'not_loaded'; _budgetSelectedMonth = '';
-      return { before, optimisticOnly, after };
+      return { before, optimisticOnly, after, panelBefore, panelAfter };
     });
-    assert(result.before === 'not found' && result.optimisticOnly === 'not found' && result.after === 'not found', 'the retired check shows no Cleared figure: ' + JSON.stringify(result));
+    assert(result.before === 'unchecked', 'row starts uncleared, got: ' + result.before);
+    assert(result.optimisticOnly === 'unchecked', 'an optimistic consumer-copy edit alone must not change what Budget shows, got: ' + result.optimisticOnly);
+    assert(result.after === 'checked', 'the re-read pair shows the row cleared, got: ' + result.after);
+    assert(result.panelBefore === 'none' && result.panelAfter === 'none', 'the retired Statement check shows no Cleared total: ' + JSON.stringify(result));
     await context.close();
   });
 
