@@ -1,5 +1,43 @@
 # Codex Status: Herndon Financial OS
 
+## CURRENCY NOTE (2026-10-10): Production line 2026-10-09 recorded. Releases 0, 1, 2 and the Register follow-ups CLOSED; R-lite V1 DEPLOYED, shadow validation PENDING, NON-AUTHORITATIVE. Canonical next: R-lite shadow run → Nov 20 freeze → December rollover
+
+**Why this note exists.** The 2026-10-09 production work was recorded in its own release documents and in `docs/roadmap/financial-os-roadmap-decisions-2026-10-09.md`, but not here, so a session reading only this file would have stopped at the 2026-10-07 note. This note is a pointer. **The roadmap decisions record is authoritative for sequence and scope**; each release record is authoritative for its own detail.
+
+**Owner roadmap decisions (2026-10-09):** `docs/roadmap/financial-os-roadmap-decisions-2026-10-09.md`. Separate from the frozen rollover authority (`docs/rollover-2027-spec.md` v2.1; resume from `docs/rollover-december-restart.md` on branch `rollover-package-d`). `docs/roadmap/canonical-roadmap.md` is stale on sequencing; reconciling roadmap and status authority is deferred to the December integration. Where they differ, the 2026-10-09 record holds.
+
+**Closed and production-accepted 2026-10-09 (owner), in order:**
+
+| # | Item | Production commit | Record |
+|---|---|---|---|
+| 0 | **Release 0:** reconciled-week `model_week_overrides` write guard (Edit Week Save, Remove all edits, Scenario commit). Ordinary client paths only; server-enforced immutability (GR-1) is post-rollover | `96328a7` | `docs/release-0-reconciled-week-guard.md` |
+| 1 | **Release 1:** trust / household quick wins (no pre-filled login email; household-safe error and admin wording; typed-date Register filters; truthful Ask Claude credential wording; new-version reload notice; FD-3 What-If tab). The Budget "Statement check" item was dropped to R-lite | `78ad6c7` | `docs/release-1-trust-quick-wins.md` |
+| 2 | **Release 2:** Register entry assist (Save & Add Another; date and account carry-over; grouped searchable categories; payee → category suggestion; possible-duplicate warning that never refuses the save). The Release 1 version-notice production proof passed at this deploy | `3963ed1` | `docs/release-2-register-entry-assist.md` |
+| — | **Register follow-ups:** blank-date fix; user-controlled payee autocomplete | `14e76ec` | `docs/register-followups-2026-10-09.md` |
+| 3 | **R-lite V1 "Statement Compare":** read-only comparison of a bank QFX download against the complete Register history, with a balance tie and unmatched lists; owner adjudicates through existing controls. Retires the legacy Budget "Statement check" and its help reference. No schema, ledger, lock, certification, OCR or bank OAuth | `d66760e` (`BUILD_TS` `2026-10-09T20:35:31`) | `docs/r-lite-v1-candidate.md` |
+
+**R-lite status: DEPLOYED, production UI acceptance PASS, SHADOW VALIDATION PENDING, NON-AUTHORITATIVE.**
+- The first shadow run is authorized at the owner's next normal reconciliation (fresh Truist Checking and AMEX Gold QFX), alongside the normal authoritative reconciliation. The metric is **zero false MATCHED**.
+- R-lite stays non-authoritative until the owner decides otherwise on the shadow evidence. No tuning before owner review.
+- The pre-freeze bar: used in at least one shadow Saturday, accepted, and merged into the rollover branch before the Nov 20 freeze.
+- **The December integration must carry the `renderBudget` protected re-pin.**
+
+**Test baseline at R-lite V1 (`d69440c`):** regression 2040/0; e2e full suite 214/0 with zero real network contact; golden identical. The two known rollover reds live on the rollover branch only.
+
+**Sequence (owner, 2026-10-09; do not reorder without surfacing it to the owner):**
+1. R-lite shadow validation at the next normal reconciliation.
+2. **Production code freeze, planned Nov 20.** After it, only rollover work and the required December integration. Emergency production correctness or security fixes need an explicit owner decision.
+3. **December rollover**, resumed from `docs/rollover-december-restart.md`. The December integration reconciles `origin/main`, the production-work commits, local `main`, `rollover-package-d`, the parked rollover status and `AGENTS.md` law #2.
+4. After rollover: the Gate R lane (including the privilege bundle and key-scoped credential access), F-1, then Gate F and the owner decision on OWNER HOLD. Detail in the roadmap decisions record.
+
+**Unchanged by this note:** the 2026-10-07 architecture closeout (Architecture v2 and P3 authoritative; Gate R and Gate F; OWNER HOLD ON through Gate F); the goal-funding REFUSE control; the Saturday manual cash certification remains authoritative; the rollover stays parked.
+
+**Push state at writing:** `origin/main` = `d66760e`. Local `production-line-2026q4` carries `6364003` (R-lite deployment docs) and this note, both unpushed. Pushing is owner-approved separately.
+
+**Documentation only.** Balance-free. No product, test, SQL, schema, RLS, privilege, production or staging change.
+
+---
+
 ## CURRENCY NOTE (2026-10-07): Reconciliation / forward-cash architecture review CLOSED. Architecture v2 and P3 remain authoritative. Canonical next: 2027 rollover reconnaissance and specification
 
 **Outcome (owner rulings, 2026-10-07):**
