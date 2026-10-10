@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| Status | **APPROVED FOR PUSH (owner, 2026-10-09), subject to the pre-push gate.** The first shadow run is authorized separately, at the owner's next normal reconciliation. **R-lite is non-authoritative** |
+| Status | **DEPLOYED — PASS · PRODUCTION UI ACCEPTANCE — PASS · SHADOW VALIDATION — PENDING · R-LITE REMAINS NON-AUTHORITATIVE** (owner, 2026-10-09). Pushed `14e76ec..d66760e`; `BUILD_TS` `2026-10-09T20:35:31`. The first shadow run is authorized at the owner's next normal reconciliation (fresh Truist Checking and AMEX Gold QFX) |
 | Branch | `production-line-2026q4`, on top of live `14e76ec`. Commits: `72f6012` (feature), `9672711` (mutation-gap tests), `23dc3c1` (Fable follow-ups), `d69440c` (legacy test supersession), the test-protection restoration after `f168deb`, plus docs/fixtures `2a6e2bf`, `e639429` and this record |
 | Design authority | `docs/r-lite-design-proposal.md` §23 (locked by the owner, 2026-10-09) |
 | Private evidence | `~/Herndon-Financial-OS-Evidence/r-lite-2026-10-09/`: real-file profiles; the read-only Register extract (private); window and real-run aggregates; RED, mutation, validation and merge preview; `renderBudget` before/after/diff; the new protected baseline |
